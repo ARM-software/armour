@@ -19,15 +19,41 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use url::Url;
 
-// shared pub/sub state (should be replaced with proper database)
+// Shared pub/sub state:
+// - For now, topics are simple strings (to be replaced with a hierarchy of topics)
+// - Also there's no database for storing/retrieving messages
+
+#[derive(Clone)]
+struct Subscribers(HashMap<String, HashSet<u16>>);
+
+impl Subscribers {
+    fn new() -> Subscribers {
+        Subscribers(HashMap::new())
+    }
+    fn add_subscriber(&mut self, port: u16, topic: &str) {
+        if let Some(set) = self.0.get_mut(topic) {
+            set.insert(port);
+        } else {
+            let mut set = HashSet::new();
+            set.insert(port);
+            self.0.insert(topic.to_string(), set);
+        }
+    }
+}
+
 struct PubSubState {
-    messages: Arc<Mutex<HashMap<String, String>>>,
+    subscribers: Arc<Mutex<Subscribers>>,
 }
 
 impl<'a> PubSubState {
-    pub fn init() -> PubSubState {
-        PubSubState {
-            messages: Arc::new(Mutex::new(HashMap::new())),
+    pub fn init(subscribers: Arc<Mutex<Subscribers>>) -> PubSubState {
+        PubSubState { subscribers }
+    }
+    fn subscribers(&self, topic: &str) -> HashSet<u16> {
+        if let Some(set) = (*self.subscribers.lock().unwrap()).0.get(topic) {
+            set.clone()
+        } else {
+            HashSet::new()
         }
     }
 }
@@ -183,9 +209,56 @@ fn allow(req: &HttpRequest<ProxyState>) -> String {
     }
 }
 
-/// Stub for Pub/Sub service
-fn pubsub(_req: &HttpRequest<PubSubState>) -> HttpResponse {
-    HttpResponse::ServiceUnavailable().body("the pub/sub server has not be implemented yet")
+/// Subscribe to topic
+fn subscribe(req: &HttpRequest<PubSubState>) -> HttpResponse {
+    if let Ok(params) = Path::<(u16, String)>::extract(req) {
+        (*req.state().subscribers.lock().unwrap()).add_subscriber(params.0, &params.1);
+        let s = format!("added subscriber {} to topic \"{}\"", params.0, params.1);
+        info!("{}", s);
+        HttpResponse::Ok().body(s)
+    } else {
+        HttpResponse::BadRequest().finish()
+    }
+}
+
+/// Publish to topic
+fn publish(req: HttpRequest<PubSubState>) -> Box<dyn Future<Item = HttpResponse, Error = Error>> {
+    if let Ok(topic) = Path::<String>::extract(&req) {
+        let subscribers = req.state().subscribers(&*topic);
+        if subscribers.len() == 0 {
+            Box::new(fut_ok(HttpResponse::BadRequest().body(&format!(
+                "there are no subscribers to topic \"{}\"",
+                *topic
+            ))))
+        } else {
+            let info = req.connection_info();
+            let url = Url::parse(&format!(
+                "{}://{}/subscription/{}",
+                info.scheme(),
+                info.host(),
+                *topic
+            ))
+            .unwrap();
+            Box::new(req.body().from_err().and_then(move |body| {
+                for subscriber_port in subscribers.iter() {
+                    let mut subscriber_url = url.clone();
+                    subscriber_url.set_port(Some(*subscriber_port)).unwrap();
+                    info!("sending \"{}\" topic to {}", *topic, subscriber_url);
+                    actix::spawn(
+                        client::ClientRequest::put(subscriber_url)
+                            .body(body.clone())
+                            .unwrap()
+                            .send()
+                            .and_then(|_| Ok(()))
+                            .map_err(|_| ()),
+                    )
+                }
+                fut_ok(HttpResponse::Ok().body(format!("published to topic \"{}\"", *topic)))
+            }))
+        }
+    } else {
+        Box::new(fut_ok(HttpResponse::BadRequest().finish()))
+    }
 }
 
 /// Find a local interface's IP by name
@@ -294,13 +367,17 @@ fn main() {
     );
     proxy_server.start();
 
+    let pubsub_state = Arc::new(Mutex::new(Subscribers::new()));
+
     // perhaps start pub/sub server
     if let Some(port) = pubsub_port {
         let pubsub_socket = SocketAddr::new(ip, port);
         let pubsub_server = server::new(move || {
-            App::with_state(PubSubState::init())
+            App::with_state(PubSubState::init(pubsub_state.clone()))
                 .middleware(middleware::Logger::default())
-                .default_resource(|r| r.f(pubsub))
+                .resource("/subscribe/{port}/{topic}", |r| r.f(subscribe))
+                .resource("/publish/{topic}", |r| r.with(publish))
+                .default_resource(|_r| HttpResponse::BadRequest())
         })
         .bind(pubsub_socket)
         .expect(&format!("Failed to bind to {}", proxy_socket));

@@ -4,7 +4,8 @@
 extern crate log;
 
 use actix_web::{
-    actix, client, middleware, server, App, Error, HttpMessage, HttpRequest, HttpResponse,
+    actix, client, http::Method, middleware, server, App, Error, FromRequest, HttpMessage,
+    HttpRequest, HttpResponse, Path,
 };
 use clap::{crate_version, App as ClapApp, Arg};
 use futures::{future::ok as fut_ok, Future};
@@ -35,6 +36,20 @@ fn service(req: HttpRequest<ServiceState>) -> Box<dyn Future<Item = HttpResponse
     }))
 }
 
+/// Respond to publish notification
+fn subscription(
+    req: HttpRequest<ServiceState>,
+) -> Box<dyn Future<Item = HttpResponse, Error = Error>> {
+    if let Ok(topic) = Path::<String>::extract(&req) {
+        Box::new(req.body().from_err().and_then(move |body| {
+            info!("got message: {:?} on topic \"{}\"", body, *topic);
+            fut_ok(HttpResponse::Ok().finish())
+        }))
+    } else {
+        Box::new(fut_ok(HttpResponse::BadRequest().finish()))
+    }
+}
+
 /// Find a local interface's IP by name
 fn interface_ip_addr(s: &str) -> Option<IpAddr> {
     if let Ok(interfaces) = get_if_addrs::get_if_addrs() {
@@ -47,6 +62,7 @@ fn interface_ip_addr(s: &str) -> Option<IpAddr> {
 fn main() {
     // defaults
     let default_proxy_port = 8443;
+    let default_pubsub_port = 8444;
     let default_interface = "en0";
 
     // CLI
@@ -69,6 +85,16 @@ fn main() {
                 .help(&format!(
                     "Proxy port number (default: {})",
                     default_proxy_port
+                )),
+        )
+        .arg(
+            Arg::with_name("pubsub port")
+                .required(false)
+                .short("s")
+                .takes_value(true)
+                .help(&format!(
+                    "Pub/sub port number (default: {})",
+                    default_pubsub_port
                 )),
         )
         .arg(
@@ -110,6 +136,10 @@ fn main() {
         .value_of("proxy port")
         .map(|l| l.parse().expect(&format!("bad port: {}", l)))
         .unwrap_or(default_proxy_port);
+    let pubsub_port = matches
+        .value_of("pubsub port")
+        .map(|l| l.parse().expect(&format!("bad port: {}", l)))
+        .unwrap_or(default_pubsub_port);
     let server_port: Option<u16> = matches
         .value_of("server port")
         .map(|l| l.parse().expect(&format!("bad port: {}", l)));
@@ -132,12 +162,13 @@ fn main() {
     // start the actix system
     let sys = actix::System::new("arm-proxy");
 
-    // start up the proxy server
+    // start up the service server
     if let Some(port) = own_port {
         let socket = SocketAddr::new(ip, port);
         let server = server::new(move || {
             App::with_state(ServiceState::init(port))
                 .middleware(middleware::Logger::default())
+                .route("/subscription/{topic}", Method::PUT, subscription)
                 .default_resource(|r| r.with(service))
         })
         .bind(socket)
@@ -149,8 +180,8 @@ fn main() {
     // send a message
     if let Some(destination_port) = server_port {
         actix::spawn({
-            let uri = if destination_port == proxy_port {
-                format!("http://{}:{}/{}", servername, proxy_port, route)
+            let uri = if destination_port == proxy_port || destination_port == pubsub_port {
+                format!("http://{}:{}/{}", servername, destination_port, route)
             } else {
                 format!(
                     "http://{}:{}/{}/{}",
