@@ -384,7 +384,7 @@ fn main() {
         })
         .bind(pubsub_socket)
         .expect(&format!("Failed to bind to {}", proxy_socket));
-        info!("Starting pub/Sub server: http://{}:{}", servername, port);
+        info!("Starting pub/sub server: http://{}:{}", servername, port);
         pubsub_server.start();
     }
 
