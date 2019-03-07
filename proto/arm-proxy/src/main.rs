@@ -251,7 +251,7 @@ fn publish(req: HttpRequest<PubSubState>) -> Box<dyn Future<Item = HttpResponse,
                             .send()
                             .and_then(|_| Ok(()))
                             // should unsubscribe on error?
-                            .map_err(move |_| info!("got error publishing to {}", subscriber_url)),
+                            .map_err(move |_| error!("got error publishing to {}", subscriber_url)),
                     )
                 }
                 fut_ok(HttpResponse::Ok().body(format!("published to topic \"{}\"", *topic)))
