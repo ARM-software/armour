@@ -245,12 +245,13 @@ fn publish(req: HttpRequest<PubSubState>) -> Box<dyn Future<Item = HttpResponse,
                     subscriber_url.set_port(Some(*subscriber_port)).unwrap();
                     info!("sending \"{}\" topic to {}", *topic, subscriber_url);
                     actix::spawn(
-                        client::ClientRequest::put(subscriber_url)
+                        client::ClientRequest::put(subscriber_url.clone())
                             .body(body.clone())
                             .unwrap()
                             .send()
                             .and_then(|_| Ok(()))
-                            .map_err(|_| ()),
+                            // should unsubscribe on error?
+                            .map_err(move |_| info!("got error publishing to {}", subscriber_url)),
                     )
                 }
                 fut_ok(HttpResponse::Ok().body(format!("published to topic \"{}\"", *topic)))
@@ -367,10 +368,9 @@ fn main() {
     );
     proxy_server.start();
 
-    let pubsub_state = Arc::new(Mutex::new(Subscribers::new()));
-
     // perhaps start pub/sub server
     if let Some(port) = pubsub_port {
+        let pubsub_state = Arc::new(Mutex::new(Subscribers::new()));
         let pubsub_socket = SocketAddr::new(ip, port);
         let pubsub_server = server::new(move || {
             App::with_state(PubSubState::init(pubsub_state.clone()))
