@@ -13,10 +13,10 @@ use actix_web::{
 use clap::{crate_version, App as ClapApp, Arg};
 use futures::{future::ok as fut_ok, Future};
 use std::collections::{HashMap, HashSet};
-use std::env;
 use std::iter::FromIterator;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
+use std::{env, fmt};
 use url::Url;
 
 // Shared pub/sub state:
@@ -68,6 +68,14 @@ pub struct ProxyState {
 impl<'a> ProxyState {
     pub fn init(allow: Policy) -> ProxyState {
         ProxyState { allow }
+    }
+}
+
+impl fmt::Display for ProxyState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut vec = Vec::from_iter((*self.allow.lock().unwrap()).clone());
+        vec.sort();
+        writeln!(f, "{:?}", vec)
     }
 }
 
@@ -198,11 +206,7 @@ fn allow(req: &HttpRequest<ProxyState>) -> String {
     if let Ok(port) = Path::<u16>::extract(req) {
         (*req.state().allow.lock().unwrap()).insert(*port);
         let s = format!("Added port {}", *port);
-        info!(
-            "{}, allowed port are {:?}",
-            s,
-            *req.state().allow.lock().unwrap()
-        );
+        debug!("{}, allowed ports are {}", s, req.state());
         s
     } else {
         "".to_string()
@@ -324,7 +328,7 @@ fn main() {
         .value_of("pub/sub port")
         .map(|port| Some(port.parse().expect(&format!("bad port: {}", port))))
         .unwrap_or(None);
-    let allowed_ports = matches
+    let mut allowed_ports = matches
         .values_of("allow port")
         .map(|ports| {
             ports
@@ -348,10 +352,9 @@ fn main() {
     let sys = actix::System::new("arm-proxy");
 
     // start up the proxy server
+    allowed_ports.sort();
+    info!("Allowed ports are: {:?}", &allowed_ports);
     let proxy_state = Arc::new(Mutex::new(HashSet::from_iter(allowed_ports)));
-    {
-        info!("Allowed ports are: {:?}", *proxy_state.lock().unwrap());
-    }
 
     let proxy_socket = SocketAddr::new(ip, proxy_port);
     let proxy_server = server::new(move || {
