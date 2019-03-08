@@ -131,7 +131,7 @@ fn forward_url(uri: &str) -> Result<Url, ForwardUrlError> {
 }
 
 fn is_allowed(state: &ProxyState, port: u16) -> bool {
-    info!("allowed port are {:?}", *state.allow.lock().unwrap());
+    debug!("allowed ports are {}", *state);
     state.allow.lock().unwrap().contains(&port)
 }
 
@@ -384,7 +384,7 @@ fn main() {
         })
         .bind(pubsub_socket)
         .expect(&format!("Failed to bind to {}", proxy_socket));
-        info!("Starting pub/sub server: http://{}:{}", servername, port);
+        info!("Starting pub/sub broker: http://{}:{}", servername, port);
         pubsub_server.start();
     }
 

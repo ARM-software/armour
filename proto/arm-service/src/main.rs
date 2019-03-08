@@ -7,7 +7,7 @@ use actix_web::{
     actix, client, http::Method, middleware, server, App, Error, FromRequest, HttpMessage,
     HttpRequest, HttpResponse, Path,
 };
-use clap::{crate_version, App as ClapApp, Arg};
+use clap::{crate_version, App as ClapApp, AppSettings, Arg};
 use futures::{future::ok as fut_ok, Future};
 use std::env;
 use std::net::{IpAddr, SocketAddr};
@@ -70,6 +70,7 @@ fn main() {
         .version(crate_version!())
         .author("Anthony Fox <anthony.fox@arm.com> and Gustavo Petri <gustavo.petri@arm.com>")
         .about("Proxy with support for Security Policies")
+        .setting(AppSettings::ArgRequiredElseHelp)
         .arg(
             Arg::with_name("own port")
                 .required(false)
