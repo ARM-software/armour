@@ -5,9 +5,9 @@ authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
 [dependencies]
-actix = "0.7.9"
+actix = "0.7"
 actix-web = "0.7.18"
-env_logger = "0.6.0"
+env_logger = "0.6.1"
 log = "0.4.6"
 get_if_addrs = "0.5.3"
 hostname = "0.1.5"

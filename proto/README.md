@@ -113,8 +113,8 @@ Pub/Sub Example
    ```shell
    # terminal 1
    $ cd arm-proxy
-   $ cargo run -- -p 8444
-   [... INFO  arm_proxy] Allowed ports are: []
+   $ cargo run -- -p 8444 -a 8444
+   [... INFO  arm_proxy] Allowed ports are: [8444]
    [... INFO  arm_proxy] Starting proxy server: http://?.arm.com:8443
    [... INFO  arm_proxy] Starting pub/sub broker: http://?.arm.com:8444
    ```

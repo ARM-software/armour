@@ -357,10 +357,11 @@ fn main() {
     let proxy_state = Arc::new(Mutex::new(HashSet::from_iter(allowed_ports)));
 
     let proxy_socket = SocketAddr::new(ip, proxy_port);
+    let allow_path = format!("{}/allow/{{port}}", proxy_port);
     let proxy_server = server::new(move || {
         App::with_state(ProxyState::init(proxy_state.clone()))
             .middleware(middleware::Logger::default())
-            .resource("/allow/{port}", |r| r.f(allow))
+            .resource(&allow_path, |r| r.f(allow))
             .default_resource(|r| r.f(forward))
     })
     .bind(proxy_socket)

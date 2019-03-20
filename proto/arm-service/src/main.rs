@@ -62,7 +62,6 @@ fn interface_ip_addr(s: &str) -> Option<IpAddr> {
 fn main() {
     // defaults
     let default_proxy_port = 8443;
-    let default_pubsub_port = 8444;
     let default_interface = "en0";
 
     // CLI
@@ -89,17 +88,7 @@ fn main() {
                 )),
         )
         .arg(
-            Arg::with_name("pubsub port")
-                .required(false)
-                .short("s")
-                .takes_value(true)
-                .help(&format!(
-                    "Pub/sub port number (default: {})",
-                    default_pubsub_port
-                )),
-        )
-        .arg(
-            Arg::with_name("server port")
+            Arg::with_name("destination port")
                 .required(false)
                 .short("d")
                 .takes_value(true)
@@ -137,12 +126,8 @@ fn main() {
         .value_of("proxy port")
         .map(|l| l.parse().expect(&format!("bad port: {}", l)))
         .unwrap_or(default_proxy_port);
-    let pubsub_port = matches
-        .value_of("pubsub port")
-        .map(|l| l.parse().expect(&format!("bad port: {}", l)))
-        .unwrap_or(default_pubsub_port);
-    let server_port: Option<u16> = matches
-        .value_of("server port")
+    let destination_port: Option<u16> = matches
+        .value_of("destination port")
         .map(|l| l.parse().expect(&format!("bad port: {}", l)));
     let route = matches.value_of("route").unwrap_or("");
     let message = matches
@@ -179,16 +164,12 @@ fn main() {
     }
 
     // send a message
-    if let Some(destination_port) = server_port {
+    if let Some(destination_port) = destination_port {
         actix::spawn({
-            let uri = if destination_port == proxy_port || destination_port == pubsub_port {
-                format!("http://{}:{}/{}", servername, destination_port, route)
-            } else {
-                format!(
-                    "http://{}:{}/{}/{}",
-                    servername, proxy_port, destination_port, route
-                )
-            };
+            let uri = format!(
+                "http://{}:{}/{}/{}",
+                servername, proxy_port, destination_port, route
+            );
             info!("sending: {}", uri);
             client::get(uri)
                 .header("User-Agent", "Actix-web")
