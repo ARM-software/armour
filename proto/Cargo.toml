@@ -3,4 +3,5 @@
 members = [
     "arm-service",
     "arm-proxy",
+    "arm-pubsub",
 ]

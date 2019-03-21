@@ -1,12 +1,17 @@
 TODO
 ====
 
+Currently services have to direct REST requests to the proxy, with a field indicating the intended destination. This should be changed (somehow) to automatically redirect everything to the proxy.
+
 arm-proxy
 ---------
 
 The REST proxy service needs to support the following:
 
 - Enable filtering based on: sender `ip` and/or `id`; recipient `ip` and `port`, and/or `id`; `API/route`; and `body`.
+
+arm-pubsub
+----------
 
 The pub/sub service needs to support the following:
 

@@ -28,13 +28,15 @@ All ports are blocked at startup, unless they are unblocked on the command line:
    [... INFO  arm_proxy] Starting proxy server: http://?.arm.com:8443
    ```
 
-The proxy can also start up a pub/sub service using the `-p` flag:
+arm-pubsub
+----------
+
+The REST based pub/sub service can be started with:
 
    ```shell
-   $ cargo run -- -p 8444
-   [... INFO  arm_proxy] Allowed ports are: []
-   [... INFO  arm_proxy] Starting proxy server: http://?.arm.com:8443
-   [... INFO  arm_proxy] Starting pub/sub broker: http://?.arm.com:8444
+   $ cd arm-pubsub
+   $ cargo run
+   [... INFO  arm_pubsub] Starting pub/sub broker: http://?.arm.com:8444
    ```
 
 arm-service
@@ -108,21 +110,29 @@ Proxy Example
 Pub/Sub Example
 ---------------
 
-- Start the proxy with pub/sub enabled
+- Start the proxy with pub/sub allowed
 
    ```shell
    # terminal 1
    $ cd arm-proxy
-   $ cargo run -- -p 8444 -a 8444
+   $ cargo run -- -a 8444
    [... INFO  arm_proxy] Allowed ports are: [8444]
    [... INFO  arm_proxy] Starting proxy server: http://?.arm.com:8443
-   [... INFO  arm_proxy] Starting pub/sub broker: http://?.arm.com:8444
+   ```
+
+- Start the pub/sub service
+
+   ```shell
+   # terminal 2
+   $ cd arm-pubsub
+   $ cargo run
+   [... INFO  arm_pubsub] Starting pub/sub broker: http://?.arm.com:8444
    ```
 
 - Start two services, which subscribe to a topic by messaging the broker on port 8444
 
    ```shell
-   # terminal 2
+   # terminal 3
    $ cd arm-service
    $ cargo run -- -o 8445 -d 8444 -r subscribe/8445/messages
    [... INFO  arm_service] Starting service: http://?.arm.com:8445
@@ -131,7 +141,7 @@ Pub/Sub Example
    ```
    
    ```shell
-   # terminal 3
+   # terminal 4
    $ cd arm-service
    $ cargo run -- -o 8446 -d 8444 -r subscribe/8446/messages
    [... INFO  arm_service] Starting service: http://?.arm.com:8446
@@ -142,7 +152,7 @@ Pub/Sub Example
 - Publish a message to the topic
 
    ```shell
-   # terminal 4
+   # terminal 5
    $ cd arm-service
    $ cargo run -- -d 8444 -r publish/messages "hello there"
    [... INFO  arm_service] sending: http://?.arm.com:8444/publish/messages

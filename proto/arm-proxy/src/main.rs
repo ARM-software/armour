@@ -12,51 +12,12 @@ use actix_web::{
 };
 use clap::{crate_version, App as ClapApp, Arg};
 use futures::{future::ok as fut_ok, Future};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::{env, fmt};
 use url::Url;
-
-// Shared pub/sub state:
-// - For now, topics are simple strings (to be replaced with a hierarchy of topics)
-// - Also there's no database for storing/retrieving messages
-
-#[derive(Clone)]
-struct Subscribers(HashMap<String, HashSet<u16>>);
-
-impl Subscribers {
-    fn new() -> Subscribers {
-        Subscribers(HashMap::new())
-    }
-    fn add_subscriber(&mut self, port: u16, topic: &str) {
-        if let Some(set) = self.0.get_mut(topic) {
-            set.insert(port);
-        } else {
-            let mut set = HashSet::new();
-            set.insert(port);
-            self.0.insert(topic.to_string(), set);
-        }
-    }
-}
-
-struct PubSubState {
-    subscribers: Arc<Mutex<Subscribers>>,
-}
-
-impl<'a> PubSubState {
-    pub fn init(subscribers: Arc<Mutex<Subscribers>>) -> PubSubState {
-        PubSubState { subscribers }
-    }
-    fn subscribers(&self, topic: &str) -> HashSet<u16> {
-        if let Some(set) = (*self.subscribers.lock().unwrap()).0.get(topic) {
-            set.clone()
-        } else {
-            HashSet::new()
-        }
-    }
-}
 
 // shared state that whitelists traffic to a destination port (to be replaced by full policy check)
 // use of mutex could be an issue for efficiency/scaling!
@@ -213,59 +174,6 @@ fn allow(req: &HttpRequest<ProxyState>) -> String {
     }
 }
 
-/// Subscribe to topic
-fn subscribe(req: &HttpRequest<PubSubState>) -> HttpResponse {
-    if let Ok(params) = Path::<(u16, String)>::extract(req) {
-        (*req.state().subscribers.lock().unwrap()).add_subscriber(params.0, &params.1);
-        let s = format!("added subscriber {} to topic \"{}\"", params.0, params.1);
-        info!("{}", s);
-        HttpResponse::Ok().body(s)
-    } else {
-        HttpResponse::BadRequest().finish()
-    }
-}
-
-/// Publish to topic
-fn publish(req: HttpRequest<PubSubState>) -> Box<dyn Future<Item = HttpResponse, Error = Error>> {
-    if let Ok(topic) = Path::<String>::extract(&req) {
-        let subscribers = req.state().subscribers(&*topic);
-        if subscribers.len() == 0 {
-            Box::new(fut_ok(HttpResponse::BadRequest().body(&format!(
-                "there are no subscribers to topic \"{}\"",
-                *topic
-            ))))
-        } else {
-            let info = req.connection_info();
-            let url = Url::parse(&format!(
-                "{}://{}/subscription/{}",
-                info.scheme(),
-                info.host(),
-                *topic
-            ))
-            .unwrap();
-            Box::new(req.body().from_err().and_then(move |body| {
-                for subscriber_port in subscribers.iter() {
-                    let mut subscriber_url = url.clone();
-                    subscriber_url.set_port(Some(*subscriber_port)).unwrap();
-                    info!("sending \"{}\" topic to {}", *topic, subscriber_url);
-                    actix::spawn(
-                        client::ClientRequest::put(subscriber_url.clone())
-                            .body(body.clone())
-                            .unwrap()
-                            .send()
-                            .and_then(|_| Ok(()))
-                            // should unsubscribe on error?
-                            .map_err(move |_| error!("got error publishing to {}", subscriber_url)),
-                    )
-                }
-                fut_ok(HttpResponse::Ok().body(format!("published to topic \"{}\"", *topic)))
-            }))
-        }
-    } else {
-        Box::new(fut_ok(HttpResponse::BadRequest().finish()))
-    }
-}
-
 /// Find a local interface's IP by name
 fn interface_ip_addr(s: &str) -> Option<IpAddr> {
     if let Ok(interfaces) = get_if_addrs::get_if_addrs() {
@@ -295,12 +203,6 @@ fn main() {
                 )),
         )
         .arg(
-            Arg::with_name("pub/sub port")
-                .short("p")
-                .takes_value(true)
-                .help("Pub/sub port number (off if absent)"),
-        )
-        .arg(
             Arg::with_name("interface")
                 .short("i")
                 .long("interface")
@@ -323,11 +225,7 @@ fn main() {
     let proxy_port = matches
         .value_of("proxy port")
         .map(|port| port.parse().expect(&format!("bad port: {}", port)))
-        .unwrap_or(8443);
-    let pubsub_port = matches
-        .value_of("pub/sub port")
-        .map(|port| Some(port.parse().expect(&format!("bad port: {}", port))))
-        .unwrap_or(None);
+        .unwrap_or(default_proxy_port);
     let mut allowed_ports = matches
         .values_of("allow port")
         .map(|ports| {
@@ -336,7 +234,6 @@ fn main() {
                 .collect()
         })
         .unwrap_or(Vec::new());
-    assert_ne!(Some(proxy_port), pubsub_port);
     let interface = matches.value_of("interface").unwrap_or(default_interface);
 
     // get the server name and the IP address for the named interface (e.g. "en0" or "lo")
@@ -371,23 +268,6 @@ fn main() {
         servername, proxy_port
     );
     proxy_server.start();
-
-    // perhaps start pub/sub server
-    if let Some(port) = pubsub_port {
-        let pubsub_state = Arc::new(Mutex::new(Subscribers::new()));
-        let pubsub_socket = SocketAddr::new(ip, port);
-        let pubsub_server = server::new(move || {
-            App::with_state(PubSubState::init(pubsub_state.clone()))
-                .middleware(middleware::Logger::default())
-                .resource("/subscribe/{port}/{topic}", |r| r.f(subscribe))
-                .resource("/publish/{topic}", |r| r.with(publish))
-                .default_resource(|_r| HttpResponse::BadRequest())
-        })
-        .bind(pubsub_socket)
-        .expect(&format!("Failed to bind to {}", proxy_socket));
-        info!("Starting pub/sub broker: http://{}:{}", servername, port);
-        pubsub_server.start();
-    }
 
     sys.run();
 }
