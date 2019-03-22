@@ -61,7 +61,6 @@ fn interface_ip_addr(s: &str) -> Option<IpAddr> {
 
 fn main() {
     // defaults
-    let default_proxy_port = 8443;
     let default_interface = "en0";
 
     // CLI
@@ -76,16 +75,6 @@ fn main() {
                 .short("o")
                 .takes_value(true)
                 .help("own port"),
-        )
-        .arg(
-            Arg::with_name("proxy port")
-                .required(false)
-                .short("p")
-                .takes_value(true)
-                .help(&format!(
-                    "Proxy port number (default: {})",
-                    default_proxy_port
-                )),
         )
         .arg(
             Arg::with_name("destination port")
@@ -122,10 +111,6 @@ fn main() {
     let own_port = matches
         .value_of("own port")
         .map(|l| l.parse().expect(&format!("bad port: {}", l)));
-    let proxy_port = matches
-        .value_of("proxy port")
-        .map(|l| l.parse().expect(&format!("bad port: {}", l)))
-        .unwrap_or(default_proxy_port);
     let destination_port: Option<u16> = matches
         .value_of("destination port")
         .map(|l| l.parse().expect(&format!("bad port: {}", l)));
@@ -166,10 +151,7 @@ fn main() {
     // send a message
     if let Some(destination_port) = destination_port {
         actix::spawn({
-            let uri = format!(
-                "http://{}:{}/{}/{}",
-                servername, proxy_port, destination_port, route
-            );
+            let uri = format!("http://{}:{}/{}", servername, destination_port, route);
             info!("sending: {}", uri);
             client::get(uri)
                 .header("User-Agent", "Actix-web")
