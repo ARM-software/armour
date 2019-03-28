@@ -117,7 +117,7 @@ fn interface_ip_addr(s: &str) -> Option<IpAddr> {
 
 fn main() {
     // defaults
-    let default_pubsub_port = 8444;
+    let default_pubsub_port = 8445;
     let default_interface = "en0";
 
     // CLI
@@ -127,8 +127,8 @@ fn main() {
         .about("Basic REST pub/sub service")
         .arg(
             Arg::with_name("pub/sub port")
-                .required(false)
-                .index(1)
+                .short("p")
+                .takes_value(true)
                 .help(&format!(
                     "Pub/Sub port number (default: {})",
                     default_pubsub_port

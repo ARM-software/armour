@@ -12,7 +12,7 @@ use actix_web::{
 };
 use clap::{crate_version, App as ClapApp, Arg};
 use futures::{future::ok as fut_ok, Future};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -22,22 +22,17 @@ use url::Url;
 // shared state that whitelists traffic to a destination port (to be replaced by full policy check)
 // use of mutex could be an issue for efficiency/scaling!
 type Policy = Arc<Mutex<HashSet<u16>>>;
-type Routing = Arc<BTreeMap<u16, u16>>;
 pub struct ProxyState {
     pub allow: Policy,
-    routing: Routing,
 }
 
 impl<'a> ProxyState {
-    pub fn init(allow: Policy, routing: Routing) -> ProxyState {
-        ProxyState { allow, routing }
+    pub fn init(allow: Policy) -> ProxyState {
+        ProxyState { allow }
     }
     fn port_allowed(&self, port: &u16) -> bool {
         debug!("allowed ports are {}", self);
         self.allow.lock().unwrap().contains(&port)
-    }
-    fn get_forward_port(&self, port: &u16) -> Option<&u16> {
-        self.routing.get(&port)
     }
 }
 
@@ -75,19 +70,27 @@ impl From<()> for ForwardUrlError {
     }
 }
 
-fn forward_url(req: &HttpRequest<ProxyState>) -> Result<Url, ForwardUrlError> {
-    let info = req.connection_info();
-    let mut url = Url::parse(&format!("{}://{}{}", info.scheme(), info.host(), req.uri()))?;
-    if let Some(port) = url.port() {
-        if req.state().port_allowed(&port) {
-            if let Some(forward_port) = req.state().get_forward_port(&port) {
-                url.set_port(Some(*forward_port))?;
-                Ok(url)
-            } else {
-                unreachable!("forward port")
-            }
+fn get_forward_to_port(req: &HttpRequest<ProxyState>) -> Option<u16> {
+    if let Some(p) = req.headers().get("forward-to-port") {
+        if let Ok(s) = p.to_str() {
+            s.parse().ok()
         } else {
-            Err(ForwardUrlError::Blocked(port))
+            None
+        }
+    } else {
+        None
+    }
+}
+
+fn forward_url(req: &HttpRequest<ProxyState>) -> Result<Url, ForwardUrlError> {
+    if let Some(forward_port) = get_forward_to_port(req) {
+        if req.state().port_allowed(&forward_port) {
+            let info = req.connection_info();
+            let mut url = Url::parse(&format!("{}://{}{}", info.scheme(), info.host(), req.uri()))?;
+            url.set_port(Some(forward_port))?;
+            Ok(url)
+        } else {
+            Err(ForwardUrlError::Blocked(forward_port))
         }
     } else {
         Err(ForwardUrlError::ForwardPort)
@@ -180,6 +183,7 @@ fn parse_port(s: &str) -> u16 {
 fn main() {
     // defaults
     let default_proxy_port = 8443;
+    let default_proxy_control_port = 8444;
     let default_interface = "en0";
 
     // CLI
@@ -189,21 +193,21 @@ fn main() {
         .about("Proxy with support for Security Policies")
         .arg(
             Arg::with_name("proxy port")
-                .required(false)
-                .index(1)
+                .short("p")
+                .takes_value(true)
                 .help(&format!(
                     "Proxy port number (default: {})",
                     default_proxy_port
                 )),
         )
         .arg(
-            Arg::with_name("proxy")
-                .short("p")
-                .long("proxy")
+            Arg::with_name("proxy control port")
+                .short("o")
                 .takes_value(true)
-                .number_of_values(2)
-                .multiple(true)
-                .help("Proxy: port socket"),
+                .help(&format!(
+                    "Proxy control port number (default: {})",
+                    default_proxy_control_port
+                )),
         )
         .arg(
             Arg::with_name("interface")
@@ -229,22 +233,10 @@ fn main() {
         .value_of("proxy port")
         .map(|port| parse_port(port))
         .unwrap_or(default_proxy_port);
-    let proxy = matches
-        .values_of("proxy")
-        .map(|mut proxies| {
-            let mut map = BTreeMap::new();
-            let mut done = false;
-            while !done {
-                match (proxies.next(), proxies.next()) {
-                    (Some(port1), Some(port2)) => {
-                        map.insert(parse_port(port1), parse_port(port2));
-                    }
-                    _ => done = true,
-                }
-            }
-            map
-        })
-        .unwrap_or(BTreeMap::new());
+    let proxy_control_port = matches
+        .value_of("proxy control port")
+        .map(|port| parse_port(port))
+        .unwrap_or(default_proxy_control_port);
     let mut allowed_ports = matches
         .values_of("allow port")
         .map(|ports| ports.map(|a| parse_port(a)).collect())
@@ -267,51 +259,38 @@ fn main() {
     allowed_ports.sort();
     info!("Allowed ports are: {:?}", &allowed_ports);
     let proxy_allow_state = Arc::new(Mutex::new(HashSet::from_iter(allowed_ports)));
-    let proxy_routing_state = Arc::new(proxy.clone());
     let clone_proxy_state = proxy_allow_state.clone();
-    let clone_proxy_routing_state = proxy_routing_state.clone();
 
-    if !proxy.is_empty() {
-        // start up the proxy servers
-        let mut proxy_server = server::new(move || {
-            App::with_state(ProxyState::init(
-                proxy_allow_state.clone(),
-                proxy_routing_state.clone(),
-            ))
-            .middleware(middleware::Logger::default())
-            .default_resource(|r| r.f(forward))
-        });
-
-        for (port, _) in &proxy {
-            let proxy_socket = SocketAddr::new(ip, *port);
-            proxy_server = proxy_server
-                .bind(proxy_socket)
-                .expect(&format!("Failed to bind to {}", proxy_socket));
-        }
-
-        proxy_server.start();
-    }
-
-    // start up the proxy control server
-    let proxy_socket = SocketAddr::new(ip, proxy_port);
-    let proxy_control_server = server::new(move || {
-        App::with_state(ProxyState::init(
-            clone_proxy_state.clone(),
-            clone_proxy_routing_state.clone(),
-        ))
-        .middleware(middleware::Logger::default())
-        .resource("/allow/{port}", |r| r.f(allow))
-        .default_resource(|_| HttpResponse::BadRequest())
-    })
-    .bind(proxy_socket)
-    .expect(&format!("Failed to bind to {}", proxy_socket));
-
+    // start up the proxy server
     info!(
         "Starting proxy server: http://{}:{}",
         servername, proxy_port
     );
+    let proxy_socket = SocketAddr::new(ip, proxy_port);
+    server::new(move || {
+        App::with_state(ProxyState::init(proxy_allow_state.clone()))
+            .middleware(middleware::Logger::default())
+            .default_resource(|r| r.f(forward))
+    })
+    .bind(proxy_socket)
+    .expect(&format!("Failed to bind to {}", proxy_socket))
+    .start();
 
-    proxy_control_server.start();
+    // start up the proxy control server
+    info!(
+        "Starting proxy controller: http://{}:{}",
+        servername, proxy_control_port
+    );
+    let proxy_socket = SocketAddr::new(ip, proxy_control_port);
+    server::new(move || {
+        App::with_state(ProxyState::init(clone_proxy_state.clone()))
+            .middleware(middleware::Logger::default())
+            .resource("/allow/{port}", |r| r.f(allow))
+            .default_resource(|_| HttpResponse::BadRequest())
+    })
+    .bind(proxy_socket)
+    .expect(&format!("Failed to bind to {}", proxy_socket))
+    .start();
 
     sys.run();
 }

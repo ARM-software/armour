@@ -59,6 +59,10 @@ fn interface_ip_addr(s: &str) -> Option<IpAddr> {
     }
 }
 
+fn parse_port(s: &str) -> u16 {
+    s.parse().expect(&format!("bad port: {}", s))
+}
+
 fn main() {
     // defaults
     let default_interface = "en0";
@@ -82,6 +86,13 @@ fn main() {
                 .short("d")
                 .takes_value(true)
                 .help("desination port"),
+        )
+        .arg(
+            Arg::with_name("forward port")
+                .required(false)
+                .short("f")
+                .takes_value(true)
+                .help("forward to port"),
         )
         .arg(
             Arg::with_name("route")
@@ -108,12 +119,9 @@ fn main() {
         )
         .get_matches();
 
-    let own_port = matches
-        .value_of("own port")
-        .map(|l| l.parse().expect(&format!("bad port: {}", l)));
-    let destination_port: Option<u16> = matches
-        .value_of("destination port")
-        .map(|l| l.parse().expect(&format!("bad port: {}", l)));
+    let own_port = matches.value_of("own port").map(|l| parse_port(l));
+    let destination_port = matches.value_of("destination port").map(|l| parse_port(l));
+    let forward_port = matches.value_of("forward port").map(|l| parse_port(l));
     let route = matches.value_of("route").unwrap_or("");
     let message = matches
         .value_of("message")
@@ -153,7 +161,11 @@ fn main() {
         actix::spawn({
             let uri = format!("http://{}:{}/{}", servername, destination_port, route);
             info!("sending: {}", uri);
-            client::get(uri)
+            let mut builder = client::get(uri);
+            if let Some(forward_port) = forward_port {
+                builder.header("forward-to-port", forward_port.to_string());
+            }
+            builder
                 .header("User-Agent", "Actix-web")
                 .body(message)
                 .unwrap()
