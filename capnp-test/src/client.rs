@@ -35,15 +35,16 @@ pub fn main() -> Result<(), capnp::Error> {
     let oracle: oracle::Client = rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
     runtime.spawn(rpc_system.map_err(|_e| ()));
 
-    println!("Read request...");
-    let mut request = oracle.read_request();
+    println!("Eval request...");
+    let mut request = oracle.eval_request();
     let mut calls = request.get().init_calls(2);
     {
         let mut call = calls.reborrow().get(0);
         call.set_method("test1");
-        let mut args = call.init_args(2);
+        let mut args = call.init_args(3);
         args.reborrow().get(0).set_bool(false);
-        args.get(1).set_int64(3);
+        args.reborrow().get(1).set_int64(3);
+        args.get(2).set_data(b"some data");
     }
     {
         let mut call = calls.get(1);
@@ -67,6 +68,7 @@ pub fn main() -> Result<(), capnp::Error> {
                             oracle::value::Which::Int64(i) => println!("Res: Int64({})", i),
                             oracle::value::Which::Float64(f) => println!("Res: Float64({})", f),
                             oracle::value::Which::Text(t) => println!("Res: Text({})", pry!(t)),
+                            oracle::value::Which::Data(d) => println!("Res: Data({:?})", pry!(d)),
                         }
                     }
                 }

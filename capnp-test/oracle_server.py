@@ -11,12 +11,12 @@ import oracle_capnp
 
 class OracleImpl(oracle_capnp.Oracle.Server):
 
-    def read(self, calls, **kwargs):
+    def eval(self, calls, **kwargs):
         print(calls)
         return [oracle_capnp.Oracle.Value.new_message(float64=3.141),
                 oracle_capnp.Oracle.Value.new_message(text="that worked")]
 
-    def perform(self, calls, **kwargs):
+    def update(self, calls, **kwargs):
         for c in calls:
             print(c)
 

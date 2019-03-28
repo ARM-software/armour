@@ -8,10 +8,10 @@ use tokio::runtime::current_thread;
 struct OracleImpl;
 
 impl oracle::Server for OracleImpl {
-    fn read(
+    fn eval(
         &mut self,
-        calls: oracle::ReadParams,
-        mut results: oracle::ReadResults,
+        calls: oracle::EvalParams,
+        mut results: oracle::EvalResults,
     ) -> Promise<(), capnp::Error> {
         let calls = pry!(pry!(calls.get()).get_calls());
         for call in calls.iter() {
@@ -22,6 +22,7 @@ impl oracle::Server for OracleImpl {
                     oracle::value::Which::Int64(i) => println!("Arg: Int64({})", i),
                     oracle::value::Which::Float64(f) => println!("Arg: Float64({})", f),
                     oracle::value::Which::Text(t) => println!("Arg: Text({})", pry!(t)),
+                    oracle::value::Which::Data(d) => println!("Arg: Data({:?})", pry!(d)),
                 }
             }
         }
@@ -31,10 +32,10 @@ impl oracle::Server for OracleImpl {
 
         Promise::ok(())
     }
-    fn perform(
+    fn update(
         &mut self,
-        params: oracle::PerformParams,
-        _: oracle::PerformResults,
+        params: oracle::UpdateParams,
+        _: oracle::UpdateResults,
     ) -> Promise<(), capnp::Error> {
         let _x = pry!(params.get()).get_calls();
         Promise::ok(())

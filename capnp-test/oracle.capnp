@@ -7,12 +7,13 @@ interface Oracle {
       int64 @1 :Int64;
       float64 @2 :Float64;
       text @3 :Text;
+      data @4 :Data;
     }
   }
   struct Call {
-    method @0 :Text;    
+    method @0 :Text;
     args @1 :List(Value);
   }
-  read @0 (calls :List(Call)) -> (results: List(Value));
-  perform @1 (calls :List(Call)) -> ();
+  eval @0 (calls :List(Call)) -> (results: List(Value));
+  update @1 (calls :List(Call)) -> ();
 }
