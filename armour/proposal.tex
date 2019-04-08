@@ -1,5 +1,4 @@
-\documentclass[a4paper% ,draft
-]{article}
+\documentclass[a4paper]{article}
 
 \usepackage{natbib}
 \usepackage{paralist}
@@ -91,13 +90,13 @@ assumptions:
   well-established cloud providers like Amazon AWS or Microsoft Azure.
 \item {\sc Cluster Orchestration:}
   Typically the management of deployment and maintenance of cloud
-  micro-services relies on some orchestration software.
+  micro-services relies on orchestration software.
   %
   Examples are Kubernetes~\cite{kubernetes} for containerized
   micro-services, or Amazon Elastic Container Service
   (ECS)~\cite{aws-ecs}, Azure Kuberentes Service
   (AKS)~\cite{azure-aks}, Amazon
-  CloudFormation~\cite{aws-cloudformation}, etc.
+  CloudFormation~\cite{aws-cloudformation} for infrastructure, etc.
   %
   Among other issues these frameworks have to provide facilities for
   network communication and some of them support plugins for network
@@ -121,7 +120,7 @@ assumptions:
 Notable examples of cloud Network Security Solutions are  are Cilium,
 Envoy and Istio.
 
-\paragraph{\sc Ciium:} Cilium~\cite{cilium} focuses on high
+\paragraph{\sc Cilium:} Cilium~\cite{cilium} focuses on high
 performance API/network-based security; however, it has a few
 shortcomings generally shared by all existing solutions:
 \begin{inparaenum}
@@ -181,7 +180,7 @@ similar features and shortcomings.
 %
 In particular, it is not clear that these solutions are well adapted
 to the case of edge/IoT applications, where the assumptions on trust
-on the infrastructure are not necessarily well adapted. 
+on the infrastructure are not necessarily well established. 
 
 \paragraph{\sc Going Beyond API filters:}
 In this project we will cherry-pick some key features of Cilium, Istio
@@ -274,16 +273,23 @@ distributed systems is the consideration of the trust model, as well
 as the assumptions that can be made of the infrastructure running the
 application.
 %
+Here we refer by ``trust'' to the assumptions that components of an
+application can make about the intent of other components, that is,
+whether they are benign or malicious.
+%
+We do never assume that code is free of bugs or security holes. 
+%
+
 Because the capability of \armour{} to enforce security policies will
 be restricted by the trust model of the underlying application and
 infrastructure, we aim to gradually and incrementally consider the
-following use-cases presented in~\autoref{tab:attacker}:
+use-cases presented in~\autoref{tab:attacker}:
 \begin{enumerate}
   % \gp{Verification Monitor case}
 \item In the fist case we consider an application written by a group
   of developers belonging to a single organization.
   %
-  We consider a distributed application which for which communication
+  We consider a distributed application for which communication
   security might not have been put in place by the application
   developer.
   %
@@ -297,6 +303,7 @@ following use-cases presented in~\autoref{tab:attacker}:
   % In the simplest case, if the policy relates only to network security
   % or REST APIs tools like Cilium~\cite{cilium} could also be applied.
 
+  % \gp{Clarify that this does not mean security/bug free.}
   Importantly, the security assumptions of this kind of application
   are that the application code is itself trusted by all the
   components (since there is a single organization), and that the
@@ -331,11 +338,10 @@ following use-cases presented in~\autoref{tab:attacker}:
   where the pharmaceutical application is trusted since it requires
   the consideration of the behavior of the whole application.
 
-  Alongside with the security measures considered above, in this
-  scenario the \armour{} policy would act as a safety-net ensuring
-  that the composition of different (perhaps dynamic) actors does not
-  violate the high-level security objective. 
-
+  In this scenario the \armour{} policy would act as a safety-net
+  ensuring that the composition of different (perhaps dynamic) actors
+  does not violate the high-level security objective.
+  
   The trust model for this scenario requires that all applications
   trust the enforcer of the security policy, and the policy acts as a
   security monitor to prevent errors stemming from the composition
@@ -405,9 +411,8 @@ following use-cases presented in~\autoref{tab:attacker}:
   that Trusted Execution Environments (TEEs) will have to be leveraged
   to ensure security of the individual services.
   %
-  Possible implementations of these TEEs could be based on
-  OS-isolation, SGX Enclaves or Newmore realms to mention options but
-  two.
+  Possible implementations of these TEEs include but are not limited
+  to OS-isolation, SGX Enclaves or Newmore realms, etc.
 \end{enumerate}
 
 \section{Vision}
