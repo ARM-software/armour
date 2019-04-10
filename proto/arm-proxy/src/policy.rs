@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 use std::collections::{HashMap, HashSet};
 
-pub use crate::endpoint::Endpoint as EP;
-pub use crate::endpoint::EndpointRep as EPRep;
+pub use super::endpoint::Endpoint as EP;
+pub use super::endpoint::EndpointRep as EPRep;
 
 pub trait DataplanePolicy {
     type T;

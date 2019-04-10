@@ -46,12 +46,12 @@ exit
   the host and reduce development setup time
 ** Testing example (03-04-2019 no filtering, only proxying):
 - Cargo target should be in to $SFPL/sfpl2-drafts/armour-playground/cargo-target/
-- run a server in server-1
+- run a server in server-1:
 #+BEGIN_SRC bash
 docker exec -it server-1 python3 /flask-server/server.py -d
 #+END_SRC
-- TODO: use DNS to avoid hardcoded IPs
-  - get the ip address of server-1 and server-2
+  -- TODO: use DNS to avoid hardcoded IPs
+- get the ip address of server-1 and server-2
 #+BEGIN_SRC bash
 docker exec -it server-1 ip addr show dev eth0 | grep inet | cut -f1 -d '/'
 docker exec -it server-1 ip addr show dev eth0 | grep inet | cut -f1 -d '/'

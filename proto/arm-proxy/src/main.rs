@@ -11,11 +11,11 @@ use clap::{crate_version, App as ClapApp, Arg};
 use std::net::{IpAddr, SocketAddr};
 use std::{env};
 
-mod endpoint;
-use endpoint::parse_port as parse_port;
-
-mod rest_policy_utils;
-mod policy;
+// use crate endpoint;
+extern crate arm_proxy;
+use arm_proxy::endpoint::parse_port as parse_port;
+use arm_proxy::rest_policy_utils;
+use arm_proxy::policy;
 
 /// Find a local interface's IP by name
 pub fn interface_ip_addr(s: &str) -> Option<IpAddr> {

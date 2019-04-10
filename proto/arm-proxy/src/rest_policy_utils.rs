@@ -4,10 +4,10 @@ use actix_web::{
 };
 use futures::{future::ok as fut_ok, Future};
 
-use crate::endpoint;
+use super::endpoint;
 use endpoint::*;
 
-use crate::policy;
+use super::policy;
 use policy::*;
 
 use url::Url;
