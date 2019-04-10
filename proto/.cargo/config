@@ -1,5 +1,4 @@
 [build]
-target-dir = "../armour-playground/proto"
 target = "x86_64-unknown-linux-musl"
 
 [target.x86_64-unknown-linux-musl]
