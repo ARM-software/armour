@@ -1,52 +1,52 @@
 
 # Table of Contents
 
-1.  [Setup a docker-machine](#orge574eeb)
-    1.  [Create the machine](#orgae8f0e7)
-    2.  [Set up the docker environment to the docker machine](#org66f2cc6)
-    3.  [ssh into the machine](#org78e421a)
-    4.  [Set up a shared directory with the VM host (docker-machine mount)](#org8534997)
-2.  [Dockerfiles](#org1f27521)
-    1.  [dockerfile-client-python](#orge2ee4c4)
-3.  [docker-compose file](#orgd4ac30e)
-    1.  [Rebuild images if necessary](#org19cb8c3)
-    2.  [Run the images](#org66d9f73)
-    3.  [Set up the iptables rules](#orgdbfdd04)
-    4.  [Armour-playground](#orgb50d097)
-    5.  [Testing example (03-04-2019 no filtering, only proxying):](#org1f25c4b)
-4.  [Setting up Rust for cross-compilation](#orgc751688)
-    1.  [Cross Compiling Static Rust Binaries for Linux on OS X · Graham Enos](#orgfa63643)
-    2.  [Easy Windows and Linux cross-compilers for macOS](#org0b41f61)
-    3.  [Cross-compile and link a static binary on macOS for Linux with cargo and rust - chr4](#org0a1dbef)
+1.  [Setup a docker-machine](#org329ad33)
+    1.  [Create the machine](#orgd370b32)
+    2.  [Set up the docker environment to the docker machine](#org5287b60)
+    3.  [ssh into the machine](#orgf7c75db)
+    4.  [Set up a shared directory with the VM host (docker-machine mount)](#orgdee5337)
+2.  [Dockerfiles](#orgcda400d)
+    1.  [dockerfile-client-python](#org32b82cd)
+3.  [docker-compose file](#org1d36a18)
+    1.  [Rebuild images if necessary](#org6ced9b4)
+    2.  [Run the images](#orgd7f975e)
+    3.  [Set up the iptables rules](#org4a63991)
+    4.  [Armour-playground](#org4cfbe14)
+    5.  [Testing example (03-04-2019 no filtering, only proxying):](#org965d3b1)
+4.  [Setting up Rust for cross-compilation](#org210a187)
+    1.  [Cross Compiling Static Rust Binaries for Linux on OS X · Graham Enos](#org2265ebf)
+    2.  [Easy Windows and Linux cross-compilers for macOS](#org916b619)
+    3.  [Cross-compile and link a static binary on macOS for Linux with cargo and rust - chr4](#org6296983)
 
 
-<a id="orge574eeb"></a>
+<a id="org329ad33"></a>
 
 # Setup a docker-machine
 
 
-<a id="orgae8f0e7"></a>
+<a id="orgd370b32"></a>
 
 ## Create the machine
 
     docker-machine create armour
 
 
-<a id="org66f2cc6"></a>
+<a id="org5287b60"></a>
 
 ## Set up the docker environment to the docker machine
 
     eval (docker-machine env armour)
 
 
-<a id="org78e421a"></a>
+<a id="orgf7c75db"></a>
 
 ## ssh into the machine
 
     docker-machine ssh armour
 
 
-<a id="org8534997"></a>
+<a id="orgdee5337"></a>
 
 ## Set up a shared directory with the VM host [(docker-machine mount)](https://docs.docker.com/machine/reference/mount/)
 
@@ -58,12 +58,12 @@
 -   This solution is only temporary, to make it permanent add a rule to the VBox machine settings
 
 
-<a id="org1f27521"></a>
+<a id="orgcda400d"></a>
 
 # Dockerfiles
 
 
-<a id="orge2ee4c4"></a>
+<a id="org32b82cd"></a>
 
 ## dockerfile-client-python
 
@@ -73,12 +73,12 @@
 -   mounts the armour-playground directory above (where python files are stored)
 
 
-<a id="orgd4ac30e"></a>
+<a id="org1d36a18"></a>
 
 # docker-compose file
 
 
-<a id="org19cb8c3"></a>
+<a id="org6ced9b4"></a>
 
 ## Rebuild images if necessary
 
@@ -86,14 +86,14 @@
     # docker-compose up -d build
 
 
-<a id="org66d9f73"></a>
+<a id="orgd7f975e"></a>
 
 ## Run the images
 
     docker-compose up -d
 
 
-<a id="orgdbfdd04"></a>
+<a id="org4a63991"></a>
 
 ## Set up the iptables rules
 
@@ -102,7 +102,7 @@
     exit
 
 
-<a id="orgb50d097"></a>
+<a id="org4cfbe14"></a>
 
 ## Armour-playground
 
@@ -111,13 +111,14 @@
     the host and reduce development setup time
 
 
-<a id="org1f25c4b"></a>
+<a id="org965d3b1"></a>
 
 ## Testing example (03-04-2019 no filtering, only proxying):
 
+-   Cargo target should be in to $SFPL/sfpl2-drafts/armour-playground/cargo-target/
 -   run a server in server-1
 
-    docker exec -it server-1 python3 /armour-playground/flask-server/server.py -d
+    docker exec -it server-1 python3 /flask-server/server.py -d
 
 -   TODO: use DNS to avoid hardcoded IPs
     -   get the ip address of server-1 and server-2
@@ -131,7 +132,7 @@
 
 -   Run the proxy in a different terminal
 
-    docker exec -it proxy /armour-playground/arm-proxy/x86_64-unknown-linux-musl/debug/arm-proxy -i eth0
+    docker exec -it proxy /armour-playground/cargo-target/x86_64-unknown-linux-musl/debug/arm-proxy -i eth0
 
 -   Repeat the request
 
@@ -152,22 +153,22 @@ It should succeed!
 -   Repeat the process with each of the client/servers needed
 
 
-<a id="orgc751688"></a>
+<a id="org210a187"></a>
 
 # Setting up Rust for cross-compilation
 
 
-<a id="orgfa63643"></a>
+<a id="org2265ebf"></a>
 
 ## [Cross Compiling Static Rust Binaries for Linux on OS X · Graham Enos](https://grahamenos.com/rust-osx-linux-musl.html)
 
 
-<a id="org0b41f61"></a>
+<a id="org916b619"></a>
 
 ## [Easy Windows and Linux cross-compilers for macOS](https://blog.filippo.io/easy-windows-and-linux-cross-compilers-for-macos/)
 
 
-<a id="org0a1dbef"></a>
+<a id="org6296983"></a>
 
 ## [Cross-compile and link a static binary on macOS for Linux with cargo and rust - chr4](https://chr4.org/blog/2017/03/15/cross-compile-and-link-a-static-binary-on-macos-for-linux-with-cargo-and-rust/)
 
