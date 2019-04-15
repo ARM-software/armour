@@ -57,7 +57,7 @@ impl FnDecl {
 pub enum Stmt {
     LetStmt(LocIdent, LocExpr),
     ReturnStmt(LocExpr),
-    ExprStmt(Expr),
+    ExprStmt(Expr, bool),
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -70,8 +70,8 @@ impl LocStmt {
     fn return_stmt(l: Loc, e: LocExpr) -> LocStmt {
         LocStmt(l, Stmt::ReturnStmt(e))
     }
-    fn expr_stmt(e: LocExpr) -> LocStmt {
-        LocStmt(e.loc(), Stmt::ExprStmt(e.1))
+    fn expr_stmt(e: LocExpr, b: bool) -> LocStmt {
+        LocStmt(e.loc(), Stmt::ExprStmt(e.1, b))
     }
     pub fn loc(&self) -> &Loc {
         &self.0
@@ -408,6 +408,7 @@ macro_rules! parse_literal (
             Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag)))
         } else {
             match t1.tok0().clone() {
+                Token::UnitLiteral => Ok((i1, LocLiteral(t1.loc(), Literal::Unit))),
                 Token::IntLiteral(i) => Ok((i1, LocLiteral(t1.loc(), Literal::IntLiteral(i)))),
                 Token::FloatLiteral(f) => Ok((i1, LocLiteral(t1.loc(), Literal::FloatLiteral(f)))),
                 Token::BoolLiteral(b) => Ok((i1, LocLiteral(t1.loc(), Literal::BoolLiteral(b)))),
@@ -471,7 +472,7 @@ named!(parse_let_stmt<Tokens, LocStmt>,
         ident: parse_ident!() >>
         tag_token!(Token::Assign) >>
         expr: parse_expr >>
-        opt!(tag_token!(Token::SemiColon)) >>
+        tag_token!(Token::SemiColon) >>
         (LocStmt::let_stmt(t.loc(), ident, expr))
     )
 );
@@ -480,7 +481,6 @@ named!(parse_return_stmt<Tokens, LocStmt>,
     do_parse!(
         t: tag_token!(Token::Return) >>
         expr: parse_expr >>
-        opt!(tag_token!(Token::SemiColon)) >>
         (LocStmt::return_stmt(t.loc(), expr))
     )
 );
@@ -488,8 +488,8 @@ named!(parse_return_stmt<Tokens, LocStmt>,
 named!(parse_expr_stmt<Tokens, LocStmt>,
     do_parse!(
         expr: parse_expr >>
-        opt!(tag_token!(Token::SemiColon)) >>
-        (LocStmt::expr_stmt(expr))
+        semi: opt!(tag_token!(Token::SemiColon)) >>
+        (LocStmt::expr_stmt(expr, semi.is_some()))
     )
 );
 

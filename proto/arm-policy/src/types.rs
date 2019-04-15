@@ -88,6 +88,9 @@ impl Typ {
             s => Err(Error::Parse(s.to_string())),
         }
     }
+    pub fn is_unit(&self) -> bool {
+        Typ::type_check("", vec![(None, self)], vec![(None, &Typ::Unit)]).is_ok()
+    }
 }
 
 impl Literal {

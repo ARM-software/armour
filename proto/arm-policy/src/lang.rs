@@ -143,9 +143,16 @@ impl Headers {
             current_function: String::new(),
         }
     }
-    fn add_function(&mut self, name: &str, args: Vec<Typ>, ret: &Typ) {
-        self.functions
-            .insert(name.to_string(), (args, ret.to_owned()));
+    fn add_function(&mut self, name: &str, args: Vec<Typ>, ret: &Typ) -> Result<(), Error> {
+        if self
+            .functions
+            .insert(name.to_string(), (args, ret.to_owned()))
+            .is_some()
+        {
+            Err(Error::new(&format!("duplicate function \"{}\"", name)))
+        } else {
+            Ok(())
+        }
     }
     fn return_typ(&self) -> Result<Typ, Error> {
         self.get_function(&self.current_function)
@@ -752,13 +759,29 @@ impl Expr {
                         )))
                     }
                 }
-                parser::Stmt::ExprStmt(se) => {
+                parser::Stmt::ExprStmt(se, has_semi) => {
                     let (expr1, calls1, typ1) =
                         Expr::from_loc_expr(&parser::LocExpr::new(stmt.loc(), se), headers, vars)?
                             .split();
+                    if *has_semi && !typ1.is_unit() {
+                        println!(
+                            "warning: result of expression is being ignored on {}",
+                            stmt.loc()
+                        )
+                    };
                     if rest.len() == 0 {
-                        Ok(ExprAndMeta::new(expr1, typ1, vec![calls1]))
+                        Ok(ExprAndMeta::new(
+                            expr1,
+                            if *has_semi { Typ::Unit } else { typ1 },
+                            vec![calls1],
+                        ))
                     } else {
+                        if !has_semi {
+                            return Err(Error::new(&format!(
+                                "missing semi-colon after expression at {}",
+                                stmt.loc()
+                            )));
+                        };
                         let (expr2, calls2, typ2) =
                             Expr::from_block_stmt(rest, headers, vars)?.split();
                         match expr2 {
@@ -912,7 +935,7 @@ impl Program {
                 // process headers (for type information)
                 for decl in prog_parse.iter() {
                     let (args, typ) = decl.typ()?;
-                    prog.headers.add_function(decl.name(), args, &typ);
+                    prog.headers.add_function(decl.name(), args, &typ)?;
                     prog.add_node(decl.name());
                 }
                 // process declarations
