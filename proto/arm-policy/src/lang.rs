@@ -79,7 +79,7 @@ impl ExprAndMeta {
 }
 
 lazy_static! {
-    static ref FUNCTIONS: HashMap<String, types::Signature> = {
+    static ref BUILTINS: HashMap<String, types::Signature> = {
         let mut m = HashMap::new();
         m.insert("i64::abs".to_string(), (vec![Typ::I64], Typ::I64));
         m.insert("str::len".to_string(), (vec![Typ::Str], Typ::I64));
@@ -139,7 +139,7 @@ pub struct Headers {
 impl Headers {
     fn new() -> Headers {
         Headers {
-            functions: FUNCTIONS.clone(),
+            functions: BUILTINS.clone(),
             current_function: String::new(),
         }
     }
@@ -838,8 +838,6 @@ impl Expr {
     }
 }
 
-// TODO: split; interpretter just needs .0, parser just needs .1
-// new type - Code -> Program, HashMap<String, Expr> -> Code
 #[derive(Debug, Clone)]
 pub struct Code(HashMap<String, Expr>);
 
@@ -871,16 +869,15 @@ impl Program {
     fn add_decl(&mut self, decl: &parser::FnDecl) -> Result<(), Error> {
         // println!("{:#?}", decl);
         let (name, e, calls) = Expr::from_decl(decl, &mut self.headers)?;
+        // println!(r#""{}": {:#?}"#, name, e);
         let own_idx = self
             .nodes
             .get(name)
             .ok_or(Error::new(&format!("cannot find \"{}\" node", name)))?;
-        // println!(r#""{}": {:#?}"#, name, e);
         for c in calls
             .into_iter()
-            .filter(|c| !FUNCTIONS.contains_key(&c.name))
+            .filter(|c| !BUILTINS.contains_key(&c.name))
         {
-            // println!("{}: {}", c.loc, c.name);
             let call_idx = self
                 .nodes
                 .get(&c.name)
