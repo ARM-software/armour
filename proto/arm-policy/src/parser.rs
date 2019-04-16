@@ -1,5 +1,6 @@
 /// parser
-use crate::lexer::{Loc, Token, Tokens};
+use super::lexer::{Loc, Token, Tokens};
+use super::policy;
 use nom::*;
 use regex::Regex;
 use std::collections::HashSet;
@@ -213,6 +214,11 @@ impl PolicyRegex {
     }
 }
 
+enum LocExprOrMatches {
+    Expr(LocExpr),
+    Matches(Vec<(LocExpr, Pat)>),
+}
+
 #[derive(PartialEq, Debug, Clone)]
 pub enum Literal {
     IntLiteral(i64),
@@ -220,6 +226,7 @@ pub enum Literal {
     BoolLiteral(bool),
     DataLiteral(String),
     StringLiteral(String),
+    PolicyLiteral(policy::Policy),
     Unit,
 }
 
@@ -231,6 +238,7 @@ impl fmt::Display for Literal {
             Literal::BoolLiteral(b) => write!(f, "{}", b),
             Literal::DataLiteral(d) => write!(f, r#"b"{}""#, d),
             Literal::StringLiteral(s) => write!(f, r#""{}""#, s),
+            Literal::PolicyLiteral(p) => write!(f, "{:?}", p),
             Literal::Unit => write!(f, "()"),
         }
     }
@@ -413,6 +421,7 @@ macro_rules! parse_literal (
                 Token::BoolLiteral(b) => Ok((i1, LocLiteral(t1.loc(), Literal::BoolLiteral(b)))),
                 Token::DataLiteral(d) => Ok((i1, LocLiteral(t1.loc(), Literal::DataLiteral(d)))),
                 Token::StringLiteral(s) => Ok((i1, LocLiteral(t1.loc(), Literal::StringLiteral(s)))),
+                Token::PolicyLiteral(p) => Ok((i1, LocLiteral(t1.loc(), Literal::PolicyLiteral(p)))),
                 _ => Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag))),
             }
         }
@@ -502,8 +511,7 @@ named!(parse_atom_expr<Tokens, LocExpr>, alt_complete!(
     parse_prefix_expr |
     parse_unit_expr |
     parse_paren_expr |
-    parse_if_expr |
-    parse_if_match_expr
+    parse_if_expr
 ));
 
 named!(parse_unit_expr<Tokens, LocExpr>,
@@ -675,32 +683,36 @@ fn parse_in_expr(input: Tokens, expr_handle: LocExpr) -> IResult<Tokens, LocExpr
 named!(parse_if_expr<Tokens, LocExpr>,
     do_parse!(
         t: tag_token!(Token::If) >>
-        expr: parse_expr >>
+        b: alt_complete!(
+                do_parse!(m: parse_match_exprs >> (LocExprOrMatches::Matches(m))) |
+                do_parse!(e: parse_expr >> (LocExprOrMatches::Expr(e)))
+            ) >>
         consequence: parse_block_stmt >>
         alternative: opt!(parse_else_expr) >>
-        (LocExpr(t.loc(), Expr::IfExpr { cond: Box::new(expr), consequence, alternative }))
+        (LocExpr(
+            t.loc(),
+            match b {
+                LocExprOrMatches::Expr(expr) => Expr::IfExpr { cond: Box::new(expr), consequence, alternative },
+                LocExprOrMatches::Matches(matches) => Expr::IfMatchExpr { matches, consequence, alternative },
+            }
+        ))
     )
 );
 
-named!(parse_else_expr<Tokens, BlockStmt>,
-    preceded!(tag_token!(Token::Else), parse_block_stmt)
-);
-
-named!(parse_if_match_expr<Tokens, LocExpr>,
-    do_parse!(
-        t: tag_token!(Token::If) >>
-        tag_token!(Token::Match) >>
-        matches: parse_match_exprs >>
-        consequence: parse_block_stmt >>
-        alternative: opt!(parse_else_expr) >>
-        (LocExpr(t.loc(), Expr::IfMatchExpr { matches, consequence, alternative }))
+named!(parse_else_expr<Tokens, BlockStmt>,    
+    preceded!(
+        tag_token!(Token::Else),
+        alt_complete!(
+            parse_block_stmt |
+            do_parse!(e: parse_if_expr >> (vec![LocStmt::expr_stmt(e, false)]))
+        )
     )
 );
 
 named!(parse_match_expr<Tokens, (LocExpr, Pat)>,
     do_parse!(
         e: parse_expr >>
-        tag_token!(Token::With) >>
+        tag_token!(Token::Matches) >>
         pat: parse_pat >>
         ((e, pat))
     )

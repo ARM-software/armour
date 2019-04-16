@@ -12,6 +12,7 @@ pub enum Typ {
     Str,
     Data,
     Unit,
+    Policy,
     Return,
 }
 
@@ -85,6 +86,7 @@ impl Typ {
             "f64" => Ok(Typ::F64),
             "data" => Ok(Typ::Data),
             "str" => Ok(Typ::Str),
+            "policy" => Ok(Typ::Policy),
             s => Err(Error::Parse(s.to_string())),
         }
     }
@@ -102,6 +104,7 @@ impl Literal {
             Literal::FloatLiteral(_) => Typ::F64,
             Literal::StringLiteral(_) => Typ::Str,
             Literal::DataLiteral(_) => Typ::Data,
+            Literal::PolicyLiteral(_) => Typ::Policy,
         }
     }
 }

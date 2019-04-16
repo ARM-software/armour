@@ -1,3 +1,4 @@
+use super::policy;
 /// lexer
 // Originally based on https://github.com/Rydgel/monkey-rust/tree/master/lib/lexer
 // There have been significant modifications, in particular making use of nom_locate
@@ -31,6 +32,7 @@ pub enum Token {
     FloatLiteral(f64),
     IntLiteral(i64),
     BoolLiteral(bool),
+    PolicyLiteral(policy::Policy),
     // statements
     Assign,
     If,
@@ -58,8 +60,7 @@ pub enum Token {
     Let,
     Return,
     In,
-    Match,
-    With,
+    Matches,
     AndAlso,
     As,
     // punctuation
@@ -367,9 +368,11 @@ fn parse_reserved<'a>(t: Span<'a>) -> LocToken<'a> {
         "return" => LocToken::new(t, Token::Return),
         "true" => LocToken::new(t, Token::BoolLiteral(true)),
         "false" => LocToken::new(t, Token::BoolLiteral(false)),
+        "Accept" => LocToken::new(t, Token::PolicyLiteral(policy::Policy::Accept)),
+        "Forward" => LocToken::new(t, Token::PolicyLiteral(policy::Policy::Forward)),
+        "Reject" => LocToken::new(t, Token::PolicyLiteral(policy::Policy::Reject)),
         "in" => LocToken::new(t, Token::In),
-        "match" => LocToken::new(t, Token::Match),
-        "with" => LocToken::new(t, Token::With),
+        "matches" => LocToken::new(t, Token::Matches),
         "and" => LocToken::new(t, Token::AndAlso),
         "as" => LocToken::new(t, Token::As),
         _ => LocToken::new(t, Token::Ident(string)),

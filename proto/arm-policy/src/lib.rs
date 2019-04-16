@@ -5,4 +5,5 @@ pub mod interpret;
 pub mod lang;
 pub mod lexer;
 pub mod parser;
+pub mod policy;
 pub mod types;
