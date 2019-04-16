@@ -343,7 +343,7 @@ named!(lex_operator<Span, LocToken>,
 // Number literals
 named!(lex_number<Span, LocToken>,
     do_parse!(
-        d: recognize!(double_s) >>
+        d: recognize!(double) >>
         (LocToken::new(
             d,
             {
