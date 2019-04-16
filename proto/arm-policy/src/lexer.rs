@@ -31,7 +31,6 @@ pub enum Token {
     FloatLiteral(f64),
     IntLiteral(i64),
     BoolLiteral(bool),
-    UnitLiteral,
     // statements
     Assign,
     If,
@@ -283,17 +282,13 @@ named!(lex_operator<Span, LocToken>,
         t @ LocatedSpan{fragment: CompleteStr("%"), ..} => value!(LocToken::new(t, Token::Percent)) |
         t @ LocatedSpan{fragment: CompleteStr(","), ..} => value!(LocToken::new(t, Token::Comma)) |
         t @ LocatedSpan{fragment: CompleteStr(";"), ..} => value!(LocToken::new(t, Token::SemiColon)) |
+        t @ LocatedSpan{fragment: CompleteStr("("), ..} => value!(LocToken::new(t, Token::LParen)) |
         t @ LocatedSpan{fragment: CompleteStr(")"), ..} => value!(LocToken::new(t, Token::RParen)) |
         t @ LocatedSpan{fragment: CompleteStr("{"), ..} => value!(LocToken::new(t, Token::LBrace)) |
         t @ LocatedSpan{fragment: CompleteStr("}"), ..} => value!(LocToken::new(t, Token::RBrace)) |
         t @ LocatedSpan{fragment: CompleteStr("["), ..} => value!(LocToken::new(t, Token::LBracket)) |
         t @ LocatedSpan{fragment: CompleteStr("]"), ..} => value!(LocToken::new(t, Token::RBracket)) |
 
-        LocatedSpan{fragment: CompleteStr("("), line: l, offset: o} =>
-            alt!(
-               do_parse!(tag!(")") >> (LocToken::new_span(l, o, "()", Token::UnitLiteral))) |
-               value!(LocToken::new_span(l, o, "(", Token::LParen))
-            ) |
         LocatedSpan{fragment: CompleteStr("+"), line: l, offset: o} => 
             alt!(
                do_parse!(tag!("+") >> (LocToken::new_span(l, o, "++", Token::PlusPlus))) |

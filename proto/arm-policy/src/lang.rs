@@ -602,9 +602,13 @@ impl Expr {
                     .iter()
                     .map(|(e, p)| {
                         let re = parser::PolicyRegex::from_pat(p)?;
-                        let cap_names: HashSet<String> =
+                        let cap_names: HashSet<(String, bool)> =
                             re.0.capture_names()
-                                .filter_map(|x| x.map(|y| y.trim_start_matches('_').to_string()))
+                                .filter_map(|x| {
+                                    x.map(|y| {
+                                        (y.trim_start_matches('_').to_string(), y.starts_with('_'))
+                                    })
+                                })
                                 .collect();
                         if set.is_disjoint(&cap_names) {
                             set.extend(cap_names);
@@ -617,9 +621,15 @@ impl Expr {
                         }
                     })
                     .collect();
-                let vs: Vec<String> = set.into_iter().collect();
+                let vs: Vec<(String, bool)> = set.into_iter().collect();
+                let mut extend_vars = vars.clone();
+                for (v, is_i64) in vs.iter() {
+                    extend_vars =
+                        extend_vars.add_var(&v, &(if *is_i64 { Typ::I64 } else { Typ::Str }))
+                }
                 let (mut expr1, calls1, typ1) =
-                    Expr::from_block_stmt(consequence, headers, vars)?.split();
+                    Expr::from_block_stmt(consequence, headers, &extend_vars)?.split();
+                let vs: Vec<String> = vs.into_iter().map(|x| x.0).collect();
                 for v in vs.iter().rev() {
                     expr1 = expr1.closure_expr(v)
                 }
@@ -658,7 +668,7 @@ impl Expr {
                                 consequence: { Box::new(expr1) },
                                 alternative: Some(Box::new(expr2)),
                             },
-                            Typ::Unit,
+                            typ1,
                             calls,
                         )
                     }

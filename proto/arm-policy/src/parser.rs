@@ -408,7 +408,6 @@ macro_rules! parse_literal (
             Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag)))
         } else {
             match t1.tok0().clone() {
-                Token::UnitLiteral => Ok((i1, LocLiteral(t1.loc(), Literal::Unit))),
                 Token::IntLiteral(i) => Ok((i1, LocLiteral(t1.loc(), Literal::IntLiteral(i)))),
                 Token::FloatLiteral(f) => Ok((i1, LocLiteral(t1.loc(), Literal::FloatLiteral(f)))),
                 Token::BoolLiteral(b) => Ok((i1, LocLiteral(t1.loc(), Literal::BoolLiteral(b)))),
@@ -501,10 +500,19 @@ named!(parse_atom_expr<Tokens, LocExpr>, alt_complete!(
     parse_lit_expr |
     parse_ident_expr |
     parse_prefix_expr |
+    parse_unit_expr |
     parse_paren_expr |
     parse_if_expr |
     parse_if_match_expr
 ));
+
+named!(parse_unit_expr<Tokens, LocExpr>,
+    do_parse!(
+        t: tag_token!(Token::LParen) >>
+        tag_token!(Token::RParen) >>
+        (LocExpr(t.loc(), Expr::LitExpr(Literal::Unit)))
+    )
+);
 
 named!(parse_paren_expr<Tokens, LocExpr>,
     delimited!(tag_token!(Token::LParen), parse_expr, tag_token!(Token::RParen))
