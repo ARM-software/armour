@@ -1,6 +1,5 @@
 use actix_web::{
-    client, AsyncResponder, Error,
-    FromRequest, HttpMessage, HttpRequest, HttpResponse, Path,
+    client, AsyncResponder, Error, FromRequest, HttpMessage, HttpRequest, HttpResponse, Path,
 };
 use futures::{future::ok as fut_ok, Future};
 
@@ -11,7 +10,6 @@ use super::policy;
 use policy::*;
 
 use url::Url;
-
 
 #[derive(Debug)]
 enum ForwardUrlError {
@@ -53,9 +51,10 @@ fn forward_url(req: &HttpRequest<policy::PolicyStateL3>) -> Result<Url, ForwardU
     }
 }
 
-
 /// Forward request from client sender to a destination server
-pub fn forward(req: &HttpRequest<policy::PolicyStateL3>) -> Box<dyn Future<Item = HttpResponse, Error = Error>> {
+pub fn forward(
+    req: &HttpRequest<policy::PolicyStateL3>,
+) -> Box<dyn Future<Item = HttpResponse, Error = Error>> {
     match forward_url(req) {
         Ok(server_url) => {
             let mut forwarded_req = client::ClientRequest::build_from(req)
@@ -77,7 +76,7 @@ pub fn forward(req: &HttpRequest<policy::PolicyStateL3>) -> Box<dyn Future<Item 
                     _ => unreachable!(),
                 }
             }
-            
+
             forwarded_req
                 .send()
                 .map_err(Error::from)
@@ -113,11 +112,13 @@ fn construct_response(
 }
 
 /// Forward response from detination server back to client sender
-pub fn allow_host(req: &HttpRequest<policy::PolicyStateL3>) -> String {
+pub fn allow_host(req: &HttpRequest<policy::PolicyStateL3>) -> Result<String, Error> {
     let t = Path::<(String, String, u16)>::extract(&req).unwrap();
     let source = HostEndpoint::from_url_string(&t.0.to_string());
     let fullname = t.1.to_string() + ":" + &t.2.to_string();
     let target = HostPortEndpoint::from_url_string(&fullname);
-    req.state().enable(source, target); // .unwrap(); // why must this result be used?
-    "".to_string()
+    req.state()
+        .enable(source, target)
+        .map(|_| "".to_string())
+        .map_err(|_| actix_web::error::ErrorInternalServerError("allow host error"))
 }

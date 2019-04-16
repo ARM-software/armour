@@ -6,16 +6,16 @@
 #[macro_use]
 extern crate log;
 
-use actix_web::{ middleware, server, App, HttpResponse };
+use actix_web::{middleware, server, App, HttpResponse};
 use clap::{crate_version, App as ClapApp, Arg};
+use std::env;
 use std::net::{IpAddr, SocketAddr};
-use std::{env};
 
 // use crate endpoint;
 extern crate arm_proxy;
-use arm_proxy::endpoint::parse_port as parse_port;
-use arm_proxy::rest_policy_utils;
+use arm_proxy::endpoint::parse_port;
 use arm_proxy::policy;
+use arm_proxy::rest_policy_utils;
 
 /// Find a local interface's IP by name
 pub fn interface_ip_addr(s: &str) -> Option<IpAddr> {
@@ -26,7 +26,7 @@ pub fn interface_ip_addr(s: &str) -> Option<IpAddr> {
     }
 }
 
-fn main() {
+fn main() -> Result<(), std::io::Error> {
     // defaults
     let default_proxy_port = 8443;
     let default_proxy_control_port = 8444;
@@ -107,7 +107,7 @@ fn main() {
     // info!("Allowed ports are: {:?}", &allowed_ports);
     let state = policy::PolicyStateL3::init();
     let st1 = state.clone_state();
-    
+
     // start up the proxy server
     info!(
         "Starting proxy server: http://{}:{}",
@@ -132,12 +132,14 @@ fn main() {
     server::new(move || {
         App::with_state(policy::PolicyStateL3::init_clone(state.clone_state()))
             .middleware(middleware::Logger::default())
-            .resource("/allow/{source}/{destination}/{port}", |r| r.f(rest_policy_utils::allow_host))
+            .resource("/allow/{source}/{destination}/{port}", |r| {
+                r.f(rest_policy_utils::allow_host)
+            })
             .default_resource(|_| HttpResponse::BadRequest())
     })
     .bind(proxy_socket)
     .expect(&format!("Failed to bind to {}", proxy_socket))
     .start();
 
-    sys.run();
+    sys.run()
 }
