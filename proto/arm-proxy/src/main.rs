@@ -141,5 +141,7 @@ fn main() -> Result<(), std::io::Error> {
     .expect(&format!("Failed to bind to {}", proxy_socket))
     .start();
 
-    sys.run()
+    sys.run();
+
+    Ok(())
 }
