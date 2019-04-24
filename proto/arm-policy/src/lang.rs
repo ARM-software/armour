@@ -1,7 +1,8 @@
 /// policy language
 // TODO: tuple return type?
-use super::{lexer, parser, types};
-use parser::{Infix, Literal, Prefix};
+use super::{externals, lexer, literals, parser, types};
+use literals::Literal;
+use parser::{Infix, Prefix};
 use petgraph::graph;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -37,6 +38,12 @@ impl From<regex::Error> for Error {
 impl<'a> From<types::Error<'a>> for Error {
     fn from(err: types::Error<'a>) -> Error {
         Error::new(&format!("{}", err))
+    }
+}
+
+impl From<externals::Error> for Error {
+    fn from(err: externals::Error) -> Error {
+        Error::new(&format!("Externals error: {:?}", err))
     }
 }
 
@@ -133,14 +140,14 @@ impl Vars {
 #[derive(Debug, Clone)]
 pub struct Headers {
     functions: HashMap<String, types::Signature>,
-    current_function: String,
+    return_typ: Option<Typ>,
 }
 
 impl Headers {
     fn new() -> Headers {
         Headers {
-            functions: BUILTINS.clone(),
-            current_function: String::new(),
+            functions: HashMap::new(),
+            return_typ: None,
         }
     }
     fn add_function(&mut self, name: &str, args: Vec<Typ>, ret: &Typ) -> Result<(), Error> {
@@ -154,19 +161,23 @@ impl Headers {
             Ok(())
         }
     }
-    fn return_typ(&self) -> Result<Typ, Error> {
-        self.get_function(&self.current_function)
-            .map(|x| x.1)
-            .ok_or(Error::new(&format!(
-                "function \"{}\" does not have a return type",
-                self.current_function
-            )))
+    fn return_typ(&self) -> Option<Typ> {
+        self.return_typ.clone()
     }
-    fn set_current_function(&mut self, s: &str) {
-        self.current_function = s.to_string()
+    fn clear_return_typ(&mut self) {
+        self.return_typ = None
+    }
+    fn set_return_typ(&mut self, typ: Typ) {
+        self.return_typ = Some(typ)
+    }
+    fn return_typ_for_function(&mut self, name: &str) -> Result<Typ, Error> {
+        Ok(self
+            .get_function(name)
+            .ok_or(Error::new("no current function"))?
+            .1)
     }
     fn get_function(&self, name: &str) -> Option<types::Signature> {
-        self.functions.get(name).cloned()
+        (BUILTINS.get(name).or(self.functions.get(name))).cloned()
     }
 }
 
@@ -752,11 +763,14 @@ impl Expr {
                     if rest.len() == 0 {
                         let (expr, calls, typ) = Expr::from_loc_expr(re, headers, vars)?.split();
                         // need to type check typ against function return type
-                        Typ::type_check(
-                            "return",
-                            vec![(Some(re.loc()), &typ)],
-                            vec![(None, &headers.return_typ()?)],
-                        )?;
+                        match headers.return_typ() {
+                            Some(rtype) => Typ::type_check(
+                                "return",
+                                vec![(Some(re.loc()), &typ)],
+                                vec![(None, &rtype)],
+                            )?,
+                            None => headers.set_return_typ(typ),
+                        };
                         Ok(ExprAndMeta::new(
                             Expr::BlockExpr(vec![Expr::return_expr(expr)]),
                             Typ::Return,
@@ -830,6 +844,47 @@ impl Expr {
             )),
         }
     }
+    fn check_from_loc_expr(
+        e: &parser::LocExpr,
+        headers: &mut Headers,
+        vars: &Vars,
+    ) -> Result<ExprAndMeta, Error> {
+        headers.clear_return_typ();
+        let em = Expr::from_loc_expr(e, headers, vars)?;
+        match headers.return_typ() {
+            Some(rtype) => Typ::type_check("REPL", vec![(None, &em.typ)], vec![(None, &rtype)])?,
+            None => (),
+        }
+        Ok(em)
+    }
+    fn check_from_block_stmt(
+        block: &[parser::LocStmt],
+        headers: &mut Headers,
+        vars: &Vars,
+        name: Option<&str>,
+    ) -> Result<ExprAndMeta, self::Error> {
+        headers.clear_return_typ();
+        let em = Expr::from_block_stmt(block, headers, vars)?;
+        // check if type of "return" calls is type of statement
+        match headers.return_typ() {
+            Some(rtype) => Typ::type_check(
+                name.unwrap_or("REPL"),
+                vec![(None, &em.typ)],
+                vec![(None, &rtype)],
+            )?,
+            None => (),
+        }
+        // check if declared return type of function is type of statement
+        match name {
+            Some(name) => Typ::type_check(
+                name,
+                vec![(None, &em.typ)],
+                vec![(None, &headers.return_typ_for_function(name)?)],
+            )?,
+            None => (),
+        }
+        Ok(em)
+    }
     fn from_decl<'a>(
         decl: &'a parser::FnDecl,
         headers: &'a mut Headers,
@@ -839,14 +894,8 @@ impl Expr {
             vars = vars.add_var(a.name(), &a.typ()?)
         }
         let name = decl.name();
-        headers.set_current_function(name);
-        let em = Expr::from_block_stmt(decl.body(), headers, &vars)?;
+        let em = Expr::check_from_block_stmt(decl.body(), headers, &vars, Some(name))?;
         let mut e = em.expr;
-        Typ::type_check(
-            name,
-            vec![(None, &em.typ)],
-            vec![(None, &headers.return_typ()?)],
-        )?;
         for a in decl.args().iter().rev() {
             e = e.closure_expr(a.name())
         }
@@ -856,11 +905,13 @@ impl Expr {
         let lex = lexer::lex(buf);
         let toks = lexer::Tokens::new(&lex);
         match parser::parse_block_stmt_eof(toks) {
-            Ok((_rest, block)) => Ok(Expr::from_block_stmt(&block, headers, &Vars::new())?.expr),
+            Ok((_rest, block)) => {
+                Ok(Expr::check_from_block_stmt(&block, headers, &Vars::new(), None)?.expr)
+            }
             Err(_) => match parser::parse_expr_eof(toks) {
                 Ok((_rest, e)) => {
                     // println!("{:#?}", e);
-                    Ok(Expr::from_loc_expr(&e, &mut headers, &Vars::new())?.expr)
+                    Ok(Expr::check_from_loc_expr(&e, &mut headers, &Vars::new())?.expr)
                 }
                 Err(nom::Err::Error(nom::Context::Code(toks, _))) => {
                     Err(self::Error(format!("syntax error: {}", toks.tok[0])))
@@ -871,15 +922,27 @@ impl Expr {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Code(HashMap<String, Expr>);
+// #[derive(Clone)]
+pub struct Code {
+    internals: HashMap<String, Expr>,
+    externals: externals::Externals,
+}
 
 impl Code {
     fn new() -> Code {
-        Code(HashMap::new())
+        Code {
+            internals: HashMap::new(),
+            externals: externals::Externals::new(),
+        }
     }
     pub fn get(&self, s: &str) -> Option<&Expr> {
-        self.0.get(s)
+        self.internals.get(s)
+    }
+    pub fn externals(&mut self) -> &mut externals::Externals {
+        &mut self.externals
+    }
+    pub fn is_builtin(name: &str) -> bool {
+        BUILTINS.contains_key(name)
     }
 }
 
@@ -907,17 +970,14 @@ impl Program {
             .nodes
             .get(name)
             .ok_or(Error::new(&format!("cannot find \"{}\" node", name)))?;
-        for c in calls
-            .into_iter()
-            .filter(|c| !BUILTINS.contains_key(&c.name))
-        {
+        for c in calls.into_iter().filter(|c| !Code::is_builtin(&c.name)) {
             let call_idx = self
                 .nodes
                 .get(&c.name)
                 .ok_or(Error::new(&format!("cannot find \"{}\" node", c.name)))?;
             self.graph.add_edge(*own_idx, *call_idx, c.loc);
         }
-        self.code.0.insert(name.to_string(), e);
+        self.code.internals.insert(name.to_string(), e);
         Ok(())
     }
     fn check_for_cycles(&self) -> Result<(), Error> {
@@ -944,13 +1004,32 @@ impl Program {
                 let mut prog = Program::new();
                 // process headers (for type information)
                 for decl in prog_parse.iter() {
-                    let (args, typ) = decl.typ()?;
-                    prog.headers.add_function(decl.name(), args, &typ)?;
-                    prog.add_node(decl.name());
+                    match decl {
+                        parser::Decl::FnDecl(decl) => {
+                            let (args, typ) = decl.typ()?;
+                            prog.headers.add_function(decl.name(), args, &typ)?;
+                            prog.add_node(decl.name());
+                        }
+                        parser::Decl::External(e) => {
+                            let ename = e.name();
+                            for h in e.headers.iter() {
+                                let (args, typ) = h.typ()?;
+                                let name = &format!("{}::{}", ename, h.name());
+                                prog.headers.add_function(name, args, &typ)?;
+                                prog.add_node(name);
+                            }
+                            if let Err(err) = prog.code.externals().add_client(ename, e.url()) {
+                                println!("failed to add external \"{}\": {:?}", ename, err)
+                            }
+                        }
+                    }
                 }
                 // process declarations
                 for decl in prog_parse {
-                    prog.add_decl(&decl)?
+                    match decl {
+                        parser::Decl::FnDecl(decl) => prog.add_decl(&decl)?,
+                        _ => (),
+                    }
                 }
                 prog.check_for_cycles()?;
                 Ok(prog)

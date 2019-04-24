@@ -1,7 +1,8 @@
 /// really basic type system
 use super::lexer::Loc;
+use super::literals::Literal;
 use super::parser;
-use super::parser::{Infix, Literal, Prefix};
+use parser::{Infix, Prefix};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,6 +153,22 @@ impl parser::FnDecl {
             None => Typ::Unit,
         };
         let args: Result<Vec<Typ>, Error> = self.args().iter().map(|a| a.typ()).collect();
+        Ok((args?, ty))
+    }
+}
+
+impl parser::Head {
+    // TODO: report location of errors
+    pub fn typ(&self) -> Result<Signature, Error> {
+        let ty = match self.typ_id() {
+            Some(id) => Typ::try_from_str(id.id())?,
+            None => Typ::Unit,
+        };
+        let args: Result<Vec<Typ>, Error> = self
+            .args()
+            .iter()
+            .map(|a| Typ::try_from_str(a.id()))
+            .collect();
         Ok((args?, ty))
     }
 }

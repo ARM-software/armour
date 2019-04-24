@@ -34,7 +34,7 @@ fn main() -> std::io::Result<()> {
                 match lang::Expr::from_string(&buf, &mut prog.headers) {
                     Ok(e) => {
                         // println!("{:#?}", e);
-                        match e.evaluate(&prog.code) {
+                        match e.evaluate(&mut prog.code) {
                             Ok(r) => println!("{}", r),
                             Err(err) => eprintln!("{}", err),
                         }

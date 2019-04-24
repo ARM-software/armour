@@ -1,6 +1,7 @@
 /// policy language interpreter
 use super::lang::{Code, Error, Expr};
-use super::parser::{Infix, Literal, Prefix};
+use super::literals::Literal;
+use super::parser::{Infix, Prefix};
 use std::collections::HashMap;
 
 impl Literal {
@@ -107,6 +108,16 @@ impl Literal {
             _ => None,
         }
     }
+    fn literal_vector(args: Vec<Expr>) -> Result<Vec<Literal>, Error> {
+        let mut v = Vec::new();
+        for a in args {
+            match a {
+                Expr::LitExpr(l) => v.push(l),
+                _ => return Err(Error::new("arg is not a literal")),
+            }
+        }
+        Ok(v)
+    }
 }
 
 impl Expr {
@@ -122,7 +133,7 @@ impl Expr {
             _ => self,
         }
     }
-    fn eval(self, env: &Code) -> Result<Expr, self::Error> {
+    fn eval(self, env: &mut Code) -> Result<Expr, self::Error> {
         match self {
             Expr::Var(_) | Expr::BVar(_) => Err(Error::new("eval variable")),
             Expr::LitExpr(_) => Ok(self),
@@ -284,28 +295,44 @@ impl Expr {
                 let args = args?;
                 match args.iter().find(|r| r.is_return()) {
                     Some(r) => Ok(r.clone()),
-                    None => match env.get(&function) {
-                        Some(e) => {
+                    None => {
+                        if let Some(e) = env.get(&function) {
                             let mut r = e.clone();
                             for a in args {
                                 r = r.apply(&a)?
                             }
                             r.evaluate(env)
-                        }
-                        None => match args.as_slice() {
-                            &[Expr::LitExpr(ref l)] => match l.eval_call1(&function) {
-                                Some(r) => Ok(Expr::LitExpr(r)),
-                                None => Err(Error::new("eval, call(1): type error")),
-                            },
-                            &[Expr::LitExpr(ref l1), Expr::LitExpr(ref l2)] => {
-                                match l1.eval_call2(&function, l2) {
+                        } else if Code::is_builtin(&function) {
+                            match args.as_slice() {
+                                &[Expr::LitExpr(ref l)] => match l.eval_call1(&function) {
                                     Some(r) => Ok(Expr::LitExpr(r)),
-                                    None => Err(Error::new("eval, call(2): type error")),
+                                    None => Err(Error::new("eval, call(1): type error")),
+                                },
+                                &[Expr::LitExpr(ref l1), Expr::LitExpr(ref l2)] => {
+                                    match l1.eval_call2(&function, l2) {
+                                        Some(r) => Ok(Expr::LitExpr(r)),
+                                        None => Err(Error::new("eval, call(2): type error")),
+                                    }
                                 }
+                                x => Err(Error::new(&format!("eval, call: {}: {:?}", function, x))),
                             }
-                            x => Err(Error::new(&format!("eval, call: {}: {:?}", function, x))),
-                        },
-                    },
+                        } else {
+                            match function.split("::").collect::<Vec<&str>>().as_slice() {
+                                &[external, method] => match env.externals().request(
+                                    external,
+                                    method,
+                                    Literal::literal_vector(args)?,
+                                ) {
+                                    Ok(result) => Ok(Expr::LitExpr(result)),
+                                    Err(err) => Err(Error::from(err)),
+                                },
+                                _ => Err(Error::new(&format!(
+                                    "eval, call: {}: {:?}",
+                                    function, args
+                                ))),
+                            }
+                        }
+                    }
                 }
             }
             Expr::InExpr { val, vals } => match val.eval(env)? {
@@ -323,7 +350,7 @@ impl Expr {
             },
         }
     }
-    pub fn evaluate(self, env: &Code) -> Result<Expr, self::Error> {
+    pub fn evaluate(self, env: &mut Code) -> Result<Expr, self::Error> {
         self.eval(env).map(|e| e.strip_return())
     }
 }

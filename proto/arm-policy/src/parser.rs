@@ -1,14 +1,51 @@
 /// parser
 use super::lexer::{Loc, Token, Tokens};
-use super::policy;
+use super::literals::Literal;
 use nom::*;
 use regex::Regex;
 use std::collections::HashSet;
-use std::fmt;
 
-pub type Program = Vec<FnDecl>;
+pub type Program = Vec<Decl>;
 
-#[derive(PartialEq, Debug, Clone)]
+pub enum Decl {
+    External(External),
+    FnDecl(FnDecl),
+}
+
+pub struct External {
+    name: LocIdent,
+    url: LocIdent,
+    pub headers: Vec<Head>,
+}
+
+impl External {
+    pub fn name(&self) -> &str {
+        self.name.id()
+    }
+    pub fn url(&self) -> &str {
+        self.url.id()
+    }
+}
+
+pub struct Head {
+    id: LocIdent,
+    typs: Vec<LocIdent>,
+    typ: Option<LocIdent>,
+}
+
+impl Head {
+    pub fn name(&self) -> &str {
+        self.id.id()
+    }
+    pub fn args(&self) -> &Vec<LocIdent> {
+        &self.typs
+    }
+    pub fn typ_id(&self) -> &Option<LocIdent> {
+        &self.typ
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Param {
     name: LocIdent,
     pub typ: LocIdent,
@@ -20,7 +57,7 @@ impl Param {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct FnHead {
     id: LocIdent,
     params: Vec<Param>,
@@ -33,7 +70,7 @@ impl FnHead {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct FnDecl {
     head: FnHead,
     body: BlockStmt,
@@ -54,14 +91,14 @@ impl FnDecl {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     LetStmt(LocIdent, LocExpr),
     ReturnStmt(LocExpr),
     ExprStmt(Expr, bool),
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct LocStmt(Loc, Stmt);
 
 impl LocStmt {
@@ -84,7 +121,7 @@ impl LocStmt {
 
 pub type BlockStmt = Vec<LocStmt>;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     IdentExpr(Ident),
     LitExpr(Literal),
@@ -129,7 +166,7 @@ impl Expr {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct LocExpr(Loc, Expr);
 
 impl LocExpr {
@@ -144,7 +181,7 @@ impl LocExpr {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum Pat {
     Any,
     Lit(String),
@@ -219,32 +256,7 @@ enum LocExprOrMatches {
     Matches(Vec<(LocExpr, Pat)>),
 }
 
-#[derive(PartialEq, Debug, Clone)]
-pub enum Literal {
-    IntLiteral(i64),
-    FloatLiteral(f64),
-    BoolLiteral(bool),
-    DataLiteral(String),
-    StringLiteral(String),
-    PolicyLiteral(policy::Policy),
-    Unit,
-}
-
-impl fmt::Display for Literal {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Literal::IntLiteral(i) => write!(f, "{:2}", i),
-            Literal::FloatLiteral(d) => write!(f, "{}", d),
-            Literal::BoolLiteral(b) => write!(f, "{}", b),
-            Literal::DataLiteral(d) => write!(f, r#"b"{}""#, d),
-            Literal::StringLiteral(s) => write!(f, r#""{}""#, s),
-            Literal::PolicyLiteral(p) => write!(f, "{:?}", p),
-            Literal::Unit => write!(f, "()"),
-        }
-    }
-}
-
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct LocLiteral(Loc, Literal);
 
 impl LocLiteral {
@@ -253,10 +265,10 @@ impl LocLiteral {
     }
 }
 
-#[derive(PartialEq, Debug, Eq, Clone)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Ident(pub String);
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct LocIdent(Loc, Ident);
 
 impl LocIdent {
@@ -293,13 +305,12 @@ pub enum Infix {
     Module,
 }
 
-#[derive(PartialEq, Debug, Clone)]
 pub enum Assoc {
     Left,
     Right,
 }
 
-#[derive(PartialEq, PartialOrd, Debug, Clone)]
+#[derive(PartialEq, PartialOrd)]
 pub enum Precedence {
     PLowest,
     POr,
@@ -359,18 +370,26 @@ named!(pub parse_block_stmt_eof<Tokens, BlockStmt>,
 );
 
 named!(pub parse_program<Tokens, Program>,
-    terminated!(many0!(parse_fn_expr), tag_token!(Token::EOF))
+    terminated!(
+        many0!(
+            alt_complete!(
+                do_parse!(f: parse_fn_expr >> (Decl::FnDecl(f))) |
+                do_parse!(e: parse_external >> (Decl::External(e)))
+            )
+        ),
+        tag_token!(Token::EOF)
+    )
 );
 
 named!(pub parse_fn_head<Tokens, FnHead>,
     do_parse!(
         tag_token!(Token::Function) >>
-        i: parse_ident!() >>
+        id: parse_ident!() >>
         tag_token!(Token::LParen) >>
-        p: alt_complete!(parse_params | empty_params) >>
+        params: alt_complete!(parse_params | empty_params) >>
         tag_token!(Token::RParen) >>
-        t: opt!(preceded!(tag_token!(Token::Arrow), parse_ident!())) >>
-        (FnHead {id: i, params: p, typ: t})
+        typ: opt!(preceded!(tag_token!(Token::Arrow), parse_ident!())) >>
+        (FnHead {id, params, typ})
     )
 );
 
@@ -408,6 +427,22 @@ named!(parse_params<Tokens, Vec<Param>>,
     )
 );
 
+macro_rules! parse_string_as_ident (
+  ($i: expr,) => (
+    {
+        let (i1, t1) = try_parse!($i, take!(1));
+        if t1.tok.is_empty() {
+            Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag)))
+        } else {
+            match t1.tok0().clone() {
+                Token::StringLiteral(s) => Ok((i1, LocIdent(t1.loc(), Ident(s)))),
+                _ => Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag))),
+            }
+        }
+    }
+  );
+);
+
 macro_rules! parse_literal (
   ($i: expr,) => (
     {
@@ -422,6 +457,22 @@ macro_rules! parse_literal (
                 Token::DataLiteral(d) => Ok((i1, LocLiteral(t1.loc(), Literal::DataLiteral(d)))),
                 Token::StringLiteral(s) => Ok((i1, LocLiteral(t1.loc(), Literal::StringLiteral(s)))),
                 Token::PolicyLiteral(p) => Ok((i1, LocLiteral(t1.loc(), Literal::PolicyLiteral(p)))),
+                _ => Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag))),
+            }
+        }
+    }
+  );
+);
+
+macro_rules! parse_pat_literal (
+  ($i: expr,) => (
+    {
+        let (i1, t1) = try_parse!($i, take!(1));
+        if t1.tok.is_empty() {
+            Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag)))
+        } else {
+            match t1.tok0().clone() {
+                Token::StringLiteral(s) => Ok((i1, Pat::Lit(s))),
                 _ => Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag))),
             }
         }
@@ -655,7 +706,9 @@ fn parse_call_expr(input: Tokens, fn_handle: LocExpr) -> IResult<Tokens, LocExpr
                     loc: fn_handle.loc(),
                     function: match fn_handle.expr().eval_call_function() {
                         Some(s) => s,
-                        None => return Err(nom::Err::Error(error_position!(input, ErrorKind::Tag))),
+                        None => {
+                            return Err(nom::Err::Error(error_position!(input, ErrorKind::Tag)))
+                        }
                     },
                     arguments: args
                 }
@@ -699,7 +752,7 @@ named!(parse_if_expr<Tokens, LocExpr>,
     )
 );
 
-named!(parse_else_expr<Tokens, BlockStmt>,    
+named!(parse_else_expr<Tokens, BlockStmt>,
     preceded!(
         tag_token!(Token::Else),
         alt_complete!(
@@ -728,22 +781,6 @@ named!(parse_match_exprs<Tokens, Vec<(LocExpr, Pat)>>,
         es: many0!(parse_and_match_exprs) >>
         ([&vec!(e)[..], &es[..]].concat())
     )
-);
-
-macro_rules! parse_pat_literal (
-  ($i: expr,) => (
-    {
-        let (i1, t1) = try_parse!($i, take!(1));
-        if t1.tok.is_empty() {
-            Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag)))
-        } else {
-            match t1.tok0().clone() {
-                Token::StringLiteral(s) => Ok((i1, Pat::Lit(s))),
-                _ => Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag))),
-            }
-        }
-    }
-  );
 );
 
 lazy_static! {
@@ -848,5 +885,45 @@ named!(parse_pat<Tokens, Pat>,
                 )
             ) >>
         (if ps.is_empty() {p} else {Pat::Alt([&vec!(p)[..], &ps[..]].concat())})
+    )
+);
+
+named!(parse_external<Tokens, External>,
+    do_parse!(
+        tag_token!(Token::External) >>
+        name: parse_ident!() >>
+        tag_token!(Token::At) >>
+        url: parse_string_as_ident!() >>
+        headers: delimited!(tag_token!(Token::LBrace), many0!(parse_head), tag_token!(Token::RBrace)) >>
+        (External {name, url, headers})
+    )
+);
+
+named!(parse_head<Tokens, Head>,
+    do_parse!(
+        tag_token!(Token::Function) >>
+        id: parse_ident!() >>
+        tag_token!(Token::LParen) >>
+        typs: alt_complete!(parse_idents | empty_idents) >>
+        tag_token!(Token::RParen) >>
+        typ: opt!(preceded!(tag_token!(Token::Arrow), parse_ident!())) >>
+        (Head {id, typs, typ})
+    )
+);
+
+fn empty_idents(i: Tokens) -> IResult<Tokens, Vec<LocIdent>> {
+    Ok((i, vec![]))
+}
+
+named!(parse_idents<Tokens, Vec<LocIdent>>,
+    do_parse!(
+        id: parse_ident!() >>
+        ids: many0!(
+                preceded!(
+                    tag_token!(Token::Comma),
+                    parse_ident!()
+                )
+            ) >>
+        ([&vec!(id)[..], &ids[..]].concat())
     )
 );

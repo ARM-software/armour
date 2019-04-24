@@ -1,4 +1,4 @@
-use super::policy;
+use super::literals;
 /// lexer
 // Originally based on https://github.com/Rydgel/monkey-rust/tree/master/lib/lexer
 // There have been significant modifications, in particular making use of nom_locate
@@ -32,7 +32,7 @@ pub enum Token {
     FloatLiteral(f64),
     IntLiteral(i64),
     BoolLiteral(bool),
-    PolicyLiteral(policy::Policy),
+    PolicyLiteral(literals::Policy),
     // statements
     Assign,
     If,
@@ -63,6 +63,8 @@ pub enum Token {
     Matches,
     AndAlso,
     As,
+    External,
+    Extern,
     // punctuation
     Comma,
     Colon,
@@ -78,6 +80,7 @@ pub enum Token {
     Arrow,
     Bar,
     ColonColon,
+    At,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -276,6 +279,7 @@ impl<'a> fmt::Display for Tokens<'a> {
 named!(lex_operator<Span, LocToken>,
     switch!(
         take!(1),
+        t @ LocatedSpan{fragment: CompleteStr("@"), ..} => value!(LocToken::new(t, Token::At)) |
         t @ LocatedSpan{fragment: CompleteStr("?"), ..} => value!(LocToken::new(t, Token::Optional)) |
         t @ LocatedSpan{fragment: CompleteStr("."), ..} => value!(LocToken::new(t, Token::Dot)) |
         t @ LocatedSpan{fragment: CompleteStr("_"), ..} => value!(LocToken::new(t, Token::Underscore)) |
@@ -368,13 +372,15 @@ fn parse_reserved<'a>(t: Span<'a>) -> LocToken<'a> {
         "return" => LocToken::new(t, Token::Return),
         "true" => LocToken::new(t, Token::BoolLiteral(true)),
         "false" => LocToken::new(t, Token::BoolLiteral(false)),
-        "Accept" => LocToken::new(t, Token::PolicyLiteral(policy::Policy::Accept)),
-        "Forward" => LocToken::new(t, Token::PolicyLiteral(policy::Policy::Forward)),
-        "Reject" => LocToken::new(t, Token::PolicyLiteral(policy::Policy::Reject)),
+        "Accept" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Accept)),
+        "Forward" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Forward)),
+        "Reject" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Reject)),
         "in" => LocToken::new(t, Token::In),
         "matches" => LocToken::new(t, Token::Matches),
         "and" => LocToken::new(t, Token::AndAlso),
         "as" => LocToken::new(t, Token::As),
+        "external" => LocToken::new(t, Token::External),
+        "extern" => LocToken::new(t, Token::Extern),
         _ => LocToken::new(t, Token::Ident(string)),
     }
 }
