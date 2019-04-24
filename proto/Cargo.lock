@@ -256,7 +256,7 @@ dependencies = [
 name = "arm-service"
 version = "0.1.0"
 dependencies = [
- "actix 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "actix 0.7.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "actix-web 0.7.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",

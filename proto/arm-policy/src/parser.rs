@@ -43,6 +43,9 @@ impl Head {
     pub fn typ_id(&self) -> &Option<LocIdent> {
         &self.typ
     }
+    pub fn loc(&self) -> Loc {
+        self.id.loc()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +91,9 @@ impl FnDecl {
     }
     pub fn typ_id(&self) -> &Option<LocIdent> {
         &self.head.typ
+    }
+    pub fn loc(&self) -> Loc {
+        self.head.id.loc()
     }
 }
 

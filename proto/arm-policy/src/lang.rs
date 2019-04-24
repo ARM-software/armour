@@ -954,7 +954,7 @@ pub struct Program {
 }
 
 impl Program {
-    fn new() -> Program {
+    pub fn new() -> Program {
         Program {
             code: Code::new(),
             headers: Headers::new(),
@@ -1006,15 +1006,30 @@ impl Program {
                 for decl in prog_parse.iter() {
                     match decl {
                         parser::Decl::FnDecl(decl) => {
-                            let (args, typ) = decl.typ()?;
-                            prog.headers.add_function(decl.name(), args, &typ)?;
-                            prog.add_node(decl.name());
+                            let name = decl.name();
+                            let (args, typ) = decl.typ().map_err(|err| {
+                                Error::new(&format!(
+                                    "function \"{}\" at {}: {}",
+                                    name,
+                                    decl.loc(),
+                                    err
+                                ))
+                            })?;
+                            prog.headers.add_function(name, args, &typ)?;
+                            prog.add_node(name);
                         }
                         parser::Decl::External(e) => {
                             let ename = e.name();
                             for h in e.headers.iter() {
-                                let (args, typ) = h.typ()?;
                                 let name = &format!("{}::{}", ename, h.name());
+                                let (args, typ) = h.typ().map_err(|err| {
+                                    Error::new(&format!(
+                                        "header \"{}\" at {}: {}",
+                                        name,
+                                        h.loc(),
+                                        err
+                                    ))
+                                })?;
                                 prog.headers.add_function(name, args, &typ)?;
                                 prog.add_node(name);
                             }
