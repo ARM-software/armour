@@ -10,6 +10,7 @@ use actix_web::{middleware, server, App, HttpResponse};
 use clap::{crate_version, App as ClapApp, Arg};
 use std::env;
 use std::net::{IpAddr, SocketAddr};
+use url;
 
 // use crate endpoint;
 extern crate arm_proxy;
@@ -30,7 +31,7 @@ fn main() -> Result<(), std::io::Error> {
     // defaults
     let default_proxy_port = 8443;
     let default_proxy_control_port = 8444;
-    let default_interface = "en0";
+    let default_interface = "lo0";
 
     // CLI
     let matches = ClapApp::new("arm-proxy")
@@ -135,7 +136,24 @@ fn main() -> Result<(), std::io::Error> {
             .resource("/allow/{source}/{destination}/{port}", |r| {
                 r.f(rest_policy_utils::allow_host)
             })
-            .default_resource(|_| HttpResponse::BadRequest())
+            .default_resource(|r| {
+                r.f(|req| {
+                    println!("{:?}", req);
+                    println!("{:?}", req.query());
+                    println!("{:?}", req.headers());
+                    for (k, v) in url::Url::parse(&format!(
+                        "http://{}{}",
+                        req.connection_info().host(),
+                        req.uri()
+                    ))
+                    .unwrap()
+                    .query_pairs()
+                    {
+                        println!("{} = {}", k, v)
+                    }
+                    HttpResponse::BadRequest()
+                })
+            })
     })
     .bind(proxy_socket)
     .expect(&format!("Failed to bind to {}", proxy_socket))

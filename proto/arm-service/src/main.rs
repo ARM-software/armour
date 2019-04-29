@@ -4,8 +4,8 @@
 extern crate log;
 
 use actix_web::{
-    actix, client, http::Method, middleware, server, App, Error, FromRequest, HttpMessage,
-    HttpRequest, HttpResponse, Path,
+    actix, client, http, middleware, server, App, Error, FromRequest, HttpMessage, HttpRequest,
+    HttpResponse, Path,
 };
 use clap::{crate_version, App as ClapApp, AppSettings, Arg};
 use futures::{future::ok as fut_ok, Future};
@@ -65,7 +65,7 @@ fn parse_port(s: &str) -> u16 {
 
 fn main() {
     // defaults
-    let default_interface = "en0";
+    let default_interface = "lo0";
 
     // CLI
     let matches = ClapApp::new("arm-service")
@@ -86,13 +86,6 @@ fn main() {
                 .short("d")
                 .takes_value(true)
                 .help("desination port"),
-        )
-        .arg(
-            Arg::with_name("forward port")
-                .required(false)
-                .short("f")
-                .takes_value(true)
-                .help("forward to port"),
         )
         .arg(
             Arg::with_name("route")
@@ -121,7 +114,6 @@ fn main() {
 
     let own_port = matches.value_of("own port").map(|l| parse_port(l));
     let destination_port = matches.value_of("destination port").map(|l| parse_port(l));
-    let forward_port = matches.value_of("forward port").map(|l| parse_port(l));
     let route = matches.value_of("route").unwrap_or("");
     let message = matches
         .value_of("message")
@@ -139,7 +131,7 @@ fn main() {
     env_logger::init();
 
     // start the actix system
-    let sys = actix::System::new("arm-proxy");
+    let sys = actix::System::new("arm-service");
 
     // start up the service server
     if let Some(port) = own_port {
@@ -147,7 +139,7 @@ fn main() {
         let server = server::new(move || {
             App::with_state(ServiceState::init(port))
                 .middleware(middleware::Logger::default())
-                .route("/subscription/{topic}", Method::PUT, subscription)
+                .route("/subscription/{topic}", http::Method::PUT, subscription)
                 .default_resource(|r| r.with(service))
         })
         .bind(socket)
@@ -159,14 +151,15 @@ fn main() {
     // send a message
     if let Some(destination_port) = destination_port {
         actix::spawn({
-            let uri = format!("http://{}:{}/{}", servername, destination_port, route);
+            let uri = format!("http://{}:{}/{}", ip, destination_port, route);
             info!("sending: {}", uri);
-            let mut builder = client::get(uri);
-            if let Some(forward_port) = forward_port {
-                builder.header("forward-to-port", forward_port.to_string());
-            }
-            builder
-                .header("User-Agent", "Actix-web")
+            client::get(uri)
+                .header(http::header::USER_AGENT, "Actix-web")
+                .header(http::header::USER_AGENT, "Other")
+                .header(http::header::FROM, "john@arm.com")
+                .header(http::header::FROM, "eric@arm.com")
+                .cookie(http::Cookie::build("name1", "value1").finish())
+                .cookie(http::Cookie::build("name2", "value2").finish())
                 .body(message)
                 .unwrap()
                 .send()
@@ -187,7 +180,7 @@ fn main() {
                 })
                 .map_err(|_| ())
         })
-    }
+    };
 
     sys.run();
 }

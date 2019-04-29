@@ -1,6 +1,7 @@
 /// policy language
 // TODO: tuple return type?
-use super::{externals, lexer, literals, parser, types};
+use super::{externals, headers, lexer, literals, parser, types};
+use headers::Headers;
 use literals::Literal;
 use parser::{Infix, Prefix};
 use petgraph::graph;
@@ -47,6 +48,14 @@ impl From<externals::Error> for Error {
     }
 }
 
+impl From<headers::Error> for Error {
+    fn from(err: headers::Error) -> Error {
+        match err {
+            headers::Error(s) => Error(s),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct Call {
     loc: lexer::Loc,
@@ -83,37 +92,14 @@ impl ExprAndMeta {
         }
         (exprs, calls, typs)
     }
-}
-
-lazy_static! {
-    static ref BUILTINS: HashMap<String, types::Signature> = {
-        let mut m = HashMap::new();
-        m.insert("i64::abs".to_string(), (vec![Typ::I64], Typ::I64));
-        m.insert("str::len".to_string(), (vec![Typ::Str], Typ::I64));
-        m.insert("str::to_lowercase".to_string(), (vec![Typ::Str], Typ::Str));
-        m.insert("str::to_uppercase".to_string(), (vec![Typ::Str], Typ::Str));
-        m.insert("str::trim_start".to_string(), (vec![Typ::Str], Typ::Str));
-        m.insert("str::trim_end".to_string(), (vec![Typ::Str], Typ::Str));
-        m.insert("str::as_bytes".to_string(), (vec![Typ::Str], Typ::Data));
-        m.insert("str::from_utf8".to_string(), (vec![Typ::Data], Typ::Str));
-        m.insert("data::len".to_string(), (vec![Typ::Str], Typ::I64));
-        m.insert("i64::pow".to_string(), (vec![Typ::I64, Typ::I64], Typ::I64));
-        m.insert("i64::min".to_string(), (vec![Typ::I64, Typ::I64], Typ::I64));
-        m.insert("i64::max".to_string(), (vec![Typ::I64, Typ::I64], Typ::I64));
-        m.insert(
-            "str::starts_with".to_string(),
-            (vec![Typ::Str, Typ::Str], Typ::Bool),
-        );
-        m.insert(
-            "str::ends_with".to_string(),
-            (vec![Typ::Str, Typ::Str], Typ::Bool),
-        );
-        m.insert(
-            "str::contains".to_string(),
-            (vec![Typ::Str, Typ::Str], Typ::Bool),
-        );
-        m
-    };
+    fn reverse_block_statement(&mut self) {
+        match &self.expr {
+            Expr::BlockExpr(l, Block::Block) => {
+                self.expr = Expr::BlockExpr(l.iter().rev().cloned().collect(), Block::Block)
+            }
+            _ => (),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -137,60 +123,24 @@ impl Vars {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Headers {
-    functions: HashMap<String, types::Signature>,
-    return_typ: Option<Typ>,
-}
-
-impl Headers {
-    fn new() -> Headers {
-        Headers {
-            functions: HashMap::new(),
-            return_typ: None,
-        }
-    }
-    fn add_function(&mut self, name: &str, args: Vec<Typ>, ret: &Typ) -> Result<(), Error> {
-        if self
-            .functions
-            .insert(name.to_string(), (args, ret.to_owned()))
-            .is_some()
-        {
-            Err(Error::new(&format!("duplicate function \"{}\"", name)))
-        } else {
-            Ok(())
-        }
-    }
-    fn return_typ(&self) -> Option<Typ> {
-        self.return_typ.clone()
-    }
-    fn clear_return_typ(&mut self) {
-        self.return_typ = None
-    }
-    fn set_return_typ(&mut self, typ: Typ) {
-        self.return_typ = Some(typ)
-    }
-    fn return_typ_for_function(&mut self, name: &str) -> Result<Typ, Error> {
-        Ok(self
-            .get_function(name)
-            .ok_or(Error::new("no current function"))?
-            .1)
-    }
-    fn get_function(&self, name: &str) -> Option<types::Signature> {
-        (BUILTINS.get(name).or(self.functions.get(name))).cloned()
-    }
+#[derive(PartialEq, Debug, Clone)]
+pub enum Block {
+    List,
+    Tuple,
+    Block,
 }
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Expr {
     Var(parser::Ident),
     BVar(usize),
-    ClosureExpr(String, Option<Box<Expr>>, Box<Expr>), // let-expression or plain closure
     LitExpr(Literal),
+    Let(Vec<String>, Box<Expr>, Box<Expr>),
+    Closure(Box<Expr>),
     ReturnExpr(Box<Expr>),
     PrefixExpr(Prefix, Box<Expr>),
     InfixExpr(Infix, Box<Expr>, Box<Expr>),
-    BlockExpr(Vec<Expr>),
+    BlockExpr(Vec<Expr>, Block),
     IfExpr {
         cond: Box<Expr>,
         consequence: Box<Expr>,
@@ -206,10 +156,6 @@ pub enum Expr {
         function: String,
         arguments: Vec<Expr>,
     },
-    InExpr {
-        val: Box<Expr>,
-        vals: Vec<Expr>,
-    },
 }
 
 impl fmt::Display for Expr {
@@ -217,13 +163,15 @@ impl fmt::Display for Expr {
         match self {
             Expr::Var(id) => write!(f, r#"var "{}""#, id.0),
             Expr::BVar(i) => write!(f, "bvar {}", i),
-            Expr::ClosureExpr(s, None, _) => write!(f, "lambda {}. <..>", s),
-            Expr::ClosureExpr(s, Some(_), _) => write!(f, "let {} = <..>; <..>", s),
             Expr::LitExpr(l) => write!(f, "{}", l),
+            Expr::Let(_, _, _) => write!(f, "let <..> = <..>; <..>"),
+            Expr::Closure(_) => write!(f, "lambda <..>"),
             Expr::ReturnExpr(_) => write!(f, "return <..>"),
-            Expr::PrefixExpr(_, _) => write!(f, "prefix <..>"),
-            Expr::InfixExpr(_, _, _) => write!(f, "infix <..>"),
-            Expr::BlockExpr(_) => write!(f, "{{<..>}}"),
+            Expr::PrefixExpr(p, _) => write!(f, "{:?} <..>", p),
+            Expr::InfixExpr(op, _, _) => write!(f, "{:?} <..>", op),
+            Expr::BlockExpr(_, Block::Block) => write!(f, "{{<..>}}"),
+            Expr::BlockExpr(_, Block::List) => write!(f, "[<..>]"),
+            Expr::BlockExpr(_, Block::Tuple) => write!(f, "(<..>)"),
             Expr::IfExpr {
                 alternative: None, ..
             } => write!(f, "if <..> {{<..>}}"),
@@ -239,7 +187,6 @@ impl fmt::Display for Expr {
                 ..
             } => write!(f, "if match <..> {{<..>}} else {{<..>}}"),
             Expr::CallExpr { function, .. } => write!(f, "{}(<..>)", function),
-            Expr::InExpr { .. } => write!(f, "<..> in [<..>]"),
         }
     }
 }
@@ -298,18 +245,14 @@ impl Expr {
                     self
                 }
             }
-            Expr::ClosureExpr(s, e1, e2) => Expr::ClosureExpr(
-                s,
-                match e1 {
-                    Some(e) => Some(Box::new(e.abs(i, v))),
-                    None => None,
-                },
-                Box::new(e2.abs(i + 1, v)),
-            ),
+            Expr::Let(l, e1, e2) => Expr::Let(l, Box::new(e1.abs(i, v)), Box::new(e2.abs(i, v))),
+            Expr::Closure(e) => Expr::Closure(Box::new(e.abs(i + 1, v))),
             Expr::ReturnExpr(e) => Expr::return_expr(e.abs(i, v)),
             Expr::PrefixExpr(p, e) => Expr::prefix_expr(p, e.abs(i, v)),
             Expr::InfixExpr(op, e1, e2) => Expr::infix_expr(op, e1.abs(i, v), e2.abs(i, v)),
-            Expr::BlockExpr(es) => Expr::BlockExpr(es.into_iter().map(|e| e.abs(i, v)).collect()),
+            Expr::BlockExpr(es, b) => {
+                Expr::BlockExpr(es.into_iter().map(|e| e.abs(i, v)).collect(), b)
+            }
             Expr::IfExpr {
                 cond,
                 consequence,
@@ -328,8 +271,8 @@ impl Expr {
             } => Expr::IfMatchExpr {
                 variables,
                 matches: matches.into_iter().map(|(e, p)| (e.abs(i, v), p)).collect(),
-                consequence: Box::new(consequence.abs(i + 1, v)),
-                alternative: alternative.map(|e| Box::new(e.abs(i + 1, v))),
+                consequence: Box::new(consequence.abs(i, v)),
+                alternative: alternative.map(|e| Box::new(e.abs(i, v))),
             },
             Expr::CallExpr {
                 function,
@@ -338,25 +281,26 @@ impl Expr {
                 function,
                 arguments: arguments.into_iter().map(|a| a.abs(i, v)).collect(),
             },
-            Expr::InExpr { val, vals } => Expr::InExpr {
-                val: Box::new(val.abs(i, v)),
-                vals: vals.into_iter().map(|a| a.abs(i, v)).collect(),
-            },
             _ => self, // BVar, LitExpr
         }
     }
-    fn closure(self, v: &str, e: Option<Expr>) -> Expr {
-        Expr::ClosureExpr(
-            v.to_string(),
-            e.map(|e| Box::new(e)),
-            Box::new(self.abs(0, v)),
-        )
-    }
     pub fn closure_expr(self, v: &str) -> Expr {
-        self.closure(v, None)
+        if v == "_" {
+            self
+        } else {
+            Expr::Closure(Box::new(self.abs(0, v)))
+        }
     }
-    pub fn let_expr(self, v: &str, e: Expr) -> Expr {
-        self.closure(v, Some(e))
+    pub fn let_expr(self, v: Vec<&str>, e: Expr) -> Expr {
+        let mut c = self;
+        for s in v.iter().rev() {
+            c = c.closure_expr(s)
+        }
+        Expr::Let(
+            v.iter().map(|s| s.to_string()).collect(),
+            Box::new(e),
+            Box::new(c),
+        )
     }
     fn shift(self, i: usize, d: usize) -> Expr {
         if i == 0 {
@@ -370,19 +314,15 @@ impl Expr {
                         self
                     }
                 }
-                Expr::ClosureExpr(s, e1, e2) => Expr::ClosureExpr(
-                    s,
-                    match e1 {
-                        Some(e) => Some(Box::new(e.shift(i, d))),
-                        None => None,
-                    },
-                    Box::new(e2.shift(i, d + 1)),
-                ),
+                Expr::Let(l, e1, e2) => {
+                    Expr::Let(l, Box::new(e1.shift(i, d)), Box::new(e2.shift(i, d)))
+                }
+                Expr::Closure(e) => Expr::Closure(Box::new(e.shift(i, d + 1))),
                 Expr::ReturnExpr(e) => Expr::return_expr(e.shift(i, d)),
                 Expr::PrefixExpr(p, e) => Expr::prefix_expr(p, e.shift(i, d)),
                 Expr::InfixExpr(op, e1, e2) => Expr::infix_expr(op, e1.shift(i, d), e2.shift(i, d)),
-                Expr::BlockExpr(es) => {
-                    Expr::BlockExpr(es.into_iter().map(|e| e.shift(i, d)).collect())
+                Expr::BlockExpr(es, b) => {
+                    Expr::BlockExpr(es.into_iter().map(|e| e.shift(i, d)).collect(), b)
                 }
                 Expr::IfExpr {
                     cond,
@@ -405,8 +345,8 @@ impl Expr {
                         .into_iter()
                         .map(|(e, p)| (e.shift(i, d), p))
                         .collect(),
-                    consequence: Box::new(consequence.shift(i, d + 1)),
-                    alternative: alternative.map(|a| Box::new(a.shift(i, d + 1))),
+                    consequence: Box::new(consequence.shift(i, d)),
+                    alternative: alternative.map(|a| Box::new(a.shift(i, d))),
                 },
                 Expr::CallExpr {
                     function,
@@ -414,10 +354,6 @@ impl Expr {
                 } => Expr::CallExpr {
                     function,
                     arguments: arguments.into_iter().map(|a| a.shift(i, d)).collect(),
-                },
-                Expr::InExpr { val, vals } => Expr::InExpr {
-                    val: Box::new(val.shift(i, d)),
-                    vals: vals.into_iter().map(|a| a.shift(i, d)).collect(),
                 },
                 _ => self, // Var, LitExpr
             }
@@ -434,18 +370,16 @@ impl Expr {
                     Expr::BVar(j - 1)
                 }
             }
-            Expr::ClosureExpr(s, e1, e2) => Expr::ClosureExpr(
-                s,
-                match e1 {
-                    Some(e) => Some(Box::new(e.subst(i, u))),
-                    None => None,
-                },
-                Box::new(e2.subst(i + 1, u)),
-            ),
+            Expr::Let(l, e1, e2) => {
+                Expr::Let(l, Box::new(e1.subst(i, u)), Box::new(e2.subst(i, u)))
+            }
+            Expr::Closure(e) => Expr::Closure(Box::new(e.subst(i + 1, u))),
             Expr::ReturnExpr(e) => Expr::return_expr(e.subst(i, u)),
             Expr::PrefixExpr(p, e) => Expr::prefix_expr(p, e.subst(i, u)),
             Expr::InfixExpr(op, e1, e2) => Expr::infix_expr(op, e1.subst(i, u), e2.subst(i, u)),
-            Expr::BlockExpr(es) => Expr::BlockExpr(es.into_iter().map(|e| e.subst(i, u)).collect()),
+            Expr::BlockExpr(es, b) => {
+                Expr::BlockExpr(es.into_iter().map(|e| e.subst(i, u)).collect(), b)
+            }
             Expr::IfExpr {
                 cond,
                 consequence,
@@ -467,8 +401,8 @@ impl Expr {
                     .into_iter()
                     .map(|(e, p)| (e.subst(i, u), p))
                     .collect(),
-                consequence: Box::new(consequence.subst(i + 1, u)),
-                alternative: alternative.map(|a| Box::new(a.subst(i + 1, u))),
+                consequence: Box::new(consequence.subst(i, u)),
+                alternative: alternative.map(|a| Box::new(a.subst(i, u))),
             },
             Expr::CallExpr {
                 function,
@@ -477,16 +411,12 @@ impl Expr {
                 function,
                 arguments: arguments.into_iter().map(|a| a.subst(i, u)).collect(),
             },
-            Expr::InExpr { val, vals } => Expr::InExpr {
-                val: Box::new(val.subst(i, u)),
-                vals: vals.into_iter().map(|a| a.subst(i, u)).collect(),
-            },
             _ => self, // Var, LitExpr
         }
     }
     pub fn apply(self, u: &Expr) -> Result<Expr, self::Error> {
         match self {
-            Expr::ClosureExpr(_, None, e) => Ok(e.subst(0, u)),
+            Expr::Closure(e) => Ok(e.subst(0, u)),
             _ => Err(Error::new("apply: expression is not a closure")),
         }
     }
@@ -510,6 +440,39 @@ impl Expr {
             parser::Expr::LitExpr(l) => {
                 Ok(ExprAndMeta::new(Expr::LitExpr(l.clone()), l.typ(), vec![]))
             }
+            parser::Expr::ListExpr(es) => {
+                let mut exprs = Vec::new();
+                let mut calls = Vec::new();
+                let mut typ = Typ::Return;
+                for e in es.iter() {
+                    let (expr, call, ty) = Expr::from_loc_expr(&e, headers, vars)?.split();
+                    Typ::type_check("list", vec![(Some(e.loc()), &ty)], vec![(None, &typ)])?;
+                    exprs.push(expr);
+                    calls.push(call);
+                    typ = typ.pick(&ty);
+                }
+                Ok(ExprAndMeta::new(
+                    Expr::BlockExpr(exprs, Block::List),
+                    Typ::List(Box::new(typ)),
+                    calls,
+                ))
+            }
+            parser::Expr::TupleExpr(es) => {
+                let mut exprs = Vec::new();
+                let mut calls = Vec::new();
+                let mut typs = Vec::new();
+                for e in es.iter() {
+                    let (expr, call, ty) = Expr::from_loc_expr(&e, headers, vars)?.split();
+                    exprs.push(expr);
+                    calls.push(call);
+                    typs.push(ty);
+                }
+                Ok(ExprAndMeta::new(
+                    Expr::BlockExpr(exprs, Block::Tuple),
+                    Typ::Tuple(typs),
+                    calls,
+                ))
+            }
             parser::Expr::PrefixExpr(p, e1) => {
                 let (expr, calls, typ) = Expr::from_loc_expr(&e1, headers, vars)?.split();
                 let (t1, t2) = p.typ();
@@ -525,11 +488,19 @@ impl Expr {
                 let (expr2, calls2, typ2) = Expr::from_loc_expr(&e2, headers, vars)?.split();
                 let (t1, t2, typ) = op.typ();
                 if t1 == Typ::Return {
-                    Typ::type_check(
-                        "(in)equality",
-                        vec![(Some(e1.loc()), &typ1)],
-                        vec![(Some(e2.loc()), &typ2)],
-                    )?
+                    if t2 == Typ::Return {
+                        Typ::type_check(
+                            "(in)equality",
+                            vec![(Some(e1.loc()), &typ1)],
+                            vec![(Some(e2.loc()), &typ2)],
+                        )?
+                    } else {
+                        Typ::type_check(
+                            "in",
+                            vec![(Some(e1.loc()), &Typ::List(Box::new(typ1)))],
+                            vec![(Some(e2.loc()), &typ2)],
+                        )?
+                    }
                 } else {
                     Typ::type_check(
                         "infix",
@@ -689,13 +660,14 @@ impl Expr {
                 loc,
                 function,
                 arguments,
-            } => match headers.get_function(function) {
-                Some((args, typ)) => {
-                    let expressions: Result<Vec<ExprAndMeta>, self::Error> = arguments
-                        .iter()
-                        .map(|e| Expr::from_loc_expr(e, headers, vars))
-                        .collect();
-                    let (expressions, mut calls, types) = ExprAndMeta::split_vec(expressions?);
+            } => {
+                let expressions: Result<Vec<ExprAndMeta>, self::Error> = arguments
+                    .iter()
+                    .map(|e| Expr::from_loc_expr(e, headers, vars))
+                    .collect();
+                let (expressions, mut calls, types) = ExprAndMeta::split_vec(expressions?);
+                let function = &Headers::resolve(function, &types);
+                if let Some((args, typ)) = headers.typ(function) {
                     let args = args.iter().map(|t| (None, t)).collect();
                     let types = arguments
                         .iter()
@@ -719,36 +691,13 @@ impl Expr {
                         typ,
                         calls,
                     ))
+                } else {
+                    Err(Error::new(&format!(
+                        "undeclared function \"{}\" at {}",
+                        function,
+                        e.loc()
+                    )))
                 }
-                None => Err(Error::new(&format!(
-                    "undeclared function \"{}\" at {}",
-                    function,
-                    e.loc()
-                ))),
-            },
-            parser::Expr::InExpr { val, vals } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(val, headers, vars)?.split();
-                let expressions: Result<Vec<ExprAndMeta>, self::Error> = vals
-                    .iter()
-                    .map(|e| Expr::from_loc_expr(e, headers, vars))
-                    .collect();
-                let (expressions, mut calls, types) = ExprAndMeta::split_vec(expressions?);
-                let len = types.len();
-                let types = vals
-                    .iter()
-                    .map(|e| Some(e.loc()))
-                    .zip(types.iter())
-                    .collect();
-                Typ::type_check("in-expression", types, vec![(Some(val.loc()), &typ1); len])?;
-                calls.push(calls1);
-                Ok(ExprAndMeta::new(
-                    Expr::InExpr {
-                        val: Box::new(expr1),
-                        vals: expressions,
-                    },
-                    Typ::Bool,
-                    calls,
-                ))
             }
         }
     }
@@ -772,7 +721,7 @@ impl Expr {
                             None => headers.set_return_typ(typ),
                         };
                         Ok(ExprAndMeta::new(
-                            Expr::BlockExpr(vec![Expr::return_expr(expr)]),
+                            Expr::BlockExpr(vec![Expr::return_expr(expr)], Block::Block),
                             Typ::Return,
                             vec![calls],
                         ))
@@ -809,36 +758,63 @@ impl Expr {
                         let (expr2, calls2, typ2) =
                             Expr::from_block_stmt(rest, headers, vars)?.split();
                         match expr2 {
-                            Expr::BlockExpr(mut b) => {
+                            Expr::BlockExpr(mut b, Block::Block) => {
                                 b.push(expr1);
                                 Ok(ExprAndMeta::new(
-                                    Expr::BlockExpr(b),
+                                    Expr::BlockExpr(b, Block::Block),
                                     typ2,
                                     vec![calls1, calls2],
                                 ))
                             }
                             _ => Ok(ExprAndMeta::new(
-                                Expr::BlockExpr(vec![expr2, expr1]),
+                                Expr::BlockExpr(vec![expr2, expr1], Block::Block),
                                 typ2,
                                 vec![calls1, calls2],
                             )),
                         }
                     }
                 }
-                parser::Stmt::LetStmt(id, le) => {
+                parser::Stmt::LetStmt(ids, le) => {
                     let (expr1, calls1, typ1) = Expr::from_loc_expr(&le, headers, vars)?.split();
-                    let (expr2, calls2, typ2) =
-                        Expr::from_block_stmt(rest, headers, &vars.add_var(id.id(), &typ1))?
-                            .split();
-                    Ok(ExprAndMeta::new(
-                        expr2.let_expr(id.id(), expr1),
-                        typ2,
-                        vec![calls1, calls2],
-                    ))
+                    if ids.len() == 1 {
+                        let id = ids[0].id();
+                        let (expr2, calls2, typ2) =
+                            Expr::from_block_stmt(rest, headers, &vars.add_var(id, &typ1))?.split();
+                        Ok(ExprAndMeta::new(
+                            expr2.let_expr(vec![id], expr1),
+                            typ2,
+                            vec![calls1, calls2],
+                        ))
+                    } else {
+                        match typ1 {
+                            Typ::Tuple(ref tys) if ids.len() == tys.len() => {
+                                let mut vs = Vec::new();
+                                let mut let_vars = vars.clone();
+                                for (id, ty) in ids.iter().zip(tys) {
+                                    let v = id.id();
+                                    let_vars = let_vars.add_var(v, ty);
+                                    vs.push(v)
+                                }
+                                let (expr2, calls2, typ2) =
+                                    Expr::from_block_stmt(rest, headers, &let_vars)?.split();
+                                Ok(ExprAndMeta::new(
+                                    expr2.let_expr(vs, expr1),
+                                    typ2,
+                                    vec![calls1, calls2],
+                                ))
+                            }
+                            _ => Err(Error::new(&format!(
+                                "{} variables in let expression of type {} at {} ",
+                                ids.len(),
+                                typ1,
+                                stmt.loc()
+                            ))),
+                        }
+                    }
                 }
             },
             None => Ok(ExprAndMeta::new(
-                Expr::BlockExpr(Vec::new()),
+                Expr::BlockExpr(Vec::new(), Block::Block),
                 Typ::Unit,
                 vec![],
             )),
@@ -864,7 +840,8 @@ impl Expr {
         name: Option<&str>,
     ) -> Result<ExprAndMeta, self::Error> {
         headers.clear_return_typ();
-        let em = Expr::from_block_stmt(block, headers, vars)?;
+        let mut em = Expr::from_block_stmt(block, headers, vars)?;
+        em.reverse_block_statement();
         // check if type of "return" calls is type of statement
         match headers.return_typ() {
             Some(rtype) => Typ::type_check(
@@ -906,6 +883,7 @@ impl Expr {
         let toks = lexer::Tokens::new(&lex);
         match parser::parse_block_stmt_eof(toks) {
             Ok((_rest, block)) => {
+                // println!("{:#?}", block);
                 Ok(Expr::check_from_block_stmt(&block, headers, &Vars::new(), None)?.expr)
             }
             Err(_) => match parser::parse_expr_eof(toks) {
@@ -941,9 +919,6 @@ impl Code {
     pub fn externals(&mut self) -> &mut externals::Externals {
         &mut self.externals
     }
-    pub fn is_builtin(name: &str) -> bool {
-        BUILTINS.contains_key(name)
-    }
 }
 
 pub struct Program {
@@ -970,7 +945,7 @@ impl Program {
             .nodes
             .get(name)
             .ok_or(Error::new(&format!("cannot find \"{}\" node", name)))?;
-        for c in calls.into_iter().filter(|c| !Code::is_builtin(&c.name)) {
+        for c in calls.into_iter().filter(|c| !Headers::is_builtin(&c.name)) {
             let call_idx = self
                 .nodes
                 .get(&c.name)

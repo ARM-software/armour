@@ -44,7 +44,7 @@ fn main() -> std::io::Result<()> {
             Ok(e) => {
                 // println!("{:#?}", e);
                 match e.evaluate(&mut prog.code) {
-                    Ok(r) => println!("{}", r),
+                    Ok(r) => println!(": {}", r),
                     Err(err) => eprintln!("{}", err),
                 }
             }

@@ -1,5 +1,6 @@
 /// policy language interpreter
-use super::lang::{Code, Error, Expr};
+use super::headers::Headers;
+use super::lang::{Block, Code, Error, Expr};
 use super::literals::Literal;
 use super::parser::{Infix, Prefix};
 use std::collections::HashMap;
@@ -14,8 +15,8 @@ impl Literal {
     }
     fn eval_infix(&self, op: &Infix, other: &Literal) -> Option<Self> {
         match (op, self, other) {
-            (Infix::Equal, l1, l2) => Some(Literal::BoolLiteral(l1 == l2)),
-            (Infix::NotEqual, l1, l2) => Some(Literal::BoolLiteral(l1 != l2)),
+            (Infix::Equal, _, _) => Some(Literal::BoolLiteral(self == other)),
+            (Infix::NotEqual, _, _) => Some(Literal::BoolLiteral(self != other)),
             (Infix::Plus, Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
                 Some(Literal::IntLiteral(i + j))
             }
@@ -54,6 +55,15 @@ impl Literal {
             (Infix::Concat, Literal::StringLiteral(i), Literal::StringLiteral(j)) => {
                 Some(Literal::StringLiteral(format!("{}{}", i, j)))
             }
+            (Infix::In, _, Literal::List(l)) => {
+                Some(Literal::BoolLiteral(l.iter().any(|o| o == self)))
+            }
+            _ => None,
+        }
+    }
+    fn eval_call0(f: &str) -> Option<Self> {
+        match f {
+            "HttpRequest::default" => Some(Literal::HttpRequestLiteral(Default::default())),
             _ => None,
         }
     }
@@ -82,6 +92,25 @@ impl Literal {
             ("data::len", Literal::DataLiteral(d)) => {
                 Some(Literal::IntLiteral(d.as_bytes().len() as i64))
             }
+            ("HttpRequest::method", Literal::HttpRequestLiteral(req)) => {
+                Some(Literal::StringLiteral(req.method()))
+            }
+            ("HttpRequest::version", Literal::HttpRequestLiteral(req)) => {
+                Some(Literal::StringLiteral(req.version()))
+            }
+            ("HttpRequest::path", Literal::HttpRequestLiteral(req)) => {
+                Some(Literal::StringLiteral(req.path()))
+            }
+            ("HttpRequest::query", Literal::HttpRequestLiteral(req)) => {
+                Some(Literal::StringLiteral(req.query()))
+            }
+            ("HttpRequest::headers", Literal::HttpRequestLiteral(req)) => Some(Literal::List(
+                req.headers()
+                    .into_iter()
+                    .map(|h| Literal::StringLiteral(h))
+                    .collect(),
+            )),
+            ("list::len", Literal::List(l)) => Some(Literal::IntLiteral(l.len() as i64)),
             _ => None,
         }
     }
@@ -105,6 +134,27 @@ impl Literal {
             ("str::contains", Literal::StringLiteral(i), Literal::StringLiteral(j)) => {
                 Some(Literal::BoolLiteral(i.contains(j)))
             }
+            (
+                "HttpRequest::header",
+                Literal::HttpRequestLiteral(req),
+                Literal::StringLiteral(h),
+            ) => Some(Literal::List(
+                req.header(&h)
+                    .into_iter()
+                    .map(|v| Literal::StringLiteral(v))
+                    .collect(),
+            )),
+            _ => None,
+        }
+    }
+    fn eval_call3(&self, f: &str, l1: &Literal, l2: &Literal) -> Option<Self> {
+        match (f, self, l1, l2) {
+            (
+                "HttpRequest::set_header",
+                Literal::HttpRequestLiteral(req),
+                Literal::StringLiteral(h),
+                Literal::StringLiteral(v),
+            ) => Some(Literal::HttpRequestLiteral(req.set_header(h, v))),
             _ => None,
         }
     }
@@ -176,25 +226,64 @@ impl Expr {
                 },
                 _ => Err(Error::new("eval, infix: failed")),
             },
-            Expr::BlockExpr(es) => {
+            Expr::BlockExpr(es, b) => {
                 if es.len() == 0 {
                     Ok(Expr::LitExpr(Literal::Unit))
                 } else {
                     let rs: Result<Vec<Expr>, self::Error> =
-                        es.into_iter().rev().map(|e| e.eval(env)).collect();
+                        es.into_iter().map(|e| e.eval(env)).collect();
                     let rs = rs?;
                     match rs.iter().find(|r| r.is_return()) {
                         Some(r) => Ok(r.clone()),
-                        _ => Ok(rs.last().expect("eval, block").clone()),
+                        _ => {
+                            if b == Block::Block {
+                                Ok(rs.last().expect("eval, block").clone())
+                            } else {
+                                let lits: Result<Vec<Literal>, self::Error> = rs
+                                    .into_iter()
+                                    .map(|e| match e {
+                                        Expr::LitExpr(l) => Ok(l),
+                                        _ => Err(Error::new("failed to evaluate member of a list")),
+                                    })
+                                    .collect();
+                                let lits = lits?;
+                                Ok(Expr::LitExpr(if b == Block::List {
+                                    Literal::List(lits)
+                                } else {
+                                    Literal::Tuple(lits)
+                                }))
+                            }
+                        }
                     }
                 }
             }
-            Expr::ClosureExpr(_, Some(e1), e2) => match e1.eval(env)? {
+            Expr::Let(vs, e1, e2) => match e1.eval(env)? {
                 r @ Expr::ReturnExpr(_) => Ok(r),
-                l @ Expr::LitExpr(_) => e2.subst(0, &l).eval(env),
+                Expr::LitExpr(Literal::Tuple(lits)) => {
+                    if vs.len() == lits.len() {
+                        let mut e = *e2.clone();
+                        for (v, lit) in vs.iter().zip(lits) {
+                            if v != "_" {
+                                e = e.apply(&Expr::LitExpr(lit))?
+                            }
+                        }
+                        e.eval(env)
+                    } else if vs.len() == 1 {
+                        e2.apply(&Expr::LitExpr(Literal::Tuple(lits)))?.eval(env)
+                    } else {
+                        Err(Error::new("eval, let-expression (tuple length mismatch)"))
+                    }
+                }
+                l @ Expr::LitExpr(_) => {
+                    if vs.len() == 1 {
+                        e2.apply(&l)?.eval(env)
+                    } else {
+                        Err(Error::new("eval, let-expression (literal not a tuple)"))
+                    }
+                }
                 _ => Err(Error::new("eval, let-expression")),
             },
-            Expr::ClosureExpr(_, None, _) => Err(Error::new("eval, closure")),
+            Expr::Closure(_) => Err(Error::new("eval, closure")),
             Expr::IfExpr {
                 cond,
                 consequence,
@@ -302,8 +391,12 @@ impl Expr {
                                 r = r.apply(&a)?
                             }
                             r.evaluate(env)
-                        } else if Code::is_builtin(&function) {
+                        } else if Headers::is_builtin(&function) {
                             match args.as_slice() {
+                                &[] => match Literal::eval_call0(&function) {
+                                    Some(r) => Ok(Expr::LitExpr(r)),
+                                    None => Err(Error::new("eval, call(0): type error")),
+                                },
                                 &[Expr::LitExpr(ref l)] => match l.eval_call1(&function) {
                                     Some(r) => Ok(Expr::LitExpr(r)),
                                     None => Err(Error::new("eval, call(1): type error")),
@@ -312,6 +405,12 @@ impl Expr {
                                     match l1.eval_call2(&function, l2) {
                                         Some(r) => Ok(Expr::LitExpr(r)),
                                         None => Err(Error::new("eval, call(2): type error")),
+                                    }
+                                }
+                                &[Expr::LitExpr(ref l1), Expr::LitExpr(ref l2), Expr::LitExpr(ref l3)] => {
+                                    match l1.eval_call3(&function, l2, l3) {
+                                        Some(r) => Ok(Expr::LitExpr(r)),
+                                        None => Err(Error::new("eval, call(3): type error")),
                                     }
                                 }
                                 x => Err(Error::new(&format!("eval, call: {}: {:?}", function, x))),
@@ -335,19 +434,6 @@ impl Expr {
                     }
                 }
             }
-            Expr::InExpr { val, vals } => match val.eval(env)? {
-                r @ Expr::ReturnExpr(_) => Ok(r),
-                r @ Expr::LitExpr(_) => {
-                    let vals: Result<Vec<Expr>, self::Error> =
-                        vals.into_iter().map(|e| e.eval(env)).collect();
-                    let vals = vals?;
-                    match vals.iter().find(|r| r.is_return()) {
-                        Some(r) => Ok(r.clone()),
-                        _ => Ok(Expr::bool(vals.iter().any(|v| *v == r))),
-                    }
-                }
-                _ => Err(Error::new("eval, in-expression")),
-            },
         }
     }
     pub fn evaluate(self, env: &mut Code) -> Result<Expr, self::Error> {

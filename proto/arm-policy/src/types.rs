@@ -5,8 +5,9 @@ use super::parser;
 use parser::{Infix, Prefix};
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Typ {
+    Return,
     Bool,
     I64,
     F64,
@@ -14,13 +15,40 @@ pub enum Typ {
     Data,
     Unit,
     Policy,
-    Return,
+    HttpRequest,
+    List(Box<Typ>),
+    Tuple(Vec<Typ>),
+}
+
+impl fmt::Display for Typ {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Typ::Bool => write!(f, "bool"),
+            Typ::I64 => write!(f, "i64"),
+            Typ::F64 => write!(f, "f64"),
+            Typ::Str => write!(f, "str"),
+            Typ::Data => write!(f, "data"),
+            Typ::Unit => write!(f, "unit"),
+            Typ::Policy => write!(f, "Policy"),
+            Typ::Return => write!(f, "!"),
+            Typ::HttpRequest => write!(f, "HttpRequest"),
+            Typ::List(t) => write!(f, "List<{}>", t.to_string()),
+            Typ::Tuple(ts) => write!(
+                f,
+                "({})",
+                ts.iter()
+                    .map(|l| l.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+        }
+    }
 }
 
 type LocType<'a> = (Option<Loc>, &'a Typ);
 type LocTypes<'a> = Vec<LocType<'a>>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Error<'a> {
     Mismatch(String, LocType<'a>, LocType<'a>),
     Args(String, usize, usize),
@@ -38,12 +66,12 @@ impl<'a> fmt::Display for Error<'a> {
             ),
             Error::Mismatch(s, lt1, lt2) => {
                 writeln!(f, "type error in \"{}\".\nmismatch:", s)?;
-                write!(f, "> {:?}", lt1.1)?;
+                write!(f, "> {}", lt1.1)?;
                 match &lt1.0 {
                     Some(loc) => writeln!(f, " on {}", loc)?,
                     None => writeln!(f, "")?,
                 }
-                write!(f, "< {:?}", lt2.1)?;
+                write!(f, "< {}", lt2.1)?;
                 match &lt2.0 {
                     Some(loc) => writeln!(f, " on {}", loc)?,
                     None => writeln!(f, "")?,
@@ -55,8 +83,23 @@ impl<'a> fmt::Display for Error<'a> {
 }
 
 impl Typ {
+    pub fn intrinsic(&self) -> Option<String> {
+        match self {
+            Typ::Return | Typ::Tuple(_) => None,
+            Typ::List(_) => Some("list".to_string()),
+            _ => Some(self.to_string()),
+        }
+    }
     fn unify(&self, other: &Typ) -> bool {
-        *self == Typ::Return || *other == Typ::Return || self == other
+        match (self, other) {
+            (Typ::Return, _) => true,
+            (_, Typ::Return) => true,
+            (Typ::List(l1), Typ::List(l2)) => l1.unify(l2),
+            (Typ::Tuple(l1), Typ::Tuple(l2)) => {
+                l1.len() == l2.len() && l1.iter().zip(l2).all(|(t1, t2)| t1.unify(t2))
+            }
+            _ => self == other,
+        }
     }
     pub fn pick(&self, other: &Typ) -> Typ {
         if *self == Typ::Return {
@@ -87,8 +130,30 @@ impl Typ {
             "f64" => Ok(Typ::F64),
             "data" => Ok(Typ::Data),
             "str" => Ok(Typ::Str),
-            "policy" => Ok(Typ::Policy),
+            "Policy" => Ok(Typ::Policy),
+            "HttpRequest" => Ok(Typ::HttpRequest),
             s => Err(Error::Parse(s.to_string())),
+        }
+    }
+    fn from_parse<'a>(ty: &'a parser::Typ) -> Result<Self, self::Error<'a>> {
+        match ty {
+            parser::Typ::Atom(a) => Typ::try_from_str(a.id()),
+            parser::Typ::Cons(c, b) => {
+                if c.id() == "List" {
+                    Ok(Typ::List(Box::new(Typ::from_parse(b)?)))
+                } else {
+                    Err(Error::Parse(format!("expecting \"List\", got {}", c.id())))
+                }
+            }
+            parser::Typ::Tuple(l) => {
+                if l.len() == 0 {
+                    Ok(Typ::Unit)
+                } else {
+                    let tys: Result<Vec<Self>, self::Error> =
+                        l.iter().map(|x| Typ::from_parse(x)).collect();
+                    Ok(Typ::Tuple(tys?))
+                }
+            }
         }
     }
     pub fn is_unit(&self) -> bool {
@@ -106,6 +171,9 @@ impl Literal {
             Literal::StringLiteral(_) => Typ::Str,
             Literal::DataLiteral(_) => Typ::Data,
             Literal::PolicyLiteral(_) => Typ::Policy,
+            Literal::List(l) => l.get(0).map(|l| l.typ()).unwrap_or(Typ::Return),
+            Literal::Tuple(_) => unimplemented!(),
+            Literal::HttpRequestLiteral(_) => Typ::HttpRequest,
         }
     }
 }
@@ -124,6 +192,7 @@ impl Infix {
         match self {
             Infix::Concat => (Typ::Str, Typ::Str, Typ::Str),
             Infix::Equal | Infix::NotEqual => (Typ::Return, Typ::Return, Typ::Bool),
+            Infix::In => (Typ::Return, Typ::List(Box::new(Typ::Return)), Typ::Bool),
             Infix::And | Infix::Or => (Typ::Bool, Typ::Bool, Typ::Bool),
             Infix::Divide | Infix::Remainder | Infix::Minus | Infix::Plus | Infix::Multiply => {
                 (Typ::I64, Typ::I64, Typ::I64)
@@ -132,14 +201,14 @@ impl Infix {
             | Infix::GreaterThanEqual
             | Infix::LessThan
             | Infix::LessThanEqual => (Typ::I64, Typ::I64, Typ::Bool),
-            Infix::Module => panic!(),
+            Infix::Module | Infix::Dot => panic!(),
         }
     }
 }
 
 impl parser::Param {
     pub fn typ(&self) -> Result<Typ, Error> {
-        Typ::try_from_str(self.typ.id())
+        Typ::from_parse(&self.typ)
     }
 }
 
@@ -149,7 +218,7 @@ impl parser::FnDecl {
     // TODO: report location of errors
     pub fn typ(&self) -> Result<Signature, Error> {
         let ty = match self.typ_id() {
-            Some(id) => Typ::try_from_str(id.id())?,
+            Some(id) => Typ::from_parse(id)?,
             None => Typ::Unit,
         };
         let args: Result<Vec<Typ>, Error> = self.args().iter().map(|a| a.typ()).collect();
@@ -161,14 +230,11 @@ impl parser::Head {
     // TODO: report location of errors
     pub fn typ(&self) -> Result<Signature, Error> {
         let ty = match self.typ_id() {
-            Some(id) => Typ::try_from_str(id.id())?,
+            Some(id) => Typ::from_parse(id)?,
             None => Typ::Unit,
         };
-        let args: Result<Vec<Typ>, Error> = self
-            .args()
-            .iter()
-            .map(|a| Typ::try_from_str(a.id()))
-            .collect();
+        let args: Result<Vec<Typ>, Error> =
+            self.args().iter().map(|a| Typ::from_parse(a)).collect();
         Ok((args?, ty))
     }
 }

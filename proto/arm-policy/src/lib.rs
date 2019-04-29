@@ -9,6 +9,7 @@ pub mod external_capnp {
 }
 
 pub mod externals;
+pub mod headers;
 pub mod interpret;
 pub mod lang;
 pub mod lexer;
