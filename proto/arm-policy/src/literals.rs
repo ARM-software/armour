@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
+use url;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Policy {
@@ -98,11 +99,32 @@ impl HttpRequest {
     pub fn query(&self) -> String {
         self.query.to_string()
     }
+    pub fn query_pairs(&self) -> Vec<(String, String)> {
+        if let Ok(url) = url::Url::parse(&format!("http://x/?{}", self.query)) {
+            url.query_pairs().into_owned().collect()
+        } else {
+            Vec::new()
+        }
+    }
+    pub fn set_query(&self, s: &str) -> HttpRequest {
+        let mut new = self.clone();
+        new.query = s.to_string();
+        new
+    }
     pub fn header(&self, s: &str) -> Vec<String> {
         self.headers.get(s).unwrap_or(&Vec::new()).to_vec()
     }
     pub fn headers(&self) -> Vec<String> {
         self.headers.keys().cloned().collect()
+    }
+    pub fn header_pairs(&self) -> Vec<(String, String)> {
+        let mut pairs = Vec::new();
+        for (k, vs) in self.headers.iter() {
+            for v in vs {
+                pairs.push((k.to_string(), v.to_string()))
+            }
+        }
+        pairs
     }
     pub fn set_header(&self, k: &str, v: &str) -> HttpRequest {
         let mut new = self.clone();

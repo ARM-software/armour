@@ -104,6 +104,28 @@ impl Literal {
             ("HttpRequest::query", Literal::HttpRequestLiteral(req)) => {
                 Some(Literal::StringLiteral(req.query()))
             }
+            ("HttpRequest::query_pairs", Literal::HttpRequestLiteral(req)) => Some(Literal::List(
+                req.query_pairs()
+                    .iter()
+                    .map(|(k, v)| {
+                        Literal::Tuple(vec![
+                            Literal::StringLiteral(k.to_string()),
+                            Literal::StringLiteral(v.to_string()),
+                        ])
+                    })
+                    .collect(),
+            )),
+            ("HttpRequest::header_pairs", Literal::HttpRequestLiteral(req)) => Some(Literal::List(
+                req.header_pairs()
+                    .iter()
+                    .map(|(k, v)| {
+                        Literal::Tuple(vec![
+                            Literal::StringLiteral(k.to_string()),
+                            Literal::StringLiteral(v.to_string()),
+                        ])
+                    })
+                    .collect(),
+            )),
             ("HttpRequest::headers", Literal::HttpRequestLiteral(req)) => Some(Literal::List(
                 req.headers()
                     .into_iter()
@@ -141,6 +163,11 @@ impl Literal {
             ("str::contains", Literal::StringLiteral(i), Literal::StringLiteral(j)) => {
                 Some(Literal::BoolLiteral(i.contains(j)))
             }
+            (
+                "HttpRequest::set_query",
+                Literal::HttpRequestLiteral(req),
+                Literal::StringLiteral(q),
+            ) => Some(Literal::HttpRequestLiteral(req.set_query(q))),
             (
                 "HttpRequest::header",
                 Literal::HttpRequestLiteral(req),

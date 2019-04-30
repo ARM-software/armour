@@ -69,7 +69,16 @@ impl Headers {
             "HttpRequest::version" => Some((vec![Typ::HttpRequest], Typ::Str)),
             "HttpRequest::path" => Some((vec![Typ::HttpRequest], Typ::Str)),
             "HttpRequest::query" => Some((vec![Typ::HttpRequest], Typ::Str)),
+            "HttpRequest::query_pairs" => Some((
+                vec![Typ::HttpRequest],
+                Typ::List(Box::new(Typ::Tuple(vec![Typ::Str, Typ::Str]))),
+            )),
+            "HttpRequest::set_query" => Some((vec![Typ::HttpRequest, Typ::Str], Typ::HttpRequest)),
             "HttpRequest::headers" => Some((vec![Typ::HttpRequest], Typ::List(Box::new(Typ::Str)))),
+            "HttpRequest::header_pairs" => Some((
+                vec![Typ::HttpRequest],
+                Typ::List(Box::new(Typ::Tuple(vec![Typ::Str, Typ::Str]))),
+            )),
             "HttpRequest::set_header" => {
                 Some((vec![Typ::HttpRequest, Typ::Str, Typ::Str], Typ::HttpRequest))
             }
