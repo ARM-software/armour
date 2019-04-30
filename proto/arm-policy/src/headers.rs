@@ -81,7 +81,7 @@ impl Headers {
         }
     }
     pub fn is_builtin(name: &str) -> bool {
-        Headers::builtins(name).is_some()
+        Headers::builtins(name).is_some() || name.parse::<usize>().is_ok()
     }
     pub fn typ(&self, name: &str) -> Option<Signature> {
         (Headers::builtins(name).or(self.functions.get(name).cloned()))

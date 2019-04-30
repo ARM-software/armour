@@ -691,6 +691,38 @@ impl Expr {
                         typ,
                         calls,
                     ))
+                } else if let Ok(i) = function.parse::<usize>() {
+                    match types.as_slice() {
+                        &[Typ::Tuple(ref l)] => {
+                            if i < l.len() {
+                                Ok(ExprAndMeta::new(
+                                    Expr::CallExpr {
+                                        function: function.to_string(),
+                                        arguments: expressions,
+                                    },
+                                    l.get(i).unwrap().clone(),
+                                    calls,
+                                ))
+                            } else {
+                                Err(Error::new(&format!(
+                                    "tuple index function \"{}\" called on tuple with just {} elements at {}",
+                                    function,
+                                    l.len(),
+                                    e.loc()
+                                )))
+                            }
+                        }
+                        _ => Err(Error::new(&format!(
+                            "tuple index function \"{}\" called on non-tuple ({}) at {}",
+                            function,
+                            types
+                                .iter()
+                                .map(|t| t.to_string())
+                                .collect::<Vec<String>>()
+                                .join(","),
+                            e.loc()
+                        ))),
+                    }
                 } else {
                     Err(Error::new(&format!(
                         "undeclared function \"{}\" at {}",
@@ -881,6 +913,7 @@ impl Expr {
     pub fn from_string(buf: &str, mut headers: &mut Headers) -> Result<Expr, self::Error> {
         let lex = lexer::lex(buf);
         let toks = lexer::Tokens::new(&lex);
+        // println!("{}", toks);
         match parser::parse_block_stmt_eof(toks) {
             Ok((_rest, block)) => {
                 // println!("{:#?}", block);

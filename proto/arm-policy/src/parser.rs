@@ -478,6 +478,22 @@ macro_rules! parse_string_as_ident (
   );
 );
 
+macro_rules! parse_int_literal (
+  ($i: expr,) => (
+    {
+        let (i1, t1) = try_parse!($i, take!(1));
+        if t1.tok.is_empty() {
+            Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag)))
+        } else {
+            match t1.tok0().clone() {
+                Token::IntLiteral(i) => Ok((i1, (t1.loc(), i))),
+                _ => Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag))),
+            }
+        }
+    }
+  );
+);
+
 macro_rules! parse_literal (
   ($i: expr,) => (
     {
@@ -622,12 +638,17 @@ named!(parse_paren_expr<Tokens, LocExpr>,
     )
 );
 
-named!(parse_lit_expr<Tokens, LocExpr>,
+named!(parse_lit_expr<Tokens, LocExpr>, alt_complete!(
+    do_parse!(
+        tag_token!(Token::Dot) >>
+        i: parse_int_literal!() >>
+        (LocExpr(i.0, Expr::LitExpr(Literal::FloatLiteral(format!(".{}", i.1).parse().unwrap()))))
+    ) |
     do_parse!(
         lit: parse_literal!() >>
         (LocExpr(lit.loc(), Expr::LitExpr(lit.1)))
     )
-);
+));
 
 named!(parse_ident_expr<Tokens, LocExpr>,
     do_parse!(
@@ -740,26 +761,40 @@ fn parse_infix_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr> {
 }
 
 fn parse_dot_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr> {
-    do_parse!(
+    preceded!(
         input,
-        tag_token!(Token::Dot)
-            >> id: parse_ident_expr
-            >> call: apply!(parse_call_expr, id)
-            >> (match call.expr() {
-                Expr::CallExpr {
-                    loc,
-                    function,
-                    arguments,
-                } => LocExpr(
-                    left.loc(),
-                    Expr::CallExpr {
-                        loc: loc.clone(),
-                        function: format!(".::{}", function),
-                        arguments: [&vec!(left)[..], &arguments[..]].concat(),
-                    }
-                ),
-                _ => unreachable!(),
-            })
+        tag_token!(Token::Dot),
+        alt_complete!(
+            do_parse!(
+                i: parse_int_literal!()
+                    >> (LocExpr(
+                        left.loc(),
+                        Expr::CallExpr {
+                            loc: i.0,
+                            function: i.1.to_string(),
+                            arguments: vec![left.clone()],
+                        }
+                    ))
+            ) | do_parse!(
+                id: parse_ident_expr
+                    >> call: apply!(parse_call_expr, id)
+                    >> (match call.expr() {
+                        Expr::CallExpr {
+                            loc,
+                            function,
+                            arguments,
+                        } => LocExpr(
+                            left.loc(),
+                            Expr::CallExpr {
+                                loc: loc.clone(),
+                                function: format!(".::{}", function),
+                                arguments: [&vec!(left)[..], &arguments[..]].concat(),
+                            }
+                        ),
+                        _ => unreachable!(),
+                    })
+            )
+        )
     )
 }
 

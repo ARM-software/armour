@@ -111,6 +111,13 @@ impl Literal {
                     .collect(),
             )),
             ("list::len", Literal::List(l)) => Some(Literal::IntLiteral(l.len() as i64)),
+            (_, Literal::Tuple(l)) => {
+                if let Ok(i) = f.parse::<usize>() {
+                    l.get(i).cloned()
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
@@ -385,12 +392,14 @@ impl Expr {
                 match args.iter().find(|r| r.is_return()) {
                     Some(r) => Ok(r.clone()),
                     None => {
+                        // user defined function
                         if let Some(e) = env.get(&function) {
                             let mut r = e.clone();
                             for a in args {
                                 r = r.apply(&a)?
                             }
                             r.evaluate(env)
+                        // builtin function
                         } else if Headers::is_builtin(&function) {
                             match args.as_slice() {
                                 &[] => match Literal::eval_call0(&function) {
@@ -416,6 +425,7 @@ impl Expr {
                                 x => Err(Error::new(&format!("eval, call: {}: {:?}", function, x))),
                             }
                         } else {
+                            // external function (RPC)
                             match function.split("::").collect::<Vec<&str>>().as_slice() {
                                 &[external, method] => match env.externals().request(
                                     external,

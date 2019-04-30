@@ -354,7 +354,12 @@ named!(lex_number<Span, LocToken>,
                 let s = d.to_string();
                 match s.parse() {
                     Ok(i) => Token::IntLiteral(i),
-                    _ => Token::FloatLiteral(s.parse().unwrap())
+                    _ => if s.trim_start_matches('.').parse::<usize>().is_ok() {
+                        // make sure .N (tuple projections) are not parsed as floats
+                        return Err(nom::Err::Incomplete(Needed::Size(1)))
+                    } else {
+                        Token::FloatLiteral(s.parse().unwrap())
+                    }
                 }
             })
         )
