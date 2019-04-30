@@ -14,6 +14,12 @@ impl ExternalImpl {
         self.0 += 1;
         Ok(IntLiteral(self.0))
     }
+    fn process<'a>(args: &[Literal<'a>]) -> Result<Literal<'a>, Error> {
+        match args {
+            &[StringPairs(ref l)] => Ok(IntLiteral(l.len() as i64)),
+            _ => Err(Error::failed("process".to_string())),
+        }
+    }
 }
 
 impl Dispatcher for ExternalImpl {
@@ -21,6 +27,7 @@ impl Dispatcher for ExternalImpl {
         match name {
             "sin" => ExternalImpl::sin(args),
             "count" => self.count(),
+            "process" => ExternalImpl::process(args),
             _ => Err(Error::unimplemented(name.to_string())),
         }
     }

@@ -1,5 +1,4 @@
 /// policy language
-// TODO: tuple return type?
 use super::{externals, headers, lexer, literals, parser, types};
 use headers::Headers;
 use literals::Literal;

@@ -1,3 +1,4 @@
+/// Armour policy language
 use arm_policy::lang;
 use clap::{crate_version, App, Arg};
 use std::fs::File;

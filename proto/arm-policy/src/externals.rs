@@ -106,6 +106,23 @@ impl Externals {
                     Literal::StringLiteral(s) => arg.set_text(s),
                     Literal::DataLiteral(d) => arg.set_data(d.as_bytes()),
                     Literal::Unit => arg.set_unit(()),
+                    Literal::List(lits) => {
+                        let mut pairs = arg.init_pairs(lits.len() as u32);
+                        for (j, l) in lits.iter().enumerate() {
+                            match l {
+                                Literal::Tuple(ts) => match ts.as_slice() {
+                                    &[Literal::StringLiteral(ref key), Literal::StringLiteral(ref value)] =>
+                                    {
+                                        let mut pair = pairs.reborrow().get(j as u32);
+                                        pair.set_key(key);
+                                        pair.set_value(value);
+                                    }
+                                    _ => return Err(Error::RequestNotValid),
+                                },
+                                _ => return Err(Error::RequestNotValid),
+                            }
+                        }
+                    }
                     _ => return Err(Error::RequestNotValid),
                 }
             }
@@ -126,6 +143,16 @@ impl Externals {
                                     String::from_utf8_lossy(pry!(d)).to_string(),
                                 ),
                                 Which::Unit(_) => Literal::Unit,
+                                Which::Pairs(ps) => {
+                                    let mut v = Vec::new();
+                                    for p in pry!(ps) {
+                                        v.push(Literal::Tuple(vec![
+                                            Literal::StringLiteral(pry!(p.get_key()).to_string()),
+                                            Literal::StringLiteral(pry!(p.get_value()).to_string()),
+                                        ]))
+                                    }
+                                    Literal::List(v)
+                                }
                             },
                         )
                     })
