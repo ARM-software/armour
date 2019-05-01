@@ -9,7 +9,7 @@ fn main() -> std::io::Result<()> {
     let matches = App::new("Armour")
         .version(crate_version!())
         .author("Anthony Fox <anthony.fox@arm.com>")
-        .about("Experiment with nom")
+        .about("Armour policy language REPL")
         .arg(
             Arg::with_name("input file")
                 .index(1)
