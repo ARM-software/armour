@@ -56,7 +56,7 @@ impl Headers {
             "str::trim_end" => Some((vec![Typ::Str], Typ::Str)),
             "str::as_bytes" => Some((vec![Typ::Str], Typ::Data)),
             "str::from_utf8" => Some((vec![Typ::Data], Typ::Str)),
-            "data::len" => Some((vec![Typ::Str], Typ::I64)),
+            "data::len" => Some((vec![Typ::Data], Typ::I64)),
             "i64::pow" => Some((vec![Typ::I64, Typ::I64], Typ::I64)),
             "i64::min" => Some((vec![Typ::I64, Typ::I64], Typ::I64)),
             "i64::max" => Some((vec![Typ::I64, Typ::I64], Typ::I64)),
