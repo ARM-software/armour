@@ -6,7 +6,7 @@ use std::io::{prelude::*, stdin, stdout, BufReader};
 
 fn main() -> std::io::Result<()> {
     // Command line interface
-    let matches = App::new("nom-test")
+    let matches = App::new("Armour")
         .version(crate_version!())
         .author("Anthony Fox <anthony.fox@arm.com>")
         .about("Experiment with nom")
