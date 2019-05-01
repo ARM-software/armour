@@ -346,27 +346,43 @@ named!(lex_operator<Span, LocToken>,
   )
 );
 
-// Number literals
-named!(lex_number<Span, LocToken>,
-    do_parse!(
-        d: recognize!(double) >>
-        (LocToken::new(
-            d,
-            {
-                let s = d.to_string();
-                match s.parse() {
-                    Ok(i) => Token::IntLiteral(i),
-                    _ => if s.trim_start_matches('.').parse::<usize>().is_ok() {
-                        // make sure .N (tuple projections) are not parsed as floats
-                        return Err(nom::Err::Incomplete(Needed::Size(1)))
-                    } else {
-                        Token::FloatLiteral(s.parse().unwrap())
-                    }
-                }
-            })
+fn lex_number_<'a>(input: Span<'a>, double_span: Span<'a>) -> IResult<Span<'a>, LocToken<'a>> {
+    let float = double_span.to_string();
+    if float.ends_with('.') {
+        if float.starts_with('-') {
+            do_parse!(input, t: tag!("-") >> (LocToken::new(t, Token::Minus)))
+        } else {
+            do_parse!(
+                input,
+                i: recognize!(digit)
+                    >> (LocToken::new(i, Token::IntLiteral(i.to_string().parse().unwrap())))
+            )
+        }
+    } else if float.starts_with('.') && !float.contains('e') {
+        do_parse!(input, t: tag!(".") >> (LocToken::new(t, Token::Dot)))
+    } else if let Ok(number) = float.parse::<i64>() {
+        do_parse!(
+            input,
+            i: opt!(tag!("-"))
+                >> j: recognize!(digit)
+                >> (LocToken::new(i.unwrap_or(j), Token::IntLiteral(number)))
         )
+    } else {
+        do_parse!(
+            input,
+            d: recognize!(double)
+                >> (LocToken::new(d, Token::FloatLiteral(float.parse().unwrap())))
+        )
+    }
+}
+
+// Number literals
+fn lex_number<'a>(input: Span<'a>) -> IResult<Span, LocToken<'a>> {
+    do_parse!(
+        input,
+        d: peek!(recognize!(double)) >> r: apply!(lex_number_, d) >> (r)
     )
-);
+}
 
 // Reserved or ident
 fn parse_reserved<'a>(t: Span<'a>) -> LocToken<'a> {
