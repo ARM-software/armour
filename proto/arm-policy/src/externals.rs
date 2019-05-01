@@ -143,6 +143,13 @@ impl Externals {
                                     String::from_utf8_lossy(pry!(d)).to_string(),
                                 ),
                                 Which::Unit(_) => Literal::Unit,
+                                Which::Lines(ps) => {
+                                    let mut v = Vec::new();
+                                    for p in pry!(ps) {
+                                        v.push(Literal::StringLiteral(pry!(p).to_string()))
+                                    }
+                                    Literal::List(v)
+                                }
                                 Which::Pairs(ps) => {
                                     let mut v = Vec::new();
                                     for p in pry!(ps) {

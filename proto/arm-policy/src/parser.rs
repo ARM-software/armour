@@ -27,7 +27,6 @@ impl External {
     }
 }
 
-// TODO: Change to support List(ty) and Tuple(tys) constructors
 #[derive(Debug, Clone)]
 pub enum Typ {
     Atom(LocIdent),
@@ -143,6 +142,12 @@ pub enum Expr {
     TupleExpr(Vec<LocExpr>),
     PrefixExpr(Prefix, Box<LocExpr>),
     InfixExpr(Infix, Box<LocExpr>, Box<LocExpr>),
+    IterExpr {
+        all: bool,
+        idents: Vec<LocIdent>,
+        expr: Box<LocExpr>,
+        body: BlockStmt,
+    },
     IfExpr {
         cond: Box<LocExpr>,
         consequence: BlockStmt,
@@ -614,8 +619,20 @@ named!(parse_atom_expr<Tokens, LocExpr>, alt_complete!(
     parse_prefix_expr |
     parse_paren_expr |
     parse_list_expr |
-    parse_if_expr
+    parse_if_expr |
+    parse_iter_expr
 ));
+
+named!(parse_iter_expr<Tokens, LocExpr>,
+    do_parse!(
+        t: alt!(tag_token!(Token::All) | tag_token!(Token::Any)) >>
+        idents: parse_idents >>
+        tag_token!(Token::In) >>
+        expr: parse_expr >>
+        body: parse_block_stmt >>
+        (LocExpr(t.loc(), Expr::IterExpr {all: *t.tok0() == Token::All, idents, expr: Box::new(expr), body}))
+    )
+);
 
 named!(parse_paren_expr<Tokens, LocExpr>,
     do_parse!(

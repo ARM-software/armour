@@ -14,9 +14,15 @@ impl ExternalImpl {
         self.0 += 1;
         Ok(IntLiteral(self.0))
     }
+    fn rev<'a>(args: &[Literal<'a>]) -> Result<Literal<'a>, Error> {
+        match args {
+            &[StringPairs(ref l)] => Ok(StringPairs(l.iter().rev().cloned().collect())),
+            _ => Err(Error::failed("process".to_string())),
+        }
+    }
     fn process<'a>(args: &[Literal<'a>]) -> Result<Literal<'a>, Error> {
         match args {
-            &[StringPairs(ref l)] => Ok(IntLiteral(l.len() as i64)),
+            &[StringPairs(ref l)] => Ok(StringList(l.iter().map(|x| x.1).collect())),
             _ => Err(Error::failed("process".to_string())),
         }
     }
@@ -27,6 +33,7 @@ impl Dispatcher for ExternalImpl {
         match name {
             "sin" => ExternalImpl::sin(args),
             "count" => self.count(),
+            "rev" => ExternalImpl::rev(args),
             "process" => ExternalImpl::process(args),
             _ => Err(Error::unimplemented(name.to_string())),
         }

@@ -57,6 +57,8 @@ pub enum Token {
     Optional,
     // reserved words
     Function,
+    All,
+    Any,
     Let,
     Return,
     In,
@@ -371,6 +373,8 @@ fn parse_reserved<'a>(t: Span<'a>) -> LocToken<'a> {
     let string = t.to_string();
     match string.as_ref() {
         "fn" => LocToken::new(t, Token::Function),
+        "all" => LocToken::new(t, Token::All),
+        "any" => LocToken::new(t, Token::Any),
         "let" => LocToken::new(t, Token::Let),
         "if" => LocToken::new(t, Token::If),
         "else" => LocToken::new(t, Token::Else),
@@ -385,7 +389,6 @@ fn parse_reserved<'a>(t: Span<'a>) -> LocToken<'a> {
         "and" => LocToken::new(t, Token::AndAlso),
         "as" => LocToken::new(t, Token::As),
         "external" => LocToken::new(t, Token::External),
-        "extern" => LocToken::new(t, Token::Extern),
         _ => LocToken::new(t, Token::Ident(string)),
     }
 }

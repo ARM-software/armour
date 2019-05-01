@@ -1,6 +1,6 @@
 /// policy language interpreter
 use super::headers::Headers;
-use super::lang::{Block, Code, Error, Expr};
+use super::lang::{Block, Code, Error, Expr, Let};
 use super::literals::Literal;
 use super::parser::{Infix, Prefix};
 use std::collections::HashMap;
@@ -291,7 +291,7 @@ impl Expr {
                     }
                 }
             }
-            Expr::Let(vs, e1, e2) => match e1.eval(env)? {
+            Expr::Let(Let::Let, vs, e1, e2) => match e1.eval(env)? {
                 r @ Expr::ReturnExpr(_) => Ok(r),
                 Expr::LitExpr(Literal::Tuple(lits)) => {
                     if vs.len() == lits.len() {
@@ -316,6 +316,61 @@ impl Expr {
                     }
                 }
                 _ => Err(Error::new("eval, let-expression")),
+            },
+            Expr::Let(x, vs, e1, e2) => match e1.eval(env)? {
+                r @ Expr::ReturnExpr(_) => Ok(r),
+                Expr::LitExpr(Literal::List(lits)) => {
+                    for l in lits.iter() {
+                        match l {
+                            Literal::Tuple(ts) if vs.len() != 1 => {
+                                if vs.len() == ts.len() {
+                                    let mut e = *e2.clone();
+                                    for (v, lit) in vs.iter().zip(ts) {
+                                        if v != "_" {
+                                            e = e.apply(&Expr::LitExpr(lit.clone()))?
+                                        }
+                                    }
+                                    match e.eval(env)? {
+                                        r @ Expr::ReturnExpr(_) => return Ok(r),
+                                        Expr::LitExpr(Literal::BoolLiteral(b)) => {
+                                            if b == (x == Let::Any) {
+                                                return Ok(Expr::bool(b));
+                                            }
+                                        }
+                                        _ => return Err(Error::new("eval, all/any-expression")),
+                                    }
+                                } else {
+                                    return Err(Error::new(
+                                        "eval, all/any-expression (tuple length mismatch)",
+                                    ));
+                                }
+                            }
+                            _ => {
+                                if vs.len() == 1 {
+                                    let mut e = *e2.clone();
+                                    if vs[0] != "_" {
+                                        e = e.apply(&Expr::LitExpr(l.clone()))?
+                                    }
+                                    match e.eval(env)? {
+                                        r @ Expr::ReturnExpr(_) => return Ok(r),
+                                        Expr::LitExpr(Literal::BoolLiteral(b)) => {
+                                            if b == (x == Let::Any) {
+                                                return Ok(Expr::bool(b));
+                                            }
+                                        }
+                                        _ => return Err(Error::new("eval, all/any-expression")),
+                                    }
+                                } else {
+                                    return Err(Error::new(
+                                        "eval, all/any-expression (not a tuple list)",
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    Ok(Expr::bool(x == Let::All))
+                }
+                _ => Err(Error::new("eval, all/any-expression")),
             },
             Expr::Closure(_) => Err(Error::new("eval, closure")),
             Expr::IfExpr {

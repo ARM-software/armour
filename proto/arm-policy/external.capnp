@@ -13,6 +13,7 @@ interface External {
       text @3 :Text;
       data @4 :Data;
       unit @5 :Void;
+      lines @7 :List(Text);
       pairs @6 :List(Entry);
     }
   }
