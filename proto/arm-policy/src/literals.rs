@@ -96,8 +96,21 @@ impl HttpRequest {
     pub fn path(&self) -> String {
         self.path.to_string()
     }
+    pub fn set_path(&self, s: &str) -> HttpRequest {
+        let mut new = self.clone();
+        new.path = s.to_string();
+        new
+    }
+    pub fn split_path(&self) -> Vec<String> {
+        self.path.split('/').map(|s| s.to_string()).collect()
+    }
     pub fn query(&self) -> String {
         self.query.to_string()
+    }
+    pub fn set_query(&self, s: &str) -> HttpRequest {
+        let mut new = self.clone();
+        new.query = s.to_string();
+        new
     }
     pub fn query_pairs(&self) -> Vec<(String, String)> {
         if let Ok(url) = url::Url::parse(&format!("http://x/?{}", self.query)) {
@@ -106,13 +119,18 @@ impl HttpRequest {
             Vec::new()
         }
     }
-    pub fn set_query(&self, s: &str) -> HttpRequest {
-        let mut new = self.clone();
-        new.query = s.to_string();
-        new
-    }
     pub fn header(&self, s: &str) -> Vec<String> {
         self.headers.get(s).unwrap_or(&Vec::new()).to_vec()
+    }
+    pub fn set_header(&self, k: &str, v: &str) -> HttpRequest {
+        let mut new = self.clone();
+        let s = v.to_string();
+        if let Some(l) = new.headers.get_mut(k) {
+            l.push(s)
+        } else {
+            new.headers.insert(k.to_string(), vec![s]);
+        }
+        new
     }
     pub fn headers(&self) -> Vec<String> {
         self.headers.keys().cloned().collect()
@@ -125,16 +143,6 @@ impl HttpRequest {
             }
         }
         pairs
-    }
-    pub fn set_header(&self, k: &str, v: &str) -> HttpRequest {
-        let mut new = self.clone();
-        let s = v.to_string();
-        if let Some(l) = new.headers.get_mut(k) {
-            l.push(s)
-        } else {
-            new.headers.insert(k.to_string(), vec![s]);
-        }
-        new
     }
 }
 

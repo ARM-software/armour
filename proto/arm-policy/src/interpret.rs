@@ -101,6 +101,12 @@ impl Literal {
             ("HttpRequest::path", Literal::HttpRequestLiteral(req)) => {
                 Some(Literal::StringLiteral(req.path()))
             }
+            ("HttpRequest::route", Literal::HttpRequestLiteral(req)) => Some(Literal::List(
+                req.split_path()
+                    .into_iter()
+                    .map(|h| Literal::StringLiteral(h))
+                    .collect(),
+            )),
             ("HttpRequest::query", Literal::HttpRequestLiteral(req)) => {
                 Some(Literal::StringLiteral(req.query()))
             }
@@ -163,6 +169,11 @@ impl Literal {
             ("str::contains", Literal::StringLiteral(i), Literal::StringLiteral(j)) => {
                 Some(Literal::BoolLiteral(i.contains(j)))
             }
+            (
+                "HttpRequest::set_path",
+                Literal::HttpRequestLiteral(req),
+                Literal::StringLiteral(q),
+            ) => Some(Literal::HttpRequestLiteral(req.set_path(q))),
             (
                 "HttpRequest::set_query",
                 Literal::HttpRequestLiteral(req),
