@@ -1,1 +1,0 @@
-../arm-policy/external.capnp

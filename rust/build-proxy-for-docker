@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+cargo build --target x86_64-unknown-linux-musl --target-dir ~/armour-target --release -p arm-proxy
+cp ~/armour-target/x86_64-unknown-linux-musl/release/arm-proxy ../testbed/dm-mount-point
