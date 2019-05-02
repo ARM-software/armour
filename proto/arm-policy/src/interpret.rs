@@ -271,7 +271,7 @@ impl Expr {
                 },
                 _ => Err(Error::new("eval, infix: failed")),
             },
-            Expr::BlockExpr(es, b) => {
+            Expr::BlockExpr(b, es) => {
                 if es.len() == 0 {
                     Ok(Expr::LitExpr(Literal::Unit))
                 } else {

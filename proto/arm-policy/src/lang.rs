@@ -91,14 +91,6 @@ impl ExprAndMeta {
         }
         (exprs, calls, typs)
     }
-    fn reverse_block_statement(&mut self) {
-        match &self.expr {
-            Expr::BlockExpr(l, Block::Block) => {
-                self.expr = Expr::BlockExpr(l.iter().rev().cloned().collect(), Block::Block)
-            }
-            _ => (),
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -141,12 +133,12 @@ pub enum Expr {
     Var(parser::Ident),
     BVar(usize),
     LitExpr(Literal),
-    Let(Let, Vec<String>, Box<Expr>, Box<Expr>),
-    Closure(Box<Expr>),
     ReturnExpr(Box<Expr>),
     PrefixExpr(Prefix, Box<Expr>),
     InfixExpr(Infix, Box<Expr>, Box<Expr>),
-    BlockExpr(Vec<Expr>, Block),
+    BlockExpr(Block, Vec<Expr>),
+    Let(Let, Vec<String>, Box<Expr>, Box<Expr>),
+    Closure(Box<Expr>),
     IfExpr {
         cond: Box<Expr>,
         consequence: Box<Expr>,
@@ -177,9 +169,9 @@ impl fmt::Display for Expr {
             Expr::ReturnExpr(_) => write!(f, "return <..>"),
             Expr::PrefixExpr(p, _) => write!(f, "{:?} <..>", p),
             Expr::InfixExpr(op, _, _) => write!(f, "{:?} <..>", op),
-            Expr::BlockExpr(_, Block::Block) => write!(f, "{{<..>}}"),
-            Expr::BlockExpr(_, Block::List) => write!(f, "[<..>]"),
-            Expr::BlockExpr(_, Block::Tuple) => write!(f, "(<..>)"),
+            Expr::BlockExpr(Block::Block, _) => write!(f, "{{<..>}}"),
+            Expr::BlockExpr(Block::List, _) => write!(f, "[<..>]"),
+            Expr::BlockExpr(Block::Tuple, _) => write!(f, "(<..>)"),
             Expr::IfExpr {
                 alternative: None, ..
             } => write!(f, "if <..> {{<..>}}"),
@@ -260,8 +252,8 @@ impl Expr {
             Expr::ReturnExpr(e) => Expr::return_expr(e.abs(i, v)),
             Expr::PrefixExpr(p, e) => Expr::prefix_expr(p, e.abs(i, v)),
             Expr::InfixExpr(op, e1, e2) => Expr::infix_expr(op, e1.abs(i, v), e2.abs(i, v)),
-            Expr::BlockExpr(es, b) => {
-                Expr::BlockExpr(es.into_iter().map(|e| e.abs(i, v)).collect(), b)
+            Expr::BlockExpr(b, es) => {
+                Expr::BlockExpr(b, es.into_iter().map(|e| e.abs(i, v)).collect())
             }
             Expr::IfExpr {
                 cond,
@@ -332,8 +324,8 @@ impl Expr {
                 Expr::ReturnExpr(e) => Expr::return_expr(e.shift(i, d)),
                 Expr::PrefixExpr(p, e) => Expr::prefix_expr(p, e.shift(i, d)),
                 Expr::InfixExpr(op, e1, e2) => Expr::infix_expr(op, e1.shift(i, d), e2.shift(i, d)),
-                Expr::BlockExpr(es, b) => {
-                    Expr::BlockExpr(es.into_iter().map(|e| e.shift(i, d)).collect(), b)
+                Expr::BlockExpr(b, es) => {
+                    Expr::BlockExpr(b, es.into_iter().map(|e| e.shift(i, d)).collect())
                 }
                 Expr::IfExpr {
                     cond,
@@ -388,8 +380,8 @@ impl Expr {
             Expr::ReturnExpr(e) => Expr::return_expr(e.subst(i, u)),
             Expr::PrefixExpr(p, e) => Expr::prefix_expr(p, e.subst(i, u)),
             Expr::InfixExpr(op, e1, e2) => Expr::infix_expr(op, e1.subst(i, u), e2.subst(i, u)),
-            Expr::BlockExpr(es, b) => {
-                Expr::BlockExpr(es.into_iter().map(|e| e.subst(i, u)).collect(), b)
+            Expr::BlockExpr(b, es) => {
+                Expr::BlockExpr(b, es.into_iter().map(|e| e.subst(i, u)).collect())
             }
             Expr::IfExpr {
                 cond,
@@ -463,7 +455,7 @@ impl Expr {
                     typ = typ.pick(&ty);
                 }
                 Ok(ExprAndMeta::new(
-                    Expr::BlockExpr(exprs, Block::List),
+                    Expr::BlockExpr(Block::List, exprs),
                     Typ::List(Box::new(typ)),
                     calls,
                 ))
@@ -479,7 +471,7 @@ impl Expr {
                     typs.push(ty);
                 }
                 Ok(ExprAndMeta::new(
-                    Expr::BlockExpr(exprs, Block::Tuple),
+                    Expr::BlockExpr(Block::Tuple, exprs),
                     Typ::Tuple(typs),
                     calls,
                 ))
@@ -827,7 +819,7 @@ impl Expr {
                             None => headers.set_return_typ(typ),
                         };
                         Ok(ExprAndMeta::new(
-                            Expr::BlockExpr(vec![Expr::return_expr(expr)], Block::Block),
+                            Expr::BlockExpr(Block::Block, vec![Expr::return_expr(expr)]),
                             Typ::Return,
                             vec![calls],
                         ))
@@ -864,16 +856,17 @@ impl Expr {
                         let (expr2, calls2, typ2) =
                             Expr::from_block_stmt(rest, headers, vars)?.split();
                         match expr2 {
-                            Expr::BlockExpr(mut b, Block::Block) => {
-                                b.push(expr1);
+                            Expr::BlockExpr(Block::Block, mut b) => {
+                                let mut new_block = vec![expr1];
+                                new_block.append(&mut b);
                                 Ok(ExprAndMeta::new(
-                                    Expr::BlockExpr(b, Block::Block),
+                                    Expr::BlockExpr(Block::Block, new_block),
                                     typ2,
                                     vec![calls1, calls2],
                                 ))
                             }
                             _ => Ok(ExprAndMeta::new(
-                                Expr::BlockExpr(vec![expr2, expr1], Block::Block),
+                                Expr::BlockExpr(Block::Block, vec![expr1, expr2]),
                                 typ2,
                                 vec![calls1, calls2],
                             )),
@@ -920,7 +913,7 @@ impl Expr {
                 }
             },
             None => Ok(ExprAndMeta::new(
-                Expr::BlockExpr(Vec::new(), Block::Block),
+                Expr::BlockExpr(Block::Block, Vec::new()),
                 Typ::Unit,
                 vec![],
             )),
@@ -946,8 +939,7 @@ impl Expr {
         name: Option<&str>,
     ) -> Result<ExprAndMeta, self::Error> {
         headers.clear_return_typ();
-        let mut em = Expr::from_block_stmt(block, headers, vars)?;
-        em.reverse_block_statement();
+        let em = Expr::from_block_stmt(block, headers, vars)?;
         // check if type of "return" calls is type of statement
         match headers.return_typ() {
             Some(rtype) => Typ::type_check(
