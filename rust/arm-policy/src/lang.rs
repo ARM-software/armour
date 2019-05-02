@@ -1058,7 +1058,7 @@ impl Program {
         if let Err(cycle) = petgraph::algo::toposort(&self.graph, None) {
             if let Some(name) = self.graph.node_weight(cycle.node_id()) {
                 Err(Error::new(&format!(
-                    "Cycle detected: the function \"{}\" might not termninate",
+                    "Cycle detected: the function \"{}\" might not terminate",
                     name
                 )))
             } else {

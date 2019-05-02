@@ -1,4 +1,5 @@
 /// policy language interpreter
+// NOTE: no optimization
 use super::headers::Headers;
 use super::lang::{Block, Code, Error, Expr, Let};
 use super::literals::Literal;
