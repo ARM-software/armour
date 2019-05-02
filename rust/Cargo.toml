@@ -1,0 +1,10 @@
+[workspace]
+
+members = [
+    "arm-service",
+    "arm-proxy",
+    "arm-pubsub",
+    "arm-policy",
+    "external-server",
+    "external-server-a",
+]

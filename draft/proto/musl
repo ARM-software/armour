@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-mkdir -p .cargo
-cp -f musl_config .cargo/config

@@ -1,0 +1,17 @@
+[package]
+name = "arm-pubsub"
+version = "0.1.0"
+authors = ["Anthony Fox <anthony.fox@arm.com>"]
+edition = "2018"
+
+[dependencies]
+actix = "0.7"
+actix-web = "0.7.19"
+env_logger = "0.6.1"
+log = "0.4.6"
+get_if_addrs = "0.5.3"
+hostname = "0.1.5"
+url = "1.7.2"
+http = "0.1.17"
+futures = "0.1.26"
+clap = "2.33.0"

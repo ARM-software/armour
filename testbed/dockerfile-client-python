@@ -1,0 +1,10 @@
+FROM python:latest
+
+EXPOSE 8080
+RUN apt-get update
+RUN apt-get -y install curl screen
+RUN pip3 install Flask requests
+
+WORKDIR /armour-home
+
+CMD ["tail", "-f", "/dev/null"]
