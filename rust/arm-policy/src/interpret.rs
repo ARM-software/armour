@@ -76,6 +76,7 @@ impl Literal {
     fn eval_call1(&self, f: &str) -> Option<Self> {
         match (f, self) {
             ("i64::abs", Literal::IntLiteral(i)) => Some(Literal::IntLiteral(i.abs())),
+            ("i64::to_str", Literal::IntLiteral(i)) => Some(Literal::StringLiteral(i.to_string())),
             ("str::len", Literal::StringLiteral(s)) => Some(Literal::IntLiteral(s.len() as i64)),
             ("str::to_lowercase", Literal::StringLiteral(s)) => {
                 Some(Literal::StringLiteral(s.to_lowercase()))
@@ -144,6 +145,9 @@ impl Literal {
                     .map(|h| Literal::StringLiteral(h))
                     .collect(),
             )),
+            ("HttpRequest::payload", Literal::HttpRequestLiteral(req)) => {
+                Some(Literal::DataLiteral(req.payload()))
+            }
             ("list::len", Literal::List(l)) => Some(Literal::IntLiteral(l.len() as i64)),
             (_, Literal::Tuple(l)) => {
                 if let Ok(i) = f.parse::<usize>() {
@@ -185,6 +189,11 @@ impl Literal {
                 Literal::HttpRequestLiteral(req),
                 Literal::StringLiteral(q),
             ) => Some(Literal::HttpRequestLiteral(req.set_query(q))),
+            (
+                "HttpRequest::set_payload",
+                Literal::HttpRequestLiteral(req),
+                Literal::DataLiteral(q),
+            ) => Some(Literal::HttpRequestLiteral(req.set_payload(q))),
             (
                 "HttpRequest::header",
                 Literal::HttpRequestLiteral(req),

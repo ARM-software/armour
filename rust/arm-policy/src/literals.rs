@@ -82,6 +82,7 @@ pub struct HttpRequest {
     path: String,
     query: String,
     headers: BTreeMap<String, Vec<String>>,
+    payload: String,
 }
 
 impl HttpRequest {
@@ -143,6 +144,14 @@ impl HttpRequest {
             }
         }
         pairs
+    }
+    pub fn payload(&self) -> String {
+        self.payload.to_string()
+    }
+    pub fn set_payload(&self, s: &str) -> HttpRequest {
+        let mut new = self.clone();
+        new.payload = s.to_string();
+        new
     }
 }
 
