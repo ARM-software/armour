@@ -4,7 +4,7 @@
 \usepackage{paralist}
 \usepackage{hyperref}
 \usepackage{color}
-\usepackage[margin]{fixme}
+\usepackage[margin, draft]{fixme}
 \fxsetup{theme=color,mode=multiuser}
 \FXRegisterAuthor{gp}{agp}{GP}
 
@@ -12,6 +12,9 @@
 \newcommand{\gp}[1]{\gpnote{#1}}
 
 \newcommand{\armour}{{\sc Armour}}
+\newcommand{\ZT}{{\sc ZT}}
+\newcommand{\rot}{RoT}
+\newcommand{\psa}{PSA}
 
 \bibliographystyle{plain}
 
@@ -415,6 +418,101 @@ use-cases presented in~\autoref{tab:attacker}:
   to OS-isolation, SGX Enclaves or Newmore realms, etc.
 \end{enumerate}
 
+
+\section{Identity Management and Authentication}
+\label{sec:identity-management}
+
+This section is motivated (in part) by the Zero Trust Networks (\ZT{})
+approach to network design and protection~\cite{GilmanB17}, and it
+attempts to leverage notions of identity supported by Root of Trust
+(\rot{}) mechanisms advocated by Arm and the Platform Security
+Architecture (\psa{})~\cite{PSA}.
+
+\ZT{} networks recommends that all notions of identity should be
+rooted in PKI certificates.
+%
+Different entities to which certificates can be associated are:
+\begin{inparaenum}
+\item Devices, 
+\item Users, and
+\item Applications. 
+\end{inparaenum}
+
+Device and application trust should be supported by an attestation
+procedure allowing to associate concrete hardware devices with logical
+identifiers in \armour{} for the former case, and associate software
+measurements provided through attestation to logical application
+instance identifiers in \armour{} for the latter case.
+%
+The notion of a user is dependent on the infrastructure (Argus, AWS,
+GC, etc.), and it can also be application-specific.
+%
+Because of that, it is perhaps best to handle user authentication by
+means of \armour{} oracles, although this needs to be studied.
+
+While these notions of identity are directly related to a
+physical/measurable entity, there will be other notions of identity
+which will be fundamentally logical.
+%
+Examples of these are
+\begin{inparaitem}[-]
+\item Kubernetes Services, Roles, Pod names, 
+\item AWS security groups, AIM,
+\item Unix user and group names, etc.
+\end{inparaitem}
+%
+
+Another important aspect of authentication is that some logical
+entities are persistent (devices, users, etc.), while other entities
+are volatile (workloads, FaaS instances, temporary services, etc.).
+%
+\armour{} will requires that all logical notions of identity be
+backed by entities that have been authenticated using PKI
+certificates. 
+%
+To that end, \armour{} will need to provide mechanisms to associate
+the identity of logical and/or volatile entities to the identity of
+physical or persistent entities that can be attested through PKI
+certificates.
+%
+In some sense, this association propagates the \rot{} from the
+attestation mechanisms provided by hardware (eg. \psa{}) to the
+high-level identity primitives manipulated by \armour{}.
+
+\subsection{From \rot{} to \armour{} IDs}
+\label{sec:from-rot-armour}
+
+
+\section{Identities and Authorization}
+
+Again, following the \ZT{}~\cite{GilmanB17} framework, it would be
+ideal to make the authorization and authentication management of an
+\armour{} policy independent.
+%
+This however does not mean that they can influence each other.
+%
+In particular, it is expected that most authorization policies will
+need to refer to aspects of authentication, even if indirectly through
+the logical identities established.
+
+\gpn[TODO]{
+  This that should be discussed somewhere. Needs design decisions. 
+  \begin{itemize}
+  \item Through and through encryption, probably supported by mTLS/IPSec,
+  \item Authentication (TODO) vs. authorization (current policy language), 
+  \item Do we need network agents a la \ZT{}?, 
+  \item From \rot{} device + user identity to workflow? service? channel?, 
+  \item Proxy management, data/control plane API + security,
+  \item Who signs what? Is control plane self-signing and it signs
+    everything else?, 
+  \item Implementation of certificate authority a la Citadel?, 
+  \item Policy distribution? A la Kubernetes? Replication?
+    Consistency?, 
+  \item TLS vs IPSec?, we might be able to chose.
+  \end{itemize}
+}
+
+
 \section{Vision}
 
 When this project is completed, Arm will have access to prototype
@@ -422,15 +520,15 @@ proxying middleware that runs on Arm hardware and provides advanced
 policy-based security features for distributed micro-service style
 applications.
 
-\section{Research Focus}
+% \section{Research Focus}
 
-Security, Internet Services, Networking, Operating Systems 
+% Security, Internet Services, Networking, Operating Systems 
 
-\section{Tech Transfer}
+% \section{Tech Transfer}
 
-\section{Status Summary}
+% \section{Status Summary}
 
-\section{Project Summary}
+% \section{Project Summary}
 
 \bibliography{proposal}
 
