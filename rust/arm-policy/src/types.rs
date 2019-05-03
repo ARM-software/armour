@@ -190,7 +190,12 @@ impl Prefix {
 impl Infix {
     pub fn typ(&self) -> (Typ, Typ, Typ) {
         match self {
-            Infix::Concat => (Typ::Str, Typ::Str, Typ::Str),
+            Infix::Concat => (
+                Typ::List(Box::new(Typ::Return)),
+                Typ::List(Box::new(Typ::Return)),
+                Typ::List(Box::new(Typ::Return)),
+            ),
+            Infix::ConcatStr => (Typ::Str, Typ::Str, Typ::Str),
             Infix::Equal | Infix::NotEqual => (Typ::Return, Typ::Return, Typ::Bool),
             Infix::In => (Typ::Return, Typ::List(Box::new(Typ::Return)), Typ::Bool),
             Infix::And | Infix::Or => (Typ::Bool, Typ::Bool, Typ::Bool),

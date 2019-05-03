@@ -49,6 +49,7 @@ impl Headers {
     pub fn builtins(f: &str) -> Option<Signature> {
         match f {
             "i64::abs" => Some((vec![Typ::I64], Typ::I64)),
+            "i64::to_str" => Some((vec![Typ::I64], Typ::Str)),
             "str::len" => Some((vec![Typ::Str], Typ::I64)),
             "str::to_lowercase" => Some((vec![Typ::Str], Typ::Str)),
             "str::to_uppercase" => Some((vec![Typ::Str], Typ::Str)),
@@ -56,6 +57,8 @@ impl Headers {
             "str::trim_end" => Some((vec![Typ::Str], Typ::Str)),
             "str::as_bytes" => Some((vec![Typ::Str], Typ::Data)),
             "str::from_utf8" => Some((vec![Typ::Data], Typ::Str)),
+            "str::to_base64" => Some((vec![Typ::Str], Typ::Str)),
+            "data::to_base64" => Some((vec![Typ::Data], Typ::Str)),
             "data::len" => Some((vec![Typ::Data], Typ::I64)),
             "i64::pow" => Some((vec![Typ::I64, Typ::I64], Typ::I64)),
             "i64::min" => Some((vec![Typ::I64, Typ::I64], Typ::I64)),
@@ -83,10 +86,14 @@ impl Headers {
                 vec![Typ::HttpRequest],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::Str, Typ::Str]))),
             )),
+            "HttpRequest::payload" => Some((vec![Typ::HttpRequest], Typ::Data)),
             "HttpRequest::set_path" => Some((vec![Typ::HttpRequest, Typ::Str], Typ::HttpRequest)),
             "HttpRequest::set_query" => Some((vec![Typ::HttpRequest, Typ::Str], Typ::HttpRequest)),
             "HttpRequest::set_header" => {
                 Some((vec![Typ::HttpRequest, Typ::Str, Typ::Str], Typ::HttpRequest))
+            }
+            "HttpRequest::set_payload" => {
+                Some((vec![Typ::HttpRequest, Typ::Data], Typ::HttpRequest))
             }
             _ => None,
         }

@@ -104,7 +104,7 @@ impl Externals {
                     Literal::IntLiteral(i) => arg.set_int64(*i),
                     Literal::FloatLiteral(f) => arg.set_float64(*f),
                     Literal::StringLiteral(s) => arg.set_text(s),
-                    Literal::DataLiteral(d) => arg.set_data(d.as_bytes()),
+                    Literal::DataLiteral(d) => arg.set_data(d),
                     Literal::Unit => arg.set_unit(()),
                     Literal::List(lits) => {
                         let mut pairs = arg.init_pairs(lits.len() as u32);
@@ -139,9 +139,7 @@ impl Externals {
                                 Which::Int64(i) => Literal::IntLiteral(i),
                                 Which::Float64(f) => Literal::FloatLiteral(f),
                                 Which::Text(t) => Literal::StringLiteral(pry!(t).to_string()),
-                                Which::Data(d) => Literal::DataLiteral(
-                                    String::from_utf8_lossy(pry!(d)).to_string(),
-                                ),
+                                Which::Data(d) => Literal::DataLiteral(pry!(d).to_vec()),
                                 Which::Unit(_) => Literal::Unit,
                                 Which::Lines(ps) => {
                                     let mut v = Vec::new();

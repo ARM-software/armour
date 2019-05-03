@@ -134,6 +134,25 @@ impl LocStmt {
 
 pub type BlockStmt = Vec<LocStmt>;
 
+#[derive(PartialEq, Debug, Clone)]
+pub enum Iter {
+    All,
+    Any,
+    Map,
+    Filter,
+}
+
+impl std::fmt::Display for Iter {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Iter::All => write!(f, "all"),
+            Iter::Any => write!(f, "any"),
+            Iter::Map => write!(f, "map"),
+            Iter::Filter => write!(f, "filter"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     IdentExpr(Ident),
@@ -143,7 +162,7 @@ pub enum Expr {
     PrefixExpr(Prefix, Box<LocExpr>),
     InfixExpr(Infix, Box<LocExpr>, Box<LocExpr>),
     IterExpr {
-        all: bool,
+        op: Iter,
         idents: Vec<LocIdent>,
         expr: Box<LocExpr>,
         body: BlockStmt,
@@ -198,6 +217,13 @@ impl LocExpr {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum As {
+    Str,
+    I64,
+    Base64,
+}
+
 #[derive(Debug, Clone)]
 pub enum Pat {
     Any,
@@ -205,7 +231,7 @@ pub enum Pat {
     Class(String),
     Alt(Vec<Pat>),
     Seq(Vec<Pat>),
-    As(Ident, bool), // true - match i64, false - match str
+    As(Ident, As),
     Opt(Box<Pat>),
     Star(Box<Pat>),
     Plus(Box<Pat>),
@@ -241,13 +267,26 @@ impl Pat {
                     .collect::<Vec<String>>()
                     .join(if ignore_ws { "\\s*" } else { "" })
             ),
-            Pat::As(id, false) => format!("(?P<{}>.+?)", id.0),
-            Pat::As(id, true) => format!("(?P<_{}>-?[[:digit:]]+)", id.0),
+            Pat::As(id, As::Str) => format!("(?P<{}>.+?)", id.0),
+            Pat::As(id, As::I64) => format!("(?P<_i64{}>-?[[:digit:]]+)", id.0),
+            Pat::As(id, As::Base64) => format!(
+                "(?P<_b64{}>([A-Za-z0-9+/]{{4}})*([A-Za-z0-9+/]{{2}}==|[A-Za-z0-9+/]{{3}}=)?)",
+                id.0
+            ),
             Pat::Opt(p) => format!("{}?", p.to_regex_str(ignore_ws)),
             Pat::Star(p) => format!("{}*", p.to_regex_str(ignore_ws)),
             Pat::Plus(p) => format!("{}+", p.to_regex_str(ignore_ws)),
             Pat::CaseInsensitive(p) => format!("(?i:{})", p.to_regex_str(ignore_ws)),
             Pat::IgnoreWhitespace(p) => p.to_regex_str(true),
+        }
+    }
+    pub fn strip_as(s: &str) -> (String, As) {
+        if s.starts_with("_i64") {
+            (s.trim_start_matches("_i64").to_string(), As::I64)
+        } else if s.starts_with("_b64") {
+            (s.trim_start_matches("_b64").to_string(), As::Base64)
+        } else {
+            (s.to_string(), As::Str)
         }
     }
 }
@@ -319,6 +358,7 @@ pub enum Infix {
     And,
     Or,
     Concat,
+    ConcatStr,
     Module,
     In,
     Dot,
@@ -560,7 +600,8 @@ fn infix_op(t: &Token) -> (Precedence, Option<(Assoc, Infix)>) {
         Token::And => (Precedence::PAnd, Some((Assoc::Right, Infix::And))),
         Token::Plus => (Precedence::PSum, Some((Assoc::Left, Infix::Plus))),
         Token::Minus => (Precedence::PSum, Some((Assoc::Left, Infix::Minus))),
-        Token::PlusPlus => (Precedence::PSum, Some((Assoc::Right, Infix::Concat))),
+        Token::At => (Precedence::PSum, Some((Assoc::Right, Infix::Concat))),
+        Token::PlusPlus => (Precedence::PSum, Some((Assoc::Right, Infix::ConcatStr))),
         Token::Multiply => (Precedence::PProduct, Some((Assoc::Left, Infix::Multiply))),
         Token::Divide => (Precedence::PProduct, Some((Assoc::Left, Infix::Divide))),
         Token::Percent => (Precedence::PProduct, Some((Assoc::Left, Infix::Remainder))),
@@ -625,12 +666,31 @@ named!(parse_atom_expr<Tokens, LocExpr>, alt_complete!(
 
 named!(parse_iter_expr<Tokens, LocExpr>,
     do_parse!(
-        t: alt!(tag_token!(Token::All) | tag_token!(Token::Any)) >>
+        t: alt!(
+            tag_token!(Token::All) |
+            tag_token!(Token::Any) |
+            tag_token!(Token::Map) |
+            tag_token!(Token::Filter)
+        ) >>
         idents: parse_idents >>
         tag_token!(Token::In) >>
         expr: parse_expr >>
         body: parse_block_stmt >>
-        (LocExpr(t.loc(), Expr::IterExpr {all: *t.tok0() == Token::All, idents, expr: Box::new(expr), body}))
+        (LocExpr(
+            t.loc(),
+            Expr::IterExpr {
+                op: match t.tok0() {
+                    Token::All => Iter::All,
+                    Token::Any => Iter::Any,
+                    Token::Map => Iter::Map,
+                    Token::Filter => Iter::Filter,
+                    _ => unreachable!(),
+                },
+                idents,
+                expr: Box::new(expr),
+                body
+            }
+        ))
     )
 );
 
@@ -927,8 +987,9 @@ macro_rules! parse_pat_typ (
             Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag)))
         } else {
             match t1.tok0().clone() {
-                Token::Ident(ref s) if s == "i64" => Ok((i1, true)),
-                Token::Ident(ref s) if s == "str" => Ok((i1, false)),
+                Token::Ident(ref s) if s == "i64" => Ok((i1, As::I64)),
+                Token::Ident(ref s) if s == "base64" => Ok((i1, As::Base64)),
+                Token::Ident(ref s) if s == "str" => Ok((i1, As::Str)),
                 _ => Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag))),
             }
         }
@@ -950,7 +1011,7 @@ named!(parse_as_pat<Tokens, Pat>,
         i: parse_ident!() >>
         j: opt!(preceded!(tag_token!(Token::As), parse_pat_typ!())) >>
         tag_token!(Token::RBracket) >>
-        (Pat::As(i.1, j.unwrap_or(false)))
+        (Pat::As(i.1, j.unwrap_or(As::Str)))
     )
 );
 

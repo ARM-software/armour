@@ -1,0 +1,10 @@
+FROM rust:1.34.1
+
+EXPOSE 8080
+RUN apt-get update \
+  && apt-get install -y curl screen python3-pip \
+  && pip3 install Flask requests
+
+WORKDIR /root
+
+CMD ["tail", "-f", "/dev/null"]
