@@ -70,28 +70,28 @@ It is recommended to start the policy language REPL (Read-Eval-Print loop) with
 
 - Prefixes
 
-  operation | symbol and type
------------ | --------------------
-| minus     | `- : i64 -> i64`   |
-| not       | `! : bool -> bool` |
+    | operation | symbol and type    |
+    ----------- | --------------------
+    | minus     | `- : i64 -> i64`   |
+    | not       | `! : bool -> bool` |
 
 - Infixes
 
-  operation       | symbol and type
------------------ | ----------------------------------------
-| equality        | `== : (<ty>, <ty>) -> bool`            |
-| inequality      | `!= : (<ty>, <ty>) -> bool`            |
-| plus            | `+ : (i64, i64) -> i64`                |
-| minus           | `- : (i64, i64) -> i64`                |
-| multiply        | `* : (i64, i64) -> i64`                |
-| divide          | `/ : (i64, i64) -> i64`                |
-| remainder       | `% : (i64, i64) -> i64`                |
-| compare         | `<, <=, >, >= : (i64, i64) -> bool`    |
-| and (shortcuts) | `&& : (bool, bool) -> bool`            |
-| or (shortcuts)  | `|| : (bool, bool) -> bool`            |
-| concat string   | `++ : (str, str) -> str`               |
-| concat list     | `@ : (List<ty>, List<ty>) -> List<ty>` |
-| list membership | `in : (List<ty>, List<ty>) -> bool`    |
+    | operation       | symbol and type                        |
+    ----------------- | ----------------------------------------
+    | equality        | `== : (<ty>, <ty>) -> bool`            |
+    | inequality      | `!= : (<ty>, <ty>) -> bool`            |
+    | plus            | `+ : (i64, i64) -> i64`                |
+    | minus           | `- : (i64, i64) -> i64`                |
+    | multiply        | `* : (i64, i64) -> i64`                |
+    | divide          | `/ : (i64, i64) -> i64`                |
+    | remainder       | `% : (i64, i64) -> i64`                |
+    | compare         | `<, <=, >, >= : (i64, i64) -> bool`    |
+    | and (shortcuts) | `&& : (bool, bool) -> bool`            |
+    | or (shortcuts)  | `|| : (bool, bool) -> bool`            |
+    | concat string   | `++ : (str, str) -> str`               |
+    | concat list     | `@ : (List<ty>, List<ty>) -> List<ty>` |
+    | list membership | `in : (List<ty>, List<ty>) -> bool`    |
 
 - Function call
 
