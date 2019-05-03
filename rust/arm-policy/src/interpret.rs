@@ -1,9 +1,9 @@
 /// policy language interpreter
 // NOTE: no optimization
 use super::headers::Headers;
-use super::lang::{Block, Code, Error, Expr, Let};
+use super::lang::{Block, Code, Error, Expr};
 use super::literals::Literal;
-use super::parser::{Infix, Prefix};
+use super::parser::{Infix, Iter, Prefix};
 use std::collections::HashMap;
 
 impl Literal {
@@ -53,7 +53,12 @@ impl Literal {
             (Infix::Or, Literal::BoolLiteral(i), Literal::BoolLiteral(j)) => {
                 Some(Literal::BoolLiteral(*i || *j))
             }
-            (Infix::Concat, Literal::StringLiteral(i), Literal::StringLiteral(j)) => {
+            (Infix::Concat, Literal::List(i), Literal::List(j)) => Some(Literal::List({
+                let mut k = i.clone();
+                k.append(&mut j.clone());
+                k
+            })),
+            (Infix::ConcatStr, Literal::StringLiteral(i), Literal::StringLiteral(j)) => {
                 Some(Literal::StringLiteral(format!("{}{}", i, j)))
             }
             (Infix::In, _, Literal::List(l)) => {
@@ -303,7 +308,7 @@ impl Expr {
                     }
                 }
             }
-            Expr::Let(Let::Let, vs, e1, e2) => match e1.eval(env)? {
+            Expr::Let(vs, e1, e2) => match e1.eval(env)? {
                 r @ Expr::ReturnExpr(_) => Ok(r),
                 Expr::LitExpr(Literal::Tuple(lits)) => {
                     if vs.len() == lits.len() {
@@ -329,7 +334,112 @@ impl Expr {
                 }
                 _ => Err(Error::new("eval, let-expression")),
             },
-            Expr::Let(x, vs, e1, e2) => match e1.eval(env)? {
+            Expr::Iter(Iter::Map, vs, e1, e2) => match e1.eval(env)? {
+                r @ Expr::ReturnExpr(_) => Ok(r),
+                Expr::LitExpr(Literal::List(lits)) => {
+                    let mut res = Vec::new();
+                    for l in lits.iter() {
+                        match l {
+                            Literal::Tuple(ts) if vs.len() != 1 => {
+                                if vs.len() == ts.len() {
+                                    let mut e = *e2.clone();
+                                    for (v, lit) in vs.iter().zip(ts) {
+                                        if v != "_" {
+                                            e = e.apply(&Expr::LitExpr(lit.clone()))?
+                                        }
+                                    }
+                                    match e.eval(env)? {
+                                        r @ Expr::ReturnExpr(_) => return Ok(r),
+                                        Expr::LitExpr(l2) => res.push(l2.clone()),
+                                        _ => return Err(Error::new("eval, map-expression")),
+                                    }
+                                } else {
+                                    return Err(Error::new(
+                                        "eval, map-expression (tuple length mismatch)",
+                                    ));
+                                }
+                            }
+                            _ => {
+                                if vs.len() == 1 {
+                                    let mut e = *e2.clone();
+                                    if vs[0] != "_" {
+                                        e = e.apply(&Expr::LitExpr(l.clone()))?
+                                    }
+                                    match e.eval(env)? {
+                                        r @ Expr::ReturnExpr(_) => return Ok(r),
+                                        Expr::LitExpr(l2) => res.push(l2.clone()),
+                                        _ => return Err(Error::new("eval, map-expression")),
+                                    }
+                                } else {
+                                    return Err(Error::new(
+                                        "eval, map-expression (not a tuple list)",
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    Ok(Expr::LitExpr(Literal::List(res)))
+                }
+                _ => Err(Error::new("eval, map-expression")),
+            },
+            Expr::Iter(Iter::Filter, vs, e1, e2) => match e1.eval(env)? {
+                r @ Expr::ReturnExpr(_) => Ok(r),
+                Expr::LitExpr(Literal::List(lits)) => {
+                    let mut res = Vec::new();
+                    for l in lits.iter() {
+                        match l {
+                            Literal::Tuple(ts) if vs.len() != 1 => {
+                                if vs.len() == ts.len() {
+                                    let mut e = *e2.clone();
+                                    for (v, lit) in vs.iter().zip(ts) {
+                                        if v != "_" {
+                                            e = e.apply(&Expr::LitExpr(lit.clone()))?
+                                        }
+                                    }
+                                    match e.eval(env)? {
+                                        r @ Expr::ReturnExpr(_) => return Ok(r),
+                                        Expr::LitExpr(Literal::BoolLiteral(b)) => {
+                                            if b {
+                                                res.push(l.clone());
+                                            }
+                                        }
+                                        _ => return Err(Error::new("eval, filter-expression")),
+                                    }
+                                } else {
+                                    return Err(Error::new(
+                                        "eval, filter-expression (tuple length mismatch)",
+                                    ));
+                                }
+                            }
+                            _ => {
+                                if vs.len() == 1 {
+                                    let mut e = *e2.clone();
+                                    if vs[0] != "_" {
+                                        e = e.apply(&Expr::LitExpr(l.clone()))?
+                                    }
+                                    match e.eval(env)? {
+                                        r @ Expr::ReturnExpr(_) => return Ok(r),
+                                        Expr::LitExpr(Literal::BoolLiteral(b)) => {
+                                            if b {
+                                                res.push(l.clone());
+                                            }
+                                        }
+                                        _ => return Err(Error::new("eval, filter-expression")),
+                                    }
+                                } else {
+                                    return Err(Error::new(
+                                        "eval, filter-expression (not a tuple list)",
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    Ok(Expr::LitExpr(Literal::List(res)))
+                }
+                _ => Err(Error::new("eval, filter-expression")),
+            },
+            // op must by All or Any
+            Expr::Iter(op, vs, e1, e2) => match e1.eval(env)? {
                 r @ Expr::ReturnExpr(_) => Ok(r),
                 Expr::LitExpr(Literal::List(lits)) => {
                     for l in lits.iter() {
@@ -345,7 +455,7 @@ impl Expr {
                                     match e.eval(env)? {
                                         r @ Expr::ReturnExpr(_) => return Ok(r),
                                         Expr::LitExpr(Literal::BoolLiteral(b)) => {
-                                            if b == (x == Let::Any) {
+                                            if b == (op == Iter::Any) {
                                                 return Ok(Expr::bool(b));
                                             }
                                         }
@@ -366,7 +476,7 @@ impl Expr {
                                     match e.eval(env)? {
                                         r @ Expr::ReturnExpr(_) => return Ok(r),
                                         Expr::LitExpr(Literal::BoolLiteral(b)) => {
-                                            if b == (x == Let::Any) {
+                                            if b == (op == Iter::Any) {
                                                 return Ok(Expr::bool(b));
                                             }
                                         }
@@ -380,7 +490,7 @@ impl Expr {
                             }
                         }
                     }
-                    Ok(Expr::bool(x == Let::All))
+                    Ok(Expr::bool(op == Iter::All))
                 }
                 _ => Err(Error::new("eval, all/any-expression")),
             },

@@ -134,6 +134,25 @@ impl LocStmt {
 
 pub type BlockStmt = Vec<LocStmt>;
 
+#[derive(PartialEq, Debug, Clone)]
+pub enum Iter {
+    All,
+    Any,
+    Map,
+    Filter,
+}
+
+impl std::fmt::Display for Iter {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Iter::All => write!(f, "all"),
+            Iter::Any => write!(f, "any"),
+            Iter::Map => write!(f, "map"),
+            Iter::Filter => write!(f, "filter"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     IdentExpr(Ident),
@@ -143,7 +162,7 @@ pub enum Expr {
     PrefixExpr(Prefix, Box<LocExpr>),
     InfixExpr(Infix, Box<LocExpr>, Box<LocExpr>),
     IterExpr {
-        all: bool,
+        op: Iter,
         idents: Vec<LocIdent>,
         expr: Box<LocExpr>,
         body: BlockStmt,
@@ -319,6 +338,7 @@ pub enum Infix {
     And,
     Or,
     Concat,
+    ConcatStr,
     Module,
     In,
     Dot,
@@ -560,7 +580,8 @@ fn infix_op(t: &Token) -> (Precedence, Option<(Assoc, Infix)>) {
         Token::And => (Precedence::PAnd, Some((Assoc::Right, Infix::And))),
         Token::Plus => (Precedence::PSum, Some((Assoc::Left, Infix::Plus))),
         Token::Minus => (Precedence::PSum, Some((Assoc::Left, Infix::Minus))),
-        Token::PlusPlus => (Precedence::PSum, Some((Assoc::Right, Infix::Concat))),
+        Token::At => (Precedence::PSum, Some((Assoc::Right, Infix::Concat))),
+        Token::PlusPlus => (Precedence::PSum, Some((Assoc::Right, Infix::ConcatStr))),
         Token::Multiply => (Precedence::PProduct, Some((Assoc::Left, Infix::Multiply))),
         Token::Divide => (Precedence::PProduct, Some((Assoc::Left, Infix::Divide))),
         Token::Percent => (Precedence::PProduct, Some((Assoc::Left, Infix::Remainder))),
@@ -625,12 +646,31 @@ named!(parse_atom_expr<Tokens, LocExpr>, alt_complete!(
 
 named!(parse_iter_expr<Tokens, LocExpr>,
     do_parse!(
-        t: alt!(tag_token!(Token::All) | tag_token!(Token::Any)) >>
+        t: alt!(
+            tag_token!(Token::All) |
+            tag_token!(Token::Any) |
+            tag_token!(Token::Map) |
+            tag_token!(Token::Filter)
+        ) >>
         idents: parse_idents >>
         tag_token!(Token::In) >>
         expr: parse_expr >>
         body: parse_block_stmt >>
-        (LocExpr(t.loc(), Expr::IterExpr {all: *t.tok0() == Token::All, idents, expr: Box::new(expr), body}))
+        (LocExpr(
+            t.loc(),
+            Expr::IterExpr {
+                op: match t.tok0() {
+                    Token::All => Iter::All,
+                    Token::Any => Iter::Any,
+                    Token::Map => Iter::Map,
+                    Token::Filter => Iter::Filter,
+                    _ => unreachable!(),
+                },
+                idents,
+                expr: Box::new(expr),
+                body
+            }
+        ))
     )
 );
 
