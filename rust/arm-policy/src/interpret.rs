@@ -3,7 +3,7 @@
 use super::headers::Headers;
 use super::lang::{Block, Code, Error, Expr};
 use super::literals::Literal;
-use super::parser::{Infix, Iter, Prefix};
+use super::parser::{As, Infix, Iter, Pat, Prefix};
 use std::collections::HashMap;
 
 impl Literal {
@@ -91,14 +91,18 @@ impl Literal {
                 Some(Literal::StringLiteral(s.trim_end().to_string()))
             }
             ("str::as_bytes", Literal::StringLiteral(s)) => {
-                Some(Literal::DataLiteral(s.to_string()))
+                Some(Literal::DataLiteral(s.as_bytes().to_vec()))
             }
-            ("str::from_utf8", Literal::DataLiteral(s)) => {
-                Some(Literal::StringLiteral(s.to_string()))
+            ("str::from_utf8", Literal::DataLiteral(s)) => Some(Literal::StringLiteral(
+                std::string::String::from_utf8_lossy(s).to_string(),
+            )),
+            ("str::to_base64", Literal::StringLiteral(s)) => {
+                Some(Literal::StringLiteral(base64::encode(s)))
             }
-            ("data::len", Literal::DataLiteral(d)) => {
-                Some(Literal::IntLiteral(d.as_bytes().len() as i64))
+            ("data::to_base64", Literal::DataLiteral(d)) => {
+                Some(Literal::StringLiteral(base64::encode(d)))
             }
+            ("data::len", Literal::DataLiteral(d)) => Some(Literal::IntLiteral(d.len() as i64)),
             ("HttpRequest::method", Literal::HttpRequestLiteral(req)) => {
                 Some(Literal::StringLiteral(req.method()))
             }
@@ -551,12 +555,19 @@ impl Expr {
                                     Some(cap) => {
                                         for name in names {
                                             let match_str = cap.name(name).unwrap().as_str();
+                                            let (s, a) = Pat::strip_as(name);
                                             caps.insert(
-                                                name.trim_start_matches('_').to_string(),
-                                                if name.starts_with('_') {
-                                                    Expr::i64(match_str.parse()?)
-                                                } else {
-                                                    Expr::string(match_str)
+                                                s,
+                                                match a {
+                                                    As::I64 => Expr::i64(match_str.parse()?),
+                                                    As::Base64 => match base64::decode(match_str) {
+                                                        Ok(bytes) => Expr::data(bytes.as_slice()),
+                                                        _ => {
+                                                            is_match = false;
+                                                            break;
+                                                        }
+                                                    },
+                                                    _ => Expr::string(match_str),
                                                 },
                                             );
                                         }

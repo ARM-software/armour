@@ -82,7 +82,7 @@ pub struct HttpRequest {
     path: String,
     query: String,
     headers: BTreeMap<String, Vec<String>>,
-    payload: String,
+    payload: Vec<u8>,
 }
 
 impl HttpRequest {
@@ -145,12 +145,12 @@ impl HttpRequest {
         }
         pairs
     }
-    pub fn payload(&self) -> String {
-        self.payload.to_string()
+    pub fn payload(&self) -> Vec<u8> {
+        self.payload.to_vec()
     }
-    pub fn set_payload(&self, s: &str) -> HttpRequest {
+    pub fn set_payload(&self, s: &[u8]) -> HttpRequest {
         let mut new = self.clone();
-        new.payload = s.to_string();
+        new.payload = s.to_vec();
         new
     }
 }
@@ -160,7 +160,7 @@ pub enum Literal {
     IntLiteral(i64),
     FloatLiteral(f64),
     BoolLiteral(bool),
-    DataLiteral(String),
+    DataLiteral(Vec<u8>),
     StringLiteral(String),
     PolicyLiteral(Policy),
     List(Vec<Literal>),
@@ -192,7 +192,7 @@ impl fmt::Display for Literal {
                 }
             }
             Literal::BoolLiteral(b) => write!(f, "{}", b),
-            Literal::DataLiteral(d) => write!(f, r#"b"{}""#, d),
+            Literal::DataLiteral(d) => write!(f, "{:x?}", d),
             Literal::StringLiteral(s) => write!(f, r#""{}""#, s),
             Literal::PolicyLiteral(p) => write!(f, "{:?}", p),
             Literal::List(lits) | Literal::Tuple(lits) => {

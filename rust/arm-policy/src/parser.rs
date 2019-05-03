@@ -217,6 +217,13 @@ impl LocExpr {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum As {
+    Str,
+    I64,
+    Base64,
+}
+
 #[derive(Debug, Clone)]
 pub enum Pat {
     Any,
@@ -224,7 +231,7 @@ pub enum Pat {
     Class(String),
     Alt(Vec<Pat>),
     Seq(Vec<Pat>),
-    As(Ident, bool), // true - match i64, false - match str
+    As(Ident, As),
     Opt(Box<Pat>),
     Star(Box<Pat>),
     Plus(Box<Pat>),
@@ -260,13 +267,26 @@ impl Pat {
                     .collect::<Vec<String>>()
                     .join(if ignore_ws { "\\s*" } else { "" })
             ),
-            Pat::As(id, false) => format!("(?P<{}>.+?)", id.0),
-            Pat::As(id, true) => format!("(?P<_{}>-?[[:digit:]]+)", id.0),
+            Pat::As(id, As::Str) => format!("(?P<{}>.+?)", id.0),
+            Pat::As(id, As::I64) => format!("(?P<_i64{}>-?[[:digit:]]+)", id.0),
+            Pat::As(id, As::Base64) => format!(
+                "(?P<_b64{}>([A-Za-z0-9+/]{{4}})*([A-Za-z0-9+/]{{2}}==|[A-Za-z0-9+/]{{3}}=)?)",
+                id.0
+            ),
             Pat::Opt(p) => format!("{}?", p.to_regex_str(ignore_ws)),
             Pat::Star(p) => format!("{}*", p.to_regex_str(ignore_ws)),
             Pat::Plus(p) => format!("{}+", p.to_regex_str(ignore_ws)),
             Pat::CaseInsensitive(p) => format!("(?i:{})", p.to_regex_str(ignore_ws)),
             Pat::IgnoreWhitespace(p) => p.to_regex_str(true),
+        }
+    }
+    pub fn strip_as(s: &str) -> (String, As) {
+        if s.starts_with("_i64") {
+            (s.trim_start_matches("_i64").to_string(), As::I64)
+        } else if s.starts_with("_b64") {
+            (s.trim_start_matches("_b64").to_string(), As::Base64)
+        } else {
+            (s.to_string(), As::Str)
         }
     }
 }
@@ -967,8 +987,9 @@ macro_rules! parse_pat_typ (
             Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag)))
         } else {
             match t1.tok0().clone() {
-                Token::Ident(ref s) if s == "i64" => Ok((i1, true)),
-                Token::Ident(ref s) if s == "str" => Ok((i1, false)),
+                Token::Ident(ref s) if s == "i64" => Ok((i1, As::I64)),
+                Token::Ident(ref s) if s == "base64" => Ok((i1, As::Base64)),
+                Token::Ident(ref s) if s == "str" => Ok((i1, As::Str)),
                 _ => Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag))),
             }
         }
@@ -990,7 +1011,7 @@ named!(parse_as_pat<Tokens, Pat>,
         i: parse_ident!() >>
         j: opt!(preceded!(tag_token!(Token::As), parse_pat_typ!())) >>
         tag_token!(Token::RBracket) >>
-        (Pat::As(i.1, j.unwrap_or(false)))
+        (Pat::As(i.1, j.unwrap_or(As::Str)))
     )
 );
 

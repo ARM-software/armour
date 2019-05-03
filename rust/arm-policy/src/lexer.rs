@@ -27,7 +27,7 @@ pub enum Token {
     // identifier and literals
     Comment(String),
     Ident(String),
-    DataLiteral(String),
+    DataLiteral(Vec<u8>),
     StringLiteral(String),
     FloatLiteral(f64),
     IntLiteral(i64),
@@ -447,7 +447,7 @@ named!(lex_string<Span, LocToken>,
             {
                 let s = t.to_string().replace("\\\"", "\"").replace("\\\\", "\\");
                 if b.to_string().starts_with('b') {
-                    Token::DataLiteral(s)
+                    Token::DataLiteral(s.as_bytes().to_vec())
                 } else {
                     Token::StringLiteral(s)
                 }

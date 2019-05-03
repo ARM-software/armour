@@ -55,6 +55,12 @@ impl From<headers::Error> for Error {
     }
 }
 
+impl From<base64::DecodeError> for Error {
+    fn from(err: base64::DecodeError) -> Error {
+        Error(format!("base 64 error: {}", err.to_string()))
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct Call {
     loc: lexer::Loc,
@@ -203,8 +209,8 @@ impl Expr {
     pub fn string(s: &str) -> Expr {
         Expr::LitExpr(Literal::StringLiteral(s.to_string()))
     }
-    pub fn data(d: &str) -> Expr {
-        Expr::LitExpr(Literal::DataLiteral(d.to_string()))
+    pub fn data(d: &[u8]) -> Expr {
+        Expr::LitExpr(Literal::DataLiteral(d.to_vec()))
     }
     pub fn return_expr(e: Expr) -> Expr {
         Expr::ReturnExpr(Box::new(e))
@@ -598,13 +604,9 @@ impl Expr {
                     .iter()
                     .map(|(e, p)| {
                         let re = parser::PolicyRegex::from_pat(p)?;
-                        let cap_names: HashSet<(String, bool)> =
+                        let cap_names: HashSet<(String, parser::As)> =
                             re.0.capture_names()
-                                .filter_map(|x| {
-                                    x.map(|y| {
-                                        (y.trim_start_matches('_').to_string(), y.starts_with('_'))
-                                    })
-                                })
+                                .filter_map(|x| x.map(parser::Pat::strip_as))
                                 .collect();
                         if set.is_disjoint(&cap_names) {
                             set.extend(cap_names);
@@ -617,11 +619,19 @@ impl Expr {
                         }
                     })
                     .collect();
-                let vs: Vec<(String, bool)> = set.into_iter().collect();
+                let vs: Vec<(String, parser::As)> = set.into_iter().collect();
                 let mut extend_vars = vars.clone();
-                for (v, is_i64) in vs.iter() {
-                    extend_vars =
-                        extend_vars.add_var(&v, &(if *is_i64 { Typ::I64 } else { Typ::Str }))
+                for (v, a) in vs.iter() {
+                    extend_vars = extend_vars.add_var(
+                        &v,
+                        &(if *a == parser::As::I64 {
+                            Typ::I64
+                        } else if *a == parser::As::Base64 {
+                            Typ::Data
+                        } else {
+                            Typ::Str
+                        }),
+                    )
                 }
                 let (mut expr1, calls1, typ1) =
                     Expr::from_block_stmt(consequence, headers, &extend_vars)?.split();
