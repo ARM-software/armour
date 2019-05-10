@@ -1059,6 +1059,9 @@ impl Program {
             nodes: HashMap::new(),
         }
     }
+    pub fn set_timeout(&mut self, d: std::time::Duration) {
+        self.code.externals.set_timeout(d)
+    }
     fn add_decl(&mut self, decl: &parser::FnDecl) -> Result<(), Error> {
         // println!("{:#?}", decl);
         let (name, e, calls) = Expr::from_decl(decl, &mut self.headers)?;
