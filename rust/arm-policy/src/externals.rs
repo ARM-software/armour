@@ -3,8 +3,12 @@ use crate::external_capnp::external;
 use capnp::capability::Promise;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::Future;
+use futures_timer::FutureExt;
 use std::collections::HashMap;
+use std::time::Duration;
 use tokio::io::AsyncRead;
+
+const TIMEOUT: Duration = Duration::from_secs(3);
 
 struct CallRequest<'a> {
     external: &'a str,
@@ -25,6 +29,7 @@ impl<'a> CallRequest<'a> {
 pub struct Externals {
     clients: HashMap<String, external::Client>,
     runtime: tokio::runtime::current_thread::Runtime,
+    timeout: Duration,
 }
 
 #[derive(Debug)]
@@ -55,7 +60,11 @@ impl Externals {
             clients: HashMap::new(),
             runtime: tokio::runtime::current_thread::Runtime::new()
                 .expect("failed to initiate tokio runtime"),
+            timeout: TIMEOUT,
         }
+    }
+    pub fn set_timeout(&mut self, t: Duration) {
+        self.timeout = t
     }
     pub fn add_client<T: std::net::ToSocketAddrs>(
         &mut self,
@@ -161,6 +170,7 @@ impl Externals {
                             },
                         )
                     })
+                    .timeout(self.timeout)
                     .or_else(|err| Promise::err(Error::from(err))),
             )
         } else {

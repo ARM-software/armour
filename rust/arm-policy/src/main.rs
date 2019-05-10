@@ -2,7 +2,11 @@
 use arm_policy::lang;
 use clap::{crate_version, App, Arg};
 use std::fs::File;
-use std::io::{prelude::*, stdin, stdout, BufReader};
+use std::io::{
+    prelude::{Read, Write},
+    stdin, stdout, BufReader,
+};
+use std::time::Duration;
 
 fn main() -> std::io::Result<()> {
     // Command line interface
@@ -15,6 +19,12 @@ fn main() -> std::io::Result<()> {
                 .index(1)
                 .required(false)
                 .help("File to parse"),
+        )
+        .arg(
+            Arg::with_name("timeout")
+                .long("timeout")
+                .takes_value(true)
+                .help("Timeout (seconds) for external RPCs\n(default: 3s)"),
         )
         .get_matches();
 
@@ -33,6 +43,16 @@ fn main() -> std::io::Result<()> {
     } else {
         prog = lang::Program::new()
     };
+
+    if let Some(timeout) = matches.value_of("timeout") {
+        let d = Duration::from_secs(timeout.parse().map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "duration (seconds) must be an integer",
+            )
+        })?);
+        prog.set_timeout(d)
+    }
 
     // evaluate expressions (REPL)
     loop {
