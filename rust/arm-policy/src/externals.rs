@@ -4,7 +4,9 @@ use capnp::capability::Promise;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::Future;
 use futures_timer::FutureExt;
+use native_tls::TlsConnector;
 use std::collections::HashMap;
+use std::io;
 use std::time::Duration;
 use tokio::io::AsyncRead;
 
@@ -37,14 +39,15 @@ pub enum Error {
     ClientAlreadyExists,
     ClientMissing,
     RequestNotValid,
-    IO,
     Socket,
+    IO(std::io::Error),
     Capnp(capnp::Error),
+    NativeTLS(native_tls::Error),
 }
 
 impl From<std::io::Error> for Error {
-    fn from(_: std::io::Error) -> Error {
-        Error::IO
+    fn from(err: std::io::Error) -> Error {
+        Error::IO(err)
     }
 }
 
@@ -74,11 +77,20 @@ impl Externals {
         if self.clients.contains_key(name) {
             Err(Error::ClientAlreadyExists)
         } else if let Some(addr) = socket.to_socket_addrs()?.next() {
-            let stream = self
-                .runtime
-                .block_on(tokio::net::TcpStream::connect(&addr))?;
-            stream.set_nodelay(true)?;
-            let (reader, writer) = stream.split();
+            let mut builder = TlsConnector::builder();
+            if cfg!(debug_assertions) {
+                builder.danger_accept_invalid_certs(true);
+            }
+            let tls_connector = tokio_tls::TlsConnector::from(
+                builder.build().expect("failed to create TLS connector"),
+            );
+            let tls = tokio::net::TcpStream::connect(&addr).and_then(|sock| {
+                sock.set_nodelay(true).expect("failed to set nodelay");
+                tls_connector
+                    .connect(&addr.to_string(), sock)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            });
+            let (reader, writer) = self.runtime.block_on(tls)?.split();
             let network = Box::new(twoparty::VatNetwork::new(
                 reader,
                 writer,
@@ -90,7 +102,7 @@ impl Externals {
             // let disconnector = rpc_system.get_disconnector();
             // self.runtime.block_on(disconnector)?;
             self.clients.insert(name.to_string(), client);
-            self.runtime.spawn(rpc_system.map_err(|_e| ()));
+            self.runtime.spawn(rpc_system.map_err(|_| ()));
             Ok(())
         } else {
             Err(Error::Socket)
