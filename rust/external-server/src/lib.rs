@@ -1,3 +1,4 @@
+// For tokio TLS examples see: https://github.com/tokio-rs/tokio/tree/master/tokio-tls/examples
 extern crate capnp;
 #[macro_use]
 extern crate capnp_rpc;
@@ -11,6 +12,7 @@ use capnp::capability::Promise;
 use capnp::Error;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::{Future, Stream};
+use native_tls::Identity;
 use tokio::io::AsyncRead;
 use tokio::runtime::current_thread;
 
@@ -125,23 +127,39 @@ impl External {
         let socket = tokio::net::TcpListener::bind(&addr)
             .map_err(|err| Error::failed(format!("{}", err)))?;
 
+        // Create the TLS acceptor.
+        let cert =
+            Identity::from_pkcs12(include_bytes!("certificates/server.p12"), "rsh-sec-armour")
+                .map_err(|err| Error::failed(format!("{}", err)))?;
+        let tls_acceptor = tokio_tls::TlsAcceptor::from(
+            native_tls::TlsAcceptor::builder(cert)
+                .build()
+                .map_err(|err| Error::failed(format!("{}", err)))?,
+        );
+
         let external = external::ToClient::new(implementation).into_client::<capnp_rpc::Server>();
 
-        let done = socket.incoming().for_each(move |socket| {
-            socket.set_nodelay(true)?;
-            let (reader, writer) = socket.split();
-            let network = twoparty::VatNetwork::new(
-                reader,
-                writer,
-                rpc_twoparty_capnp::Side::Server,
-                Default::default(),
-            );
-            let rpc_system = RpcSystem::new(Box::new(network), Some(external.clone().client));
-            current_thread::spawn(rpc_system.map_err(|e| println!("error: {:?}", e)));
-            Ok(())
+        let done = socket.incoming().for_each(move |sock| {
+            sock.set_nodelay(true)?;
+            let external = external.clone();
+            let tls_accept = tls_acceptor.accept(sock).and_then(move |tls| {
+                let (reader, writer) = tls.split();
+                let network = twoparty::VatNetwork::new(
+                    reader,
+                    writer,
+                    rpc_twoparty_capnp::Side::Server,
+                    Default::default(),
+                );
+                let rpc_system = RpcSystem::new(Box::new(network), Some(external.client));
+                Ok(current_thread::spawn(
+                    rpc_system.map_err(|e| println!("error: {:?}", e)),
+                ))
+            });
+            Ok(current_thread::spawn(
+                tls_accept.map_err(|e| println!("error: {:?}", e)),
+            ))
         });
 
-        current_thread::block_on_all(done).unwrap();
-        Ok(())
+        Ok(current_thread::block_on_all(done).unwrap())
     }
 }

@@ -1,0 +1,230 @@
+version: '3.7'
+services:
+  digital-dolly:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/digital-dolly:master
+    environment:
+      MQTT_BROKER_HOST: "mqtt-trusted"
+      INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
+      BLE_TARGET_HR: 00:22:D0:00:02:09
+      HR_RUN_FLAG: ""
+    volumes:
+      - /dev/ttyAMA0:/dev/ttyAMA0
+    network_mode: "host"
+    privileged: true
+    ports:
+      - 5000
+  redir:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/redir
+    network_mode: "host"
+    environment:
+      REDIR_TO_START: "1883:mqtt-debug:1883 80:notifications:80 81:mongo-web-interface:81"
+
+  hostapd:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/hostapd
+    network_mode: "host"
+    cap_add: ["NET_ADMIN"]
+
+  notifications:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/notifications
+    networks:
+      - mynet
+    ports: #host
+      - 80
+
+  mongo-web-interface:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/mongo-web-interface:latest
+    environment:
+        MONGO_CONN: "mongodb://mongo:27017/Ledger"
+        INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
+    networks:
+      - mynet
+    ports:
+      - 31962:81/tcp
+
+  cloud-update:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/cloud_comm:development
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  accounting:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/accounting:master
+    environment:
+      MONGO_CONN: "mongodb://mongo:27017"
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  context:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/context:development_slim
+    environment:
+      LIGHTS: ""
+      PULSE_MIC_NAME: alsa_input.hw_3_0
+      MQTT_BROKER_HOST: "mqtt-trusted"
+      FAL_MODEL: "falsestor.pb"
+      FAL_SENSITIVITY: "0.1"
+      FAL_TRIG_LVL: "13"
+    cap_add: ["SYS_RAWIO"]
+    privileged: true
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  dbread:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/dbread:development
+    volumes:
+      - /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock
+    environment:
+      DB_CONN: "mysql://dbint:raspberry@localhost:3306/PoC?unix_socket=/var/run/mysqld/mysqld.sock"
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  dbwrite:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/dbwrite:development
+    volumes:
+      - /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock
+    environment:
+      DB_CONN: "mysql://dbint:raspberry@localhost:3306/PoC?unix_socket=/var/run/mysqld/mysqld.sock"
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  dtp:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/dtp:development_slim
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  debug:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/debug:development
+    volumes:
+      - /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock
+    environment:
+      DB_CONN_REGIST: "mysql://dbint:raspberry@localhost:3306/PoC_Registration?unix_socket=/var/run/mysqld/mysqld.sock"
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  launch:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/launch:development
+    volumes:
+      - /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock
+    environment:
+      RUNLEVEL: "debug"
+      DB_CONN_REGIST: "mysql://dbint:raspberry@localhost:3306/PoC_Registration?unix_socket=/var/run/mysqld/mysqld.sock"
+    networks:
+      - mynet
+    #    ipv4_address: 172.38.0.1
+    ports:
+      - 5000
+
+  mqtt-debug:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/mosquitto_trusted
+    networks:
+      - mynet
+    ports:
+      - 1883
+      - 8883
+      - 9001
+
+  mqtt-trusted:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/mosquitto_trusted
+    networks:
+      - mynet
+    ports:
+      - 1883
+      - 8883
+      - 9001
+
+  mqtt-public:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/mosquitto_public
+    networks:
+      - mynet
+    ports:
+      - 1883
+      - 8883
+      - 9001
+
+  picolibri:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/picolibri:development
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  pipharm:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/pipharm:development
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  pulse:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/pulse_prod:development
+    cap_add: ["SYS_RAWIO"]
+    volumes:
+      - /dev/snd:/dev/snd
+    privileged: true
+    networks:
+      - mynet
+    ports:
+      - 4713:4713/tcp
+
+  verify-id:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/verify_id:development
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  on-during-conversation:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/on_during_conversation
+    environment:
+      HR_RUN_FLAG: "-O"
+    privileged: true
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  temperature:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/temperature:development
+    privileged: true
+    environment:
+      DEVICE: "28*"
+    networks:
+      - mynet
+
+  vitals:
+    image: git.research.arm.com:4567/rsh/emerge/health-poc/vitals
+    privileged: true
+    cap_add: ["NET_ADMIN"]
+    volumes:
+      - /dev/ttyAMA0:/dev/ttyAMA0
+    networks:
+      - mynet
+  mongo:
+    image: 'mongo:latest'
+    ports:
+      - '27017:27017'
+    networks:
+      - mynet
+    volumes:
+      - 'mongo:/data/db'
+networks:
+  mynet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.38.0.0/16"
+volumes:
+  mongo:
