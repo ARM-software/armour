@@ -13,11 +13,6 @@ services:
     privileged: true
     ports:
       - 5000
-  redir:
-    image: git.research.arm.com:4567/rsh/emerge/health-poc/redir
-    network_mode: "host"
-    environment:
-      REDIR_TO_START: "1883:mqtt-debug:1883 80:notifications:80 81:mongo-web-interface:81"
 
   hostapd:
     image: git.research.arm.com:4567/rsh/emerge/health-poc/hostapd
@@ -28,18 +23,18 @@ services:
     image: git.research.arm.com:4567/rsh/emerge/health-poc/notifications
     networks:
       - mynet
-    ports: #host
-      - 80
+    ports:
+      - 80:80/tcp
 
   mongo-web-interface:
     image: git.research.arm.com:4567/rsh/emerge/health-poc/mongo-web-interface:latest
     environment:
-        MONGO_CONN: "mongodb://mongo:27017/Ledger"
+        MONGO_CONN: "mongodb://10.1.29.64:27017/Ledger"
         INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
     networks:
       - mynet
     ports:
-      - 31962:81/tcp
+      - 81:81/tcp
 
   cloud-update:
     image: git.research.arm.com:4567/rsh/emerge/health-poc/cloud_comm:development
@@ -51,7 +46,7 @@ services:
   accounting:
     image: git.research.arm.com:4567/rsh/emerge/health-poc/accounting:master
     environment:
-      MONGO_CONN: "mongodb://mongo:27017"
+      MONGO_CONN: "mongodb://10.1.29.64:27017"
     networks:
       - mynet
     ports:
@@ -131,7 +126,7 @@ services:
     networks:
       - mynet
     ports:
-      - 1883
+      - 1883:1883
       - 8883
       - 9001
 
@@ -211,14 +206,6 @@ services:
       - /dev/ttyAMA0:/dev/ttyAMA0
     networks:
       - mynet
-  mongo:
-    image: 'mongo:latest'
-    ports:
-      - '27017:27017'
-    networks:
-      - mynet
-    volumes:
-      - 'mongo:/data/db'
 networks:
   mynet:
     driver: bridge
@@ -226,5 +213,3 @@ networks:
       driver: default
       config:
         - subnet: "172.38.0.0/16"
-volumes:
-  mongo:
