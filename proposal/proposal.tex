@@ -512,6 +512,67 @@ the logical identities established.
   \end{itemize}
 }
 
+\section{Design Principles}
+\label{sec:design-principles}
+
+\begin{table}[t]
+  \centering
+  \begin{tabular}[t]{l|l}
+    \multicolumn{1}{c}{Security}
+    & \multicolumn{1}{c}{Extensibility}\\
+    % & \multicolumn{1}{c}{Expressivity}\\
+    \hline
+    Memory Safety (Rust)          & Oracle policy extension \\
+    Defensive programming (Sanitization) & Oracle types            \\
+    Lightweight Types             & Service Types           \\
+    Service compartmentalization  & User-defined Roles      \\
+    Control/Data plane separation &                         \\
+    Native RoT verification       & \\
+    mTLS throughout & \\
+    Cryptography-backed services (enclaves?) &
+  \end{tabular}
+  \caption{Design Considerations}
+  \label{tab:design}
+\end{table}
+
+The main design principles driving \armour{} are detailed
+in~\autoref{tab:design}.
+
+The main principles driving the security of \armour{}s implementation
+are:
+\begin{inparaenum}
+\item \textbf{defensive programming},
+\item \textbf{process/service isolation}, and 
+\item \textbf{Cryptography throughout}. 
+\end{inparaenum}
+
+\gpn{It is important to separate which are the programming practices
+  that make the \armour{} implementation secure, vs. which are the
+  security features of \armour{}.}
+
+VSFTP design principles~\cite{VSFTP}.
+
+%
+% \begin{itemize}
+% \item Security by construction design
+%   \begin{itemize}
+%   \item Memory-safety from Rust
+%   \item Sanitization of inputs
+%   \item Lightweight typing to avoid common errors at runtime
+%   \item Compartmentalization of functionality in different services to
+%     disallow privilege escalation
+%   \item Separation of control and data-plane functionalities
+%   \end{itemize}
+% \item Extensibility and flexibility by design
+%   \begin{itemize}
+%   \item The oracle model allows for arbitrary policy extensions
+%   \item Policy compartmentalization can be achieved by either
+%     \begin{inparaenum}
+%     \item providing different policies to different entities, or
+%     \item by implementing component-specific oracles
+%     \end{inparaenum}
+%   \end{itemize}
+% \end{itemize}
 
 \section{Vision}
 
