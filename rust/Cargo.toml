@@ -7,4 +7,5 @@ members = [
     "arm-policy",
     "external-server",
     "external-server-a",
+    "docker-compose-yaml",
 ]
