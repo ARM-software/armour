@@ -1022,6 +1022,14 @@ impl Expr {
     }
 }
 
+impl std::str::FromStr for Expr {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_string(s, &mut Headers::new())
+    }
+}
+
 // #[derive(Clone)]
 pub struct Code {
     internals: HashMap<String, Expr>,
@@ -1084,11 +1092,11 @@ impl Program {
         if let Err(cycle) = petgraph::algo::toposort(&self.graph, None) {
             if let Some(name) = self.graph.node_weight(cycle.node_id()) {
                 Err(Error::new(&format!(
-                    "Cycle detected: the function \"{}\" might not terminate",
+                    "cycle detected: the function \"{}\" might not terminate",
                     name
                 )))
             } else {
-                Err(Error::new("Cycle detected for unknown function"))
+                Err(Error::new("cycle detected for unknown function"))
             }
         } else {
             Ok(())
@@ -1098,7 +1106,12 @@ impl Program {
         self.nodes
             .insert(name.to_string(), self.graph.add_node(name.to_string()));
     }
-    pub fn from_string(buf: &str) -> Result<Program, self::Error> {
+}
+
+impl std::str::FromStr for Program {
+    type Err = Error;
+
+    fn from_str(buf: &str) -> Result<Self, Self::Err> {
         match parser::parse_program(lexer::Tokens::new(&lexer::lex(buf))) {
             Ok((_rest, prog_parse)) => {
                 let mut prog = Program::new();

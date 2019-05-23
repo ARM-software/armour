@@ -36,7 +36,7 @@ fn main() -> std::io::Result<()> {
         let mut reader = BufReader::new(File::open(filename)?);
         let mut buf = String::new();
         reader.read_to_string(&mut buf).unwrap();
-        match lang::Program::from_string(&buf) {
+        match buf.parse() {
             Ok(p) => prog = p,
             Err(err) => return Ok(eprintln!("{}: {}", filename, err)),
         }
