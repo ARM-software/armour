@@ -4,6 +4,7 @@ members = [
     "arm-service",
     "arm-proxy",
     "arm-pubsub",
+    "arm-stub-proxy",
     "arm-policy",
     "external-server",
     "external-server-a",
