@@ -13,13 +13,13 @@ macro_rules! deserialize_from_str {
             where
                 D: Deserializer<'de>,
             {
-                deserialize_from_str::deserialize(deserializer)
+                from_str::deserialize(deserializer)
             }
         }
     };
 }
 
-pub mod deserialize_from_str {
+pub mod from_str {
     use serde::de::{self, Visitor};
     use serde::{Deserialize, Deserializer};
     use std::fmt;

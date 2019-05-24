@@ -4,7 +4,7 @@
 
   Author: Anthony Fox
 */
-use super::serde_utils::deserialize_from_str;
+use super::serde_utils::from_str;
 use serde::de::{self, SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
