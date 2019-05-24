@@ -1,4 +1,4 @@
-##Docker Compose
+**Docker Compose**
 
 The docker-compose file needs to be in the same directory as the PoC files:
 
