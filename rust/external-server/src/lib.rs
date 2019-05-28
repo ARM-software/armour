@@ -158,6 +158,7 @@ impl External {
                     rpc_system.map_err(|e| println!("error: {:?}", e)),
                 ))
             });
+            println!("new TLS connection");
             Ok(current_thread::spawn(
                 tls_accept.map_err(|e| println!("error: {:?}", e)),
             ))
@@ -174,6 +175,7 @@ impl External {
                 Default::default(),
             );
             let rpc_system = RpcSystem::new(Box::new(network), Some(external.clone().client));
+            println!("WARNING: new insecure connection");
             current_thread::spawn(rpc_system.map_err(|e| println!("error: {:?}", e)));
             Ok(())
         });
