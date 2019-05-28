@@ -21,7 +21,9 @@ capnp-rpc = "0.9"
 futures = "0.1"
 futures-timer = "0.1"
 tokio = "0.1"
-tokio-tls = "0.2"
-native-tls = "0.2"
 url = "1.7"
 base64 = "0.10"
+
+[target.'cfg(not(target_env = "musl"))'.dependencies]
+tokio-tls = "0.2"
+native-tls = "0.2"

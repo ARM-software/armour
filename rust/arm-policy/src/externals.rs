@@ -4,9 +4,7 @@ use capnp::capability::Promise;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::Future;
 use futures_timer::FutureExt;
-use native_tls::TlsConnector;
 use std::collections::HashMap;
-use std::io;
 use std::time::Duration;
 use tokio::io::AsyncRead;
 
@@ -42,6 +40,7 @@ pub enum Error {
     Socket,
     IO(std::io::Error),
     Capnp(capnp::Error),
+    #[cfg(not(target_env = "musl"))]
     NativeTLS(native_tls::Error),
 }
 
@@ -77,19 +76,30 @@ impl Externals {
         if self.clients.contains_key(name) {
             Err(Error::ClientAlreadyExists)
         } else if let Some(addr) = socket.to_socket_addrs()?.next() {
-            let mut builder = TlsConnector::builder();
-            if cfg!(debug_assertions) {
-                builder.danger_accept_invalid_certs(true);
-            }
+            #[cfg(target_env = "musl")]
+            let stream = self
+                .runtime
+                .block_on(tokio::net::TcpStream::connect(&addr))?;
+            #[cfg(target_env = "musl")]
+            stream.set_nodelay(true)?;
+            #[cfg(target_env = "musl")]
+            let (reader, writer) = stream.split();
+            #[cfg(not(target_env = "musl"))]
+            let mut builder = native_tls::TlsConnector::builder();
+            #[cfg(all(debug_assertions, not(target_env = "musl")))]
+            builder.danger_accept_invalid_certs(true);
+            #[cfg(not(target_env = "musl"))]
             let tls_connector = tokio_tls::TlsConnector::from(
                 builder.build().expect("failed to create TLS connector"),
             );
+            #[cfg(not(target_env = "musl"))]
             let tls = tokio::net::TcpStream::connect(&addr).and_then(|sock| {
                 sock.set_nodelay(true).expect("failed to set nodelay");
                 tls_connector
                     .connect(&addr.to_string(), sock)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
             });
+            #[cfg(not(target_env = "musl"))]
             let (reader, writer) = self.runtime.block_on(tls)?.split();
             let network = Box::new(twoparty::VatNetwork::new(
                 reader,
