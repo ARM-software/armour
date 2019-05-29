@@ -1,4 +1,5 @@
 use super::types::{Signature, Typ};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -10,22 +11,16 @@ impl Error {
     }
 }
 
-#[derive(Clone)]
-pub struct Headers {
-    functions: HashMap<String, Signature>,
-    return_typ: Option<Typ>,
-}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Headers (HashMap<String, Signature>);
 
 impl Headers {
     pub fn new() -> Headers {
-        Headers {
-            functions: HashMap::new(),
-            return_typ: None,
-        }
+        Headers (HashMap::new())
     }
     pub fn add_function(&mut self, name: &str, args: Vec<Typ>, ret: &Typ) -> Result<(), Error> {
         if self
-            .functions
+            .0
             .insert(name.to_string(), (args, ret.to_owned()))
             .is_some()
         {
@@ -33,18 +28,6 @@ impl Headers {
         } else {
             Ok(())
         }
-    }
-    pub fn return_typ(&self) -> Option<Typ> {
-        self.return_typ.clone()
-    }
-    pub fn clear_return_typ(&mut self) {
-        self.return_typ = None
-    }
-    pub fn set_return_typ(&mut self, typ: Typ) {
-        self.return_typ = Some(typ)
-    }
-    pub fn return_typ_for_function(&mut self, name: &str) -> Result<Typ, Error> {
-        Ok(self.typ(name).ok_or(Error::new("no current function"))?.1)
     }
     pub fn builtins(f: &str) -> Option<Signature> {
         match f {
@@ -102,7 +85,10 @@ impl Headers {
         Headers::builtins(name).is_some() || name.parse::<usize>().is_ok()
     }
     pub fn typ(&self, name: &str) -> Option<Signature> {
-        (Headers::builtins(name).or(self.functions.get(name).cloned()))
+        (Headers::builtins(name).or(self.0.get(name).cloned()))
+    }
+    pub fn return_typ(&self, name: &str) -> Result<Typ, Error> {
+        Ok(self.typ(name).ok_or(Error::new("no current function"))?.1)
     }
     pub fn resolve(name: &str, typs: &Vec<Typ>) -> String {
         if name.starts_with(".::") {

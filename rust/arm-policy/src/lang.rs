@@ -4,8 +4,10 @@ use headers::Headers;
 use literals::Literal;
 use parser::{Infix, Prefix};
 use petgraph::graph;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::io;
 use types::Typ;
 
 #[derive(Debug, Clone)]
@@ -99,6 +101,23 @@ impl ExprAndMeta {
     }
 }
 
+pub struct ReturnType(Option<Typ>);
+
+impl ReturnType {
+    pub fn new() -> ReturnType {
+        ReturnType(None)
+    }
+    pub fn get(&self) -> Option<Typ> {
+        self.0.clone()
+    }
+    pub fn clear(&mut self) {
+        self.0 = None
+    }
+    pub fn set(&mut self, typ: Typ) {
+        self.0 = Some(typ)
+    }
+}
+
 #[derive(Clone)]
 struct Vars {
     variables: HashMap<String, Typ>,
@@ -120,14 +139,14 @@ impl Vars {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Block {
     List,
     Tuple,
     Block,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Expr {
     Var(parser::Ident),
     BVar(usize),
@@ -445,7 +464,8 @@ impl Expr {
     }
     fn from_loc_expr(
         e: &parser::LocExpr,
-        headers: &mut Headers,
+        headers: &Headers,
+        ret: &mut ReturnType,
         vars: &Vars,
     ) -> Result<ExprAndMeta, Error> {
         match e.expr() {
@@ -465,7 +485,7 @@ impl Expr {
                 let mut calls = Vec::new();
                 let mut typ = Typ::Return;
                 for e in es.iter() {
-                    let (expr, call, ty) = Expr::from_loc_expr(&e, headers, vars)?.split();
+                    let (expr, call, ty) = Expr::from_loc_expr(&e, headers, ret, vars)?.split();
                     Typ::type_check("list", vec![(Some(e.loc()), &ty)], vec![(None, &typ)])?;
                     exprs.push(expr);
                     calls.push(call);
@@ -482,7 +502,7 @@ impl Expr {
                 let mut calls = Vec::new();
                 let mut typs = Vec::new();
                 for e in es.iter() {
-                    let (expr, call, ty) = Expr::from_loc_expr(&e, headers, vars)?.split();
+                    let (expr, call, ty) = Expr::from_loc_expr(&e, headers, ret, vars)?.split();
                     exprs.push(expr);
                     calls.push(call);
                     typs.push(ty);
@@ -494,7 +514,7 @@ impl Expr {
                 ))
             }
             parser::Expr::PrefixExpr(p, e1) => {
-                let (expr, calls, typ) = Expr::from_loc_expr(&e1, headers, vars)?.split();
+                let (expr, calls, typ) = Expr::from_loc_expr(&e1, headers, ret, vars)?.split();
                 let (t1, t2) = p.typ();
                 Typ::type_check("prefix", vec![(Some(e1.loc()), &typ)], vec![(None, &t1)])?;
                 Ok(ExprAndMeta::new(
@@ -504,8 +524,8 @@ impl Expr {
                 ))
             }
             parser::Expr::InfixExpr(op, e1, e2) => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&e1, headers, vars)?.split();
-                let (expr2, calls2, typ2) = Expr::from_loc_expr(&e2, headers, vars)?.split();
+                let (expr1, calls1, typ1) = Expr::from_loc_expr(&e1, headers, ret, vars)?.split();
+                let (expr2, calls2, typ2) = Expr::from_loc_expr(&e2, headers, ret, vars)?.split();
                 let (t1, t2, typ) = op.typ();
                 if t1 == Typ::Return {
                     if t2 == Typ::Return {
@@ -539,9 +559,9 @@ impl Expr {
                 consequence,
                 alternative: None,
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&cond, headers, vars)?.split();
+                let (expr1, calls1, typ1) = Expr::from_loc_expr(&cond, headers, ret, vars)?.split();
                 let (expr2, calls2, typ2) =
-                    Expr::from_block_stmt(consequence, headers, vars)?.split();
+                    Expr::from_block_stmt(consequence, headers, ret, vars)?.split();
                 Typ::type_check(
                     "if-expression",
                     vec![
@@ -561,10 +581,10 @@ impl Expr {
                 consequence,
                 alternative: Some(alt),
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&cond, headers, vars)?.split();
+                let (expr1, calls1, typ1) = Expr::from_loc_expr(&cond, headers, ret, vars)?.split();
                 let (expr2, calls2, typ2) =
-                    Expr::from_block_stmt(consequence, headers, vars)?.split();
-                let (expr3, calls3, typ3) = Expr::from_block_stmt(alt, headers, vars)?.split();
+                    Expr::from_block_stmt(consequence, headers, ret, vars)?.split();
+                let (expr3, calls3, typ3) = Expr::from_block_stmt(alt, headers, ret, vars)?.split();
                 Typ::type_check(
                     "if-else-expression",
                     vec![
@@ -589,7 +609,7 @@ impl Expr {
             } => {
                 let expressions: Result<Vec<ExprAndMeta>, self::Error> = matches
                     .iter()
-                    .map(|(e, _)| Expr::from_loc_expr(e, headers, vars))
+                    .map(|(e, _)| Expr::from_loc_expr(e, headers, ret, vars))
                     .collect();
                 let (expressions, mut calls, types) = ExprAndMeta::split_vec(expressions?);
                 let len = types.len();
@@ -634,7 +654,7 @@ impl Expr {
                     )
                 }
                 let (mut expr1, calls1, typ1) =
-                    Expr::from_block_stmt(consequence, headers, &extend_vars)?.split();
+                    Expr::from_block_stmt(consequence, headers, ret, &extend_vars)?.split();
                 let vs: Vec<String> = vs.into_iter().map(|x| x.0).collect();
                 for v in vs.iter().rev() {
                     expr1 = expr1.closure_expr(v)
@@ -660,7 +680,7 @@ impl Expr {
                     }
                     Some(a) => {
                         let (expr2, calls2, typ2) =
-                            Expr::from_block_stmt(a, headers, vars)?.split();
+                            Expr::from_block_stmt(a, headers, ret, vars)?.split();
                         Typ::type_check(
                             "if-match-else-expression",
                             vec![(Some(Expr::block_stmt_loc(consequence, e.loc())), &typ1)],
@@ -686,7 +706,7 @@ impl Expr {
                 expr,
                 body,
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(expr, headers, vars)?.split();
+                let (expr1, calls1, typ1) = Expr::from_loc_expr(expr, headers, ret, vars)?.split();
                 let (vs, iter_vars) = match typ1 {
                     Typ::List(ref lty) => {
                         if idents.len() == 1 {
@@ -725,7 +745,7 @@ impl Expr {
                     }
                 };
                 let (expr2, calls2, typ2) =
-                    Expr::from_block_stmt(body, headers, &iter_vars)?.split();
+                    Expr::from_block_stmt(body, headers, ret, &iter_vars)?.split();
                 if *op != parser::Iter::Map {
                     Typ::type_check(
                         "all/any/filter-expression",
@@ -752,7 +772,7 @@ impl Expr {
             } => {
                 let expressions: Result<Vec<ExprAndMeta>, self::Error> = arguments
                     .iter()
-                    .map(|e| Expr::from_loc_expr(e, headers, vars))
+                    .map(|e| Expr::from_loc_expr(e, headers, ret, vars))
                     .collect();
                 let (expressions, mut calls, types) = ExprAndMeta::split_vec(expressions?);
                 let function = &Headers::resolve(function, &types);
@@ -824,22 +844,24 @@ impl Expr {
     }
     fn from_block_stmt(
         block: &[parser::LocStmt],
-        headers: &mut Headers,
+        headers: &Headers,
+        ret: &mut ReturnType,
         vars: &Vars,
     ) -> Result<ExprAndMeta, self::Error> {
         match block.split_first() {
             Some((stmt, rest)) => match stmt.stmt() {
                 parser::Stmt::ReturnStmt(re) => {
                     if rest.len() == 0 {
-                        let (expr, calls, typ) = Expr::from_loc_expr(re, headers, vars)?.split();
+                        let (expr, calls, typ) =
+                            Expr::from_loc_expr(re, headers, ret, vars)?.split();
                         // need to type check typ against function return type
-                        match headers.return_typ() {
+                        match ret.get() {
                             Some(rtype) => Typ::type_check(
                                 "return",
                                 vec![(Some(re.loc()), &typ)],
                                 vec![(None, &rtype)],
                             )?,
-                            None => headers.set_return_typ(typ),
+                            None => ret.set(typ),
                         };
                         Ok(ExprAndMeta::new(
                             Expr::BlockExpr(Block::Block, vec![Expr::return_expr(expr)]),
@@ -854,9 +876,13 @@ impl Expr {
                     }
                 }
                 parser::Stmt::ExprStmt(se, has_semi) => {
-                    let (expr1, calls1, typ1) =
-                        Expr::from_loc_expr(&parser::LocExpr::new(stmt.loc(), se), headers, vars)?
-                            .split();
+                    let (expr1, calls1, typ1) = Expr::from_loc_expr(
+                        &parser::LocExpr::new(stmt.loc(), se),
+                        headers,
+                        ret,
+                        vars,
+                    )?
+                    .split();
                     if *has_semi && !typ1.is_unit() {
                         println!(
                             "warning: result of expression is being ignored on {}",
@@ -877,7 +903,7 @@ impl Expr {
                             )));
                         };
                         let (expr2, calls2, typ2) =
-                            Expr::from_block_stmt(rest, headers, vars)?.split();
+                            Expr::from_block_stmt(rest, headers, ret, vars)?.split();
                         match expr2 {
                             Expr::BlockExpr(Block::Block, mut b) => {
                                 let mut new_block = vec![expr1];
@@ -897,11 +923,13 @@ impl Expr {
                     }
                 }
                 parser::Stmt::LetStmt(ids, le) => {
-                    let (expr1, calls1, typ1) = Expr::from_loc_expr(&le, headers, vars)?.split();
+                    let (expr1, calls1, typ1) =
+                        Expr::from_loc_expr(&le, headers, ret, vars)?.split();
                     if ids.len() == 1 {
                         let id = ids[0].id();
                         let (expr2, calls2, typ2) =
-                            Expr::from_block_stmt(rest, headers, &vars.add_var(id, &typ1))?.split();
+                            Expr::from_block_stmt(rest, headers, ret, &vars.add_var(id, &typ1))?
+                                .split();
                         Ok(ExprAndMeta::new(
                             expr2.let_expr(vec![id], expr1),
                             typ2,
@@ -918,7 +946,7 @@ impl Expr {
                                     vs.push(v)
                                 }
                                 let (expr2, calls2, typ2) =
-                                    Expr::from_block_stmt(rest, headers, &let_vars)?.split();
+                                    Expr::from_block_stmt(rest, headers, ret, &let_vars)?.split();
                                 Ok(ExprAndMeta::new(
                                     expr2.let_expr(vs, expr1),
                                     typ2,
@@ -944,12 +972,12 @@ impl Expr {
     }
     fn check_from_loc_expr(
         e: &parser::LocExpr,
-        headers: &mut Headers,
+        headers: &Headers,
         vars: &Vars,
     ) -> Result<ExprAndMeta, Error> {
-        headers.clear_return_typ();
-        let em = Expr::from_loc_expr(e, headers, vars)?;
-        match headers.return_typ() {
+        let mut ret = ReturnType::new();
+        let em = Expr::from_loc_expr(e, headers, &mut ret, vars)?;
+        match ret.get() {
             Some(rtype) => Typ::type_check("REPL", vec![(None, &em.typ)], vec![(None, &rtype)])?,
             None => (),
         }
@@ -957,14 +985,14 @@ impl Expr {
     }
     fn check_from_block_stmt(
         block: &[parser::LocStmt],
-        headers: &mut Headers,
+        headers: &Headers,
         vars: &Vars,
         name: Option<&str>,
     ) -> Result<ExprAndMeta, self::Error> {
-        headers.clear_return_typ();
-        let em = Expr::from_block_stmt(block, headers, vars)?;
+        let mut ret = ReturnType::new();
+        let em = Expr::from_block_stmt(block, headers, &mut ret, vars)?;
         // check if type of "return" calls is type of statement
-        match headers.return_typ() {
+        match ret.get() {
             Some(rtype) => Typ::type_check(
                 name.unwrap_or("REPL"),
                 vec![(None, &em.typ)],
@@ -977,7 +1005,7 @@ impl Expr {
             Some(name) => Typ::type_check(
                 name,
                 vec![(None, &em.typ)],
-                vec![(None, &headers.return_typ_for_function(name)?)],
+                vec![(None, &headers.return_typ(name)?)],
             )?,
             None => (),
         }
@@ -985,7 +1013,7 @@ impl Expr {
     }
     fn from_decl<'a>(
         decl: &'a parser::FnDecl,
-        headers: &'a mut Headers,
+        headers: &'a Headers,
     ) -> Result<(&'a str, Expr, Calls), Error> {
         let mut vars = Vars::new();
         for a in decl.args().iter().rev() {
@@ -999,7 +1027,7 @@ impl Expr {
         }
         Ok((name, e, em.calls))
     }
-    pub fn from_string(buf: &str, mut headers: &mut Headers) -> Result<Expr, self::Error> {
+    pub fn from_string(buf: &str, headers: &Headers) -> Result<Expr, self::Error> {
         let lex = lexer::lex(buf);
         let toks = lexer::Tokens::new(&lex);
         // println!("{}", toks);
@@ -1011,7 +1039,7 @@ impl Expr {
             Err(_) => match parser::parse_expr_eof(toks) {
                 Ok((_rest, e)) => {
                     // println!("{:#?}", e);
-                    Ok(Expr::check_from_loc_expr(&e, &mut headers, &Vars::new())?.expr)
+                    Ok(Expr::check_from_loc_expr(&e, headers, &Vars::new())?.expr)
                 }
                 Err(nom::Err::Error(nom::Context::Code(toks, _))) => {
                     Err(self::Error(format!("syntax error: {}", toks.tok[0])))
@@ -1030,63 +1058,82 @@ impl std::str::FromStr for Expr {
     }
 }
 
-// #[derive(Clone)]
-pub struct Code {
-    internals: HashMap<String, Expr>,
-    externals: externals::Externals,
-}
+#[derive(Serialize, Deserialize)]
+pub struct Code(HashMap<String, Expr>);
 
 impl Code {
     fn new() -> Code {
-        Code {
-            internals: HashMap::new(),
-            externals: externals::Externals::new(),
-        }
-    }
-    pub fn get(&self, s: &str) -> Option<&Expr> {
-        self.internals.get(s)
-    }
-    pub fn externals(&mut self) -> &mut externals::Externals {
-        &mut self.externals
+        Code(HashMap::new())
     }
 }
 
-pub struct Program {
-    pub code: Code,
-    pub headers: Headers,
+#[derive(Serialize, Deserialize)]
+pub struct Externals(HashMap<String, String>);
+
+impl Externals {
+    fn new() -> Externals {
+        Externals(HashMap::new())
+    }
+    fn add_external(&mut self, name: &str, url: &str) -> bool {
+        self.0.insert(name.to_string(), url.to_string()).is_some()
+    }
+}
+
+pub struct Runtime<'a> {
+    internal: &'a Code,
+    external: externals::Externals,
+}
+
+impl<'a> Runtime<'a> {
+    pub fn internal(&self, s: &str) -> Option<&Expr> {
+        self.internal.0.get(s)
+    }
+    pub fn external(
+        &mut self,
+        external: &str,
+        method: &str,
+        args: Vec<Expr>,
+    ) -> Result<Expr, Error> {
+        self.external
+            .request(external, method, Literal::literal_vector(args)?)
+            .map_err(|e| Error::from(e))
+            .map(|r| Expr::LitExpr(r))
+    }
+    pub fn set_timeout(&mut self, d: std::time::Duration) {
+        self.external.set_timeout(d)
+    }
+}
+
+impl<'a> From<&'a Program> for Runtime<'a> {
+    fn from(p: &'a Program) -> Runtime<'a> {
+        let mut external = externals::Externals::new();
+        for (name, url) in p.externals.0.iter() {
+            if let Err(err) = external.add_client(&name, url) {
+                println!("failed to add external \"{}\": {:?}", name, err)
+            }
+        }
+        Runtime {
+            internal: &p.code,
+            external,
+        }
+    }
+}
+
+struct CallGraph {
     graph: graph::DiGraph<String, lexer::Loc>,
     nodes: HashMap<String, graph::NodeIndex>,
 }
 
-impl Program {
-    pub fn new() -> Program {
-        Program {
-            code: Code::new(),
-            headers: Headers::new(),
+impl CallGraph {
+    fn new() -> CallGraph {
+        CallGraph {
             graph: graph::Graph::new(),
             nodes: HashMap::new(),
         }
     }
-    pub fn set_timeout(&mut self, d: std::time::Duration) {
-        self.code.externals.set_timeout(d)
-    }
-    fn add_decl(&mut self, decl: &parser::FnDecl) -> Result<(), Error> {
-        // println!("{:#?}", decl);
-        let (name, e, calls) = Expr::from_decl(decl, &mut self.headers)?;
-        // println!(r#""{}": {:#?}"#, name, e);
-        let own_idx = self
-            .nodes
-            .get(name)
-            .ok_or(Error::new(&format!("cannot find \"{}\" node", name)))?;
-        for c in calls.into_iter().filter(|c| !Headers::is_builtin(&c.name)) {
-            let call_idx = self
-                .nodes
-                .get(&c.name)
-                .ok_or(Error::new(&format!("cannot find \"{}\" node", c.name)))?;
-            self.graph.add_edge(*own_idx, *call_idx, c.loc);
-        }
-        self.code.internals.insert(name.to_string(), e);
-        Ok(())
+    fn add_node(&mut self, name: &str) {
+        self.nodes
+            .insert(name.to_string(), self.graph.add_node(name.to_string()));
     }
     fn check_for_cycles(&self) -> Result<(), Error> {
         if let Err(cycle) = petgraph::algo::toposort(&self.graph, None) {
@@ -1102,9 +1149,46 @@ impl Program {
             Ok(())
         }
     }
-    fn add_node(&mut self, name: &str) {
-        self.nodes
-            .insert(name.to_string(), self.graph.add_node(name.to_string()));
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Program {
+    pub code: Code,
+    pub externals: Externals,
+    pub headers: Headers,
+}
+
+impl Program {
+    pub fn new() -> Program {
+        Program {
+            code: Code::new(),
+            externals: Externals::new(),
+            headers: Headers::new(),
+        }
+    }
+    fn add_decl(&mut self, call_graph: &mut CallGraph, decl: &parser::FnDecl) -> Result<(), Error> {
+        // println!("{:#?}", decl);
+        let (name, e, calls) = Expr::from_decl(decl, &mut self.headers)?;
+        // println!(r#""{}": {:#?}"#, name, e);
+        let own_idx = call_graph
+            .nodes
+            .get(name)
+            .ok_or(Error::new(&format!("cannot find \"{}\" node", name)))?;
+        for c in calls.into_iter().filter(|c| !Headers::is_builtin(&c.name)) {
+            let call_idx = call_graph
+                .nodes
+                .get(&c.name)
+                .ok_or(Error::new(&format!("cannot find \"{}\" node", c.name)))?;
+            call_graph.graph.add_edge(*own_idx, *call_idx, c.loc);
+        }
+        self.code.0.insert(name.to_string(), e);
+        Ok(())
+    }
+    pub fn from_bytes(b: &[u8]) -> Result<Self, io::Error> {
+        bincode::deserialize(b).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    }
+    pub fn to_bytes(&self) -> Result<Vec<u8>, io::Error> {
+        bincode::serialize(self).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 }
 
@@ -1114,6 +1198,7 @@ impl std::str::FromStr for Program {
     fn from_str(buf: &str) -> Result<Self, Self::Err> {
         match parser::parse_program(lexer::Tokens::new(&lexer::lex(buf))) {
             Ok((_rest, prog_parse)) => {
+                let mut call_graph = CallGraph::new();
                 let mut prog = Program::new();
                 // process headers (for type information)
                 for decl in prog_parse.iter() {
@@ -1129,7 +1214,7 @@ impl std::str::FromStr for Program {
                                 ))
                             })?;
                             prog.headers.add_function(name, args, &typ)?;
-                            prog.add_node(name);
+                            call_graph.add_node(name);
                         }
                         parser::Decl::External(e) => {
                             let ename = e.name();
@@ -1144,10 +1229,10 @@ impl std::str::FromStr for Program {
                                     ))
                                 })?;
                                 prog.headers.add_function(name, args, &typ)?;
-                                prog.add_node(name);
+                                call_graph.add_node(name);
                             }
-                            if let Err(err) = prog.code.externals().add_client(ename, e.url()) {
-                                println!("failed to add external \"{}\": {:?}", ename, err)
+                            if prog.externals.add_external(ename, e.url()) {
+                                println!("WARNING: external \"{}\" already existed", ename)
                             }
                         }
                     }
@@ -1155,11 +1240,11 @@ impl std::str::FromStr for Program {
                 // process declarations
                 for decl in prog_parse {
                     match decl {
-                        parser::Decl::FnDecl(decl) => prog.add_decl(&decl)?,
+                        parser::Decl::FnDecl(decl) => prog.add_decl(&mut call_graph, &decl)?,
                         _ => (),
                     }
                 }
-                prog.check_for_cycles()?;
+                call_graph.check_for_cycles()?;
                 Ok(prog)
             }
             Err(nom::Err::Error(nom::Context::Code(toks, _))) => {

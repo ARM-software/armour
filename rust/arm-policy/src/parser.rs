@@ -3,8 +3,9 @@ use super::lexer::{Loc, Token, Tokens};
 use super::literals::Literal;
 use nom::*;
 use regex::Regex;
-use std::collections::HashSet;
 
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 pub type Program = Vec<Decl>;
 
 pub enum Decl {
@@ -134,7 +135,7 @@ impl LocStmt {
 
 pub type BlockStmt = Vec<LocStmt>;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Iter {
     All,
     Any,
@@ -291,8 +292,8 @@ impl Pat {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct PolicyRegex(pub Regex);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolicyRegex(#[serde(with = "serde_regex")] pub Regex);
 
 impl PartialEq for PolicyRegex {
     fn eq(&self, other: &PolicyRegex) -> bool {
@@ -321,7 +322,7 @@ impl LocLiteral {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct Ident(pub String);
 
 #[derive(Debug, Clone)]
@@ -336,13 +337,13 @@ impl LocIdent {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Prefix {
     PrefixMinus,
     Not,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Infix {
     Equal,
     NotEqual,

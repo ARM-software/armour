@@ -3,9 +3,10 @@ use super::lexer::Loc;
 use super::literals::Literal;
 use super::parser;
 use parser::{Infix, Prefix};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum Typ {
     Return,
     Bool,

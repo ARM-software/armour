@@ -1,16 +1,17 @@
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
 use url;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Policy {
     Accept,
     Forward,
     Reject,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 enum Method {
     GET,
     POST,
@@ -47,7 +48,7 @@ impl Default for Method {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 #[allow(non_camel_case_types)]
 enum Version {
     HTTP_09,
@@ -75,7 +76,7 @@ impl Default for Version {
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Default)]
+#[derive(PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HttpRequest {
     method: Method,
     version: Version,
@@ -155,7 +156,7 @@ impl HttpRequest {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Literal {
     IntLiteral(i64),
     FloatLiteral(f64),

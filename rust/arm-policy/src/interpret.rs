@@ -1,7 +1,7 @@
 /// policy language interpreter
 // NOTE: no optimization
 use super::headers::Headers;
-use super::lang::{Block, Code, Error, Expr};
+use super::lang::{Block, Error, Expr, Runtime};
 use super::literals::Literal;
 use super::parser::{As, Infix, Iter, Pat, Prefix};
 use std::collections::HashMap;
@@ -222,7 +222,7 @@ impl Literal {
             _ => None,
         }
     }
-    fn literal_vector(args: Vec<Expr>) -> Result<Vec<Literal>, Error> {
+    pub fn literal_vector(args: Vec<Expr>) -> Result<Vec<Literal>, Error> {
         let mut v = Vec::new();
         for a in args {
             match a {
@@ -247,7 +247,7 @@ impl Expr {
             _ => self,
         }
     }
-    fn eval(self, env: &mut Code) -> Result<Expr, self::Error> {
+    fn eval(self, env: &mut Runtime) -> Result<Expr, self::Error> {
         match self {
             Expr::Var(_) | Expr::BVar(_) => Err(Error::new("eval variable")),
             Expr::LitExpr(_) => Ok(self),
@@ -617,7 +617,7 @@ impl Expr {
                     Some(r) => Ok(r.clone()),
                     None => {
                         // user defined function
-                        if let Some(e) = env.get(&function) {
+                        if let Some(e) = env.internal(&function) {
                             let mut r = e.clone();
                             for a in args {
                                 r = r.apply(&a)?
@@ -651,14 +651,7 @@ impl Expr {
                         } else {
                             // external function (RPC)
                             match function.split("::").collect::<Vec<&str>>().as_slice() {
-                                &[external, method] => match env.externals().request(
-                                    external,
-                                    method,
-                                    Literal::literal_vector(args)?,
-                                ) {
-                                    Ok(result) => Ok(Expr::LitExpr(result)),
-                                    Err(err) => Err(Error::from(err)),
-                                },
+                                &[external, method] => env.external(external, method, args),
                                 _ => Err(Error::new(&format!(
                                     "eval, call: {}: {:?}",
                                     function, args
@@ -670,7 +663,7 @@ impl Expr {
             }
         }
     }
-    pub fn evaluate(self, env: &mut Code) -> Result<Expr, self::Error> {
+    pub fn evaluate(self, env: &mut Runtime) -> Result<Expr, self::Error> {
         self.eval(env).map(|e| e.strip_return())
     }
 }

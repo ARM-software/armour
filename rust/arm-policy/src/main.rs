@@ -3,12 +3,13 @@ use arm_policy::lang;
 use clap::{crate_version, App, Arg};
 use std::fs::File;
 use std::io::{
+    self,
     prelude::{Read, Write},
     stdin, stdout, BufReader,
 };
 use std::time::Duration;
 
-fn main() -> std::io::Result<()> {
+fn main() -> io::Result<()> {
     // Command line interface
     let matches = App::new("Armour")
         .version(crate_version!())
@@ -44,14 +45,21 @@ fn main() -> std::io::Result<()> {
         prog = lang::Program::new()
     };
 
+    // test: serialize then deserialize program (using bincode)
+    // let bytes = prog.to_bytes()?;
+    // println!("{:?}", bytes);
+    // prog = lang::Program::from_bytes(&bytes)?;
+
+    let mut runtime = lang::Runtime::from(&prog);
+
     if let Some(timeout) = matches.value_of("timeout") {
         let d = Duration::from_secs(timeout.parse().map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
                 "duration (seconds) must be an integer",
             )
         })?);
-        prog.set_timeout(d)
+        runtime.set_timeout(d)
     }
 
     // evaluate expressions (REPL)
@@ -61,10 +69,10 @@ fn main() -> std::io::Result<()> {
         let mut reader = BufReader::new(stdin());
         let mut buf = String::new();
         reader.read_to_string(&mut buf).unwrap();
-        match lang::Expr::from_string(&buf, &mut prog.headers) {
+        match lang::Expr::from_string(&buf, &prog.headers) {
             Ok(e) => {
                 // println!("{:#?}", e);
-                match e.evaluate(&mut prog.code) {
+                match e.evaluate(&mut runtime) {
                     Ok(r) => println!(": {}", r),
                     Err(err) => eprintln!("{}", err),
                 }
