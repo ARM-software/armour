@@ -13,12 +13,13 @@ use std::env;
 fn main() -> Result<(), std::io::Error> {
     // CLI
     let servername = "localhost";
-    let default_proxy_port = 8443;
+    let default_proxy_port: u16 = 8443;
 
     let proxy_port = ClapApp::new("arm-stub-proxy")
         .version(crate_version!())
         .author("Anthony Fox <anthony.fox@arm.com> and Gustavo Petri <gustavo.petri@arm.com>")
         .about("Stub Proxy")
+        // .setting(clap::AppSettings::AllowLeadingHyphen)
         .arg(
             Arg::with_name("proxy port")
                 .short("p")

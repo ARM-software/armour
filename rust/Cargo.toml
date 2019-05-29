@@ -1,9 +1,7 @@
 [workspace]
 
 members = [
-    "arm-service",
-    "arm-proxy",
-    "arm-pubsub",
+    "armour-data",
     "arm-stub-proxy",
     "arm-policy",
     "external-server",
