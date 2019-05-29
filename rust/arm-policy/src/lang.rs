@@ -1102,6 +1102,9 @@ impl<'a> Runtime<'a> {
     pub fn set_timeout(&mut self, d: std::time::Duration) {
         self.external.set_timeout(d)
     }
+    pub fn evaluate(&mut self, e: Expr) -> Result<Expr, Error> {
+        e.evaluate(self)
+    }
 }
 
 impl<'a> From<&'a Program> for Runtime<'a> {

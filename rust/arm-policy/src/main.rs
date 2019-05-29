@@ -63,16 +63,16 @@ fn main() -> io::Result<()> {
     }
 
     // evaluate expressions (REPL)
+    let mut reader = BufReader::new(stdin());
     loop {
         print!("> ");
         stdout().flush().unwrap();
-        let mut reader = BufReader::new(stdin());
         let mut buf = String::new();
-        reader.read_to_string(&mut buf).unwrap();
+        reader.read_to_string(&mut buf)?;
         match lang::Expr::from_string(&buf, &prog.headers) {
             Ok(e) => {
                 // println!("{:#?}", e);
-                match e.evaluate(&mut runtime) {
+                match runtime.evaluate(e) {
                     Ok(r) => println!(": {}", r),
                     Err(err) => eprintln!("{}", err),
                 }
