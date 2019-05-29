@@ -7,6 +7,8 @@
 \usepackage[margin, draft]{fixme}
 \fxsetup{theme=color,mode=multiuser}
 \FXRegisterAuthor{gp}{agp}{GP}
+\usepackage{amsmath}
+\usepackage{mathtools}
 
 \newcommand{\gpn}[2][]{\gpnote*{#1}{#2}}
 \newcommand{\gp}[1]{\gpnote{#1}}
@@ -438,21 +440,45 @@ Different entities to which certificates can be associated are:
 \item Applications. 
 \end{inparaenum}
 
-Device and application trust should be supported by an attestation
-procedure allowing to associate concrete hardware devices with logical
-identifiers in \armour{} for the former case, and associate software
-measurements provided through attestation to logical application
-instance identifiers in \armour{} for the latter case.
+\paragraph{Device trust}
+Device trust should be backed by an attestation procedure linked to a
+RoT chain.
 %
-The notion of a user is dependent on the infrastructure (Argus, AWS,
-GC, etc.), and it can also be application-specific.
-%
-Because of that, it is perhaps best to handle user authentication by
-means of \armour{} oracles, although this needs to be studied.
+This mechanism binds known hardware devices to logical identity in
+\armour{}.
 
-While these notions of identity are directly related to a
-physical/measurable entity, there will be other notions of identity
-which will be fundamentally logical.
+\paragraph{Applications trust}
+Similarly, application trust is obtained form an attestation
+procedure linked to software measurements provided by an attestation
+service.
+%
+It is expected that the attestation service for software components
+will be carried out by a server running on a trusted execution
+environment (TEE).
+%
+This attestation procedure binds known application instances to
+\armour{} logical identities. 
+
+\paragraph{Users}
+The notion of a \emph{user} can be application-specific, it can be
+linked to a particular infrastructure (Argus, AWS, GC, etc.), it can
+be delegated to a third-party authentication service, etc. 
+%
+Therefore, it is perhaps best to handle user authentication by means
+of \armour{} oracles.
+%
+However, there are some primitive notions of identity that could be
+used as a baseline default and perhaps combined with
+application/infrastructure specific notions of identity (if any).
+%
+A-priori \armour{} does not need to have  primitive notion of user
+identity, but this aspect need to be to be studied further.
+
+\bigskip
+
+While these notions of identity are related to a physical or
+measurable entities, or delegated to specific oracles, there will be
+other notions of identity which will be fundamentally logical.
 %
 Examples of these are
 \begin{inparaitem}[-]
@@ -461,14 +487,17 @@ Examples of these are
 \item Unix user and group names, etc.
 \end{inparaitem}
 %
+\gpn[How? Labels? Identity Types?]{To accommodate for these entities
+  we consider that \armour{} should be able to treat user-defined
+  identity notions in the policies.}
 
 Another important aspect of authentication is that some logical
 entities are persistent (devices, users, etc.), while other entities
 are volatile (workloads, FaaS instances, temporary services, etc.).
 %
-\armour{} will requires that all logical notions of identity be
-backed by entities that have been authenticated using PKI
-certificates. 
+On the other hand, the design of \armour{} requires that all
+(communicating) logical notions of identity be backed PKI certificates
+for communication security.
 %
 To that end, \armour{} will need to provide mechanisms to associate
 the identity of logical and/or volatile entities to the identity of
@@ -477,7 +506,8 @@ certificates.
 %
 In some sense, this association propagates the \rot{} from the
 attestation mechanisms provided by hardware (eg. \psa{}) to the
-high-level identity primitives manipulated by \armour{}.
+high-level identity primitives manipulated by \armour{}, and it
+validates the security achieved by mTLS in the data-plane. 
 
 \subsection{From \rot{} to \armour{} IDs}
 \label{sec:from-rot-armour}
@@ -519,17 +549,16 @@ the logical identities established.
   \centering
   \begin{tabular}[t]{l|l}
     \multicolumn{1}{c}{Security}
-    & \multicolumn{1}{c}{Extensibility}\\
-    % & \multicolumn{1}{c}{Expressivity}\\
+    & \multicolumn{1}{c}{Extensibility} \\
     \hline
-    Memory Safety (Rust)          & Oracle policy extension \\
-    Defensive programming (Sanitization) & Oracle types            \\
-    Lightweight Types             & Service Types           \\
-    Service compartmentalization  & User-defined Roles      \\
-    Control/Data plane separation &                         \\
-    Native RoT verification       & \\
-    mTLS throughout & \\
-    Cryptography-backed services (enclaves?) &
+    Memory Safety (Rust)                     & Oracle policy extension           \\
+    Defensive programming (Sanitization)     & Service types                      \\
+    Lightweight Types                        & User-defined Roles                     \\
+    Service compartmentalization             &                \\
+    Control/Data plane separation            &                                   \\
+    Native RoT verification                  &                                   \\
+    mTLS throughout                          &                                   \\
+    Crypto-backed services (enclaves?) & 
   \end{tabular}
   \caption{Design Considerations}
   \label{tab:design}
@@ -552,6 +581,18 @@ are:
 
 VSFTP design principles~\cite{VSFTP}.
 
+Common security related software errors from~\cite{Wing99}:
+\begin{itemize}
+\item race conditions on resource accesses, 
+\item not checking data content and size, 
+\item not checking success/failure results, 
+\item omission of resource exhaustion checks,
+\item not checking operating environment assumptions, 
+\item incorrect use of system calls, 
+\item incorrect use of system modules.
+\end{itemize}
+
+
 %
 % \begin{itemize}
 % \item Security by construction design
@@ -573,6 +614,48 @@ VSFTP design principles~\cite{VSFTP}.
 %     \end{inparaenum}
 %   \end{itemize}
 % \end{itemize}
+
+\section{Semantics}
+\label{sec:semantics}
+
+\newcommand{\dpState}{\ensuremath{\Omega}}
+\newcommand{\adpState}{\ensuremath{\omega}}
+\newcommand{\RuleSet}{\ensuremath{\mathcal{R}ules}}
+\newcommand{\adpid}{\ensuremath{p_{i\!d}}}
+\newcommand{\DPId}{\ensuremath{D\!P_{I\!d}}}
+\newcommand{\apol}{\ensuremath{p}}
+\newcommand{\policies}{\ensuremath{\mathcal{P}ol}}
+\newcommand{\compiler}{\ensuremath{\mathcal{C}}}
+\newcommand{\oracleState}{\ensuremath{\mathcal{O}\!_{st}}}
+\newcommand{\gdpState}{\ensuremath{D\!P\!_{st}}}
+\newcommand{\Request}{\mathcal{R}eq}
+
+\begin{figure}[t]
+  \centering
+  \(
+  \begin{array}[t]{c c c c l l}
+                 & \in & \Request     & : &                                & \text{Request}                 \\
+                 & \in & \RuleSet     & : &                                & \text{Rule Set}                \\
+    \adpid       & \in & \DPId        & : & \text{\sf primitive}           & \text{Data Plane Element ID}   \\
+    \adpState    & \in & \dpState     & : & \DPId \times \RuleSet          & 
+                                                             \text{Local Data Plane State}                  \\
+                 & \in & \gdpState    & : & \DPId \rightharpoonup \dpState & \text{Global Data Plane State} \\
+                 & \in &              & : &                                & \text{Local Oracle State}      \\
+                 & \in & \oracleState & : &                                & \text{Global Oracle State}     \\
+           \apol & \in & \policies    & : &                                & \text{Policy}
+  \end{array}
+  \)
+
+  \bigskip
+
+  \(
+  \begin{array}{l r  c l}
+    \compiler : \policies                                      & \rightharpoonup & \gdpState \times \oracleState & \text{Static Policy Compiler} \\
+    \compiler : \policies \times \gdpState \times \oracleState & \rightharpoonup & \gdpState \times \oracleState & \text{Dynamic Policy Compiler}            \end{array}
+  \)
+    \caption{Semantic Domains}
+  \label{fig:sem-dom}
+\end{figure}
 
 \section{Vision}
 
