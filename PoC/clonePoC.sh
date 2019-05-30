@@ -37,4 +37,3 @@ do
   cp ../armour/PoC/PoCx86/${dir}/Dockerfile ${dir}/
 done
   cp ../armour/PoC/PoCx86/docker-compose.yml .
-https://git.research.arm.com/antfox02/armour.git
