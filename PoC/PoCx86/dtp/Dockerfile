@@ -10,8 +10,8 @@ RUN apk update &&\
 
 RUN mkdir -p /var/log/supervisord && \
     mkdir -p /audio && \
-    apt-get update && \
-    apt-get install -y pulseaudio pulseaudio-utils g++ ffmpeg git && \
+    apk update && \
+    apk add pulseaudio pulseaudio-utils g++ ffmpeg git && \
     pip install gunicorn pydub git+https://git.research.arm.com/rsh/emerge/health-poc/debug-tools.git#egg=debug_tools && \
     rm -rf /var/lib/apt/lists/*
 

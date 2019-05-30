@@ -6,12 +6,14 @@ RUN apk update &&\
     apk add --no-cache bash python2-dev py-pip linux-headers supervisor portaudio-dev && \
     pip install --upgrade pip && \
     pip install --no-cache-dir paho-mqtt requests flask pyaudio gunicorn && \
+    apk add --no-cache bash glib-dev linux-headers bluez-deprecated && \
+    pip install --no-cache-dir pexpect influxdb && \
     apk del .build-deps
 
 #install prerequisites
-RUN apk add --no-cache bash glib-dev linux-headers bluez-deprecated && \
-    pip install --no-cache-dir pexpect influxdb && \
-    apk del .build-deps
+#RUN apk add --no-cache bash glib-dev linux-headers bluez-deprecated && \
+  #  pip install --no-cache-dir pexpect influxdb && \
+  #  apk del .build-deps
 
 COPY blue_hr /blue_hr
 COPY listener.py /listener.py
