@@ -109,6 +109,68 @@ impl<D: Dispatcher> external::Server for D {
     }
 }
 
+#[cfg(not(target_env = "musl"))]
+fn tls_rpc_future(
+    socket: tokio::net::TcpListener,
+    external: external::Client,
+) -> Result<Box<dyn Future<Item = (), Error = std::io::Error>>, Error> {
+    // Create the TLS acceptor.
+    let cert = native_tls::Identity::from_pkcs12(
+        include_bytes!("certificates/server.p12"),
+        "rsh-sec-armour",
+    )
+    .map_err(|err| Error::failed(format!("{}", err)))?;
+    let tls_acceptor = tokio_tls::TlsAcceptor::from(
+        native_tls::TlsAcceptor::builder(cert)
+            .build()
+            .map_err(|err| Error::failed(format!("{}", err)))?,
+    );
+    let fut = socket.incoming().for_each(move |sock| {
+        sock.set_nodelay(true)?;
+        let external = external.clone();
+        let tls_accept = tls_acceptor.accept(sock).and_then(move |tls| {
+            let (reader, writer) = tls.split();
+            let network = twoparty::VatNetwork::new(
+                reader,
+                writer,
+                rpc_twoparty_capnp::Side::Server,
+                Default::default(),
+            );
+            let rpc_system = RpcSystem::new(Box::new(network), Some(external.client));
+            Ok(current_thread::spawn(
+                rpc_system.map_err(|e| println!("error: {:?}", e)),
+            ))
+        });
+        println!("new TLS connection");
+        Ok(current_thread::spawn(
+            tls_accept.map_err(|e| println!("error: {:?}", e)),
+        ))
+    });
+    Ok(Box::new(fut))
+}
+
+#[cfg(target_env = "musl")]
+fn tcp_rpc_future(
+    socket: tokio::net::TcpListener,
+    external: external::Client,
+) -> Result<Box<dyn Future<Item = (), Error = std::io::Error>>, Error> {
+    let fut = socket.incoming().for_each(move |socket| {
+        socket.set_nodelay(true)?;
+        let (reader, writer) = socket.split();
+        let network = twoparty::VatNetwork::new(
+            reader,
+            writer,
+            rpc_twoparty_capnp::Side::Server,
+            Default::default(),
+        );
+        let rpc_system = RpcSystem::new(Box::new(network), Some(external.clone().client));
+        println!("WARNING: new insecure connection");
+        current_thread::spawn(rpc_system.map_err(|e| println!("error: {:?}", e)));
+        Ok(())
+    });
+    Ok(Box::new(fut))
+}
+
 static SOCKET_ERROR: &str = "could not obtain socket address";
 
 pub struct External;
@@ -128,58 +190,11 @@ impl External {
 
         let external = external::ToClient::new(implementation).into_client::<capnp_rpc::Server>();
 
-        // Create the TLS acceptor.
         #[cfg(not(target_env = "musl"))]
-        let cert = native_tls::Identity::from_pkcs12(
-            include_bytes!("certificates/server.p12"),
-            "rsh-sec-armour",
-        )
-        .map_err(|err| Error::failed(format!("{}", err)))?;
-        #[cfg(not(target_env = "musl"))]
-        let tls_acceptor = tokio_tls::TlsAcceptor::from(
-            native_tls::TlsAcceptor::builder(cert)
-                .build()
-                .map_err(|err| Error::failed(format!("{}", err)))?,
-        );
-        #[cfg(not(target_env = "musl"))]
-        let done = socket.incoming().for_each(move |sock| {
-            sock.set_nodelay(true)?;
-            let external = external.clone();
-            let tls_accept = tls_acceptor.accept(sock).and_then(move |tls| {
-                let (reader, writer) = tls.split();
-                let network = twoparty::VatNetwork::new(
-                    reader,
-                    writer,
-                    rpc_twoparty_capnp::Side::Server,
-                    Default::default(),
-                );
-                let rpc_system = RpcSystem::new(Box::new(network), Some(external.client));
-                Ok(current_thread::spawn(
-                    rpc_system.map_err(|e| println!("error: {:?}", e)),
-                ))
-            });
-            println!("new TLS connection");
-            Ok(current_thread::spawn(
-                tls_accept.map_err(|e| println!("error: {:?}", e)),
-            ))
-        });
-
+        let fut = tls_rpc_future(socket, external)?;
         #[cfg(target_env = "musl")]
-        let done = socket.incoming().for_each(move |socket| {
-            socket.set_nodelay(true)?;
-            let (reader, writer) = socket.split();
-            let network = twoparty::VatNetwork::new(
-                reader,
-                writer,
-                rpc_twoparty_capnp::Side::Server,
-                Default::default(),
-            );
-            let rpc_system = RpcSystem::new(Box::new(network), Some(external.clone().client));
-            println!("WARNING: new insecure connection");
-            current_thread::spawn(rpc_system.map_err(|e| println!("error: {:?}", e)));
-            Ok(())
-        });
+        let fut = tcp_rpc_future(socket, external)?;
 
-        Ok(current_thread::block_on_all(done).unwrap())
+        Ok(current_thread::block_on_all(fut).unwrap())
     }
 }
