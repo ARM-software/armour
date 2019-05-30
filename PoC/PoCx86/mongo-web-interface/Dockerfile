@@ -8,7 +8,7 @@ RUN apk update &&\
     pip install --no-cache-dir paho-mqtt requests flask pyaudio gunicorn && \
     apk del .build-deps
 
-RUN  pip3 install pymongo==3.4.0 flask-pymongo python-dateutil Flask-InfluxDB && mkdir -p /var/log/supervisord
+RUN  pip install pymongo==3.4.0 flask-pymongo python-dateutil Flask-InfluxDB && mkdir -p /var/log/supervisord
 
 COPY supervisord.conf /etc/supervisord.conf
 
