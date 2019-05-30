@@ -28,9 +28,6 @@ git clone https://git.research.arm.com/rsh/emerge/health-poc/temperature.git
 git clone https://git.research.arm.com/rsh/emerge/health-poc/verify_id.git
 git clone https://git.research.arm.com/rsh/emerge/health-poc/vitals.git
 
-cd ..
-git clone https://git.research.arm.com/antfox02/armour.git
-cd PoC
 for dir in */
 do
   rm -f ${dir}/Dockerfile
