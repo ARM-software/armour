@@ -1111,7 +1111,7 @@ impl<'a> From<&'a Program> for Runtime<'a> {
     fn from(p: &'a Program) -> Runtime<'a> {
         let mut external = externals::Externals::new();
         for (name, url) in p.externals.0.iter() {
-            if let Err(err) = external.add_client(&name, url) {
+            if let Err(err) = external.add_client(&name, url.as_str()) {
                 println!("failed to add external \"{}\": {:?}", name, err)
             }
         }

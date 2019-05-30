@@ -5,8 +5,9 @@ use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::Future;
 use futures_timer::FutureExt;
 use std::collections::HashMap;
+use std::net::ToSocketAddrs;
 use std::time::Duration;
-use tokio::io::AsyncRead;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 const TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -53,6 +54,24 @@ impl From<std::io::Error> for Error {
 impl From<capnp::Error> for Error {
     fn from(err: capnp::Error) -> Error {
         Error::Capnp(err)
+    }
+}
+
+pub trait PathOrToSocketAddrs<T: std::net::ToSocketAddrs, P: AsRef<std::path::Path>> {
+    fn get_to_socket_addrs(&self) -> Option<T>;
+    fn get_path(&self) -> Option<P>;
+}
+
+impl<'a> PathOrToSocketAddrs<&'a str, &'a str> for &'a str {
+    fn get_to_socket_addrs(&self) -> Option<&'a str> {
+        if self.to_socket_addrs().is_ok() {
+            Some(self)
+        } else {
+            None
+        }
+    }
+    fn get_path(&self) -> Option<&'a str> {
+        Some(self)
     }
 }
 
@@ -106,32 +125,60 @@ impl Externals {
             Err(Error::Socket)
         }
     }
-    pub fn add_client<T: std::net::ToSocketAddrs>(
+    fn get_uds_stream<P: AsRef<std::path::Path>>(
         &mut self,
-        name: &str,
-        socket: T,
-    ) -> Result<(), Error> {
+        path: P,
+    ) -> Result<tokio_uds::UnixStream, Error> {
+        let stream = self
+            .runtime
+            .block_on(tokio_uds::UnixStream::connect(path))?;
+        Ok(stream)
+    }
+    pub fn add_client_stream<'a, 'b, T: 'static + 'a>(
+        &'a mut self,
+        name: &'b str,
+        stream: T,
+    ) -> Result<(), Error>
+    where
+        T: AsyncRead + AsyncWrite,
+    {
+        let (reader, writer) = stream.split();
+        let network = Box::new(twoparty::VatNetwork::new(
+            reader,
+            writer,
+            rpc_twoparty_capnp::Side::Client,
+            Default::default(),
+        ));
+        let mut rpc_system = RpcSystem::new(network, None);
+        let client: external::Client = rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
+        // let disconnector = rpc_system.get_disconnector();
+        // self.runtime.block_on(disconnector)?;
+        self.clients.insert(name.to_string(), client);
+        self.runtime.spawn(rpc_system.map_err(|_| ()));
+        Ok(())
+    }
+    pub fn add_client<S, P, T>(&mut self, name: &str, socket: T) -> Result<(), Error>
+    where
+        S: std::net::ToSocketAddrs,
+        P: AsRef<std::path::Path>,
+        T: PathOrToSocketAddrs<S, P> + std::fmt::Display,
+    {
         if self.clients.contains_key(name) {
             Err(Error::ClientAlreadyExists)
-        } else {
+        } else if let Some(p) = socket.get_to_socket_addrs() {
             #[cfg(target_env = "musl")]
-            let stream = self.get_tcp_stream(socket)?;
+            let stream = self.get_tcp_stream(p)?;
             #[cfg(not(target_env = "musl"))]
-            let stream = self.get_tls_stream(socket)?;
-            let (reader, writer) = stream.split();
-            let network = Box::new(twoparty::VatNetwork::new(
-                reader,
-                writer,
-                rpc_twoparty_capnp::Side::Client,
-                Default::default(),
-            ));
-            let mut rpc_system = RpcSystem::new(network, None);
-            let client: external::Client = rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
-            // let disconnector = rpc_system.get_disconnector();
-            // self.runtime.block_on(disconnector)?;
-            self.clients.insert(name.to_string(), client);
-            self.runtime.spawn(rpc_system.map_err(|_| ()));
-            Ok(())
+            let stream = self.get_tls_stream(p)?;
+            self.add_client_stream(name, stream)
+        } else if let Some(p) = socket.get_path() {
+            let stream = self.get_uds_stream(p)?;
+            self.add_client_stream(name, stream)
+        } else {
+            Err(Error::IO(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("failed to parse TCP socket or path: {}", socket),
+            )))
         }
     }
     fn build_request(

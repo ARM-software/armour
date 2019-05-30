@@ -12,6 +12,7 @@ use capnp::capability::Promise;
 use capnp::Error;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::{Future, Stream};
+use std::net::ToSocketAddrs;
 use tokio::io::AsyncRead;
 use tokio::runtime::current_thread;
 
@@ -150,6 +151,14 @@ fn tls_rpc_future(
 }
 
 #[cfg(target_env = "musl")]
+fn tls_rpc_future(
+    socket: tokio::net::TcpListener,
+    external: external::Client,
+) -> Result<Box<dyn Future<Item = (), Error = std::io::Error>>, Error> {
+    tcp_rpc_future(socket, external)
+}
+
+#[cfg(target_env = "musl")]
 fn tcp_rpc_future(
     socket: tokio::net::TcpListener,
     external: external::Client,
@@ -171,29 +180,79 @@ fn tcp_rpc_future(
     Ok(Box::new(fut))
 }
 
+fn uds_rpc_future(
+    socket: tokio_uds::UnixListener,
+    external: external::Client,
+) -> Result<Box<dyn Future<Item = (), Error = std::io::Error>>, Error> {
+    let fut = socket.incoming().for_each(move |socket| {
+        let (reader, writer) = socket.split();
+        let network = twoparty::VatNetwork::new(
+            reader,
+            writer,
+            rpc_twoparty_capnp::Side::Server,
+            Default::default(),
+        );
+        let rpc_system = RpcSystem::new(Box::new(network), Some(external.clone().client));
+        println!("Unix socket connection");
+        current_thread::spawn(rpc_system.map_err(|e| println!("error: {:?}", e)));
+        Ok(())
+    });
+    Ok(Box::new(fut))
+}
+
 static SOCKET_ERROR: &str = "could not obtain socket address";
+
+pub trait PathOrToSocketAddrs<T: std::net::ToSocketAddrs, P: AsRef<std::path::Path>> {
+    fn get_to_socket_addrs(&self) -> Option<T>;
+    fn get_path(&self) -> Option<P>;
+}
+
+impl<'a> PathOrToSocketAddrs<&'a str, &'a str> for &'a str {
+    fn get_to_socket_addrs(&self) -> Option<&'a str> {
+        if self.to_socket_addrs().is_ok() {
+            Some(self)
+        } else {
+            None
+        }
+    }
+    fn get_path(&self) -> Option<&'a str> {
+        Some(self)
+    }
+}
 
 pub struct External;
 
 impl External {
-    pub fn start<T: std::net::ToSocketAddrs, U: Dispatcher + 'static>(
-        socket: T,
+    pub fn start<
+        S: std::net::ToSocketAddrs,
+        P: AsRef<std::path::Path> + std::fmt::Display + Clone,
+        T: PathOrToSocketAddrs<S, P>,
+        U: Dispatcher + 'static,
+    >(
+        t: T,
         implementation: U,
     ) -> Result<(), Error> {
-        let addr = socket
-            .to_socket_addrs()
-            .map_err(|_| Error::failed(SOCKET_ERROR.to_string()))?
-            .next()
-            .ok_or(Error::failed(SOCKET_ERROR.to_string()))?;
-        let socket = tokio::net::TcpListener::bind(&addr)
-            .map_err(|err| Error::failed(format!("{}", err)))?;
-
+        let mut fut;
         let external = external::ToClient::new(implementation).into_client::<capnp_rpc::Server>();
-
-        #[cfg(not(target_env = "musl"))]
-        let fut = tls_rpc_future(socket, external)?;
-        #[cfg(target_env = "musl")]
-        let fut = tcp_rpc_future(socket, external)?;
+        if let Some(s) = t.get_to_socket_addrs() {
+            let addr = s
+                .to_socket_addrs()
+                .map_err(|_| Error::failed(SOCKET_ERROR.to_string()))?
+                .next()
+                .ok_or(Error::failed(SOCKET_ERROR.to_string()))?;
+            let socket = tokio::net::TcpListener::bind(&addr)
+                .map_err(|err| Error::failed(format!("{}", err)))?;
+            fut = tls_rpc_future(socket, external)?;
+        } else if let Some(p) = t.get_path() {
+            if p.as_ref().exists() {
+                println!("removing old \"{}\"", p);
+                std::fs::remove_file(p.clone())?
+            };
+            let listener = tokio_uds::UnixListener::bind(p)?;
+            fut = uds_rpc_future(listener, external)?;
+        } else {
+            return Err(Error::failed("could not bind".to_string()));
+        };
 
         Ok(current_thread::block_on_all(fut).unwrap())
     }
