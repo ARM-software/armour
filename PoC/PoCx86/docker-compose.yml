@@ -1,6 +1,7 @@
-version: '3.7'
+version: '3.3'
 services:
   digital-dolly:
+    https://git.research.arm.com/antfox02/armour.git
     build:
       context: ./digital-dolly
       args:
