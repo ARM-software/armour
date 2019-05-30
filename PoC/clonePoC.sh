@@ -37,3 +37,5 @@ do
   cp ../armour/PoC/PoCx86/${dir}/Dockerfile ${dir}/
 done
   cp ../armour/PoC/PoCx86/docker-compose.yml .
+  rm -f ./debug/debug_tools/testall.sh
+  cp ../armour/PoC/PoCx86/testall.sh ./debug/debug_tools/
