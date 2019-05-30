@@ -29,7 +29,7 @@ services:
   mongo-web-interface:
     image: git.research.arm.com:4567/rsh/emerge/health-poc/mongo-web-interface:latest
     environment:
-        MONGO_CONN: "mongodb://10.1.29.64:27017/Ledger"
+        MONGO_CONN: "mongodb://kvminst-1.ausrd.arm.com:80/Ledger"
         INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
     networks:
       - mynet
@@ -46,7 +46,7 @@ services:
   accounting:
     image: git.research.arm.com:4567/rsh/emerge/health-poc/accounting:master
     environment:
-      MONGO_CONN: "mongodb://10.1.29.64:27017"
+      MONGO_CONN: "mongodb://kvminst-1.ausrd.arm.com:80"
     networks:
       - mynet
     ports:
@@ -71,7 +71,7 @@ services:
   dbread:
     image: git.research.arm.com:4567/rsh/emerge/health-poc/dbread:development
     volumes:
-      - /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock
+      - /tmp/mysql.sock:/var/run/mysqld/mysqld.sock
     environment:
       DB_CONN: "mysql://dbint:raspberry@localhost:3306/PoC?unix_socket=/var/run/mysqld/mysqld.sock"
     networks:
@@ -82,7 +82,7 @@ services:
   dbwrite:
     image: git.research.arm.com:4567/rsh/emerge/health-poc/dbwrite:development
     volumes:
-      - /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock
+      - /tmp/mysql.sock:/var/run/mysqld/mysqld.sock
     environment:
       DB_CONN: "mysql://dbint:raspberry@localhost:3306/PoC?unix_socket=/var/run/mysqld/mysqld.sock"
     networks:
@@ -100,7 +100,7 @@ services:
   debug:
     image: git.research.arm.com:4567/rsh/emerge/health-poc/debug:development
     volumes:
-      - /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock
+      - /tmp/mysql.sock:/var/run/mysqld/mysqld.sock
     environment:
       DB_CONN_REGIST: "mysql://dbint:raspberry@localhost:3306/PoC_Registration?unix_socket=/var/run/mysqld/mysqld.sock"
     networks:
@@ -111,7 +111,7 @@ services:
   launch:
     image: git.research.arm.com:4567/rsh/emerge/health-poc/launch:development
     volumes:
-      - /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock
+      - /tmp/mysql.sock:/var/run/mysqld/mysqld.sock
     environment:
       RUNLEVEL: "debug"
       DB_CONN_REGIST: "mysql://dbint:raspberry@localhost:3306/PoC_Registration?unix_socket=/var/run/mysqld/mysqld.sock"
@@ -162,16 +162,16 @@ services:
     ports:
       - 5000
 
-  pulse:
-    image: git.research.arm.com:4567/rsh/emerge/health-poc/pulse_prod:development
-    cap_add: ["SYS_RAWIO"]
-    volumes:
-      - /dev/snd:/dev/snd
-    privileged: true
-    networks:
-      - mynet
-    ports:
-      - 4713:4713/tcp
+#  pulse:
+#    image: git.research.arm.com:4567/rsh/emerge/health-poc/pulse_prod:development
+#    cap_add: ["SYS_RAWIO"]
+#    volumes:
+#      - /dev/snd:/dev/snd
+#    privileged: true
+#    networks:
+#      - mynet
+#    ports:
+#      - 4713:4713/tcp
 
   verify-id:
     image: git.research.arm.com:4567/rsh/emerge/health-poc/verify_id:development
@@ -198,14 +198,14 @@ services:
     networks:
       - mynet
 
-  vitals:
-    image: git.research.arm.com:4567/rsh/emerge/health-poc/vitals
-    privileged: true
-    cap_add: ["NET_ADMIN"]
-    volumes:
-      - /dev/ttyAMA0:/dev/ttyAMA0
-    networks:
-      - mynet
+#  vitals:
+#    image: git.research.arm.com:4567/rsh/emerge/health-poc/vitals
+#    privileged: true
+#    cap_add: ["NET_ADMIN"]
+#    volumes:
+#      - /dev/ttyAMA0:/dev/ttyAMA0
+#    networks:
+#      - mynet
 networks:
   mynet:
     driver: bridge
