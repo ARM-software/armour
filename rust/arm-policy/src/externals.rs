@@ -68,6 +68,44 @@ impl Externals {
     pub fn set_timeout(&mut self, t: Duration) {
         self.timeout = t
     }
+    #[cfg(not(target_env = "musl"))]
+    fn get_tls_stream<T: std::net::ToSocketAddrs>(
+        &mut self,
+        socket: T,
+    ) -> Result<tokio_tls::TlsStream<tokio::net::TcpStream>, Error> {
+        if let Some(addr) = socket.to_socket_addrs()?.next() {
+            let mut builder = native_tls::TlsConnector::builder();
+            #[cfg(debug_assertions)]
+            builder.danger_accept_invalid_certs(true);
+            let tls_connector = tokio_tls::TlsConnector::from(
+                builder.build().expect("failed to create TLS connector"),
+            );
+            let tls = tokio::net::TcpStream::connect(&addr).and_then(|sock| {
+                sock.set_nodelay(true).expect("failed to set nodelay");
+                tls_connector
+                    .connect(&addr.to_string(), sock)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            });
+            self.runtime.block_on(tls).map_err(Error::from)
+        } else {
+            Err(Error::Socket)
+        }
+    }
+    #[cfg(target_env = "musl")]
+    fn get_tcp_stream<T: std::net::ToSocketAddrs>(
+        &mut self,
+        socket: T,
+    ) -> Result<tokio::net::TcpStream, Error> {
+        if let Some(addr) = socket.to_socket_addrs()?.next() {
+            let stream = self
+                .runtime
+                .block_on(tokio::net::TcpStream::connect(&addr))?;
+            stream.set_nodelay(true)?;
+            Ok(stream)
+        } else {
+            Err(Error::Socket)
+        }
+    }
     pub fn add_client<T: std::net::ToSocketAddrs>(
         &mut self,
         name: &str,
@@ -75,32 +113,12 @@ impl Externals {
     ) -> Result<(), Error> {
         if self.clients.contains_key(name) {
             Err(Error::ClientAlreadyExists)
-        } else if let Some(addr) = socket.to_socket_addrs()?.next() {
+        } else {
             #[cfg(target_env = "musl")]
-            let stream = self
-                .runtime
-                .block_on(tokio::net::TcpStream::connect(&addr))?;
-            #[cfg(target_env = "musl")]
-            stream.set_nodelay(true)?;
-            #[cfg(target_env = "musl")]
+            let stream = self.get_tcp_stream(socket)?;
+            #[cfg(not(target_env = "musl"))]
+            let stream = self.get_tls_stream(socket)?;
             let (reader, writer) = stream.split();
-            #[cfg(not(target_env = "musl"))]
-            let mut builder = native_tls::TlsConnector::builder();
-            #[cfg(all(debug_assertions, not(target_env = "musl")))]
-            builder.danger_accept_invalid_certs(true);
-            #[cfg(not(target_env = "musl"))]
-            let tls_connector = tokio_tls::TlsConnector::from(
-                builder.build().expect("failed to create TLS connector"),
-            );
-            #[cfg(not(target_env = "musl"))]
-            let tls = tokio::net::TcpStream::connect(&addr).and_then(|sock| {
-                sock.set_nodelay(true).expect("failed to set nodelay");
-                tls_connector
-                    .connect(&addr.to_string(), sock)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-            });
-            #[cfg(not(target_env = "musl"))]
-            let (reader, writer) = self.runtime.block_on(tls)?.split();
             let network = Box::new(twoparty::VatNetwork::new(
                 reader,
                 writer,
@@ -114,49 +132,58 @@ impl Externals {
             self.clients.insert(name.to_string(), client);
             self.runtime.spawn(rpc_system.map_err(|_| ()));
             Ok(())
-        } else {
-            Err(Error::Socket)
         }
+    }
+    fn build_request(
+        req: &CallRequest,
+        client: &external::Client,
+    ) -> Result<
+        capnp::capability::Request<external::call_params::Owned, external::call_results::Owned>,
+        Error,
+    > {
+        // prepare the RPC
+        let mut call_req = client.call_request();
+        let mut call = call_req.get();
+        // set the name
+        call.set_name(req.method);
+        // set the args
+        let mut args = call.init_args(req.args.len() as u32);
+        for (i, lit) in req.args.iter().enumerate() {
+            let mut arg = args.reborrow().get(i as u32);
+            match lit {
+                Literal::BoolLiteral(b) => arg.set_bool(*b),
+                Literal::IntLiteral(i) => arg.set_int64(*i),
+                Literal::FloatLiteral(f) => arg.set_float64(*f),
+                Literal::StringLiteral(s) => arg.set_text(s),
+                Literal::DataLiteral(d) => arg.set_data(d),
+                Literal::Unit => arg.set_unit(()),
+                Literal::List(lits) => {
+                    let mut pairs = arg.init_pairs(lits.len() as u32);
+                    for (j, l) in lits.iter().enumerate() {
+                        match l {
+                            Literal::Tuple(ts) => match ts.as_slice() {
+                                &[Literal::StringLiteral(ref key), Literal::StringLiteral(ref value)] =>
+                                {
+                                    let mut pair = pairs.reborrow().get(j as u32);
+                                    pair.set_key(key);
+                                    pair.set_value(value);
+                                }
+                                _ => return Err(Error::RequestNotValid),
+                            },
+                            _ => return Err(Error::RequestNotValid),
+                        }
+                    }
+                }
+                _ => return Err(Error::RequestNotValid),
+            }
+        }
+        Ok(call_req)
     }
     fn call_request(&mut self, req: &CallRequest) -> Result<Literal, Error> {
         use external::value::Which;
         if let Some(client) = self.clients.get(req.external) {
             // prepare the RPC
-            let mut call_req = client.call_request();
-            let mut call = call_req.get();
-            // set the name
-            call.set_name(req.method);
-            // set the args
-            let mut args = call.init_args(req.args.len() as u32);
-            for (i, lit) in req.args.iter().enumerate() {
-                let mut arg = args.reborrow().get(i as u32);
-                match lit {
-                    Literal::BoolLiteral(b) => arg.set_bool(*b),
-                    Literal::IntLiteral(i) => arg.set_int64(*i),
-                    Literal::FloatLiteral(f) => arg.set_float64(*f),
-                    Literal::StringLiteral(s) => arg.set_text(s),
-                    Literal::DataLiteral(d) => arg.set_data(d),
-                    Literal::Unit => arg.set_unit(()),
-                    Literal::List(lits) => {
-                        let mut pairs = arg.init_pairs(lits.len() as u32);
-                        for (j, l) in lits.iter().enumerate() {
-                            match l {
-                                Literal::Tuple(ts) => match ts.as_slice() {
-                                    &[Literal::StringLiteral(ref key), Literal::StringLiteral(ref value)] =>
-                                    {
-                                        let mut pair = pairs.reborrow().get(j as u32);
-                                        pair.set_key(key);
-                                        pair.set_value(value);
-                                    }
-                                    _ => return Err(Error::RequestNotValid),
-                                },
-                                _ => return Err(Error::RequestNotValid),
-                            }
-                        }
-                    }
-                    _ => return Err(Error::RequestNotValid),
-                }
-            }
+            let call_req = Externals::build_request(req, client)?;
             // make the RPC
             self.runtime.block_on(
                 call_req
