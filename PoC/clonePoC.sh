@@ -27,6 +27,8 @@ git clone https://git.research.arm.com/rsh/emerge/health-poc/pulse.git
 git clone https://git.research.arm.com/rsh/emerge/health-poc/temperature.git
 git clone https://git.research.arm.com/rsh/emerge/health-poc/verify_id.git
 git clone https://git.research.arm.com/rsh/emerge/health-poc/vitals.git
+git clone https://git.research.arm.com/rsh/emerge/health-poc/rule-engine.git
+git clone https://git.research.arm.com/rsh/emerge/health-poc/debug-tools.git
 
 for dir in */
 do
@@ -35,3 +37,4 @@ do
   cp ../armour/PoC/PoCx86/${dir}/Dockerfile ${dir}/
 done
   cp ../armour/PoC/PoCx86/docker-compose.yml .
+https://git.research.arm.com/antfox02/armour.git
