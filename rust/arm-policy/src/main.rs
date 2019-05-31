@@ -1,16 +1,14 @@
 /// Armour policy language
 use arm_policy::lang;
 use clap::{crate_version, App, Arg};
-use std::fs::File;
 use std::io::{
     self,
     prelude::{Read, Write},
-    stdin, stdout, BufReader,
 };
 use std::time::Duration;
 
 fn main() -> io::Result<()> {
-    // Command line interface
+    // command line interface
     let matches = App::new("Armour")
         .version(crate_version!())
         .author("Anthony Fox <anthony.fox@arm.com>")
@@ -19,7 +17,7 @@ fn main() -> io::Result<()> {
             Arg::with_name("input file")
                 .index(1)
                 .required(false)
-                .help("File to parse"),
+                .help("Policy file"),
         )
         .arg(
             Arg::with_name("timeout")
@@ -32,15 +30,10 @@ fn main() -> io::Result<()> {
     // declare program
     let mut prog: lang::Program;
 
-    // try to load code
+    // try to load code from an input file
     if let Some(filename) = matches.value_of("input file") {
-        let mut reader = BufReader::new(File::open(filename)?);
-        let mut buf = String::new();
-        reader.read_to_string(&mut buf).unwrap();
-        match buf.parse() {
-            Ok(p) => prog = p,
-            Err(err) => return Ok(eprintln!("{}: {}", filename, err)),
-        }
+        prog = lang::Program::from_file(filename)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
     } else {
         prog = lang::Program::new()
     };
@@ -56,17 +49,17 @@ fn main() -> io::Result<()> {
         let d = Duration::from_secs(timeout.parse().map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "duration (seconds) must be an integer",
+                "timeout (seconds) must be an integer",
             )
         })?);
         runtime.set_timeout(d)
     }
 
     // evaluate expressions (REPL)
-    let mut reader = BufReader::new(stdin());
+    let mut reader = io::BufReader::new(io::stdin());
     loop {
         print!("> ");
-        stdout().flush().unwrap();
+        io::stdout().flush().unwrap();
         let mut buf = String::new();
         reader.read_to_string(&mut buf)?;
         match lang::Expr::from_string(&buf, &prog.headers) {

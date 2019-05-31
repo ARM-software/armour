@@ -13,9 +13,14 @@ use types::Typ;
 #[derive(Debug, Clone)]
 pub struct Error(String);
 
+impl std::error::Error for Error {}
+
 impl Error {
-    pub fn new(e: &str) -> Error {
+    pub fn new<D: std::fmt::Display>(e: D) -> Error {
         Error(e.to_string())
+    }
+    pub fn from_debug<D: std::fmt::Debug>(e: D) -> Error {
+        Error(format!("{:?}", e))
     }
 }
 
@@ -26,40 +31,44 @@ impl fmt::Display for Error {
 }
 
 impl From<std::num::ParseIntError> for Error {
-    fn from(_: std::num::ParseIntError) -> Error {
-        Error::new("failed to parse i64")
+    fn from(e: std::num::ParseIntError) -> Error {
+        Error::new(e)
     }
 }
 
 impl From<regex::Error> for Error {
     fn from(err: regex::Error) -> Error {
-        Error::new(&format!("{}", err))
+        Error::new(err)
     }
 }
 
 impl<'a> From<types::Error<'a>> for Error {
     fn from(err: types::Error<'a>) -> Error {
-        Error::new(&format!("{}", err))
+        Error::new(err)
     }
 }
 
 impl From<externals::Error> for Error {
     fn from(err: externals::Error) -> Error {
-        Error::new(&format!("Externals error: {:?}", err))
+        Error::from_debug(err)
     }
 }
 
 impl From<headers::Error> for Error {
     fn from(err: headers::Error) -> Error {
-        match err {
-            headers::Error(s) => Error(s),
-        }
+        Error::new(err)
     }
 }
 
 impl From<base64::DecodeError> for Error {
     fn from(err: base64::DecodeError) -> Error {
-        Error(format!("base 64 error: {}", err.to_string()))
+        Error::new(err)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Error {
+        Error::new(err)
     }
 }
 
@@ -1192,6 +1201,13 @@ impl Program {
     }
     pub fn to_bytes(&self) -> Result<Vec<u8>, io::Error> {
         bincode::serialize(self).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    }
+    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, Error> {
+        use std::io::prelude::Read;
+        let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
+        let mut buf = String::new();
+        reader.read_to_string(&mut buf).unwrap();
+        buf.parse()
     }
 }
 

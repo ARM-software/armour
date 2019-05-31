@@ -6,17 +6,23 @@ use std::collections::HashMap;
 pub struct Error(pub String);
 
 impl Error {
-    pub fn new(e: &str) -> Error {
+    pub fn new<D: std::fmt::Display>(e: D) -> Error {
         Error(e.to_string())
     }
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Headers (HashMap<String, Signature>);
+pub struct Headers(HashMap<String, Signature>);
 
 impl Headers {
     pub fn new() -> Headers {
-        Headers (HashMap::new())
+        Headers(HashMap::new())
     }
     pub fn add_function(&mut self, name: &str, args: Vec<Typ>, ret: &Typ) -> Result<(), Error> {
         if self
@@ -24,7 +30,7 @@ impl Headers {
             .insert(name.to_string(), (args, ret.to_owned()))
             .is_some()
         {
-            Err(Error::new(&format!("duplicate function \"{}\"", name)))
+            Err(Error::new(format!("duplicate function \"{}\"", name)))
         } else {
             Ok(())
         }
