@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "daemon-server",
+    "daemon-client",
+    "cli-lib",
+]
