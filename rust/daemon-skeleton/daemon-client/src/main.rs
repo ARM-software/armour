@@ -29,6 +29,6 @@ fn main() {
         request.get().set_a(8);
 
         let rsp = (runtime.block_on(request.send().promise)).unwrap().get().unwrap().get_r();
-        println!("Called to read returned {}", rsp);
+        println!("Call to read returned {:?}", rsp);
     }
 }
