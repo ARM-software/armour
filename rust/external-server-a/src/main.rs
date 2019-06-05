@@ -4,7 +4,7 @@ use external_server::{Dispatcher, External, Literal, Literal::*};
 struct ExternalImpl(i64);
 
 impl ExternalImpl {
-    fn sin<'a>(args: &[Literal<'a>]) -> Result<Literal<'a>, Error> {
+    fn sin<'a>(args: &[Literal]) -> Result<Literal, Error> {
         match args {
             &[FloatLiteral(f)] => Ok(FloatLiteral(f64::sin(f))),
             _ => Err(Error::failed("sin".to_string())),
@@ -14,22 +14,26 @@ impl ExternalImpl {
         self.0 += 1;
         Ok(IntLiteral(self.0))
     }
-    fn rev<'a>(args: &[Literal<'a>]) -> Result<Literal<'a>, Error> {
+    fn rev(args: &[Literal]) -> Result<Literal, Error> {
         match args {
             &[StringPairs(ref l)] => Ok(StringPairs(l.iter().rev().cloned().collect())),
             _ => Err(Error::failed("process".to_string())),
         }
     }
-    fn process<'a>(args: &[Literal<'a>]) -> Result<Literal<'a>, Error> {
+    fn process(args: &[Literal]) -> Result<Literal, Error> {
         match args {
-            &[StringPairs(ref l)] => Ok(StringList(l.iter().map(|x| x.1).collect())),
+            &[StringPairs(ref l)] => Ok(StringList(
+                l.into_iter()
+                    .map(|x| String::from_utf8_lossy(&x.1).into_owned())
+                    .collect(),
+            )),
             _ => Err(Error::failed("process".to_string())),
         }
     }
 }
 
 impl Dispatcher for ExternalImpl {
-    fn dispatch<'a>(&'a mut self, name: &str, args: &[Literal<'a>]) -> Result<Literal<'a>, Error> {
+    fn dispatch(&mut self, name: &str, args: &[Literal]) -> Result<Literal, Error> {
         match name {
             "sin" => ExternalImpl::sin(args),
             "count" => self.count(),

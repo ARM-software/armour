@@ -3,7 +3,7 @@
 interface External {
   struct Entry {
     key @0 :Text;
-    value @1 :Text;
+    value @1 :Data;
   }
   struct Value {
     union {

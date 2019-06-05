@@ -17,14 +17,14 @@ use tokio::io::AsyncRead;
 use tokio::runtime::current_thread;
 
 #[derive(Debug)]
-pub enum Literal<'a> {
+pub enum Literal {
     IntLiteral(i64),
     FloatLiteral(f64),
     BoolLiteral(bool),
-    DataLiteral(&'a [u8]),
-    StringLiteral(&'a str),
-    StringList(Vec<&'a str>),
-    StringPairs(Vec<(&'a str, &'a str)>),
+    DataLiteral(Vec<u8>),
+    StringLiteral(String),
+    StringList(Vec<String>),
+    StringPairs(Vec<(String, Vec<u8>)>),
     Unit,
 }
 
@@ -33,11 +33,11 @@ use Literal::{
 };
 
 pub trait Dispatcher {
-    fn dispatch<'a>(&'a mut self, name: &str, args: &[Literal<'a>]) -> Result<Literal<'a>, Error>;
-    fn process_args<'a>(
+    fn dispatch(&mut self, name: &str, args: &[Literal]) -> Result<Literal, Error>;
+    fn process_args(
         &self,
-        args: capnp::struct_list::Reader<'a, external_capnp::external::value::Owned>,
-    ) -> Result<Vec<Literal<'a>>, Error> {
+        args: capnp::struct_list::Reader<external_capnp::external::value::Owned>,
+    ) -> Result<Vec<Literal>, Error> {
         use external::value::Which::{Bool, Data, Float64, Int64, Lines, Pairs, Text, Unit};
         let mut res = Vec::new();
         for arg in args {
@@ -45,20 +45,20 @@ pub trait Dispatcher {
                 Bool(b) => BoolLiteral(b),
                 Int64(i) => IntLiteral(i),
                 Float64(f) => FloatLiteral(f),
-                Text(t) => StringLiteral(t?),
-                Data(d) => DataLiteral(d?),
+                Text(t) => StringLiteral(t?.to_string()),
+                Data(d) => DataLiteral(d?.to_vec()),
                 Unit(_) => Literal::Unit,
                 Lines(ps) => {
                     let mut v = Vec::new();
                     for p in ps? {
-                        v.push(p?)
+                        v.push(p?.to_string())
                     }
                     StringList(v)
                 }
                 Pairs(ps) => {
                     let mut v = Vec::new();
                     for p in ps? {
-                        v.push((p.get_key()?, p.get_value()?))
+                        v.push((p.get_key()?.to_string(), p.get_value()?.to_vec()))
                     }
                     StringPairs(v)
                 }
@@ -89,8 +89,8 @@ impl<D: Dispatcher> external::Server for D {
             BoolLiteral(b) => res.set_bool(b),
             IntLiteral(i) => res.set_int64(i),
             FloatLiteral(f) => res.set_float64(f),
-            StringLiteral(s) => res.set_text(s),
-            DataLiteral(d) => res.set_data(d),
+            StringLiteral(s) => res.set_text(&s),
+            DataLiteral(d) => res.set_data(d.as_slice()),
             Literal::Unit => res.set_unit(()),
             StringList(ps) => {
                 let mut lines = res.init_lines(ps.len() as u32);

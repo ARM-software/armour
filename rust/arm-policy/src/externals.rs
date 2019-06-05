@@ -209,7 +209,7 @@ impl Externals {
                     for (j, l) in lits.iter().enumerate() {
                         match l {
                             Literal::Tuple(ts) => match ts.as_slice() {
-                                &[Literal::StringLiteral(ref key), Literal::StringLiteral(ref value)] =>
+                                &[Literal::StringLiteral(ref key), Literal::DataLiteral(ref value)] =>
                                 {
                                     let mut pair = pairs.reborrow().get(j as u32);
                                     pair.set_key(key);
@@ -258,7 +258,7 @@ impl Externals {
                                     for p in pry!(ps) {
                                         v.push(Literal::Tuple(vec![
                                             Literal::StringLiteral(pry!(p.get_key()).to_string()),
-                                            Literal::StringLiteral(pry!(p.get_value()).to_string()),
+                                            Literal::DataLiteral(pry!(p.get_value()).to_vec()),
                                         ]))
                                     }
                                     Literal::List(v)

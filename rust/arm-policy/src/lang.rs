@@ -240,6 +240,15 @@ impl Expr {
     pub fn data(d: &[u8]) -> Expr {
         Expr::LitExpr(Literal::DataLiteral(d.to_vec()))
     }
+    pub fn http_request(r: literals::HttpRequest) -> Expr {
+        Expr::LitExpr(Literal::HttpRequestLiteral(r))
+    }
+    pub fn call1(f: &str, e: Expr) -> Expr {
+        Expr::CallExpr {
+            function: f.to_string(),
+            arguments: vec![e],
+        }
+    }
     pub fn return_expr(e: Expr) -> Expr {
         Expr::ReturnExpr(Box::new(e))
     }
@@ -1067,7 +1076,7 @@ impl std::str::FromStr for Expr {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Code(HashMap<String, Expr>);
 
 impl Code {
@@ -1076,8 +1085,8 @@ impl Code {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Externals(HashMap<String, String>);
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Externals(pub HashMap<String, String>);
 
 impl Externals {
     fn new() -> Externals {
@@ -1163,7 +1172,7 @@ impl CallGraph {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Program {
     pub code: Code,
     pub externals: Externals,
@@ -1208,6 +1217,12 @@ impl Program {
         let mut buf = String::new();
         reader.read_to_string(&mut buf).unwrap();
         buf.parse()
+    }
+}
+
+impl Default for Program {
+    fn default() -> Self {
+        Program::new()
     }
 }
 
