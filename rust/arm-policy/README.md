@@ -253,11 +253,9 @@ function               | type
 | headers              | `HttpRequest -> List<str>`               |
 | query_pairs          | `HttpRequest -> List<(str, str)>`        |
 | header_pairs         | `HttpRequest -> List<(str, str)>`        |
-| payload              | `HttpRequest -> data`                    |
 | set_path             | `(HttpRequest, str) -> HttpRequest`      |
 | set_query            | `(HttpRequest, str) -> HttpRequest`      |
 | set_header           | `(HttpRequest, str, str) -> HttpRequest` |
-| set_payload          | `(HttpRequest, data) -> HttpRequest`     |
 
 ### i64::
 

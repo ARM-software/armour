@@ -138,7 +138,7 @@ impl Literal {
                     .map(|(k, v)| {
                         Literal::Tuple(vec![
                             Literal::StringLiteral(k.to_string()),
-                            Literal::StringLiteral(v.to_string()),
+                            Literal::StringLiteral(String::from_utf8_lossy(&v).into_owned()),
                         ])
                     })
                     .collect(),
@@ -149,9 +149,6 @@ impl Literal {
                     .map(|h| Literal::StringLiteral(h))
                     .collect(),
             )),
-            ("HttpRequest::payload", Literal::HttpRequestLiteral(req)) => {
-                Some(Literal::DataLiteral(req.payload()))
-            }
             ("list::len", Literal::List(l)) => Some(Literal::IntLiteral(l.len() as i64)),
             (_, Literal::Tuple(l)) => {
                 if let Ok(i) = f.parse::<usize>() {
@@ -194,18 +191,13 @@ impl Literal {
                 Literal::StringLiteral(q),
             ) => Some(Literal::HttpRequestLiteral(req.set_query(q))),
             (
-                "HttpRequest::set_payload",
-                Literal::HttpRequestLiteral(req),
-                Literal::DataLiteral(q),
-            ) => Some(Literal::HttpRequestLiteral(req.set_payload(q))),
-            (
                 "HttpRequest::header",
                 Literal::HttpRequestLiteral(req),
                 Literal::StringLiteral(h),
             ) => Some(Literal::List(
                 req.header(&h)
                     .into_iter()
-                    .map(|v| Literal::StringLiteral(v))
+                    .map(|v| Literal::DataLiteral(v))
                     .collect(),
             )),
             _ => None,
@@ -217,7 +209,7 @@ impl Literal {
                 "HttpRequest::set_header",
                 Literal::HttpRequestLiteral(req),
                 Literal::StringLiteral(h),
-                Literal::StringLiteral(v),
+                Literal::DataLiteral(v),
             ) => Some(Literal::HttpRequestLiteral(req.set_header(h, v))),
             _ => None,
         }
