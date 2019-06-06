@@ -1114,11 +1114,11 @@ impl<'a> Runtime<'a> {
     ) -> Result<Expr, Error> {
         self.external
             .request(external, method, Literal::literal_vector(args)?)
-            .map_err(|e| Error::from(e))
             .map(|r| Expr::LitExpr(r))
+            .map_err(Error::from)
     }
-    pub fn set_timeout(&mut self, d: std::time::Duration) {
-        self.external.set_timeout(d)
+    pub fn set_timeout(&mut self, _d: std::time::Duration) {
+        // self.external.set_timeout(d)
     }
     pub fn evaluate(&mut self, e: Expr) -> Result<Expr, Error> {
         e.evaluate(self)
@@ -1127,10 +1127,10 @@ impl<'a> Runtime<'a> {
 
 impl<'a> From<&'a Program> for Runtime<'a> {
     fn from(p: &'a Program) -> Runtime<'a> {
-        let mut external = externals::Externals::new();
+        let mut external = externals::Externals::default();
         for (name, url) in p.externals.0.iter() {
-            if let Err(err) = external.add_client(&name, url.as_str()) {
-                println!("failed to add external \"{}\": {:?}", name, err)
+            if external.register_external(name, url.as_str()) {
+                println!("external already existed \"{}\"", name)
             }
         }
         Runtime {

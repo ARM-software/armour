@@ -1,4 +1,4 @@
-use armour_data::proxy;
+use armour_data::{policy, proxy};
 use clap::{crate_version, App, Arg};
 use std::env;
 
@@ -29,15 +29,22 @@ fn main() -> Result<(), std::io::Error> {
         .unwrap_or(default_proxy_port);
 
     // enable logging
-    env::set_var("RUST_LOG", "armour_proxy=debug,actix_web=debug");
+    env::set_var("RUST_LOG", "armour_data=debug,actix_web=debug");
     env::set_var("RUST_BACKTRACE", "0");
     env_logger::init();
 
     // start the actix system
     let sys = actix::System::new("armour-proxy");
 
+
     // shared state
-    let state = ();
+    let mut state = policy::ArmourState::new();
+    if !state.from_file("test.policy") {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "failed to read policy file",
+        ));
+    }
 
     // start up the proxy server
     proxy::start(state, format!("localhost:{}", proxy_port));
