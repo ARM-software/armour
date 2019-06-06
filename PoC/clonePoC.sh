@@ -36,6 +36,8 @@ do
   dir=${dir%*/}
   cp ../armour/PoC/PoCx86/${dir}/Dockerfile ${dir}/
 done
+  add=$(ifconfig enp0s3 | grep 'inet ' | cut -d: -f2 | awk '{print $2}')
   cp ../armour/PoC/PoCx86/docker-compose.yml .
+  sed -i 's|kvminst-1.ausrd.arm.com:80|'"${add}"'|g' docker-compose.yml
   rm -f ./debug/debug_tools/testall.sh
   cp ../armour/PoC/PoCx86/testall.sh ./debug/debug_tools/
