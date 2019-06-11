@@ -9,8 +9,6 @@ use std::net::ToSocketAddrs;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use actix::prelude::*;
-
 #[derive(Clone)]
 struct CallRequest {
     external: String,
@@ -70,6 +68,7 @@ impl<'a> PathOrToSocketAddrs<&'a str, &'a str> for &'a str {
     }
 }
 
+#[derive(Clone)]
 pub struct Externals {
     externals: HashMap<String, String>,
     timeout: Duration,
@@ -87,6 +86,12 @@ impl Default for Externals {
 }
 
 impl Externals {
+    pub fn set_timeout(&mut self, t: Duration) {
+        self.timeout = t
+    }
+    pub fn timeout(&self) -> Duration {
+        self.timeout.clone()
+    }
     fn get_tls_stream<T: std::net::ToSocketAddrs>(
         socket: T,
     ) -> Box<dyn Future<Item = tokio_tls::TlsStream<tokio::net::TcpStream>, Error = Error>> {
@@ -183,15 +188,29 @@ impl Externals {
                 Literal::DataLiteral(d) => arg.set_data(d),
                 Literal::Unit => arg.set_unit(()),
                 Literal::List(lits) => {
-                    let mut pairs = arg.init_pairs(lits.len() as u32);
+                    let mut map = arg.init_stringmap(lits.len() as u32);
                     for (j, l) in lits.iter().enumerate() {
                         match l {
+                            Literal::StringLiteral(ref key) => {
+                                let mut entry = map.reborrow().get(j as u32);
+                                entry.set_key(key);
+                                let mut entry_value = entry.init_value();
+                                entry_value.set_unit(());
+                            }
                             Literal::Tuple(ts) => match ts.as_slice() {
+                                &[Literal::StringLiteral(ref key), Literal::StringLiteral(ref value)] =>
+                                {
+                                    let mut entry = map.reborrow().get(j as u32);
+                                    entry.set_key(key);
+                                    let mut entry_value = entry.init_value();
+                                    entry_value.set_text(value);
+                                }
                                 &[Literal::StringLiteral(ref key), Literal::DataLiteral(ref value)] =>
                                 {
-                                    let mut pair = pairs.reborrow().get(j as u32);
-                                    pair.set_key(key);
-                                    pair.set_value(value);
+                                    let mut entry = map.reborrow().get(j as u32);
+                                    entry.set_key(key);
+                                    let mut entry_value = entry.init_value();
+                                    entry_value.set_data(value);
                                 }
                                 _ => return Err(Error::RequestNotValid),
                             },
@@ -210,127 +229,123 @@ impl Externals {
         client: external::Client,
     ) -> Box<dyn Future<Item = Literal, Error = Error>> {
         use external::value::Which;
-        Box::new(
-            // prepare the RPC
-            Externals::build_request(&req, &client)
-                .unwrap()
-                // make the RPC
-                .send()
-                .promise
-                .and_then(|response| {
-                    // return the result
-                    Promise::ok(
-                        match pry!(pry!(pry!(response.get()).get_result()).which()) {
-                            Which::Bool(b) => Literal::BoolLiteral(b),
-                            Which::Int64(i) => Literal::IntLiteral(i),
-                            Which::Float64(f) => Literal::FloatLiteral(f),
-                            Which::Text(t) => Literal::StringLiteral(pry!(t).to_string()),
-                            Which::Data(d) => Literal::DataLiteral(pry!(d).to_vec()),
-                            Which::Unit(_) => Literal::Unit,
-                            Which::Lines(ps) => {
-                                let mut v = Vec::new();
-                                for p in pry!(ps) {
-                                    v.push(Literal::StringLiteral(pry!(p).to_string()))
-                                }
-                                Literal::List(v)
-                            }
-                            Which::Pairs(ps) => {
-                                let mut v = Vec::new();
-                                for p in pry!(ps) {
-                                    v.push(Literal::Tuple(vec![
-                                        Literal::StringLiteral(pry!(p.get_key()).to_string()),
-                                        Literal::DataLiteral(pry!(p.get_value()).to_vec()),
-                                    ]))
-                                }
-                                Literal::List(v)
-                            }
-                        },
-                    )
-                })
-                .timeout(timeout)
-                .or_else(|err| Promise::err(Error::from(err))),
-        )
+        let request = Externals::build_request(&req, &client);
+        match request {
+            Ok(req) => {
+                Box::new(
+                    // prepare the RPC
+                    req
+                        // make the RPC
+                        .send()
+                        .promise
+                        .and_then(|response| {
+                            // return the result
+                            Promise::ok(
+                                match pry!(pry!(pry!(response.get()).get_result()).which()) {
+                                    Which::Bool(b) => Literal::BoolLiteral(b),
+                                    Which::Int64(i) => Literal::IntLiteral(i),
+                                    Which::Float64(f) => Literal::FloatLiteral(f),
+                                    Which::Text(t) => Literal::StringLiteral(pry!(t).to_string()),
+                                    Which::Data(d) => Literal::DataLiteral(pry!(d).to_vec()),
+                                    Which::Unit(_) => Literal::Unit,
+                                    Which::Stringmap(ps) => {
+                                        let mut v = Vec::new();
+                                        for p in pry!(ps) {
+                                            match p.get_value().which() {
+                                                Ok(external::entry::value::Which::Unit(_)) => v
+                                                    .push(Literal::StringLiteral(
+                                                        pry!(p.get_key()).to_string(),
+                                                    )),
+                                                Ok(external::entry::value::Which::Data(d)) => v
+                                                    .push(Literal::Tuple(vec![
+                                                        Literal::StringLiteral(
+                                                            pry!(p.get_key()).to_string(),
+                                                        ),
+                                                        Literal::DataLiteral(pry!(d).to_vec()),
+                                                    ])),
+                                                Ok(external::entry::value::Which::Text(t)) => v
+                                                    .push(Literal::Tuple(vec![
+                                                        Literal::StringLiteral(
+                                                            pry!(p.get_key()).to_string(),
+                                                        ),
+                                                        Literal::StringLiteral(pry!(t).to_string()),
+                                                    ])),
+                                                _ => unimplemented!(),
+                                            }
+                                        }
+                                        Literal::List(v)
+                                    }
+                                },
+                            )
+                        })
+                        .timeout(timeout)
+                        .or_else(|err| Promise::err(Error::from(err))),
+                )
+            }
+            Err(err) => Box::new(future::err(err)),
+        }
     }
     pub fn register_external(&mut self, name: &str, addr: &str) -> bool {
         self.externals
             .insert(name.to_string(), addr.to_string())
             .is_some()
     }
+    pub fn get_socket(&self, external: &str) -> Option<String> {
+        self.externals.get(external).map(|x| x.clone())
+    }
     pub fn request(
-        &self,
-        external: &str,
-        method: &str,
+        external: String,
+        method: String,
         args: Vec<Literal>,
-    ) -> Result<Literal, Error> {
-        if let Some(socket) = self.externals.get(external) {
-            let mut sys = System::new("arm-policy");
-            println!("going to make call to: {}", socket);
-            let res = if let Some(p) = socket.as_str().get_to_socket_addrs() {
-                if cfg!(target_env = "musl") {
-                    // for musl builds we are not able to use TLS (too much hassle with OpenSSL)
-                    sys.block_on(Externals::get_tcp_stream(p).and_then(|stream| {
-                        let (client, rpc_system) = Externals::get_capnp_client(stream);
-                        let disconnector = rpc_system.get_disconnector();
-                        actix::spawn(rpc_system.timeout(self.timeout).map_err(|_| ()));
-                        Externals::call_request(
-                            CallRequest::new(external, method, args),
-                            self.timeout,
-                            client,
-                        )
-                        .then(|res| {
-                            disconnector.then(|_| {
-                                actix::System::current().stop();
-                                res
-                            })
-                        })
-                    }))
-                } else {
-                    // for non-musl builds we use TLS
-                    sys.block_on(Externals::get_tls_stream(p).and_then(|stream| {
-                        let (client, rpc_system) = Externals::get_capnp_client(stream);
-                        let disconnector = rpc_system.get_disconnector();
-                        actix::spawn(rpc_system.timeout(self.timeout).map_err(|_| ()));
-                        Externals::call_request(
-                            CallRequest::new(external, method, args),
-                            self.timeout,
-                            client,
-                        )
-                        .then(|res| {
-                            disconnector.then(|_| {
-                                actix::System::current().stop();
-                                res
-                            })
-                        })
-                    }))
-                }
-            } else if let Some(p) = socket.as_str().get_path() {
-                sys.block_on(Externals::get_uds_stream(p).and_then(|stream| {
+        socket: String,
+        timeout: Duration,
+    ) -> Box<dyn Future<Item = Literal, Error = Error>> {
+        println!("going to make call to: {}", socket);
+        if let Some(p) = socket.as_str().get_to_socket_addrs() {
+            if cfg!(target_env = "musl") {
+                // for musl builds we are not able to use TLS (too much hassle with OpenSSL)
+                Box::new(Externals::get_tcp_stream(p).and_then(move |stream| {
                     let (client, rpc_system) = Externals::get_capnp_client(stream);
                     let disconnector = rpc_system.get_disconnector();
-                    actix::spawn(rpc_system.timeout(self.timeout).map_err(|_| ()));
+                    actix::spawn(rpc_system.timeout(timeout).map_err(|_| ()));
                     Externals::call_request(
-                        CallRequest::new(external, method, args),
-                        self.timeout,
+                        CallRequest::new(&external, &method, args),
+                        timeout,
                         client,
                     )
-                    // .and_then(|res| disconnector.from_err().and_then(|_| future::ok(res)))
-                    .then(|res| {
-                        disconnector.then(|_| {
-                            actix::System::current().stop();
-                            res
-                        })
-                    })
+                    .then(|res| disconnector.then(|_| res))
                 }))
             } else {
-                Err(Error::IO(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("failed to parse TCP socket or path: {}", socket),
-                )))
-            };
-            sys.run();
-            res
+                // for non-musl builds we use TLS
+                Box::new(Externals::get_tls_stream(p).and_then(move |stream| {
+                    let (client, rpc_system) = Externals::get_capnp_client(stream);
+                    let disconnector = rpc_system.get_disconnector();
+                    actix::spawn(rpc_system.timeout(timeout).map_err(|_| ()));
+                    Externals::call_request(
+                        CallRequest::new(&external, &method, args),
+                        timeout,
+                        client,
+                    )
+                    .then(|res| disconnector.then(|_| res))
+                }))
+            }
+        } else if let Some(p) = socket.as_str().get_path() {
+            Box::new(Externals::get_uds_stream(p).and_then(move |stream| {
+                let (client, rpc_system) = Externals::get_capnp_client(stream);
+                // let disconnector = rpc_system.get_disconnector();
+                // println!("spawning RPC");
+                actix::spawn(rpc_system.map_err(|_| ()));
+                Externals::call_request(CallRequest::new(&external, &method, args), timeout, client)
+                // .then(|res| {
+                //     println!("got result and going to disconnect");
+                //     disconnector.then(|_| res)
+                // })
+            }))
         } else {
-            Err(Error::ClientMissing)
+            Box::new(future::err(Error::IO(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("failed to parse TCP socket or path: {}", socket),
+            ))))
         }
     }
 }

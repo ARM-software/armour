@@ -1,10 +1,10 @@
 use capnp::Error;
-use external_server::{Dispatcher, External, Literal, Literal::*};
+use external_server::{Dispatcher, External, Literal, Literal::*, MapEntry};
 
 struct ExternalImpl(i64);
 
 impl ExternalImpl {
-    fn sin<'a>(args: &[Literal]) -> Result<Literal, Error> {
+    fn sin(args: &[Literal]) -> Result<Literal, Error> {
         match args {
             &[FloatLiteral(f)] => Ok(FloatLiteral(f64::sin(f))),
             _ => Err(Error::failed("sin".to_string())),
@@ -16,15 +16,16 @@ impl ExternalImpl {
     }
     fn rev(args: &[Literal]) -> Result<Literal, Error> {
         match args {
-            &[StringPairs(ref l)] => Ok(StringPairs(l.iter().rev().cloned().collect())),
+            &[StringMap(ref l)] => Ok(StringMap(l.to_vec().into_iter().rev().collect())),
             _ => Err(Error::failed("process".to_string())),
         }
     }
     fn process(args: &[Literal]) -> Result<Literal, Error> {
         match args {
-            &[StringPairs(ref l)] => Ok(StringList(
-                l.into_iter()
-                    .map(|x| String::from_utf8_lossy(&x.1).into_owned())
+            &[StringMap(ref l)] => Ok(StringMap(
+                l.to_vec()
+                    .into_iter()
+                    .map(|x| (x.0, MapEntry::Unit))
                     .collect(),
             )),
             _ => Err(Error::failed("process".to_string())),

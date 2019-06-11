@@ -252,7 +252,7 @@ function               | type
 | header               | `(HttpRequest, str) -> str`              |
 | headers              | `HttpRequest -> List<str>`               |
 | query_pairs          | `HttpRequest -> List<(str, str)>`        |
-| header_pairs         | `HttpRequest -> List<(str, str)>`        |
+| header_pairs         | `HttpRequest -> List<(str, data)>`       |
 | set_path             | `(HttpRequest, str) -> HttpRequest`      |
 | set_query            | `(HttpRequest, str) -> HttpRequest`      |
 | set_header           | `(HttpRequest, str, str) -> HttpRequest` |

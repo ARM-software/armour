@@ -1,5 +1,6 @@
 /// policy language
 use super::{externals, headers, lexer, literals, parser, types};
+use futures::{future, Future};
 use headers::Headers;
 use literals::Literal;
 use parser::{Infix, Prefix};
@@ -1097,44 +1098,63 @@ impl Externals {
     }
 }
 
-pub struct Runtime<'a> {
-    internal: &'a Code,
+#[derive(Clone)]
+pub struct Runtime {
+    internal: Code,
     external: externals::Externals,
 }
 
-impl<'a> Runtime<'a> {
+impl Runtime {
     pub fn internal(&self, s: &str) -> Option<&Expr> {
         self.internal.0.get(s)
     }
     pub fn external(
-        &mut self,
+        &self,
         external: &str,
         method: &str,
         args: Vec<Expr>,
-    ) -> Result<Expr, Error> {
-        self.external
-            .request(external, method, Literal::literal_vector(args)?)
-            .map(|r| Expr::LitExpr(r))
-            .map_err(Error::from)
+    ) -> Box<dyn Future<Item = Expr, Error = Error>> {
+        if let Some(socket) = self.external.get_socket(external) {
+            match Literal::literal_vector(args) {
+                Ok(lits) => Box::new(
+                    externals::Externals::request(
+                        external.to_string(),
+                        method.to_string(),
+                        lits,
+                        socket,
+                        self.external.timeout(),
+                    )
+                    .and_then(|r| future::ok(Expr::LitExpr(r)))
+                    .from_err(),
+                ),
+                Err(err) => Box::new(future::err(err)),
+            }
+        } else {
+            Box::new(future::err(Error::new(format!(
+                "missing exteral{}",
+                external
+            ))))
+        }
     }
-    pub fn set_timeout(&mut self, _d: std::time::Duration) {
-        // self.external.set_timeout(d)
+    pub fn set_timeout(&mut self, d: std::time::Duration) {
+        self.external.set_timeout(d)
     }
-    pub fn evaluate(&mut self, e: Expr) -> Result<Expr, Error> {
+    pub fn evaluate<'a>(self, e: Expr) -> Box<dyn Future<Item = Expr, Error = Error> + 'a> {
         e.evaluate(self)
     }
 }
 
-impl<'a> From<&'a Program> for Runtime<'a> {
-    fn from(p: &'a Program) -> Runtime<'a> {
+impl From<&Program> for Runtime {
+    fn from(p: &Program) -> Runtime {
         let mut external = externals::Externals::default();
         for (name, url) in p.externals.0.iter() {
             if external.register_external(name, url.as_str()) {
                 println!("external already existed \"{}\"", name)
             }
         }
+        external.set_timeout(p.timeout());
         Runtime {
-            internal: &p.code,
+            internal: p.code.clone(),
             external,
         }
     }
@@ -1177,6 +1197,7 @@ pub struct Program {
     pub code: Code,
     pub externals: Externals,
     pub headers: Headers,
+    timeout: std::time::Duration,
 }
 
 impl Program {
@@ -1185,7 +1206,14 @@ impl Program {
             code: Code::new(),
             externals: Externals::new(),
             headers: Headers::new(),
+            timeout: std::time::Duration::from_secs(3),
         }
+    }
+    pub fn set_timeout(&mut self, t: std::time::Duration) {
+        self.timeout = t
+    }
+    pub fn timeout(&self) -> std::time::Duration {
+        self.timeout.clone()
     }
     fn add_decl(&mut self, call_graph: &mut CallGraph, decl: &parser::FnDecl) -> Result<(), Error> {
         // println!("{:#?}", decl);

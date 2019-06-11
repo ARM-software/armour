@@ -103,7 +103,7 @@ impl HttpRequest {
         new
     }
     pub fn split_path(&self) -> Vec<String> {
-        self.path.split('/').map(|s| s.to_string()).collect()
+        self.path.trim_start_matches('/').split('/').map(|s| s.to_string()).collect()
     }
     pub fn query(&self) -> String {
         self.query.to_string()

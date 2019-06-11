@@ -16,21 +16,25 @@ use std::net::ToSocketAddrs;
 use tokio::io::AsyncRead;
 use tokio::runtime::current_thread;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+pub enum MapEntry {
+    DataLiteral(Vec<u8>),
+    StringLiteral(String),
+    Unit,
+}
+
+#[derive(Debug, Clone)]
 pub enum Literal {
     IntLiteral(i64),
     FloatLiteral(f64),
     BoolLiteral(bool),
     DataLiteral(Vec<u8>),
     StringLiteral(String),
-    StringList(Vec<String>),
-    StringPairs(Vec<(String, Vec<u8>)>),
+    StringMap(Vec<(String, MapEntry)>),
     Unit,
 }
 
-use Literal::{
-    BoolLiteral, DataLiteral, FloatLiteral, IntLiteral, StringList, StringLiteral, StringPairs,
-};
+use Literal::{BoolLiteral, DataLiteral, FloatLiteral, IntLiteral, StringLiteral, StringMap};
 
 pub trait Dispatcher {
     fn dispatch(&mut self, name: &str, args: &[Literal]) -> Result<Literal, Error>;
@@ -38,7 +42,7 @@ pub trait Dispatcher {
         &self,
         args: capnp::struct_list::Reader<external_capnp::external::value::Owned>,
     ) -> Result<Vec<Literal>, Error> {
-        use external::value::Which::{Bool, Data, Float64, Int64, Lines, Pairs, Text, Unit};
+        use external::value::Which::{Bool, Data, Float64, Int64, Stringmap, Text, Unit};
         let mut res = Vec::new();
         for arg in args {
             res.push(match arg.which()? {
@@ -48,19 +52,25 @@ pub trait Dispatcher {
                 Text(t) => StringLiteral(t?.to_string()),
                 Data(d) => DataLiteral(d?.to_vec()),
                 Unit(_) => Literal::Unit,
-                Lines(ps) => {
+                Stringmap(ps) => {
                     let mut v = Vec::new();
                     for p in ps? {
-                        v.push(p?.to_string())
+                        match p.get_value().which()? {
+                            external::entry::value::Which::Unit(_) => {
+                                v.push((p.get_key()?.to_string(), MapEntry::Unit))
+                            }
+                            external::entry::value::Which::Text(t) => v.push((
+                                p.get_key()?.to_string(),
+                                MapEntry::StringLiteral(t?.to_string()),
+                            )),
+                            external::entry::value::Which::Data(d) => v.push((
+                                p.get_key()?.to_string(),
+                                MapEntry::DataLiteral(d?.to_vec()),
+                            )),
+                        }
+                        //     v.push((p.get_key()?.to_string(), p.get_value()?.to_vec()))
                     }
-                    StringList(v)
-                }
-                Pairs(ps) => {
-                    let mut v = Vec::new();
-                    for p in ps? {
-                        v.push((p.get_key()?.to_string(), p.get_value()?.to_vec()))
-                    }
-                    StringPairs(v)
+                    StringMap(v)
                 }
             })
         }
@@ -92,18 +102,29 @@ impl<D: Dispatcher> external::Server for D {
             StringLiteral(s) => res.set_text(&s),
             DataLiteral(d) => res.set_data(d.as_slice()),
             Literal::Unit => res.set_unit(()),
-            StringList(ps) => {
-                let mut lines = res.init_lines(ps.len() as u32);
-                for (i, line) in ps.iter().enumerate() {
-                    lines.set(i as u32, line);
-                }
-            }
-            StringPairs(ps) => {
-                let mut pairs = res.init_pairs(ps.len() as u32);
+            StringMap(ps) => {
+                let mut map = res.init_stringmap(ps.len() as u32);
                 for (i, (key, value)) in ps.iter().enumerate() {
-                    let mut pair = pairs.reborrow().get(i as u32);
-                    pair.set_key(key);
-                    pair.set_value(value)
+                    match value {
+                        MapEntry::Unit => {
+                            let mut entry = map.reborrow().get(i as u32);
+                            entry.set_key(key);
+                            let mut entry_value = entry.init_value();
+                            entry_value.set_unit(());
+                        }
+                        MapEntry::StringLiteral(t) => {
+                            let mut entry = map.reborrow().get(i as u32);
+                            entry.set_key(key);
+                            let mut entry_value = entry.init_value();
+                            entry_value.set_text(&t);
+                        }
+                        MapEntry::DataLiteral(d) => {
+                            let mut entry = map.reborrow().get(i as u32);
+                            entry.set_key(key);
+                            let mut entry_value = entry.init_value();
+                            entry_value.set_data(d.as_slice());
+                        }
+                    }
                 }
             }
         })

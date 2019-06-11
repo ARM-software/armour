@@ -3,7 +3,11 @@
 interface External {
   struct Entry {
     key @0 :Text;
-    value @1 :Data;
+    value :union {
+      data @1 :Data;
+      text @2 :Text;
+      unit @3 :Void;
+    }
   }
   struct Value {
     union {
@@ -13,8 +17,7 @@ interface External {
       text @3 :Text;
       data @4 :Data;
       unit @5 :Void;
-      lines @7 :List(Text);
-      pairs @6 :List(Entry);
+      stringmap @6 :List(Entry);
     }
   }
   call @0 (name :Text, args :List(Value)) -> (result :Value);

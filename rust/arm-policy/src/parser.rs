@@ -275,8 +275,8 @@ impl Pat {
                 id.0
             ),
             Pat::Opt(p) => format!("{}?", p.to_regex_str(ignore_ws)),
-            Pat::Star(p) => format!("{}*", p.to_regex_str(ignore_ws)),
-            Pat::Plus(p) => format!("{}+", p.to_regex_str(ignore_ws)),
+            Pat::Star(p) => format!("{}*?", p.to_regex_str(ignore_ws)),
+            Pat::Plus(p) => format!("{}+?", p.to_regex_str(ignore_ws)),
             Pat::CaseInsensitive(p) => format!("(?i:{})", p.to_regex_str(ignore_ws)),
             Pat::IgnoreWhitespace(p) => p.to_regex_str(true),
         }
