@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "docker-server",
+    "docker-client",
+    "docker-lib",
+]
