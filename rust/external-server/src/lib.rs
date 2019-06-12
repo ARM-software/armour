@@ -17,24 +17,67 @@ use tokio::io::AsyncRead;
 use tokio::runtime::current_thread;
 
 #[derive(Debug, Clone)]
-pub enum MapEntry {
-    DataLiteral(Vec<u8>),
-    StringLiteral(String),
-    Unit,
-}
-
-#[derive(Debug, Clone)]
 pub enum Literal {
     IntLiteral(i64),
     FloatLiteral(f64),
     BoolLiteral(bool),
     DataLiteral(Vec<u8>),
     StringLiteral(String),
-    StringMap(Vec<(String, MapEntry)>),
+    List(Vec<Literal>),
+    Tuple(Vec<Literal>),
     Unit,
 }
 
-use Literal::{BoolLiteral, DataLiteral, FloatLiteral, IntLiteral, StringLiteral, StringMap};
+fn build_value(mut v: external::value::Builder<'_>, lit: &Literal) -> Result<(), Error> {
+    match lit {
+        Literal::BoolLiteral(b) => v.set_bool(*b),
+        Literal::IntLiteral(i) => v.set_int64(*i),
+        Literal::FloatLiteral(f) => v.set_float64(*f),
+        Literal::StringLiteral(s) => v.set_text(s),
+        Literal::DataLiteral(d) => v.set_data(d),
+        Literal::Unit => v.set_unit(()),
+        Literal::Tuple(ts) => {
+            let mut tuple = v.init_tuple(ts.len() as u32);
+            for (i, t) in ts.iter().enumerate() {
+                build_value(tuple.reborrow().get(i as u32), t)?
+            }
+        }
+        Literal::List(ts) => {
+            let mut list = v.init_list(ts.len() as u32);
+            for (i, t) in ts.iter().enumerate() {
+                build_value(list.reborrow().get(i as u32), t)?
+            }
+
+        }
+    }
+    Ok(())
+}
+fn read_value(v: external::value::Reader<'_>) -> Result<Literal, capnp::Error> {
+    use external::value::Which;
+    match v.which() {
+        Ok(Which::Bool(b)) => Ok(Literal::BoolLiteral(b)),
+        Ok(Which::Int64(i)) => Ok(Literal::IntLiteral(i)),
+        Ok(Which::Float64(f)) => Ok(Literal::FloatLiteral(f)),
+        Ok(Which::Text(t)) => Ok(Literal::StringLiteral(t?.to_string())),
+        Ok(Which::Data(d)) => Ok(Literal::DataLiteral(d?.to_vec())),
+        Ok(Which::Unit(_)) => Ok(Literal::Unit),
+        Ok(Which::Tuple(ts)) => {
+            let mut tuple = Vec::new();
+            for t in ts? {
+                tuple.push(read_value(t)?)
+            }
+            Ok(Literal::Tuple(tuple))
+        }
+        Ok(Which::List(ts)) => {
+            let mut list = Vec::new();
+            for t in ts? {
+                list.push(read_value(t)?)
+            }
+            Ok(Literal::List(list))
+        }
+        Err(e) => Err(capnp::Error::from(e)),
+    }
+}
 
 pub trait Dispatcher {
     fn dispatch(&mut self, name: &str, args: &[Literal]) -> Result<Literal, Error>;
@@ -42,37 +85,9 @@ pub trait Dispatcher {
         &self,
         args: capnp::struct_list::Reader<external_capnp::external::value::Owned>,
     ) -> Result<Vec<Literal>, Error> {
-        use external::value::Which::{Bool, Data, Float64, Int64, Stringmap, Text, Unit};
         let mut res = Vec::new();
         for arg in args {
-            res.push(match arg.which()? {
-                Bool(b) => BoolLiteral(b),
-                Int64(i) => IntLiteral(i),
-                Float64(f) => FloatLiteral(f),
-                Text(t) => StringLiteral(t?.to_string()),
-                Data(d) => DataLiteral(d?.to_vec()),
-                Unit(_) => Literal::Unit,
-                Stringmap(ps) => {
-                    let mut v = Vec::new();
-                    for p in ps? {
-                        match p.get_value().which()? {
-                            external::entry::value::Which::Unit(_) => {
-                                v.push((p.get_key()?.to_string(), MapEntry::Unit))
-                            }
-                            external::entry::value::Which::Text(t) => v.push((
-                                p.get_key()?.to_string(),
-                                MapEntry::StringLiteral(t?.to_string()),
-                            )),
-                            external::entry::value::Which::Data(d) => v.push((
-                                p.get_key()?.to_string(),
-                                MapEntry::DataLiteral(d?.to_vec()),
-                            )),
-                        }
-                        //     v.push((p.get_key()?.to_string(), p.get_value()?.to_vec()))
-                    }
-                    StringMap(v)
-                }
-            })
+            res.push(read_value(arg)?)
         }
         Ok(res)
     }
@@ -94,40 +109,12 @@ impl<D: Dispatcher> external::Server for D {
         }
         println!();
         // dispatch to method implementation and then set the result
-        let mut res = result.get().init_result();
-        Promise::ok(match pry!(self.dispatch(name, &args)) {
-            BoolLiteral(b) => res.set_bool(b),
-            IntLiteral(i) => res.set_int64(i),
-            FloatLiteral(f) => res.set_float64(f),
-            StringLiteral(s) => res.set_text(&s),
-            DataLiteral(d) => res.set_data(d.as_slice()),
-            Literal::Unit => res.set_unit(()),
-            StringMap(ps) => {
-                let mut map = res.init_stringmap(ps.len() as u32);
-                for (i, (key, value)) in ps.iter().enumerate() {
-                    match value {
-                        MapEntry::Unit => {
-                            let mut entry = map.reborrow().get(i as u32);
-                            entry.set_key(key);
-                            let mut entry_value = entry.init_value();
-                            entry_value.set_unit(());
-                        }
-                        MapEntry::StringLiteral(t) => {
-                            let mut entry = map.reborrow().get(i as u32);
-                            entry.set_key(key);
-                            let mut entry_value = entry.init_value();
-                            entry_value.set_text(&t);
-                        }
-                        MapEntry::DataLiteral(d) => {
-                            let mut entry = map.reborrow().get(i as u32);
-                            entry.set_key(key);
-                            let mut entry_value = entry.init_value();
-                            entry_value.set_data(d.as_slice());
-                        }
-                    }
-                }
-            }
-        })
+        let res = result.get().init_result();
+        if let Err(e) = build_value(res, &pry!(self.dispatch(name, &args))) {
+            Promise::err(e)
+        } else {
+            Promise::ok(())
+        }
     }
 }
 

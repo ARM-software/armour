@@ -1,5 +1,5 @@
 use capnp::Error;
-use external_server::{Dispatcher, External, Literal, Literal::*, MapEntry};
+use external_server::{Dispatcher, External, Literal, Literal::*};
 
 struct ExternalImpl(i64);
 
@@ -16,18 +16,26 @@ impl ExternalImpl {
     }
     fn rev(args: &[Literal]) -> Result<Literal, Error> {
         match args {
-            &[StringMap(ref l)] => Ok(StringMap(l.to_vec().into_iter().rev().collect())),
+            &[List(ref l)] => Ok(List(l.to_vec().into_iter().rev().collect())),
             _ => Err(Error::failed("process".to_string())),
         }
     }
     fn process(args: &[Literal]) -> Result<Literal, Error> {
         match args {
-            &[StringMap(ref l)] => Ok(StringMap(
-                l.to_vec()
+            &[List(ref l)] => {
+                let v: Result<Vec<Literal>, Error> = l
+                    .to_vec()
                     .into_iter()
-                    .map(|x| (x.0, MapEntry::Unit))
-                    .collect(),
-            )),
+                    .map(|x| match x {
+                        Tuple(v) => v
+                            .get(0)
+                            .map(|x| x.to_owned())
+                            .ok_or(Error::failed("".to_string())),
+                        _ => Err(Error::failed("process".to_string())),
+                    })
+                    .collect();
+                Ok(List(v?))
+            }
             _ => Err(Error::failed("process".to_string())),
         }
     }

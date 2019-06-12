@@ -164,6 +164,56 @@ impl Externals {
         let client: external::Client = rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
         (client, rpc_system)
     }
+    fn build_value(mut v: external::value::Builder<'_>, lit: &Literal) -> Result<(), Error> {
+        match lit {
+            Literal::BoolLiteral(b) => v.set_bool(*b),
+            Literal::IntLiteral(i) => v.set_int64(*i),
+            Literal::FloatLiteral(f) => v.set_float64(*f),
+            Literal::StringLiteral(s) => v.set_text(s),
+            Literal::DataLiteral(d) => v.set_data(d),
+            Literal::Unit => v.set_unit(()),
+            Literal::Tuple(ts) => {
+                let mut tuple = v.init_tuple(ts.len() as u32);
+                for (i, t) in ts.iter().enumerate() {
+                    Externals::build_value(tuple.reborrow().get(i as u32), t)?
+                }
+            }
+            Literal::List(ts) => {
+                let mut list = v.init_list(ts.len() as u32);
+                for (i, t) in ts.iter().enumerate() {
+                    Externals::build_value(list.reborrow().get(i as u32), t)?
+                }
+            }
+            _ => return Err(Error::RequestNotValid),
+        }
+        Ok(())
+    }
+    fn read_value(v: external::value::Reader<'_>) -> Result<Literal, capnp::Error> {
+        use external::value::Which;
+        match v.which() {
+            Ok(Which::Bool(b)) => Ok(Literal::BoolLiteral(b)),
+            Ok(Which::Int64(i)) => Ok(Literal::IntLiteral(i)),
+            Ok(Which::Float64(f)) => Ok(Literal::FloatLiteral(f)),
+            Ok(Which::Text(t)) => Ok(Literal::StringLiteral(t?.to_string())),
+            Ok(Which::Data(d)) => Ok(Literal::DataLiteral(d?.to_vec())),
+            Ok(Which::Unit(_)) => Ok(Literal::Unit),
+            Ok(Which::Tuple(ts)) => {
+                let mut tuple = Vec::new();
+                for t in ts? {
+                    tuple.push(Externals::read_value(t)?)
+                }
+                Ok(Literal::Tuple(tuple))
+            }
+            Ok(Which::List(ts)) => {
+                let mut list = Vec::new();
+                for t in ts? {
+                    list.push(Externals::read_value(t)?)
+                }
+                Ok(Literal::List(list))
+            }
+            Err(e) => Err(capnp::Error::from(e)),
+        }
+    }
     fn build_request(
         req: &CallRequest,
         client: &external::Client,
@@ -179,47 +229,7 @@ impl Externals {
         // set the args
         let mut args = call.init_args(req.args.len() as u32);
         for (i, lit) in req.args.iter().enumerate() {
-            let mut arg = args.reborrow().get(i as u32);
-            match lit {
-                Literal::BoolLiteral(b) => arg.set_bool(*b),
-                Literal::IntLiteral(i) => arg.set_int64(*i),
-                Literal::FloatLiteral(f) => arg.set_float64(*f),
-                Literal::StringLiteral(s) => arg.set_text(s),
-                Literal::DataLiteral(d) => arg.set_data(d),
-                Literal::Unit => arg.set_unit(()),
-                Literal::List(lits) => {
-                    let mut map = arg.init_stringmap(lits.len() as u32);
-                    for (j, l) in lits.iter().enumerate() {
-                        match l {
-                            Literal::StringLiteral(ref key) => {
-                                let mut entry = map.reborrow().get(j as u32);
-                                entry.set_key(key);
-                                let mut entry_value = entry.init_value();
-                                entry_value.set_unit(());
-                            }
-                            Literal::Tuple(ts) => match ts.as_slice() {
-                                &[Literal::StringLiteral(ref key), Literal::StringLiteral(ref value)] =>
-                                {
-                                    let mut entry = map.reborrow().get(j as u32);
-                                    entry.set_key(key);
-                                    let mut entry_value = entry.init_value();
-                                    entry_value.set_text(value);
-                                }
-                                &[Literal::StringLiteral(ref key), Literal::DataLiteral(ref value)] =>
-                                {
-                                    let mut entry = map.reborrow().get(j as u32);
-                                    entry.set_key(key);
-                                    let mut entry_value = entry.init_value();
-                                    entry_value.set_data(value);
-                                }
-                                _ => return Err(Error::RequestNotValid),
-                            },
-                            _ => return Err(Error::RequestNotValid),
-                        }
-                    }
-                }
-                _ => return Err(Error::RequestNotValid),
-            }
+            Externals::build_value(args.reborrow().get(i as u32), lit)?
         }
         Ok(call_req)
     }
@@ -228,9 +238,7 @@ impl Externals {
         timeout: Duration,
         client: external::Client,
     ) -> Box<dyn Future<Item = Literal, Error = Error>> {
-        use external::value::Which;
-        let request = Externals::build_request(&req, &client);
-        match request {
+        match Externals::build_request(&req, &client) {
             Ok(req) => {
                 Box::new(
                     // prepare the RPC
@@ -240,43 +248,10 @@ impl Externals {
                         .promise
                         .and_then(|response| {
                             // return the result
-                            Promise::ok(
-                                match pry!(pry!(pry!(response.get()).get_result()).which()) {
-                                    Which::Bool(b) => Literal::BoolLiteral(b),
-                                    Which::Int64(i) => Literal::IntLiteral(i),
-                                    Which::Float64(f) => Literal::FloatLiteral(f),
-                                    Which::Text(t) => Literal::StringLiteral(pry!(t).to_string()),
-                                    Which::Data(d) => Literal::DataLiteral(pry!(d).to_vec()),
-                                    Which::Unit(_) => Literal::Unit,
-                                    Which::Stringmap(ps) => {
-                                        let mut v = Vec::new();
-                                        for p in pry!(ps) {
-                                            match p.get_value().which() {
-                                                Ok(external::entry::value::Which::Unit(_)) => v
-                                                    .push(Literal::StringLiteral(
-                                                        pry!(p.get_key()).to_string(),
-                                                    )),
-                                                Ok(external::entry::value::Which::Data(d)) => v
-                                                    .push(Literal::Tuple(vec![
-                                                        Literal::StringLiteral(
-                                                            pry!(p.get_key()).to_string(),
-                                                        ),
-                                                        Literal::DataLiteral(pry!(d).to_vec()),
-                                                    ])),
-                                                Ok(external::entry::value::Which::Text(t)) => v
-                                                    .push(Literal::Tuple(vec![
-                                                        Literal::StringLiteral(
-                                                            pry!(p.get_key()).to_string(),
-                                                        ),
-                                                        Literal::StringLiteral(pry!(t).to_string()),
-                                                    ])),
-                                                _ => unimplemented!(),
-                                            }
-                                        }
-                                        Literal::List(v)
-                                    }
-                                },
-                            )
+                            match Externals::read_value(pry!(pry!(response.get()).get_result())) {
+                                Ok(lit) => Promise::ok(lit),
+                                Err(err) => Promise::err(err),
+                            }
                         })
                         .timeout(timeout)
                         .or_else(|err| Promise::err(Error::from(err))),
@@ -300,33 +275,29 @@ impl Externals {
         socket: String,
         timeout: Duration,
     ) -> Box<dyn Future<Item = Literal, Error = Error>> {
-        println!("going to make call to: {}", socket);
+        println!("making call to: {}", socket);
         if let Some(p) = socket.as_str().get_to_socket_addrs() {
             if cfg!(target_env = "musl") {
                 // for musl builds we are not able to use TLS (too much hassle with OpenSSL)
                 Box::new(Externals::get_tcp_stream(p).and_then(move |stream| {
                     let (client, rpc_system) = Externals::get_capnp_client(stream);
-                    let disconnector = rpc_system.get_disconnector();
-                    actix::spawn(rpc_system.timeout(timeout).map_err(|_| ()));
+                    actix::spawn(rpc_system.map_err(|_| ()));
                     Externals::call_request(
                         CallRequest::new(&external, &method, args),
                         timeout,
                         client,
                     )
-                    .then(|res| disconnector.then(|_| res))
                 }))
             } else {
                 // for non-musl builds we use TLS
                 Box::new(Externals::get_tls_stream(p).and_then(move |stream| {
                     let (client, rpc_system) = Externals::get_capnp_client(stream);
-                    let disconnector = rpc_system.get_disconnector();
-                    actix::spawn(rpc_system.timeout(timeout).map_err(|_| ()));
+                    actix::spawn(rpc_system.map_err(|_| ()));
                     Externals::call_request(
                         CallRequest::new(&external, &method, args),
                         timeout,
                         client,
                     )
-                    .then(|res| disconnector.then(|_| res))
                 }))
             }
         } else if let Some(p) = socket.as_str().get_path() {
