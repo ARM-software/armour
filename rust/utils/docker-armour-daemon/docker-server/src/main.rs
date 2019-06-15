@@ -1,7 +1,11 @@
 // extern crate capnp;
 // #[macro_use] extern crate capnp_rpc;
+#[macro_use] extern crate log;
 
 use futures::{Future, Stream};
+
+#[macro_use]
+extern crate capnp_rpc;
 use capnp_rpc::{RpcSystem, twoparty, rpc_twoparty_capnp};
 use tokio::io::{AsyncRead};
 

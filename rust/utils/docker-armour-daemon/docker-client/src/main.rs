@@ -4,6 +4,8 @@ use tokio::io::AsyncRead;
 use tokio::runtime::current_thread;
 use tokio_uds::UnixStream;
 
+use std::{thread, time};
+
 extern crate docker_lib;
 use docker_lib::docker_capnp::docker;
 
@@ -25,8 +27,37 @@ fn main() {
     let dockercl: docker::Client = rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
     runtime.spawn(rpc_system.map_err(|_e| ()));
     {
-        let request = dockercl.listen_request();
-        runtime.block_on(request.send().promise).unwrap();
+        let listenreq = dockercl.listen_request();
+        runtime.block_on(listenreq.send().promise).unwrap();
         println!("Call to listen returned");
+
+        let mut createnetreq = dockercl.create_network_request();
+        createnetreq.get().set_network("armour");
+        runtime.block_on(createnetreq.send().promise).unwrap();
+        println!("Call to create network returned");
+
+        thread::sleep(time::Duration::from_secs(1));
+
+        let mut connectreq = dockercl.attach_to_network_request();
+        connectreq.get().set_container("armour");
+        connectreq.get().set_network("armour");
+        let res = runtime.block_on(connectreq.send().promise).unwrap().get().unwrap().get_result();
+        println!("Call to attach to network returned {}", res);
+
+        thread::sleep(time::Duration::from_secs(1));
+        
+        let mut disconnectreq = dockercl.detach_from_network_request();
+        disconnectreq.get().set_container("armour");
+        disconnectreq.get().set_network("armour");
+        runtime.block_on(disconnectreq.send().promise).unwrap();
+        println!("Call to detach from network returned");
+
+        thread::sleep(time::Duration::from_secs(1));
+
+        let mut deletenetreq = dockercl.remove_network_request();
+        deletenetreq.get().set_network("armour");
+        let res = runtime.block_on(deletenetreq.send().promise).unwrap().get().unwrap().get_result();;
+        println!("Call to delete network returned {}", res);
+
     }
 }
