@@ -28,15 +28,15 @@ fn main() {
     runtime.spawn(rpc_system.map_err(|_e| ()));
     {
         let listenreq = dockercl.listen_request();
-        runtime.block_on(listenreq.send().promise).unwrap();
+        runtime.block_on(listenreq.send().promise).unwrap().get().unwrap();
         println!("Call to listen returned");
 
         let mut createnetreq = dockercl.create_network_request();
         createnetreq.get().set_network("armour");
-        runtime.block_on(createnetreq.send().promise).unwrap();
-        println!("Call to create network returned");
+        let res = runtime.block_on(createnetreq.send().promise).unwrap().get().unwrap().get_result();
+        println!("Call to create network returned {}", res);
 
-        thread::sleep(time::Duration::from_secs(1));
+        // thread::sleep(time::Duration::from_secs(1));
 
         let mut connectreq = dockercl.attach_to_network_request();
         connectreq.get().set_container("armour");
@@ -44,15 +44,15 @@ fn main() {
         let res = runtime.block_on(connectreq.send().promise).unwrap().get().unwrap().get_result();
         println!("Call to attach to network returned {}", res);
 
-        thread::sleep(time::Duration::from_secs(1));
+        // thread::sleep(time::Duration::from_secs(1));
         
         let mut disconnectreq = dockercl.detach_from_network_request();
         disconnectreq.get().set_container("armour");
         disconnectreq.get().set_network("armour");
-        runtime.block_on(disconnectreq.send().promise).unwrap();
-        println!("Call to detach from network returned");
+        let res = runtime.block_on(disconnectreq.send().promise).unwrap().get().unwrap().get_result();
+        println!("Call to detach from network returned {}", res);
 
-        thread::sleep(time::Duration::from_secs(1));
+        // thread::sleep(time::Duration::from_secs(1));
 
         let mut deletenetreq = dockercl.remove_network_request();
         deletenetreq.get().set_network("armour");

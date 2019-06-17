@@ -34,15 +34,18 @@ impl docker::Server for DockerImpl {
               filter
             }).build();
         
-        let fut = docker.events(&evopt)
+        // Launches the listener as a Tokio Task
+        TaskExecutor::current().spawn_local(Box::new(
+            docker.events(&evopt)
             .for_each(|e| {
                 println!("event -> {:?}, {:?}", e.typ, e.id);
-                Ok(())
-            })
-            .map_err(|_| ());
-            // .map_err(|e| capnp::Error::failed(e.to_string()));
-        
-        TaskExecutor::current().spawn_local(Box::new(fut)).unwrap();
+                futures::future::ok(())
+                })
+                .map_err(|e| ())    
+            ))
+            .map_err(|_| ())
+        .unwrap();
+
         Promise::ok(())
     }
 
