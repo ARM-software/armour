@@ -54,6 +54,19 @@ fn forward(
     }))
 }
 
+trait LiftError {
+    fn lift(self) -> Error
+    where
+        Self: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        Error::from(std::io::Error::new(std::io::ErrorKind::Other, self))
+    }
+}
+
+impl LiftError for url::ParseError {}
+impl LiftError for http::header::ToStrError {}
+impl LiftError for &str {}
+
 trait ForwardUrl {
     fn forward_url(&self) -> Box<dyn Future<Item = url::Url, Error = Error>>
     where
@@ -99,19 +112,10 @@ impl ForwardUrl for HttpRequest {
                     debug!("forwarding to: {}", url);
                     Box::new(future::ok(url))
                 }
-                Ok(Err(err)) => Box::new(future::err(Error::from(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    err,
-                )))),
-                Err(err) => Box::new(future::err(Error::from(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    err,
-                )))),
+                Ok(Err(err)) => Box::new(future::err(err.lift())),
+                Err(err) => Box::new(future::err(err.lift())),
             },
-            None => Box::new(future::err(Error::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "ForwardTo header missing",
-            )))),
+            None => Box::new(future::err("ForwardTo header missing".lift())),
         }
     }
 }
