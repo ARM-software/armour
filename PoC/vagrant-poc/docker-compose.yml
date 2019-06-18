@@ -1,4 +1,4 @@
-version: '3.3'
+version: '3.0'
 services:
   digital-dolly:
     build:
@@ -74,28 +74,37 @@ services:
       - mynet
     ports:
       - 5000
+
+  mysql:
+    image: mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: PoC
+    volumes:
+      - /var/lib/poc-mysql:/var/lib/mysql
+      - /mysql-initdb-config:/docker-entrypoint-initdb.d
+    networks:
+      - mynet
+
   dbread:
     build:
       context: ./dbread
       args:
         registry: git.research.arm.com:4567
-    volumes:
-      - /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock
     environment:
-      DB_CONN: "mysql://dbint:raspberry@localhost:3306/PoC?unix_socket=/var/run/mysqld/mysqld.sock"
+      DB_CONN: "mysql://dbint:raspberry@mysql:3306/PoC"
     networks:
       - mynet
     ports:
       - 5000
+
   dbwrite:
     build:
       context: ./dbwrite
       args:
         registry: git.research.arm.com:4567
-    volumes:
-      - /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock
     environment:
-      DB_CONN: "mysql://dbint:raspberry@localhost:3306/PoC?unix_socket=/var/run/mysqld/mysqld.sock"
+      DB_CONN: "mysql://dbint:raspberry@mysql:3306/PoC"
     networks:
       - mynet
     ports:
@@ -106,6 +115,8 @@ services:
       context: ./dtp
       args:
         registry: git.research.arm.com:4567
+    environment:
+      PULSE_SERVER: tcp:pulse:4713
     networks:
       - mynet
     ports:
@@ -116,10 +127,8 @@ services:
       context: ./debug
       args:
         registry: git.research.arm.com:4567
-    volumes:
-      - /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock
     environment:
-      DB_CONN_REGIST: "mysql://dbint:raspberry@localhost:3306/PoC_Registration?unix_socket=/var/run/mysqld/mysqld.sock"
+      DB_CONN_REGIST: "mysql://dbint:raspberry@mysql:3306/PoC_Registration"
     networks:
       - mynet
     ports:
@@ -127,11 +136,9 @@ services:
 
   launch:
     build: ./launch
-    volumes:
-      - /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock
     environment:
       RUNLEVEL: "debug"
-      DB_CONN_REGIST: "mysql://dbint:raspberry@localhost:3306/PoC_Registration?unix_socket=/var/run/mysqld/mysqld.sock"
+      DB_CONN_REGIST: "mysql://dbint:raspberry@mysql:3306/PoC_Registration"
     networks:
       - mynet
     #    ipv4_address: 172.38.0.1

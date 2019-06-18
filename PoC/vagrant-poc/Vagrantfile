@@ -1,3 +1,65 @@
 Vagrant.configure("2") do |config|
-  config.vm.box = "poc"
+  config.vm.box = "ubuntu/bionic64"
+  config.vm.network "public_network", bridge: "en0: Wi-Fi (Wireless)"
+  config.vm.provider :virtualbox do |vb|
+    vb.memory = 5569
+    vb.cpus = 2
+    vb.customize ["modifyvm", :id, "--nicpromisc2", "allow-all"]
+  end
+  config.vm.provision :docker
+
+  config.vm.provision "shell", inline: <<-SHELL
+    sudo apt-get update
+    sudo apt-get install -y git
+    sudo apt-get install -y mongodb
+    sudo mkdir /var/lib/poc-mysql
+    sudo mkdir /mysql-initdb-config
+    cp /vagrant/initdb.sql /mysql-initdb-config
+    echo "export COMPOSE_HTTP_TIMEOUT=360" >> /etc/profile.d/myvar.sh
+    mkdir -p /home/vagrant/PoC
+    cd /home/vagrant/PoC
+    sudo git config --global --unset https.proxy
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/accounting.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/rule-engine.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/cloud_comm.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/context.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/dbread.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/dbwrite.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/debug.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/digital-dolly.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/dtp.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/hostapd.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/launch.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/mongo-web-interface.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/mosquitto_public.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/mosquitto_trusted.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/notifications.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/on_during_conversation.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/picolibri.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/pihealth.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/pihealth_trimmed.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/pipharm.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/pulse.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/temperature.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/verify_id.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/vitals.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/rule-engine.git
+    sudo git clone https://git.research.arm.com/rsh/emerge/health-poc/debug-tools.git
+    for dir in */
+    do
+      rm -f ${dir}/Dockerfile
+      dir=${dir%*/}
+      cp /vagrant/PoCx86/${dir}/Dockerfile ${dir}/
+    done
+      cp /vagrant/docker-compose.yml /home/vagrant/PoC
+      rm -f ./debug/debug_tools/testall.sh
+      cp /vagrant/PoCx86/testall.sh ./debug/debug_tools/
+      chmod u+x /home/vagrant/PoC/debug/debug_tools/testall.sh
+      add=$(ifconfig enp0s8 | grep 'inet ' | cut -d: -f2 | awk '{print $2}')
+      sed -i 's|kvminst-1.ausrd.arm.com:80|'"${add}"'|g' /home/vagrant/PoC/docker-compose.yml
+      sudo sed -i 's|127.0.0.1|0.0.0.0|g' /etc/mongodb.conf
+      sudo service mongodb restart
+  SHELL
+
+  config.vm.provision :docker_compose, rebuild: true, run: "always", yml: "/home/vagrant/PoC/docker-compose.yml"
 end
