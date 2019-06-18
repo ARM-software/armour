@@ -1,7 +1,7 @@
 /// policy language interpreter
 // NOTE: no optimization
 use super::headers::Headers;
-use super::lang::{Block, Error, Expr, Runtime};
+use super::lang::{Block, Error, Expr, Program};
 use super::literals::Literal;
 use super::parser::{As, Infix, Iter, Pat, Prefix};
 use futures::{
@@ -251,7 +251,7 @@ impl Expr {
             _ => self,
         }
     }
-    fn eval(self, env: Arc<Runtime>) -> Box<dyn Future<Item = Expr, Error = self::Error>> {
+    fn eval(self, env: Arc<Program>) -> Box<dyn Future<Item = Expr, Error = self::Error>> {
         match self {
             Expr::Var(_) | Expr::BVar(_) => Box::new(future::err(Error::new("eval variable"))),
             Expr::LitExpr(_) => Box::new(future::ok(self)),
@@ -674,7 +674,7 @@ impl Expr {
                                     }
                                     match error {
                                         Some(err) => future::Either::A(future::err(err)),
-                                        None => future::Either::B(r.evaluate((*env).clone())),
+                                        None => future::Either::B(r.evaluate(env.clone())),
                                     }
                                 // builtin function
                                 } else if Headers::is_builtin(&function) {
@@ -717,9 +717,9 @@ impl Expr {
             }
         }
     }
-    pub fn evaluate(self, env: Runtime) -> Box<dyn Future<Item = Expr, Error = self::Error>> {
+    pub fn evaluate(self, env: Arc<Program>) -> Box<dyn Future<Item = Expr, Error = self::Error>> {
         Box::new(
-            self.eval(Arc::new(env))
+            self.eval(env)
                 .and_then(|e| Box::new(future::ok(e.strip_return()))),
         )
     }

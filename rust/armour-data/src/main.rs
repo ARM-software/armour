@@ -2,7 +2,7 @@ use armour_data::{policy, proxy};
 use clap::{crate_version, App, Arg};
 use std::env;
 
-fn main() -> Result<(), std::io::Error> {
+fn main() -> std::io::Result<()> {
     // defaults
     let default_proxy_port: u16 = 8443;
 
@@ -33,10 +33,6 @@ fn main() -> Result<(), std::io::Error> {
     env::set_var("RUST_BACKTRACE", "0");
     env_logger::init();
 
-    // start the actix system
-    let sys = actix::System::new("armour-proxy");
-
-
     // shared state
     let mut state = policy::ArmourState::new();
     if !state.from_file("test.policy") {
@@ -47,9 +43,5 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     // start up the proxy server
-    proxy::start(state, format!("localhost:{}", proxy_port));
-
-    sys.run();
-
-    Ok(())
+    proxy::start(state, format!("localhost:{}", proxy_port))
 }

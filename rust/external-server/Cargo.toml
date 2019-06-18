@@ -7,11 +7,11 @@ edition = "2018"
 build = "build.rs"
 
 [build-dependencies]
-capnpc = "0.9.5"
+capnpc = "0.10"
 
 [dependencies]
-capnp = "0.9"
-capnp-rpc = "0.9"
+capnp = "0.10"
+capnp-rpc = "0.10"
 futures = "0.1"
 tokio = "0.1"
 tokio-uds = "0.2"

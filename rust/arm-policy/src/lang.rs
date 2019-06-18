@@ -1086,80 +1086,6 @@ impl Code {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Externals(pub HashMap<String, String>);
-
-impl Externals {
-    fn new() -> Externals {
-        Externals(HashMap::new())
-    }
-    fn add_external(&mut self, name: &str, url: &str) -> bool {
-        self.0.insert(name.to_string(), url.to_string()).is_some()
-    }
-}
-
-#[derive(Clone)]
-pub struct Runtime {
-    internal: Code,
-    external: externals::Externals,
-}
-
-impl Runtime {
-    pub fn internal(&self, s: &str) -> Option<&Expr> {
-        self.internal.0.get(s)
-    }
-    pub fn external(
-        &self,
-        external: &str,
-        method: &str,
-        args: Vec<Expr>,
-    ) -> Box<dyn Future<Item = Expr, Error = Error>> {
-        if let Some(socket) = self.external.get_socket(external) {
-            match Literal::literal_vector(args) {
-                Ok(lits) => Box::new(
-                    externals::Externals::request(
-                        external.to_string(),
-                        method.to_string(),
-                        lits,
-                        socket,
-                        self.external.timeout(),
-                    )
-                    .and_then(|r| future::ok(Expr::LitExpr(r)))
-                    .from_err(),
-                ),
-                Err(err) => Box::new(future::err(err)),
-            }
-        } else {
-            Box::new(future::err(Error::new(format!(
-                "missing exteral{}",
-                external
-            ))))
-        }
-    }
-    pub fn set_timeout(&mut self, d: std::time::Duration) {
-        self.external.set_timeout(d)
-    }
-    pub fn evaluate<'a>(self, e: Expr) -> Box<dyn Future<Item = Expr, Error = Error> + 'a> {
-        e.evaluate(self)
-    }
-}
-
-impl From<&Program> for Runtime {
-    fn from(p: &Program) -> Runtime {
-        let mut external = externals::Externals::default();
-        for (name, url) in p.externals.0.iter() {
-            if external.register_external(name, url.as_str()) {
-                println!("external already existed \"{}\"", name)
-            }
-        }
-        external.set_timeout(p.timeout());
-        Runtime {
-            internal: p.code.clone(),
-            external,
-        }
-    }
-}
-
 struct CallGraph {
     graph: graph::DiGraph<String, lexer::Loc>,
     nodes: HashMap<String, graph::NodeIndex>,
@@ -1195,25 +1121,57 @@ impl CallGraph {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Program {
     pub code: Code,
-    pub externals: Externals,
+    pub externals: externals::Externals,
     pub headers: Headers,
-    timeout: std::time::Duration,
 }
 
 impl Program {
     pub fn new() -> Program {
         Program {
             code: Code::new(),
-            externals: Externals::new(),
+            externals: externals::Externals::default(),
             headers: Headers::new(),
-            timeout: std::time::Duration::from_secs(3),
         }
     }
+    pub fn has_function(&self, name: &str) -> bool {
+        self.code.0.contains_key(name)
+    }
     pub fn set_timeout(&mut self, t: std::time::Duration) {
-        self.timeout = t
+        self.externals.set_timeout(t)
     }
     pub fn timeout(&self) -> std::time::Duration {
-        self.timeout.clone()
+        self.externals.timeout()
+    }
+    pub fn internal(&self, s: &str) -> Option<&Expr> {
+        self.code.0.get(s)
+    }
+    pub fn external(
+        &self,
+        external: &str,
+        method: &str,
+        args: Vec<Expr>,
+    ) -> Box<dyn Future<Item = Expr, Error = Error>> {
+        if let Some(socket) = self.externals.get_socket(external) {
+            match Literal::literal_vector(args) {
+                Ok(lits) => Box::new(
+                    externals::Externals::request(
+                        external.to_string(),
+                        method.to_string(),
+                        lits,
+                        socket,
+                        self.externals.timeout(),
+                    )
+                    .and_then(|r| future::ok(Expr::LitExpr(r)))
+                    .from_err(),
+                ),
+                Err(err) => Box::new(future::err(err)),
+            }
+        } else {
+            Box::new(future::err(Error::new(format!(
+                "missing exteral{}",
+                external
+            ))))
+        }
     }
     fn add_decl(&mut self, call_graph: &mut CallGraph, decl: &parser::FnDecl) -> Result<(), Error> {
         // println!("{:#?}", decl);

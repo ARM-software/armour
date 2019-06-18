@@ -4,6 +4,7 @@ use capnp::capability::Promise;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::{future, Future};
 use futures_timer::FutureExt;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
@@ -68,7 +69,7 @@ impl<'a> PathOrToSocketAddrs<&'a str, &'a str> for &'a str {
     }
 }
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Externals {
     externals: HashMap<String, String>,
     timeout: Duration,
@@ -91,6 +92,11 @@ impl Externals {
     }
     pub fn timeout(&self) -> Duration {
         self.timeout.clone()
+    }
+    pub fn add_external(&mut self, name: &str, addr: &str) -> bool {
+        self.externals
+            .insert(name.to_string(), addr.to_string())
+            .is_some()
     }
     fn get_tls_stream<T: std::net::ToSocketAddrs>(
         socket: T,
@@ -259,11 +265,6 @@ impl Externals {
             }
             Err(err) => Box::new(future::err(err)),
         }
-    }
-    pub fn register_external(&mut self, name: &str, addr: &str) -> bool {
-        self.externals
-            .insert(name.to_string(), addr.to_string())
-            .is_some()
     }
     pub fn get_socket(&self, external: &str) -> Option<String> {
         self.externals.get(external).map(|x| x.clone())

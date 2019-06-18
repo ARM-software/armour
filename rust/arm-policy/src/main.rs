@@ -6,6 +6,7 @@ use std::io::{
     self,
     prelude::{Read, Write},
 };
+use std::sync::Arc;
 use std::time::Duration;
 
 fn main() -> io::Result<()> {
@@ -58,6 +59,7 @@ fn main() -> io::Result<()> {
 
     // evaluate expressions (REPL)
     let headers = prog.headers.clone();
+    let prog = Arc::new(prog);
     let mut reader = io::BufReader::new(io::stdin());
     loop {
         print!("> ");
@@ -66,8 +68,8 @@ fn main() -> io::Result<()> {
         reader.read_to_string(&mut buf)?;
         match lang::Expr::from_string(&buf, &headers) {
             Ok(e) => {
-                let fut = lang::Runtime::from(&prog)
-                    .evaluate(e)
+                let fut =
+                    e.evaluate(prog.clone())
                     .and_then(|r| {
                         future::ok({
                             println!(": {}", r.clone());
