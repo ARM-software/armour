@@ -1,4 +1,4 @@
-use actix_web::Error;
+use actix_web::{web, Error};
 use arm_policy::{lang, literals};
 use futures::{future, Future};
 use std::sync::Arc;
@@ -10,13 +10,13 @@ pub trait HttpAccept {
 }
 
 #[derive(Clone)]
-pub struct ArmourState {
+pub struct ArmourPolicy {
     program: Arc<lang::Program>,
 }
 
-impl ArmourState {
-    pub fn new() -> ArmourState {
-        ArmourState {
+impl ArmourPolicy {
+    pub fn new() -> ArmourPolicy {
+        ArmourPolicy {
             program: Arc::new(lang::Program::new()),
         }
     }
@@ -56,13 +56,12 @@ pub enum Policy {
 }
 
 // Implement the "accept" method for Armour policies. Evaluates a "require function"
-impl HttpAccept for ArmourState {
+impl HttpAccept for web::Data<ArmourPolicy> {
     fn accept(&self, req: &actix_web::HttpRequest) -> Box<dyn Future<Item = bool, Error = Error>> {
-        let prog = self.program.clone();
-        if prog.has_function("require") {
+        if self.program.has_function("require") {
             Box::new(
-                lang::Expr::call1("require", ArmourState::http_request(&req))
-                    .evaluate(prog)
+                lang::Expr::call1("require", ArmourPolicy::http_request(&req))
+                    .evaluate(self.program.clone())
                     .and_then(|res| match res {
                         lang::Expr::LitExpr(literals::Literal::PolicyLiteral(result)) => {
                             info!("successfully evaluated policy");

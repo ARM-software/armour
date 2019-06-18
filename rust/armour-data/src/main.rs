@@ -34,8 +34,8 @@ fn main() -> std::io::Result<()> {
     env_logger::init();
 
     // shared state
-    let mut state = policy::ArmourState::new();
-    if !state.from_file("test.policy") {
+    let mut policy = policy::ArmourPolicy::new();
+    if !policy.from_file("test.policy") {
         return Err(std::io::Error::new(
             std::io::ErrorKind::Other,
             "failed to read policy file",
@@ -43,5 +43,5 @@ fn main() -> std::io::Result<()> {
     }
 
     // start up the proxy server
-    proxy::start(state, format!("localhost:{}", proxy_port))
+    proxy::start(policy, format!("localhost:{}", proxy_port))
 }

@@ -4,13 +4,14 @@ use actix_web::{middleware, web, App, Error, HttpRequest, HttpResponse, HttpServ
 use futures::{future, Future};
 
 pub fn start<S: std::net::ToSocketAddrs + std::fmt::Display>(
-    state: policy::ArmourState,
+    policy: policy::ArmourPolicy,
     addr: S,
 ) -> std::io::Result<()> {
+    let policy_data = web::Data::new(policy);
     info!("starting proxy server: http://{}", addr);
     HttpServer::new(move || {
         App::new()
-            .data(state.clone())
+            .data(policy_data.clone())
             .data(Client::new())
             .wrap(middleware::Logger::default())
             .default_service(web::route().to_async(forward))
@@ -24,10 +25,10 @@ pub fn start<S: std::net::ToSocketAddrs + std::fmt::Display>(
 fn forward(
     req: HttpRequest,
     payload: web::Payload,
-    policy: web::Data<policy::ArmourState>,
+    policy: web::Data<policy::ArmourPolicy>,
     client: web::Data<Client>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
-    Box::new(policy.get_ref().accept(&req).and_then(|accept| {
+    Box::new(policy.accept(&req).and_then(|accept| {
         info!("accept is: {}", accept);
         if accept {
             future::Either::A(req.forward_url().and_then(move |url| {
