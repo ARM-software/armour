@@ -16,17 +16,23 @@ fn service(
     port: web::Data<u16>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     body.map_err(Error::from)
-        .fold(web::BytesMut::new(), move |mut body, chunk| {
+        .fold(web::BytesMut::new(), |mut body, chunk| {
             body.extend_from_slice(&chunk);
             Ok::<_, Error>(body)
         })
         .and_then(move |data| {
+            let info = req.connection_info();
             Ok(HttpResponse::Ok().body(format!(
-                "port {} received request {} with body {:?} from {}",
+                r#"port {} received request {} with body {:?}; host {}; remote {}"#,
                 port.get_ref(),
                 req.uri(),
                 data,
-                req.connection_info().host(),
+                info.host(),
+                info.remote().unwrap_or("<unknown>"),
+                // req.headers()
+                //     .get("x-forwarded-for")
+                //     .map(|v| v.to_str().unwrap_or("not a string"))
+                //     .unwrap_or("not set"),
             )))
         })
 }

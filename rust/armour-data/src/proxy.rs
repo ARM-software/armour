@@ -1,17 +1,18 @@
-use super::policy::{self, HttpAccept};
+//! HTTP proxy with Armour policies
+use super::policy::{self, AcceptRequest, ToActixError};
 use actix_web::client::{Client, ClientRequest};
 use actix_web::{middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use futures::{future, Future};
 
+/// Start-up the proxy
 pub fn start<S: std::net::ToSocketAddrs + std::fmt::Display>(
     policy: policy::ArmourPolicy,
     addr: S,
 ) -> std::io::Result<()> {
-    let policy_data = web::Data::new(policy);
     info!("starting proxy server: http://{}", addr);
     HttpServer::new(move || {
         App::new()
-            .data(policy_data.clone())
+            .data(policy.clone())
             .data(Client::new())
             .wrap(middleware::Logger::default())
             .default_service(web::route().to_async(forward))
@@ -21,7 +22,9 @@ pub fn start<S: std::net::ToSocketAddrs + std::fmt::Display>(
     .run()
 }
 
-// Main HttpRequest handler: checks against Armour policy and, if accepted, forwards to "forward_url"
+/// Main HttpRequest handler
+///
+/// Checks request against Armour policy and, if accepted, forwards to [forward_url](ForwardUrl)
 fn forward(
     req: HttpRequest,
     payload: web::Payload,
@@ -55,19 +58,7 @@ fn forward(
     }))
 }
 
-trait LiftError {
-    fn lift(self) -> Error
-    where
-        Self: Into<Box<dyn std::error::Error + Send + Sync>>,
-    {
-        Error::from(std::io::Error::new(std::io::ErrorKind::Other, self))
-    }
-}
-
-impl LiftError for url::ParseError {}
-impl LiftError for http::header::ToStrError {}
-impl LiftError for &str {}
-
+/// Extract a forwarding URL
 trait ForwardUrl {
     fn forward_url(&self) -> Box<dyn Future<Item = url::Url, Error = Error>>
     where
@@ -113,14 +104,15 @@ impl ForwardUrl for HttpRequest {
                     debug!("forwarding to: {}", url);
                     Box::new(future::ok(url))
                 }
-                Ok(Err(err)) => Box::new(future::err(err.lift())),
-                Err(err) => Box::new(future::err(err.lift())),
+                Ok(Err(err)) => Box::new(future::err(err.to_actix())),
+                Err(err) => Box::new(future::err(err.to_actix())),
             },
-            None => Box::new(future::err("ForwardTo header missing".lift())),
+            None => Box::new(future::err("ForwardTo header missing".to_actix())),
         }
     }
 }
 
+/// Set the x-forwarded-for header to be the client's socket address
 trait SetForwardFor {
     fn set_x_forward_for(self, a: Option<std::net::SocketAddr>) -> Self;
 }
@@ -128,7 +120,7 @@ trait SetForwardFor {
 impl SetForwardFor for ClientRequest {
     fn set_x_forward_for(self, a: Option<std::net::SocketAddr>) -> Self {
         if let Some(addr) = a {
-            self.header("x-forwarded-for", format!("{}", addr.ip()))
+            self.header("x-forwarded-for", format!("{}", addr))
         } else {
             self
         }

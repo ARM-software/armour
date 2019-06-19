@@ -1,14 +1,10 @@
-use actix_web::{web, Error};
+//! actix-web support for Armour policies
+use actix_web::{web, Error, HttpRequest};
 use arm_policy::{lang, literals};
 use futures::{future, Future};
 use std::sync::Arc;
 
-pub trait HttpAccept {
-    fn accept(&self, req: &actix_web::HttpRequest) -> Box<dyn Future<Item = bool, Error = Error>>
-    where
-        Self: Sized;
-}
-
+/// Armour policies, based on evaluating Armour programs
 #[derive(Clone)]
 pub struct ArmourPolicy {
     program: Arc<lang::Program>,
@@ -20,7 +16,7 @@ impl ArmourPolicy {
             program: Arc::new(lang::Program::new()),
         }
     }
-    // Load policy from a file
+    /// Attempt to load a new policy from a file
     pub fn from_file<P: AsRef<std::path::Path> + std::fmt::Display>(&mut self, p: P) -> bool {
         match lang::Program::from_file(p.as_ref()) {
             Ok(prog) => {
@@ -34,8 +30,8 @@ impl ArmourPolicy {
             }
         }
     }
-    // Convert Actix-Web HttpRequest into an equivalent Armour expression (HttpRequest literal)
-    fn http_request(req: &actix_web::HttpRequest) -> lang::Expr {
+    /// Convert an actix-web HttpRequest into an equivalent Armour language literal
+    fn http_request(req: &HttpRequest) -> lang::Expr {
         let headers: Vec<(&str, &[u8])> = req
             .headers()
             .iter()
@@ -51,13 +47,16 @@ impl ArmourPolicy {
     }
 }
 
-pub enum Policy {
-    Accept,
+/// Trait for accepting, or rejecting, HTTP requests
+pub trait AcceptRequest {
+    fn accept(&self, req: &HttpRequest) -> Box<dyn Future<Item = bool, Error = Error>>
+    where
+        Self: Sized;
 }
 
 // Implement the "accept" method for Armour policies. Evaluates a "require function"
-impl HttpAccept for web::Data<ArmourPolicy> {
-    fn accept(&self, req: &actix_web::HttpRequest) -> Box<dyn Future<Item = bool, Error = Error>> {
+impl AcceptRequest for web::Data<ArmourPolicy> {
+    fn accept(&self, req: &HttpRequest) -> Box<dyn Future<Item = bool, Error = Error>> {
         if self.program.has_function("require") {
             Box::new(
                 lang::Expr::call1("require", ArmourPolicy::http_request(&req))
@@ -71,7 +70,7 @@ impl HttpAccept for web::Data<ArmourPolicy> {
                     })
                     .map_err(|e| {
                         warn!("got an error when evaluating Armour policy");
-                        actix_web::Error::from(std::io::Error::new(std::io::ErrorKind::Other, e))
+                        e.to_actix()
                     }),
             )
         } else {
@@ -80,3 +79,25 @@ impl HttpAccept for web::Data<ArmourPolicy> {
         }
     }
 }
+
+/// Trait for accepting, or rejecting, HTTP responses
+pub trait AcceptResponse {
+    fn accept(&self, req: &web::Bytes) -> Box<dyn Future<Item = bool, Error = Error>>
+    where
+        Self: Sized;
+}
+
+/// Trait for lifting errors into actix-web errors
+pub trait ToActixError {
+    fn to_actix(self) -> Error
+    where
+        Self: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        Error::from(std::io::Error::new(std::io::ErrorKind::Other, self))
+    }
+}
+
+impl ToActixError for arm_policy::lang::Error {}
+impl ToActixError for url::ParseError {}
+impl ToActixError for http::header::ToStrError {}
+impl ToActixError for &str {}
