@@ -49,23 +49,25 @@ impl ArmourPolicy {
 
 /// Trait for accepting, or rejecting, HTTP requests
 pub trait AcceptRequest {
-    fn accept(&self, req: &HttpRequest) -> Box<dyn Future<Item = bool, Error = Error>>
+    fn accept_request(&self, req: &HttpRequest) -> Box<dyn Future<Item = bool, Error = Error>>
     where
         Self: Sized;
 }
 
 // Implement the "accept" method for Armour policies. Evaluates a "require function"
 impl AcceptRequest for web::Data<ArmourPolicy> {
-    fn accept(&self, req: &HttpRequest) -> Box<dyn Future<Item = bool, Error = Error>> {
-        if self.program.has_function("require") {
+    fn accept_request(&self, req: &HttpRequest) -> Box<dyn Future<Item = bool, Error = Error>> {
+        const REQUIRE: &str = "require";
+        if self.program.has_function(REQUIRE) {
             Box::new(
-                lang::Expr::call1("require", ArmourPolicy::http_request(&req))
+                lang::Expr::call1(REQUIRE, ArmourPolicy::http_request(&req))
                     .evaluate(self.program.clone())
-                    .and_then(|res| match res {
-                        lang::Expr::LitExpr(literals::Literal::PolicyLiteral(result)) => {
+                    .and_then(|result| match result {
+                        lang::Expr::LitExpr(literals::Literal::PolicyLiteral(policy)) => {
                             info!("successfully evaluated policy");
-                            future::ok(result == literals::Policy::Accept)
+                            future::ok(policy == literals::Policy::Accept)
                         }
+                        // TODO: handle dynamic type errors
                         _ => unreachable!(),
                     })
                     .map_err(|e| {
@@ -81,10 +83,47 @@ impl AcceptRequest for web::Data<ArmourPolicy> {
 }
 
 /// Trait for accepting, or rejecting, HTTP responses
-pub trait AcceptResponse {
-    fn accept(&self, req: &web::Bytes) -> Box<dyn Future<Item = bool, Error = Error>>
+pub trait AcceptPayload {
+    fn accept_payload<B>(
+        &self,
+        checker: &str,
+        payload: &B,
+    ) -> Box<dyn Future<Item = bool, Error = Error>>
     where
-        Self: Sized;
+        Self: Sized,
+        B: AsRef<[u8]>;
+}
+
+impl AcceptPayload for web::Data<ArmourPolicy> {
+    fn accept_payload<B>(
+        &self,
+        checker: &str,
+        payload: &B,
+    ) -> Box<dyn Future<Item = bool, Error = Error>>
+    where
+        B: AsRef<[u8]>,
+    {
+        if self.program.has_function(checker) {
+            Box::new(
+                lang::Expr::call1(checker, lang::Expr::data(payload.as_ref()))
+                    .evaluate(self.program.clone())
+                    .and_then(|result| match result {
+                        lang::Expr::LitExpr(literals::Literal::PolicyLiteral(policy)) => {
+                            future::ok(policy == literals::Policy::Accept)
+                        }
+                        // TODO: handle dynamic type errors
+                        _ => unreachable!(),
+                    })
+                    .map_err(|e| {
+                        warn!("got an error when evaluating Armour policy");
+                        e.to_actix()
+                    }),
+            )
+        } else {
+            // block if there is no "ensure" function
+            Box::new(future::ok(true))
+        }
+    }
 }
 
 /// Trait for lifting errors into actix-web errors

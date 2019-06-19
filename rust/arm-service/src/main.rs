@@ -21,6 +21,7 @@ fn service(
             Ok::<_, Error>(body)
         })
         .and_then(move |data| {
+            // Ok(HttpResponse::Ok().body("hello"))
             let info = req.connection_info();
             Ok(HttpResponse::Ok().body(format!(
                 r#"port {} received request {} with body {:?}; host {}; remote {}"#,

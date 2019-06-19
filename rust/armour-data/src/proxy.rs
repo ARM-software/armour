@@ -1,9 +1,10 @@
 //! HTTP proxy with Armour policies
-use super::policy::{self, AcceptRequest, ToActixError};
+use super::policy::{self, AcceptPayload, AcceptRequest, ToActixError};
 use actix_web::client::{Client, ClientRequest};
 use actix_web::{middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer};
-use futures::{future, Future};
 
+use futures::stream::Stream;
+use futures::{future, Future};
 /// Start-up the proxy
 pub fn start<S: std::net::ToSocketAddrs + std::fmt::Display>(
     policy: policy::ArmourPolicy,
@@ -24,38 +25,86 @@ pub fn start<S: std::net::ToSocketAddrs + std::fmt::Display>(
 
 /// Main HttpRequest handler
 ///
-/// Checks request against Armour policy and, if accepted, forwards to [forward_url](ForwardUrl)
+/// Checks request against Armour policy and, if accepted, forwards to [forward_url](ForwardUrl).
+/// The server reponse is then checked before it is forwarded back on to the client.
 fn forward(
     req: HttpRequest,
     payload: web::Payload,
     policy: web::Data<policy::ArmourPolicy>,
     client: web::Data<Client>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
-    Box::new(policy.accept(&req).and_then(|accept| {
-        info!("accept is: {}", accept);
+    policy.accept_request(&req).and_then(|accept| {
+        info!("accept: {}", accept);
         if accept {
-            future::Either::A(req.forward_url().and_then(move |url| {
-                client
-                    .request_from(url.as_str(), req.head())
-                    .set_x_forward_for(req.peer_addr())
-                    .send_stream(payload)
-                    .from_err()
-                    .map(|res| {
-                        let mut client_resp = HttpResponse::build(res.status());
-                        for (header_name, header_value) in
-                            res.headers().iter().filter(|(h, _)| *h != "connection")
-                        {
-                            client_resp.header(header_name.clone(), header_value.clone());
-                        }
-                        client_resp.streaming(res)
+            future::Either::A(
+                payload
+                    .map_err(Error::from)
+                    .fold(web::BytesMut::new(), |mut body, chunk| {
+                        body.extend_from_slice(&chunk);
+                        Ok::<_, Error>(body)
                     })
-            }))
+                    .and_then(|client_payload| {
+                        policy
+                            .accept_payload("client_payload", &client_payload)
+                            .and_then(move |accept_client_payload| {
+                                info!("accept client payload: {}", accept_client_payload);
+                                if accept_client_payload {
+                                    future::Either::A(req.forward_url().and_then(move |url| {
+                                        client
+                                            .request_from(url.as_str(), req.head())
+                                            .set_x_forward_for(req.peer_addr())
+                                            .send_body(client_payload)
+                                            .from_err()
+                                            .and_then(|mut res| {
+                                                let mut client_resp =
+                                                    HttpResponse::build(res.status());
+                                                for (header_name, header_value) in res
+                                                    .headers()
+                                                    .iter()
+                                                    .filter(|(h, _)| *h != "connection")
+                                                {
+                                                    client_resp.header(
+                                                        header_name.clone(),
+                                                        header_value.clone(),
+                                                    );
+                                                }
+                                                res.body().from_err().and_then(
+                                                    move |server_payload| {
+                                                        policy
+                                                            .accept_payload(
+                                                                "server_payload",
+                                                                &server_payload,
+                                                            )
+                                                            .map(move |accept_server_payload| {
+                                                                info!(
+                                                                    "accept server payload: {}",
+                                                                    accept_server_payload
+                                                                );
+                                                                if accept_server_payload {
+                                                                    client_resp.body(server_payload)
+                                                                } else {
+                                                                    HttpResponse::BadRequest()
+                                                                        .body("request denied (bad response)")
+                                                                }
+                                                            })
+                                                    },
+                                                )
+                                            })
+                                    }))
+                                } else {
+                                    future::Either::B(future::ok(
+                                        HttpResponse::BadRequest().body("request denied (bad payload)"),
+                                    ))
+                                }
+                            })
+                    }),
+            )
         } else {
             future::Either::B(future::ok(
                 HttpResponse::BadRequest().body("request denied"),
             ))
         }
-    }))
+    })
 }
 
 /// Extract a forwarding URL
