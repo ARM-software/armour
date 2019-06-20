@@ -1,5 +1,5 @@
 //! HTTP proxy with Armour policies
-use super::policy::{self, AcceptPayload, AcceptRequest, ToActixError};
+use super::policy::{self, EvaluatePolicy, ToActixError};
 use actix_web::client::{Client, ClientRequest};
 use actix_web::{middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer};
 
@@ -25,18 +25,21 @@ pub fn start<S: std::net::ToSocketAddrs + std::fmt::Display>(
 
 /// Main HttpRequest handler
 ///
-/// Checks request against Armour policy and, if accepted, forwards to [forward_url](ForwardUrl).
-/// The server reponse is then checked before it is forwarded back on to the client.
+/// Checks request against Armour policy and, if accepted, forwards it using [ForwardUrl](trait.ForwardUrl.html).
+/// The server reponse is then checked before it is forwarded back to the original client.
 fn forward(
     req: HttpRequest,
     payload: web::Payload,
     policy: web::Data<policy::ArmourPolicy>,
     client: web::Data<Client>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
-    policy.accept_request(&req).and_then(|accept| {
+    policy.evaluate_policy("require", vec![&req]).and_then(|accept| {
+        // check if request is allowed
+        let accept = accept.unwrap_or(false);
         info!("accept: {}", accept);
         if accept {
             future::Either::A(
+                // read the payload
                 payload
                     .map_err(Error::from)
                     .fold(web::BytesMut::new(), |mut body, chunk| {
@@ -45,14 +48,18 @@ fn forward(
                     })
                     .and_then(|client_payload| {
                         policy
-                            .accept_payload("client_payload", &client_payload)
+                            .evaluate_policy("client_payload", vec![&client_payload])
                             .and_then(move |accept_client_payload| {
+                                // check if client payload is allowed
+                                let accept_client_payload = accept_client_payload.unwrap_or(true);
                                 info!("accept client payload: {}", accept_client_payload);
                                 if accept_client_payload {
+                                    // get the forwardinng URL
                                     future::Either::A(req.forward_url().and_then(move |url| {
                                         client
                                             .request_from(url.as_str(), req.head())
                                             .set_x_forward_for(req.peer_addr())
+                                            // forward the request (with the original client payload)
                                             .send_body(client_payload)
                                             .from_err()
                                             .and_then(|mut res| {
@@ -68,19 +75,23 @@ fn forward(
                                                         header_value.clone(),
                                                     );
                                                 }
+                                                // get the server payload
                                                 res.body().from_err().and_then(
                                                     move |server_payload| {
                                                         policy
-                                                            .accept_payload(
+                                                            .evaluate_policy(
                                                                 "server_payload",
-                                                                &server_payload,
+                                                                vec![&server_payload],
                                                             )
                                                             .map(move |accept_server_payload| {
+                                                                // check that the server payload is allowed
+                                                                let accept_server_payload = accept_server_payload.unwrap_or(true);
                                                                 info!(
                                                                     "accept server payload: {}",
                                                                     accept_server_payload
                                                                 );
                                                                 if accept_server_payload {
+                                                                    // send the server response back to the client
                                                                     client_resp.body(server_payload)
                                                                 } else {
                                                                     HttpResponse::BadRequest()
@@ -161,7 +172,7 @@ impl ForwardUrl for HttpRequest {
     }
 }
 
-/// Set the x-forwarded-for header to be the client's socket address
+/// Conditionally set the `x-forwarded-for` header to be a TCP socket address
 trait SetForwardFor {
     fn set_x_forward_for(self, a: Option<std::net::SocketAddr>) -> Self;
 }

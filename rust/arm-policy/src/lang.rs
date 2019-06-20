@@ -244,10 +244,10 @@ impl Expr {
     pub fn http_request(r: literals::HttpRequest) -> Expr {
         Expr::LitExpr(Literal::HttpRequestLiteral(r))
     }
-    pub fn call1(f: &str, e: Expr) -> Expr {
+    pub fn call(f: &str, arguments: Vec<Expr>) -> Expr {
         Expr::CallExpr {
             function: f.to_string(),
-            arguments: vec![e],
+            arguments,
         }
     }
     pub fn return_expr(e: Expr) -> Expr {

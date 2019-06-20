@@ -10,16 +10,20 @@ use std::net::ToSocketAddrs;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+/// Calls to Armour external functions
+///
+/// Calls take the form `external::method(args)`
 #[derive(Clone)]
-struct CallRequest {
+struct Call {
     external: String,
     method: String,
     args: Vec<Literal>,
 }
 
-impl CallRequest {
-    pub fn new(external: &str, method: &str, args: Vec<Literal>) -> CallRequest {
-        CallRequest {
+impl Call {
+    /// Call constructor
+    pub fn new(external: &str, method: &str, args: Vec<Literal>) -> Call {
+        Call {
             external: external.to_string(),
             method: method.to_string(),
             args,
@@ -27,16 +31,18 @@ impl CallRequest {
     }
 }
 
+/// Errors that can occur when trying to connect with externals
 #[derive(Debug)]
 pub enum Error {
-    ClientAlreadyExists,
-    ClientMissing,
-    RequestNotValid,
-    Socket,
+    Failed(String),
     IO(std::io::Error),
     Capnp(capnp::Error),
-    #[cfg(not(target_env = "musl"))]
-    NativeTLS(native_tls::Error),
+}
+
+impl From<&str> for Error {
+    fn from(err: &str) -> Error {
+        Error::Failed(err.to_string())
+    }
 }
 
 impl From<std::io::Error> for Error {
@@ -51,6 +57,7 @@ impl From<capnp::Error> for Error {
     }
 }
 
+/// Trait for structures that can be converted either to a TCP socket address or to a Unix socket path
 pub trait PathOrToSocketAddrs<T: std::net::ToSocketAddrs, P: AsRef<std::path::Path>> {
     fn get_to_socket_addrs(&self) -> Option<T>;
     fn get_path(&self) -> Option<P>;
@@ -71,7 +78,9 @@ impl<'a> PathOrToSocketAddrs<&'a str, &'a str> for &'a str {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Externals {
+    /// map from external names to TCP/Unix socket names
     externals: HashMap<String, String>,
+    /// time limit and external calls
     timeout: Duration,
 }
 
@@ -118,7 +127,7 @@ impl Externals {
                     });
                     Box::new(tls.from_err())
                 } else {
-                    Box::new(future::err(Error::Socket))
+                    Box::new(future::err(Error::from("socket address")))
                 }
             }
             Err(err) => Box::new(future::err(Error::from(err))),
@@ -139,7 +148,7 @@ impl Externals {
                             .from_err(),
                     )
                 } else {
-                    Box::new(future::err(Error::Socket))
+                    Box::new(future::err(Error::from("socket address")))
                 }
             }
             Err(err) => Box::new(future::err(Error::from(err))),
@@ -170,6 +179,7 @@ impl Externals {
         let client: external::Client = rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
         (client, rpc_system)
     }
+    /// Build a Cap'n Proto literal from an Armour literal
     fn build_value(mut v: external::value::Builder<'_>, lit: &Literal) -> Result<(), Error> {
         match lit {
             Literal::BoolLiteral(b) => v.set_bool(*b),
@@ -190,10 +200,11 @@ impl Externals {
                     Externals::build_value(list.reborrow().get(i as u32), t)?
                 }
             }
-            _ => return Err(Error::RequestNotValid),
+            _ => return Err(Error::from("could not build external literal")),
         }
         Ok(())
     }
+    /// Read a Cap'n Proto literal and return an Armour literal
     fn read_value(v: external::value::Reader<'_>) -> Result<Literal, capnp::Error> {
         use external::value::Which;
         match v.which() {
@@ -221,7 +232,7 @@ impl Externals {
         }
     }
     fn build_request(
-        req: &CallRequest,
+        call: &Call,
         client: &external::Client,
     ) -> Result<
         capnp::capability::Request<external::call_params::Owned, external::call_results::Owned>,
@@ -229,31 +240,28 @@ impl Externals {
     > {
         // prepare the RPC
         let mut call_req = client.call_request();
-        let mut call = call_req.get();
+        let mut call_builder = call_req.get();
         // set the name
-        call.set_name(req.method.as_str());
+        call_builder.set_name(call.method.as_str());
         // set the args
-        let mut args = call.init_args(req.args.len() as u32);
-        for (i, lit) in req.args.iter().enumerate() {
+        let mut args = call_builder.init_args(call.args.len() as u32);
+        for (i, lit) in call.args.iter().enumerate() {
             Externals::build_value(args.reborrow().get(i as u32), lit)?
         }
         Ok(call_req)
     }
     fn call_request(
-        req: CallRequest,
+        call: Call,
         timeout: Duration,
         client: external::Client,
     ) -> Box<dyn Future<Item = Literal, Error = Error>> {
-        match Externals::build_request(&req, &client) {
+        match Externals::build_request(&call, &client) {
             Ok(req) => {
                 Box::new(
-                    // prepare the RPC
-                    req
-                        // make the RPC
-                        .send()
+                    // make the RPC and turn the result into a promise
+                    req.send()
                         .promise
                         .and_then(|response| {
-                            // return the result
                             match Externals::read_value(pry!(pry!(response.get()).get_result())) {
                                 Ok(lit) => Promise::ok(lit),
                                 Err(err) => Promise::err(err),
@@ -283,41 +291,26 @@ impl Externals {
                 Box::new(Externals::get_tcp_stream(p).and_then(move |stream| {
                     let (client, rpc_system) = Externals::get_capnp_client(stream);
                     actix::spawn(rpc_system.map_err(|_| ()));
-                    Externals::call_request(
-                        CallRequest::new(&external, &method, args),
-                        timeout,
-                        client,
-                    )
+                    Externals::call_request(Call::new(&external, &method, args), timeout, client)
                 }))
             } else {
                 // for non-musl builds we use TLS
                 Box::new(Externals::get_tls_stream(p).and_then(move |stream| {
                     let (client, rpc_system) = Externals::get_capnp_client(stream);
                     actix::spawn(rpc_system.map_err(|_| ()));
-                    Externals::call_request(
-                        CallRequest::new(&external, &method, args),
-                        timeout,
-                        client,
-                    )
+                    Externals::call_request(Call::new(&external, &method, args), timeout, client)
                 }))
             }
         } else if let Some(p) = socket.as_str().get_path() {
             Box::new(Externals::get_uds_stream(p).and_then(move |stream| {
                 let (client, rpc_system) = Externals::get_capnp_client(stream);
-                // let disconnector = rpc_system.get_disconnector();
-                // println!("spawning RPC");
                 actix::spawn(rpc_system.map_err(|_| ()));
-                Externals::call_request(CallRequest::new(&external, &method, args), timeout, client)
-                // .then(|res| {
-                //     println!("got result and going to disconnect");
-                //     disconnector.then(|_| res)
-                // })
+                Externals::call_request(Call::new(&external, &method, args), timeout, client)
             }))
         } else {
-            Box::new(future::err(Error::IO(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("failed to parse TCP socket or path: {}", socket),
-            ))))
+            Box::new(future::err(Error::from(
+                format!("could not parse TCP socket or path: {}", socket).as_str(),
+            )))
         }
     }
 }
