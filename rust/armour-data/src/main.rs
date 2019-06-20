@@ -35,7 +35,7 @@ fn main() -> std::io::Result<()> {
 
     // shared state
     let mut policy = policy::ArmourPolicy::new();
-    policy.from_file("test2.policy").unwrap_or(());
+    policy.from_file("test.policy").unwrap_or(());
 
     // start up the proxy server
     proxy::start(policy, format!("localhost:{}", proxy_port))
