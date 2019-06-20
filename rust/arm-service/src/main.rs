@@ -21,6 +21,7 @@ fn service(
             Ok::<_, Error>(body)
         })
         .and_then(move |data| {
+            // Ok(HttpResponse::NotFound().body("not here!"))
             // Ok(HttpResponse::Ok().body("hello"))
             let info = req.connection_info();
             Ok(HttpResponse::Ok().body(format!(
@@ -30,10 +31,10 @@ fn service(
                 data,
                 info.host(),
                 info.remote().unwrap_or("<unknown>"),
-                // req.headers()
-                //     .get("x-forwarded-for")
-                //     .map(|v| v.to_str().unwrap_or("not a string"))
-                //     .unwrap_or("not set"),
+            //     // req.headers()
+            //     //     .get("x-forwarded-for")
+            //     //     .map(|v| v.to_str().unwrap_or("not a string"))
+            //     //     .unwrap_or("not set"),
             )))
         })
 }

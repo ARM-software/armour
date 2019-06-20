@@ -2,27 +2,15 @@ external logger @ "../arm-logger/log_sock" {
    fn print_route(List<str>) -> ()
 }
 
-fn require(req: HttpRequest) -> Policy {
+fn require(req: HttpRequest) -> bool {
    logger::print_route(req.route());
-   if req.route() == ["a"] {
-      Accept
-   } else {
-      Reject
-   }
+   req.route() == ["a"]
 }
 
-fn client_payload(payload: data) -> Policy {
-  if payload.len() < 10 {
-    Accept
-  } else {
-    Reject
-  }
+fn client_payload(payload: data) -> bool {
+  payload.len() < 10
 }
 
-fn server_payload(payload: data) -> Policy {
-  if 10 < payload.len() {
-    Accept
-  } else {
-    Reject
-  }
+fn server_payload(payload: data) -> bool {
+  4 < payload.len()
 }

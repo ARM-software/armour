@@ -64,16 +64,20 @@ impl EvaluatePolicy for web::Data<ArmourPolicy> {
                     lang::Expr::LitExpr(literals::Literal::PolicyLiteral(policy)) => {
                         future::ok(Some(policy == literals::Policy::Accept))
                     }
-                    // TODO: handle dynamic type errors
-                    _ => unreachable!(),
+                    lang::Expr::LitExpr(literals::Literal::BoolLiteral(accept)) => {
+                        future::ok(Some(accept))
+                    }
+                    _ => future::err(arm_policy::lang::Error::new(
+                        "did not evaluate to a bool or policy literal",
+                    )),
                 })
                 .map_err(|e| {
-                    warn!("got an error when evaluating Armour policy");
+                    warn!("{}", e);
                     e.to_actix()
                 }),
             )
         } else {
-            // block if there is no "ensure" function
+            // block if there is no "function"
             Box::new(future::ok(None))
         }
     }
@@ -120,7 +124,7 @@ pub trait ToActixError {
     where
         Self: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        Error::from(std::io::Error::new(std::io::ErrorKind::Other, self))
+        std::io::Error::new(std::io::ErrorKind::Other, self).into()
     }
 }
 
