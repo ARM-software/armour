@@ -1,4 +1,4 @@
-use armour_data::{policy, proxy};
+use armour_data::policy;
 use clap::{crate_version, App, Arg};
 use std::env;
 
@@ -20,7 +20,18 @@ fn main() -> std::io::Result<()> {
                     default_proxy_port
                 )),
         )
+        .arg(
+            Arg::with_name("policy file")
+                .index(1)
+                .required(false)
+                .help("Policy file"),
+        )
         .get_matches();
+
+    // enable logging
+    env::set_var("RUST_LOG", "armour_data=debug,actix_web=debug");
+    env::set_var("RUST_BACKTRACE", "0");
+    env_logger::init();
 
     // process the commmand line arguments
     let proxy_port = matches
@@ -28,15 +39,12 @@ fn main() -> std::io::Result<()> {
         .map(|port| port.parse().expect(&format!("bad port: {}", port)))
         .unwrap_or(default_proxy_port);
 
-    // enable logging
-    env::set_var("RUST_LOG", "armour_data=debug,actix_web=debug");
-    env::set_var("RUST_BACKTRACE", "0");
-    env_logger::init();
-
-    // shared state
+    // read the policy from a file
     let mut policy = policy::ArmourPolicy::new();
-    policy.from_file("test.policy").unwrap_or(());
+    if let Some(file) = matches.value_of("policy file") {
+        policy.from_file(file).unwrap_or(())
+    }
 
     // start up the proxy server
-    proxy::start(policy, format!("localhost:{}", proxy_port))
+    policy.start(format!("localhost:{}", proxy_port))
 }
