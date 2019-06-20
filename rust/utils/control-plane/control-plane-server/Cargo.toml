@@ -1,0 +1,23 @@
+[package]
+name = "control-plane"
+version = "0.1.0"
+authors = ["Gustavo Petri <gustavo.petri@arm.com>"]
+edition = "2018"
+
+[[bin]]
+name = "control-plane-server"
+path = "src/main.rs"
+
+[build-dependencies]
+capnpc = "0.9.5"
+
+[dependencies]
+futures = "0.1"
+tokio = "0.1"
+tokio-core = "0.1"
+tokio-uds = "0.2.5"
+capnp = "0.9.5"
+capnp-rpc = "0.9.0"
+docker_lib = { path = "../../docker-armour-daemon/docker-lib" }
+controlplane_lib = { path = "../control-plane-lib" }
+actix = "0.8.3"

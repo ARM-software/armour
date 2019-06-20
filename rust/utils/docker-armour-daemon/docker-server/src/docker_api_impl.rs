@@ -1,11 +1,12 @@
 use tokio::runtime::current_thread::TaskExecutor;
-// use futures::future::Executor;
 use futures::{Future, Stream};
 
 use capnp::capability::Promise;
 
 extern crate docker_lib;
 use docker_lib::docker_capnp::docker;
+
+use controlplane_lib::controlplane_capnp::control_plane_proto;
 
 extern crate shiplift;
 use shiplift::Docker;
@@ -17,35 +18,60 @@ use shiplift::builder::{EventFilter,
                         ContainerListOptionsBuilder,
                         ContainerFilter};
 
+use tokio_uds::UnixStream;
+use tokio::io::AsyncRead;
+
+use capnp_rpc::{RpcSystem, twoparty, rpc_twoparty_capnp};
+
 pub struct DockerImpl;
 impl docker::Server for DockerImpl {
 
     // Requests the deamon to start listening for docker events. 
     // listen @0 () -> ();
-    fn listen(&mut self, params: docker::ListenParams, mut results: docker::ListenResults) -> 
+    fn listen(&mut self, _: docker::ListenParams, _: docker::ListenResults) -> 
         Promise<(), ::capnp::Error>
     { 
         println!("listening for events");
         let docker = Docker::new();
         let evopt = EventsOptions::builder().filter({ 
             let mut filter = Vec::new();
-              // Listens only for container events
-              filter.push(EventFilter::Type(EventFilterType::Container));
-              filter
-            }).build();
-        
-        // Launches the listener as a Tokio Task
-        TaskExecutor::current().spawn_local(Box::new(
-            docker.events(&evopt)
-            .for_each(|e| {
-                println!("event -> {:?}, {:?}", e.typ, e.id);
-                futures::future::ok(())
-                })
-                .map_err(|e| ())    
-            ))
-            .map_err(|_| ())
-        .unwrap();
+            // Listens only for container events
+            filter.push(EventFilter::Type(EventFilterType::Container));
+            filter
+        }).build();
 
+        let events_future = docker.events(&evopt);
+        let server_future = events_future
+            .for_each(|e| {
+                let call_future = UnixStream::connect("/Users/guspet02/Downloads/cp".to_string())
+                    .map(move |stream| {
+                        println!("stream {:?}", stream);
+                        let (reader, writer) = stream.split();
+                        let network =
+                            Box::new(twoparty::VatNetwork::new(reader, std::io::BufWriter::new(writer),
+                                                               rpc_twoparty_capnp::Side::Client,
+                                                               Default::default()));
+                        let mut rpc_system = RpcSystem::new(network, None);
+                        let cpp : control_plane_proto::Client = rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
+                        let mut event = cpp.receive_docker_event_request();
+                        event.get()
+                            .set_event(&format!("{:?}", e));
+                        let _ = TaskExecutor::current().spawn_local(Box::new(
+                            rpc_system.join(event.send().promise)
+                                .map(|_| ())
+                                .map_err(|e| println!("Error {:?}", e))
+                        ));
+                    })
+                    .map_err(|_| ());
+
+                let _ = TaskExecutor::current().spawn_local(Box::new(call_future));
+                futures::future::ok(())
+            })
+            .map(|_| ())
+            .map_err(|_| ());
+
+        // This needs to launched as a taks, otherwise capnp event loop gets blocked
+        tokio::runtime::current_thread::spawn(Box::new(server_future));
         Promise::ok(())
     }
 
@@ -94,7 +120,7 @@ impl docker::Server for DockerImpl {
                 }
             })
             .and_then(move |networks| {
-                    docker.networks().get(&networks[0].id).delete()
+                docker.networks().get(&networks[0].id).delete()
                     .map_err(|e| e.to_string())
             })
             .map(move |_| results.get().set_result(true))
@@ -116,16 +142,16 @@ impl docker::Server for DockerImpl {
 
         let fut = 
             docker.networks().list(&Default::default())
-                .map(move |mut networks| {
-                    networks.retain(|n| n.name == net_name);
-                    networks
-                })
-                .map_err(|e| e.to_string())
+            .map(move |mut networks| {
+                networks.retain(|n| n.name == net_name);
+                networks
+            })
+            .map_err(|e| e.to_string())
             .join({
                 let mut filter = Vec::new();
                 filter.push(ContainerFilter::LabelName(cont_name.to_string()));
                 docker.containers().list(&ContainerListOptionsBuilder::default().filter(filter).build())
-                .map_err(|e| e.to_string())
+                    .map_err(|e| e.to_string())
             })
             .and_then(|(networks, containers)| {
                 if networks.len() == 1 && containers.len() == 1 {
@@ -138,7 +164,7 @@ impl docker::Server for DockerImpl {
                 docker.networks().get(&networks[0].id)
                     .connect(&ContainerConnectionOptions::builder(&containers[0].id).build())
                     .map_err(|e| e.to_string())
-                }
+            }
             )
             .map(move |_| results.get().set_result(true))
             .map_err(|e| capnp::Error::failed(e));
@@ -159,16 +185,16 @@ impl docker::Server for DockerImpl {
 
         let fut = 
             docker.networks().list(&Default::default())
-                .map(move |mut networks| {
-                    networks.retain(|n| n.name == net_name);
-                    networks
-                })
-                .map_err(|e| e.to_string())
+            .map(move |mut networks| {
+                networks.retain(|n| n.name == net_name);
+                networks
+            })
+            .map_err(|e| e.to_string())
             .join({
                 let mut filter = Vec::new();
                 filter.push(ContainerFilter::LabelName(cont_name.to_string()));
                 docker.containers().list(&ContainerListOptionsBuilder::default().filter(filter).build())
-                .map_err(|e| e.to_string())
+                    .map_err(|e| e.to_string())
             })
             .and_then(|(networks, containers)| {
                 if networks.len() == 1 && containers.len() == 1 {
@@ -181,7 +207,7 @@ impl docker::Server for DockerImpl {
                 docker.networks().get(&networks[0].id)
                     .disconnect(&ContainerConnectionOptions::builder(&containers[0].id).build())
                     .map_err(|e| e.to_string())
-                }
+            }
             )
             .map(move |_| results.get().set_result(true))
             .map_err(|e| capnp::Error::failed(e));
