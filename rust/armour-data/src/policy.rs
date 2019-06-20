@@ -17,16 +17,19 @@ impl ArmourPolicy {
         }
     }
     /// Attempt to load a new policy from a file
-    pub fn from_file<P: AsRef<std::path::Path> + std::fmt::Display>(&mut self, p: P) -> bool {
+    pub fn from_file<P: AsRef<std::path::Path> + std::fmt::Display>(
+        &mut self,
+        p: P,
+    ) -> std::io::Result<()> {
         match lang::Program::from_file(p.as_ref()) {
             Ok(prog) => {
                 info!("installed policy: \"{}\"", p);
                 self.program = Arc::new(prog);
-                true
+                Ok(())
             }
             Err(e) => {
-                warn!("path \"{}\": {}", p, e);
-                false
+                warn!(r#""{}": {}"#, p, e);
+                Err(std::io::Error::from(std::io::ErrorKind::Other))
             }
         }
     }
@@ -77,7 +80,7 @@ impl EvaluatePolicy for web::Data<ArmourPolicy> {
                 }),
             )
         } else {
-            // block if there is no "function"
+            // there is no "function"
             Box::new(future::ok(None))
         }
     }
@@ -103,17 +106,15 @@ impl ToArmourExpression for web::BytesMut {
 /// Convert an actix-web HttpRequest into an equivalent Armour language literal
 impl ToArmourExpression for web::HttpRequest {
     fn to_armour_expression(&self) -> lang::Expr {
-        let headers: Vec<(&str, &[u8])> = self
-            .headers()
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_bytes()))
-            .collect();
         lang::Expr::http_request(literals::HttpRequest::from((
             self.method().as_str(),
             format!("{:?}", self.version()).as_str(),
             self.path(),
             self.query_string(),
-            headers,
+            self.headers()
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_bytes()))
+                .collect(),
         )))
     }
 }
