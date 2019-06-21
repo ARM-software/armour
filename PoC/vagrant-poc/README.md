@@ -1,0 +1,2 @@
+- `compose.yml`: compose file with only one single bridge network.
+- `docker-compose`: compose file with separate bridge networks for each container.

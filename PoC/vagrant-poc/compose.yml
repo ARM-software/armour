@@ -1,0 +1,251 @@
+version: '3.0'
+services:
+  digital-dolly:
+    build:
+      context: ./digital-dolly
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+      MQTT_BROKER_HOST: "mqtt-trusted"
+      INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
+      BLE_TARGET_HR: 00:22:D0:00:02:09
+      HR_RUN_FLAG: ""
+    volumes:
+      - /dev/ttyAMA0:/dev/ttyAMA0
+    network_mode: "host"
+    privileged: true
+    ports:
+      - 5000
+
+  hostapd:
+    build: ./hostapd
+    network_mode: "host"
+    cap_add: ["NET_ADMIN"]
+
+  notifications:
+    build:
+      context: ./notifications
+      args:
+        registry: git.research.arm.com:4567
+    networks:
+      - mynet
+    ports:
+      - 80:80/tcp
+
+  mongo-web-interface:
+    build:
+      context: ./mongo-web-interface
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+        MONGO_CONN: "mongodb://kvminst-1.ausrd.arm.com:80/Ledger"
+        INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
+    networks:
+      - mynet
+    ports:
+      - 81:81/tcp
+  cloud-update:
+    build: ./cloud_comm
+    networks:
+      - mynet
+    ports:
+      - 5000
+  accounting:
+    build: ./accounting
+    environment:
+      MONGO_CONN: "mongodb://kvminst-1.ausrd.arm.com:80"
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  context:
+    build: ./context
+    environment:
+      LIGHTS: ""
+      PULSE_MIC_NAME: alsa_input.hw_3_0
+      MQTT_BROKER_HOST: "mqtt-trusted"
+      FAL_MODEL: "falsestor.pb"
+      FAL_SENSITIVITY: "0.1"
+      FAL_TRIG_LVL: "13"
+    cap_add: ["SYS_RAWIO"]
+    privileged: true
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  mysql:
+    image: mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: PoC
+    volumes:
+      - /var/lib/poc-mysql:/var/lib/mysql
+      - /mysql-initdb-config:/docker-entrypoint-initdb.d
+    networks:
+      - mynet
+
+  dbread:
+    build:
+      context: ./dbread
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+      DB_CONN: "mysql://dbint:raspberry@mysql:3306/PoC"
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  dbwrite:
+    build:
+      context: ./dbwrite
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+      DB_CONN: "mysql://dbint:raspberry@mysql:3306/PoC"
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  dtp:
+    build:
+      context: ./dtp
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+      PULSE_SERVER: tcp:pulse:4713
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  debug:
+    build:
+      context: ./debug
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+      DB_CONN_REGIST: "mysql://dbint:raspberry@mysql:3306/PoC_Registration"
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  launch:
+    build: ./launch
+    environment:
+      RUNLEVEL: "debug"
+      DB_CONN_REGIST: "mysql://dbint:raspberry@mysql:3306/PoC_Registration"
+    networks:
+      - mynet
+    #    ipv4_address: 172.38.0.1
+    ports:
+      - 5000
+
+  mqtt-debug:
+    build: ./mosquitto_trusted
+    networks:
+      - mynet
+    ports:
+      - 1883:1883
+      - 8883
+      - 9001
+
+  mqtt-trusted:
+    build: ./mosquitto_trusted
+    networks:
+      - mynet
+    ports:
+      - 1883
+      - 8883
+      - 9001
+
+  mqtt-public:
+    build: ./mosquitto_public
+    networks:
+      - mynet
+    ports:
+      - 1883
+      - 8883
+      - 9001
+
+  picolibri:
+    build:
+      context: ./picolibri
+      args:
+        registry: git.research.arm.com:4567
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  pipharm:
+    build:
+      context: ./pipharm
+      args:
+        registry: git.research.arm.com:4567
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  pulse:
+    build: ./pulse
+    cap_add: ["SYS_RAWIO"]
+    volumes:
+      - /dev/snd:/dev/snd
+    privileged: true
+    networks:
+      - mynet
+    ports:
+      - 4713:4713/tcp
+
+  verify-id:
+    build:
+      context: ./verify_id
+      args:
+        registry: git.research.arm.com:4567
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  on-during-conversation:
+    build:
+      context: ./on_during_conversation
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+      HR_RUN_FLAG: "-O"
+    privileged: true
+    networks:
+      - mynet
+    ports:
+      - 5000
+
+  temperature:
+    build: ./temperature
+    privileged: true
+    environment:
+      DEVICE: "28*"
+    networks:
+      - mynet
+
+  vitals:
+    build: ./vitals
+    privileged: true
+    cap_add: ["NET_ADMIN"]
+    volumes:
+      - /dev/ttyAMA0:/dev/ttyAMA0
+    networks:
+      - mynet
+networks:
+  mynet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.38.0.0/16"
