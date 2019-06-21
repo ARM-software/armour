@@ -1,14 +1,11 @@
 [workspace]
 
 members = [
-    "actix-capnp",
     "armour-data",
-    "arm-stub-proxy",
     "arm-policy",
     "arm-service",
     "arm-logger",
     "external-server",
     "external-server-a",
     "docker-compose-yaml",
-    "tcp-echo",
 ]

@@ -1,0 +1,15 @@
+[package]
+name = "arm-stub-proxy"
+version = "0.1.0"
+authors = ["Anthony Fox <anthony.fox@arm.com>"]
+edition = "2018"
+
+[dependencies]
+actix = "0.7"
+actix-web = "0.7"
+env_logger = "0.6"
+log = "0.4"
+url = "1.7"
+http = "0.1"
+futures ="0.1"
+clap = "2.33"
