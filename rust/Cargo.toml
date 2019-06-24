@@ -2,6 +2,8 @@
 
 members = [
     "armour-data",
+    "armour-data-interface",
+    "armour-data-master",
     "arm-policy",
     "arm-service",
     "arm-logger",

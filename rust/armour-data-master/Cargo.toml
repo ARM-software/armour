@@ -1,22 +1,18 @@
 [package]
-name = "armour-data"
+name = "armour-data-master"
 version = "0.1.0"
 authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
 [dependencies]
-arm-policy = { path = "../arm-policy" }
 armour-data-interface = { path = "../armour-data-interface" }
 
 actix = "0.8"
-actix-web = "1.0"
 clap = "2.33"
 env_logger = "0.6"
 futures = "0.1"
-http = "0.1"
 log = "0.4"
 tokio-codec = "0.1"
 tokio-io = "0.1"
 tokio-signal = "0.2"
 tokio-uds = "0.2"
-url = "1.7"
