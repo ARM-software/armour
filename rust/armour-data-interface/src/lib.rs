@@ -4,29 +4,24 @@ use bytes::{BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
 use tokio_io::codec::{Decoder, Encoder};
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum ArmourPolicyRequest {
+#[derive(Serialize, Deserialize, Debug, Message)]
+pub enum PolicyRequest {
     UpdateFromFile(std::path::PathBuf),
+    // for testing
+    SayHello,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum ArmourPolicyResponse {
+#[derive(Serialize, Deserialize, Debug, Message)]
+pub enum PolicyResponse {
     Ack,
-}
-
-impl Message for ArmourPolicyRequest {
-    type Result = std::io::Result<()>;
-}
-
-impl Message for ArmourPolicyResponse {
-    type Result = std::io::Result<()>;
+    ShuttingDown,
 }
 
 /// Codec for Master -> Data transport
-pub struct ArmourDataCodec;
+pub struct PolicyCodec;
 
-impl Decoder for ArmourDataCodec {
-    type Item = ArmourPolicyRequest;
+impl Decoder for PolicyCodec {
+    type Item = PolicyRequest;
     type Error = std::io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -40,21 +35,20 @@ impl Decoder for ArmourDataCodec {
         if src.len() >= size + 2 {
             src.split_to(2);
             let buf = src.split_to(size);
-            Ok(Some(
-                bincode::deserialize::<ArmourPolicyRequest>(&buf)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?,
-            ))
+            Ok(Some(bincode::deserialize::<PolicyRequest>(&buf).map_err(
+                |e| std::io::Error::new(std::io::ErrorKind::Other, e),
+            )?))
         } else {
             Ok(None)
         }
     }
 }
 
-impl Encoder for ArmourDataCodec {
-    type Item = ArmourPolicyResponse;
+impl Encoder for PolicyCodec {
+    type Item = PolicyResponse;
     type Error = std::io::Error;
 
-    fn encode(&mut self, msg: ArmourPolicyResponse, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, msg: PolicyResponse, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let msg = bincode::serialize(&msg).unwrap();
         let msg_ref: &[u8] = msg.as_ref();
 
@@ -66,11 +60,11 @@ impl Encoder for ArmourDataCodec {
     }
 }
 
-/// Codec for Data -> Master transport
-pub struct MasterArmourDataCodec;
+// Codec for Data -> Master transport
+pub struct MasterCodec;
 
-impl Decoder for MasterArmourDataCodec {
-    type Item = ArmourPolicyResponse;
+impl Decoder for MasterCodec {
+    type Item = PolicyResponse;
     type Error = std::io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -84,10 +78,9 @@ impl Decoder for MasterArmourDataCodec {
         if src.len() >= size + 2 {
             src.split_to(2);
             let buf = src.split_to(size);
-            Ok(Some(
-                bincode::deserialize::<ArmourPolicyResponse>(&buf)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?,
-            ))
+            Ok(Some(bincode::deserialize::<PolicyResponse>(&buf).map_err(
+                |e| std::io::Error::new(std::io::ErrorKind::Other, e),
+            )?))
         } else {
             Ok(None)
         }
@@ -95,11 +88,11 @@ impl Decoder for MasterArmourDataCodec {
 }
 
 
-impl Encoder for MasterArmourDataCodec {
-    type Item = ArmourPolicyRequest;
+impl Encoder for MasterCodec {
+    type Item = PolicyRequest;
     type Error = std::io::Error;
 
-    fn encode(&mut self, msg: ArmourPolicyRequest, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, msg: PolicyRequest, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let msg = bincode::serialize(&msg).unwrap();
         let msg_ref: &[u8] = msg.as_ref();
 

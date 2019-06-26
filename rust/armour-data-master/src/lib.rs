@@ -1,0 +1,159 @@
+#[macro_use]
+extern crate log;
+
+use actix::prelude::*;
+use armour_data_interface::{MasterCodec, PolicyRequest, PolicyResponse};
+use std::collections::HashMap;
+use tokio_codec::FramedRead;
+use tokio_io::{io::WriteHalf, AsyncRead};
+
+// Handle Unix socket connections (single actor)
+// When new data plane instances arrive, we give them the address of the master
+pub struct ArmourDataServer {
+    pub master: Addr<ArmourDataMaster>,
+    pub socket: String,
+
+}
+
+impl Actor for ArmourDataServer {
+    type Context = Context<Self>;
+    fn stopped(&mut self, _ctx: &mut Context<Self>) {
+        info!("removing socket: {}", self.socket);
+        std::fs::remove_file(self.socket.clone())
+            .unwrap_or_else(|e| warn!("failed to remove socket: {}", e))
+    }
+}
+
+// Notification of new Unix socket connection
+#[derive(Message)]
+pub struct UdsConnect(pub tokio_uds::UnixStream);
+
+impl Handler<UdsConnect> for ArmourDataServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: UdsConnect, _: &mut Context<Self>) {
+        // For each incoming connection we create `ArmourDataInstance` actor
+        let master = self.master.clone();
+        ArmourDataInstance::create(move |ctx| {
+            let (r, w) = msg.0.split();
+            ArmourDataInstance::add_stream(FramedRead::new(r, MasterCodec), ctx);
+            ArmourDataInstance {
+                id: 0,
+                master,
+                uds_framed: actix::io::FramedWrite::new(w, MasterCodec, ctx),
+            }
+        });
+    }
+}
+/// Manage multiple data plane instances (single actor)
+#[derive(Default)]
+pub struct ArmourDataMaster {
+    instances: HashMap<usize, Addr<ArmourDataInstance>>,
+    count: usize,
+}
+
+impl Actor for ArmourDataMaster {
+    type Context = Context<Self>;
+}
+
+// Connection notification from Instance to Master
+pub struct Connect(Addr<ArmourDataInstance>);
+
+impl Message for Connect {
+    type Result = usize;
+}
+
+impl Handler<Connect> for ArmourDataMaster {
+    type Result = usize;
+    fn handle(&mut self, msg: Connect, _ctx: &mut Context<Self>) -> Self::Result {
+        let count = self.count;
+        info!("adding instance: {}", count);
+        self.instances.insert(count, msg.0);
+        self.count += 1;
+        count
+    }
+}
+
+// Disconnect notification from Instance to Master
+#[derive(Message)]
+pub struct Disconnect(usize);
+
+impl Handler<Disconnect> for ArmourDataMaster {
+    type Result = ();
+    fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) -> Self::Result {
+        info!("removing instance: {}", msg.0);
+        self.instances.remove(&msg.0);
+    }
+}
+
+#[derive(Message)]
+pub enum MasterCommand {
+    ListActive,
+    PolicyFile(usize, std::path::PathBuf),
+}
+
+impl Handler<MasterCommand> for ArmourDataMaster {
+    type Result = ();
+    fn handle(&mut self, msg: MasterCommand, _ctx: &mut Context<Self>) -> Self::Result {
+        match msg {
+            MasterCommand::ListActive => info!(
+                "active instances: {:?}",
+                self.instances.keys().collect::<Vec<&usize>>()
+            ),
+            MasterCommand::PolicyFile(id, path) => {
+                if let Some(instance) = self.instances.get(&id) {
+                    instance.do_send(PolicyRequest::UpdateFromFile(path))
+                } else {
+                    info!("instance {} does not exist", id)
+                }
+            }
+        }
+    }
+}
+
+// Handle communication with a Data Plane instance (one actor per Unix socket connection)
+pub struct ArmourDataInstance {
+    id: usize,
+    master: Addr<ArmourDataMaster>,
+    uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, MasterCodec>,
+}
+
+impl Actor for ArmourDataInstance {
+    type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        self.master
+            .send(Connect(ctx.address()))
+            .into_actor(self)
+            .then(|res, act, ctx| {
+                match res {
+                    Ok(res) => act.id = res,
+                    _ => ctx.stop(),
+                };
+                actix::fut::ok(())
+            })
+            .wait(ctx);
+    }
+}
+
+impl actix::io::WriteHandler<std::io::Error> for ArmourDataInstance {}
+
+impl StreamHandler<PolicyResponse, std::io::Error> for ArmourDataInstance {
+    fn handle(&mut self, msg: PolicyResponse, ctx: &mut Self::Context) {
+        match msg {
+            PolicyResponse::Ack => info!("got Ack from proxy"),
+            PolicyResponse::ShuttingDown => {
+                info!("received shutdown");
+                self.master.do_send(Disconnect(self.id));
+                ctx.stop()
+            }
+        }
+    }
+}
+
+impl Handler<PolicyRequest> for ArmourDataInstance {
+    type Result = ();
+    fn handle(&mut self, msg: PolicyRequest, _ctx: &mut Context<Self>) {
+        self.uds_framed.write(msg)
+    }
+}

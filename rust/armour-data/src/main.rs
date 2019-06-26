@@ -1,14 +1,13 @@
 use actix::prelude::*;
 use actix_web::{client::Client, middleware, web, App, HttpServer};
 use armour_data::{policy, proxy};
-use armour_data_interface::ArmourPolicyRequest;
 use clap::{crate_version, App as ClapApp, Arg};
 use std::env;
-use std::path::PathBuf;
 
 fn main() -> std::io::Result<()> {
     // defaults
-    let default_proxy_port: u16 = 8443;
+    const DEFAULT_PROXY_PORT: u16 = 8443;
+    const DEFAULT_MASTER_SOCKET: &str = "../armour-data-master/armour";
 
     // CLI
     let matches = ClapApp::new("armour-proxy")
@@ -21,14 +20,14 @@ fn main() -> std::io::Result<()> {
                 .takes_value(true)
                 .help(&format!(
                     "Proxy port number (default: {})",
-                    default_proxy_port
+                    DEFAULT_PROXY_PORT
                 )),
         )
         .arg(
-            Arg::with_name("policy file")
+            Arg::with_name("master socket")
                 .index(1)
                 .required(false)
-                .help("Policy file"),
+                .help("Unix socket of data plane master"),
         )
         .get_matches();
 
@@ -41,30 +40,26 @@ fn main() -> std::io::Result<()> {
     let proxy_port = matches
         .value_of("proxy port")
         .map(|port| port.parse().expect(&format!("bad port: {}", port)))
-        .unwrap_or(default_proxy_port);
+        .unwrap_or(DEFAULT_PROXY_PORT);
 
     // start Actix system
     let sys = actix::System::new("armour-data");
 
     // start up policy actor
     // (should possibly use actix::sync::SyncArbiter)
-    let policy_addr = policy::ArmourPolicy::create_policy("armour");
 
     // install the CLI policy
-    if let Some(file) = matches.value_of("policy file") {
-        policy_addr.do_send(ArmourPolicyRequest::UpdateFromFile(PathBuf::from(file)))
-    }
+    let master_socket = matches
+        .value_of("policy file")
+        .unwrap_or(DEFAULT_MASTER_SOCKET);
 
-    let policy_addr_clone = policy_addr.clone();
-    std::thread::spawn(move || loop {
-        let mut cmd = String::new();
-        if std::io::stdin().read_line(&mut cmd).is_err() {
-            println!("error");
-            return;
-        }
-        policy_addr_clone.do_send(ArmourPolicyRequest::UpdateFromFile(PathBuf::from(
-            cmd.trim_end_matches('\n'),
-        )));
+    let policy = policy::DataPolicy::create_policy(master_socket).unwrap_or_else(|e| {
+        log::warn!(
+            r#"failed to connect to data master "{}": {}"#,
+            master_socket,
+            e
+        );
+        std::process::exit(1)
     });
 
     // start up the proxy server
@@ -73,16 +68,21 @@ fn main() -> std::io::Result<()> {
     log::info!("starting proxy server: http://{}", socket);
     HttpServer::new(move || {
         App::new()
-            .data(policy_addr.clone())
+            .data(policy.clone())
             .data(Client::new())
             .data(socket.clone())
             .wrap(middleware::Logger::default())
             .default_service(web::route().to_async(proxy::proxy))
     })
-    .bind(socket_address)?
-    .system_exit()
+    .bind(socket_address)
+    .map_err(|e| {
+        // stop if we cannot bind to socket address
+        System::current().stop();
+        e
+    })?
     .start();
 
+    // handle Control-C
     let ctrl_c = tokio_signal::ctrl_c().flatten_stream();
     let handle_shutdown = ctrl_c
         .for_each(|()| {

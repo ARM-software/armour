@@ -1,78 +1,107 @@
 #[macro_use]
-extern crate log;
+extern crate lazy_static;
 
-use armour_data_interface::ArmourPolicyRequest;
+use actix::prelude::*;
+use armour_data_master as master;
+use clap::{crate_version, App, Arg};
+use master::MasterCommand;
+use std::io;
 use std::path::PathBuf;
 
-mod master {
-    use actix::prelude::*;
-    use armour_data_interface::{ArmourDataCodec, ArmourPolicyResponse, MasterArmourDataCodec};
-    use futures::future;
-    use tokio_codec::FramedRead;
-    use tokio_io::{io::WriteHalf, AsyncRead};
+fn main() -> io::Result<()> {
+    const SOCKET: &str = "armour";
 
-    /// Armour policies, currently just Armour programs
-    #[allow(dead_code)]
-    pub struct ArmourPolicyMaster {
-        uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, ArmourDataCodec>,
-    }
+    // CLI
+    let matches = App::new("armour-data-master")
+        .version(crate_version!())
+        .author("Anthony Fox <anthony.fox@arm.com>")
+        .about("Armour Proxy, with support for Security Policies")
+        .arg(
+            Arg::with_name("master socket")
+                .index(1)
+                .required(false)
+                .help("Unix socket of data plane master"),
+        )
+        .get_matches();
 
-    impl ArmourPolicyMaster {
-        pub fn create_master<P: AsRef<std::path::Path>>(
-            p: P,
-        ) -> std::io::Result<Addr<ArmourPolicyMaster>> {
-            tokio_uds::UnixStream::connect(p)
-                .and_then(|stream| {
-                    let addr = ArmourPolicyMaster::create(|ctx| {
-                        let (r, w) = stream.split();
-                        ctx.add_stream(FramedRead::new(r, MasterArmourDataCodec));
-                        ArmourPolicyMaster {
-                            uds_framed: actix::io::FramedWrite::new(w, ArmourDataCodec, ctx),
-                        }
-                    });
-                    future::ok(addr)
-                })
-                .wait()
-        }
-    }
+    // enable logging
+    std::env::set_var("RUST_LOG", "armour_data_master=debug,actix=debug");
+    std::env::set_var("RUST_BACKTRACE", "0");
+    env_logger::init();
 
-    impl actix::io::WriteHandler<std::io::Error> for ArmourPolicyMaster {}
-
-    impl StreamHandler<ArmourPolicyResponse, std::io::Error> for ArmourPolicyMaster {
-        fn handle(&mut self, msg: ArmourPolicyResponse, _ctx: &mut Context<Self>) {
-            info!("get response: {:?}", msg)
-        }
-    }
-
-    impl Actor for ArmourPolicyMaster {
-        type Context = Context<Self>;
-        fn started(&mut self, _ctx: &mut Self::Context) {
-            info!("started Armour Policy Master")
-        }
-        fn stopped(&mut self, _ctx: &mut Self::Context) {
-            info!("stopped Armour Policy Master")
-        }
-    }
-}
-
-fn main() -> std::io::Result<()> {
     // start Actix system
     let sys = actix::System::new("armour-data");
 
-    // start up policy actor
-    // (should possibly use actix::sync::SyncArbiter)
-    let policy_master_addr = master::ArmourPolicyMaster::create_master("../armour-data/armour")?;
+    // start up master actor
+    let master = master::ArmourDataMaster::start_default();
 
+    // start up server on Unix socket
+    let socket = matches
+        .value_of("master socket")
+        .unwrap_or(SOCKET)
+        .to_string();
+    log::info!("starting Data Master on socket: {}", socket);
+    let listener = tokio_uds::UnixListener::bind(socket.clone())?;
+    let master_clone = master.clone();
+    let _server = master::ArmourDataServer::create(|ctx| {
+        ctx.add_message_stream(
+            listener
+                .incoming()
+                .map_err(|_| ())
+                .map(|st| master::UdsConnect(st)),
+        );
+        master::ArmourDataServer {
+            master: master_clone,
+            socket,
+        }
+    });
+
+    // check for user input - send a hello
     std::thread::spawn(move || loop {
         let mut cmd = String::new();
-        if std::io::stdin().read_line(&mut cmd).is_err() {
+        if io::stdin().read_line(&mut cmd).is_err() {
             println!("error");
             return;
         }
-        // policy_master_addr.do_send(ArmourPolicyRequest::UpdateFromFile(PathBuf::from(
-        //     cmd.trim_end_matches('\n'),
-        // )));
+        if commands::LIST.is_match(&cmd) {
+            master.do_send(MasterCommand::ListActive)
+        } else if let Some(caps) = commands::LOAD.captures(&cmd) {
+            if let Ok(instance) = caps.name("instance").unwrap().as_str().parse::<usize>() {
+                let path = caps.name("path").unwrap().as_str();
+                master.do_send(MasterCommand::PolicyFile(instance, PathBuf::from(path)))
+            }
+        } else {
+            log::info!("unknown command")
+        }
     });
 
+    // handle Control-C
+    let ctrl_c = tokio_signal::ctrl_c().flatten_stream();
+    let handle_shutdown = ctrl_c
+        .for_each(|()| {
+            println!("Ctrl-C received, shutting down");
+            System::current().stop();
+            Ok(())
+        })
+        .map_err(|_| ());
+    actix::spawn(handle_shutdown);
+
     sys.run()
+}
+
+mod commands {
+    use regex::Regex;
+
+    // commands:
+    // - list
+    // - load <n> <path>
+
+    lazy_static! {
+        pub static ref LIST: Regex = Regex::new(r"^(?i)\s*list\s*$").unwrap();
+    }
+
+    lazy_static! {
+        pub static ref LOAD: Regex =
+            Regex::new(r"^(?i)\s*load\s*(?P<instance>[[:digit:]]+)\s*(?P<path>\S*)\s*$").unwrap();
+    }
 }

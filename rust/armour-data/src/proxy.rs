@@ -13,14 +13,12 @@ use futures::{future, Future};
 pub fn proxy(
     req: HttpRequest,
     payload: web::Payload,
-    policy: web::Data<actix::Addr<policy::ArmourPolicy>>,
+    policy: web::Data<actix::Addr<policy::DataPolicy>>,
     client: web::Data<Client>,
     address: web::Data<String>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     policy
-        .send(policy::ArmourEvaluateMessage::Require(
-            req.to_armour_expression(),
-        ))
+        .send(policy::Evaluate::Require(req.to_expression()))
         .then(move |res| match res {
             // allow request
             Ok(Ok(Some(true))) => future::Either::A(
@@ -32,8 +30,8 @@ pub fn proxy(
                     })
                     .and_then(move |client_payload| {
                         policy
-                            .send(policy::ArmourEvaluateMessage::ClientPayload(
-                                client_payload.to_armour_expression(),
+                            .send(policy::Evaluate::ClientPayload(
+                                client_payload.to_expression(),
                             ))
                             .then(move |res| {
                                 match res {
@@ -88,7 +86,7 @@ pub fn proxy(
 
 /// Send server response back to client
 pub fn response(
-    policy: web::Data<actix::Addr<policy::ArmourPolicy>>,
+    policy: web::Data<actix::Addr<policy::DataPolicy>>,
     res: Result<
         ClientResponse<impl Stream<Item = web::Bytes, Error = client::PayloadError>>,
         SendRequestError,
@@ -105,8 +103,8 @@ pub fn response(
             // get the server payload
             future::Either::A(res.body().from_err().and_then(move |server_payload| {
                 policy
-                    .send(policy::ArmourEvaluateMessage::ServerPayload(
-                        server_payload.to_armour_expression(),
+                    .send(policy::Evaluate::ServerPayload(
+                        server_payload.to_expression(),
                     ))
                     .then(move |res| match res {
                         // allow
