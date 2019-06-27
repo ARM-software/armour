@@ -1,12 +1,12 @@
-#[macro_use]
-extern crate lazy_static;
-
+//! Data Plane Master
+//!
+//! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
 use arm_policy::lang;
 use armour_data_interface::PolicyRequest;
 use armour_data_master as master;
 use clap::{crate_version, App, Arg};
-use master::MasterCommand;
+use master::{commands, MasterCommand};
 use std::io;
 use std::path::PathBuf;
 
@@ -32,12 +32,12 @@ fn main() -> io::Result<()> {
     env_logger::init();
 
     // start Actix system
-    let sys = actix::System::new("armour-data");
+    let sys = actix::System::new("armour-data-master");
 
-    // start up master actor
+    // start master actor
     let master = master::ArmourDataMaster::start_default();
 
-    // start up server on Unix socket
+    // start server, listening for connections on a Unix socket
     let socket = matches
         .value_of("master socket")
         .unwrap_or(SOCKET)
@@ -58,7 +58,7 @@ fn main() -> io::Result<()> {
         }
     });
 
-    // check for user input - send a hello
+    // issue commands based on user input
     std::thread::spawn(move || loop {
         let mut cmd = String::new();
         if io::stdin().read_line(&mut cmd).is_err() {
@@ -109,48 +109,4 @@ fn main() -> io::Result<()> {
     actix::spawn(handle_shutdown);
 
     sys.run()
-}
-
-mod commands {
-    use regex::Regex;
-
-    // commands:
-    // - list
-    // - <n> allow all <path>
-    // - <n> deny all <path>
-    // - <n> policy <path>
-    // - <n> remote <path>
-
-    lazy_static! {
-        pub static ref LIST: Regex = Regex::new(r"^(?i)\s*list\s*$").unwrap();
-    }
-
-    lazy_static! {
-        pub static ref DENY_ALL: Regex =
-            Regex::new(r#"^(?i)\s*(?P<instance>[[:digit:]]+\s)?\s*deny all\s*$"#).unwrap();
-    }
-
-    lazy_static! {
-        pub static ref ALLOW_ALL: Regex =
-            Regex::new(r#"^(?i)\s*(?P<instance>[[:digit:]]+\s)?\s*allow all\s*$"#).unwrap();
-    }
-
-    lazy_static! {
-        pub static ref POLICY: Regex =
-            Regex::new(r#"^(?i)\s*(?P<instance>[[:digit:]]+\s)?\s*policy\s+"(?P<path>.*)"\s*$"#)
-                .unwrap();
-    }
-
-    lazy_static! {
-        pub static ref REMOTE: Regex =
-            Regex::new(r#"^(?i)\s*(?P<instance>[[:digit:]]+\s)?\s*remote\s+"(?P<path>.*)"\s*$"#)
-                .unwrap();
-    }
-
-    pub fn instance(caps: &regex::Captures) -> Option<usize> {
-        match caps.name("instance") {
-            Some(x) => x.as_str().parse::<usize>().ok(),
-            None => None,
-        }
-    }
 }

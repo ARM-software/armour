@@ -1,9 +1,11 @@
+/// Communication interface between data plane master and proxy instances
 use actix::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
 use tokio_io::codec::{Decoder, Encoder};
 
+/// Policy update request messages
 #[derive(Serialize, Deserialize, Debug, Message)]
 pub enum PolicyRequest {
     UpdateFromFile(std::path::PathBuf),
@@ -12,6 +14,7 @@ pub enum PolicyRequest {
     DenyAll,
 }
 
+/// Messages from proxy instance to master
 #[derive(Serialize, Deserialize, Debug, Message)]
 pub enum PolicyResponse {
     ShuttingDown,
@@ -19,7 +22,7 @@ pub enum PolicyResponse {
     RquestFailed,
 }
 
-/// Codec for Master -> Data transport
+/// Transport codec for Master to Proxy instance communication
 pub struct PolicyCodec;
 
 impl Decoder for PolicyCodec {
@@ -62,7 +65,7 @@ impl Encoder for PolicyCodec {
     }
 }
 
-// Codec for Data -> Master transport
+/// Transport codec for Proxy instance to Master communication
 pub struct MasterCodec;
 
 impl Decoder for MasterCodec {

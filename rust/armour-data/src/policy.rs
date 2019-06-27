@@ -9,17 +9,22 @@ use std::sync::Arc;
 use tokio_codec::FramedRead;
 use tokio_io::{io::WriteHalf, AsyncRead};
 
-/// Armour policies, currently just Armour programs
+/// Armour policy actor
+///
+/// Currently, a "policy" is just an Armour program with "require", "client_payload" and "server_payload" functions.
 pub struct DataPolicy {
-    // policy
+    /// policy program
     program: Arc<lang::Program>,
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, PolicyCodec>,
 }
 
 impl DataPolicy {
-    pub fn create_policy<P: AsRef<std::path::Path>>(p: P) -> std::io::Result<Addr<DataPolicy>> {
-        tokio_uds::UnixStream::connect(p)
+    /// Start a new policy actor that connects to a data plane master on a Unix socket.
+    pub fn create_policy<P: AsRef<std::path::Path>>(
+        master_socket: P,
+    ) -> std::io::Result<Addr<DataPolicy>> {
+        tokio_uds::UnixStream::connect(master_socket)
             .and_then(|stream| {
                 let addr = DataPolicy::create(|ctx| {
                     let (r, w) = stream.split();
@@ -39,7 +44,7 @@ impl actix::io::WriteHandler<std::io::Error> for DataPolicy {}
 
 impl StreamHandler<PolicyRequest, std::io::Error> for DataPolicy {
     fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) {
-        // need to report back using uds_framed
+        // pass on message to regular handler
         ctx.notify(msg)
     }
     fn finished(&mut self, _ctx: &mut Context<Self>) {
@@ -48,7 +53,7 @@ impl StreamHandler<PolicyRequest, std::io::Error> for DataPolicy {
     }
 }
 
-/// Internal proxy message for evaluating the policy
+/// Internal proxy message for requesting function evaluation over the policy
 pub enum Evaluate {
     Require(lang::Expr),
     ClientPayload(lang::Expr),
@@ -117,6 +122,7 @@ impl Handler<PolicyRequest> for DataPolicy {
 }
 
 lazy_static! {
+    /// Static "allow all" policy
     pub static ref ALLOW_ALL: lang::Program =
         lang::Program::from_str("fn require(r:HttpRequest) -> bool {true}").unwrap();
 }

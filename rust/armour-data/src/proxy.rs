@@ -9,7 +9,7 @@ use futures::{future, Future};
 /// Main HttpRequest proxy
 ///
 /// Checks request against Armour policy and, if accepted, forwards it using [ForwardUrl](trait.ForwardUrl.html).
-/// The server reponse is then checked before it is forwarded back to the original client.
+/// The server response is then checked before it is forwarded back to the original client.
 pub fn proxy(
     req: HttpRequest,
     payload: web::Payload,

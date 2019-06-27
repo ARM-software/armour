@@ -36,7 +36,7 @@ fn main() -> std::io::Result<()> {
     env::set_var("RUST_BACKTRACE", "0");
     env_logger::init();
 
-    // process the commmand line arguments
+    // process the command line arguments
     let proxy_port = matches
         .value_of("proxy port")
         .map(|port| port.parse().expect(&format!("bad port: {}", port)))

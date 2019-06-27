@@ -1,4 +1,7 @@
 #[macro_use]
+extern crate lazy_static;
+
+#[macro_use]
 extern crate log;
 
 use actix::prelude::*;
@@ -7,12 +10,14 @@ use std::collections::HashMap;
 use tokio_codec::FramedRead;
 use tokio_io::{io::WriteHalf, AsyncRead};
 
-// Handle Unix socket connections (single actor)
-// When new data plane instances arrive, we give them the address of the master
+pub mod commands;
+
+/// Actor that handles Unix socket connections.
+///
+/// When new data plane instances arrive, we give them the address of the master.
 pub struct ArmourDataServer {
     pub master: Addr<ArmourDataMaster>,
     pub socket: String,
-
 }
 
 impl Actor for ArmourDataServer {
@@ -24,7 +29,7 @@ impl Actor for ArmourDataServer {
     }
 }
 
-// Notification of new Unix socket connection
+/// Notification of new Unix socket connection
 #[derive(Message)]
 pub struct UdsConnect(pub tokio_uds::UnixStream);
 
@@ -45,7 +50,8 @@ impl Handler<UdsConnect> for ArmourDataServer {
         });
     }
 }
-/// Manage multiple data plane instances (single actor)
+
+/// Actor that manages multiple data plane instances
 #[derive(Default)]
 pub struct ArmourDataMaster {
     instances: HashMap<usize, Addr<ArmourDataInstance>>,
@@ -80,7 +86,7 @@ impl ArmourDataMaster {
     }
 }
 
-// Connection notification from Instance to Master
+/// Connection notification (from Instance to Master)
 pub struct Connect(Addr<ArmourDataInstance>);
 
 impl Message for Connect {
@@ -98,7 +104,7 @@ impl Handler<Connect> for ArmourDataMaster {
     }
 }
 
-// Disconnect notification from Instance to Master
+/// Disconnect notification (from Instance to Master)
 #[derive(Message)]
 pub struct Disconnect(usize);
 
@@ -110,6 +116,9 @@ impl Handler<Disconnect> for ArmourDataMaster {
     }
 }
 
+/// Represents commands sent to the data plane master.
+///
+/// Policy update request are forwarded on to the appropriate instance actor.
 #[derive(Message)]
 pub enum MasterCommand {
     ListActive,
@@ -133,7 +142,9 @@ impl Handler<MasterCommand> for ArmourDataMaster {
     }
 }
 
-// Handle communication with a Data Plane instance (one actor per Unix socket connection)
+/// Actor that handle communication with a data plane instance
+///
+/// There will be one actor per Unix socket connection
 pub struct ArmourDataInstance {
     id: usize,
     master: Addr<ArmourDataMaster>,
