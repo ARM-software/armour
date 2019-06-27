@@ -17,7 +17,7 @@ fn main() -> io::Result<()> {
     let matches = App::new("armour-data-master")
         .version(crate_version!())
         .author("Anthony Fox <anthony.fox@arm.com>")
-        .about("Armour Proxy, with support for Security Policies")
+        .about("Armour Data Plane Master")
         .arg(
             Arg::with_name("master socket")
                 .index(1)
