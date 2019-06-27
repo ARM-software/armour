@@ -5,6 +5,7 @@ authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
 [dependencies]
+arm-policy = { path = "../arm-policy" }
 armour-data-interface = { path = "../armour-data-interface" }
 
 actix = "0.8"

@@ -4,6 +4,7 @@ use actix_web::web;
 use arm_policy::{lang, literals};
 use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse};
 use futures::{future, Future};
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio_codec::FramedRead;
 use tokio_io::{io::WriteHalf, AsyncRead};
@@ -39,8 +40,7 @@ impl actix::io::WriteHandler<std::io::Error> for DataPolicy {}
 impl StreamHandler<PolicyRequest, std::io::Error> for DataPolicy {
     fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) {
         // need to report back using uds_framed
-        ctx.notify(msg);
-        self.uds_framed.write(PolicyResponse::Ack)
+        ctx.notify(msg)
     }
     fn finished(&mut self, _ctx: &mut Context<Self>) {
         info!("lost connection to master");
@@ -79,27 +79,56 @@ impl Handler<PolicyRequest> for DataPolicy {
             // Attempt to load a new policy from a file
             PolicyRequest::UpdateFromFile(p) => match lang::Program::from_file(p.as_path()) {
                 Ok(prog) => {
+                    self.program = Arc::new(prog);
                     info!(
                         "installed policy: \"{}\"",
                         p.to_str().unwrap_or("<unknown>")
                     );
-                    self.program = Arc::new(prog)
+                    self.uds_framed.write(PolicyResponse::UpdatedPolicy)
                 }
-                Err(e) => warn!(r#"{:?}: {}"#, p, e),
+                Err(e) => {
+                    warn!(r#"{:?}: {}"#, p, e);
+                    self.uds_framed.write(PolicyResponse::RquestFailed)
+                }
             },
-            PolicyRequest::SayHello => info!("got a Say Hello request"),
+            PolicyRequest::UpdateFromData(d) => match lang::Program::from_bytes(&d) {
+                Ok(prog) => {
+                    self.program = Arc::new(prog);
+                    info!("installed policy from data");
+                    self.uds_framed.write(PolicyResponse::UpdatedPolicy)
+                }
+                Err(e) => {
+                    warn!("{}", e);
+                    self.uds_framed.write(PolicyResponse::RquestFailed)
+                }
+            },
+            PolicyRequest::AllowAll => {
+                self.program = Arc::new(ALLOW_ALL.clone());
+                info!("switched to allow all policy");
+                self.uds_framed.write(PolicyResponse::UpdatedPolicy)
+            }
+            PolicyRequest::DenyAll => {
+                self.program = Arc::new(lang::Program::new());
+                info!("switched to deny all policy");
+                self.uds_framed.write(PolicyResponse::UpdatedPolicy)
+            }
         }
     }
+}
+
+lazy_static! {
+    pub static ref ALLOW_ALL: lang::Program =
+        lang::Program::from_str("fn require(r:HttpRequest) -> bool {true}").unwrap();
 }
 
 impl Actor for DataPolicy {
     type Context = Context<Self>;
     fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("started Armour Policy")
+        info!("started Armour policy")
     }
     fn stopped(&mut self, _ctx: &mut Self::Context) {
         self.uds_framed.write(PolicyResponse::ShuttingDown);
-        info!("stopped Armour Policy")
+        info!("stopped Armour policy")
     }
 }
 

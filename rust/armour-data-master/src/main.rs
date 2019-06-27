@@ -2,6 +2,8 @@
 extern crate lazy_static;
 
 use actix::prelude::*;
+use arm_policy::lang;
+use armour_data_interface::PolicyRequest;
 use armour_data_master as master;
 use clap::{crate_version, App, Arg};
 use master::MasterCommand;
@@ -65,11 +67,31 @@ fn main() -> io::Result<()> {
         }
         if commands::LIST.is_match(&cmd) {
             master.do_send(MasterCommand::ListActive)
-        } else if let Some(caps) = commands::LOAD.captures(&cmd) {
-            if let Ok(instance) = caps.name("instance").unwrap().as_str().parse::<usize>() {
-                let path = caps.name("path").unwrap().as_str();
-                master.do_send(MasterCommand::PolicyFile(instance, PathBuf::from(path)))
+        } else if let Some(caps) = commands::POLICY.captures(&cmd) {
+            let path = PathBuf::from(caps.name("path").unwrap().as_str());
+            match lang::Program::from_file(&path).map(|prog| prog.to_bytes()) {
+                Ok(Ok(bytes)) => master.do_send(MasterCommand::UpdatePolicy(
+                    commands::instance(&caps),
+                    PolicyRequest::UpdateFromData(bytes),
+                )),
+                Ok(Err(err)) => log::warn!(r#"{:?}: {}"#, path, err),
+                Err(err) => log::warn!(r#"{:?}: {}"#, path, err),
             }
+        } else if let Some(caps) = commands::ALLOW_ALL.captures(&cmd) {
+            master.do_send(MasterCommand::UpdatePolicy(
+                commands::instance(&caps),
+                PolicyRequest::AllowAll,
+            ))
+        } else if let Some(caps) = commands::DENY_ALL.captures(&cmd) {
+            master.do_send(MasterCommand::UpdatePolicy(
+                commands::instance(&caps),
+                PolicyRequest::DenyAll,
+            ))
+        } else if let Some(caps) = commands::REMOTE.captures(&cmd) {
+            master.do_send(MasterCommand::UpdatePolicy(
+                commands::instance(&caps),
+                PolicyRequest::UpdateFromFile(PathBuf::from(caps.name("path").unwrap().as_str())),
+            ))
         } else {
             log::info!("unknown command")
         }
@@ -94,14 +116,41 @@ mod commands {
 
     // commands:
     // - list
-    // - load <n> <path>
+    // - <n> allow all <path>
+    // - <n> deny all <path>
+    // - <n> policy <path>
+    // - <n> remote <path>
 
     lazy_static! {
         pub static ref LIST: Regex = Regex::new(r"^(?i)\s*list\s*$").unwrap();
     }
 
     lazy_static! {
-        pub static ref LOAD: Regex =
-            Regex::new(r"^(?i)\s*load\s*(?P<instance>[[:digit:]]+)\s*(?P<path>\S*)\s*$").unwrap();
+        pub static ref DENY_ALL: Regex =
+            Regex::new(r#"^(?i)\s*(?P<instance>[[:digit:]]+\s)?\s*deny all\s*$"#).unwrap();
+    }
+
+    lazy_static! {
+        pub static ref ALLOW_ALL: Regex =
+            Regex::new(r#"^(?i)\s*(?P<instance>[[:digit:]]+\s)?\s*allow all\s*$"#).unwrap();
+    }
+
+    lazy_static! {
+        pub static ref POLICY: Regex =
+            Regex::new(r#"^(?i)\s*(?P<instance>[[:digit:]]+\s)?\s*policy\s+"(?P<path>.*)"\s*$"#)
+                .unwrap();
+    }
+
+    lazy_static! {
+        pub static ref REMOTE: Regex =
+            Regex::new(r#"^(?i)\s*(?P<instance>[[:digit:]]+\s)?\s*remote\s+"(?P<path>.*)"\s*$"#)
+                .unwrap();
+    }
+
+    pub fn instance(caps: &regex::Captures) -> Option<usize> {
+        match caps.name("instance") {
+            Some(x) => x.as_str().parse::<usize>().ok(),
+            None => None,
+        }
     }
 }

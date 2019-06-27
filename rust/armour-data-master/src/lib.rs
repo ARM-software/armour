@@ -56,6 +56,30 @@ impl Actor for ArmourDataMaster {
     type Context = Context<Self>;
 }
 
+impl ArmourDataMaster {
+    fn get_instance(&self, id: Option<usize>) -> Option<&Addr<ArmourDataInstance>> {
+        if let Some(id) = id {
+            let res = self.instances.get(&id);
+            if res.is_none() {
+                info!("instance {} does not exist", id)
+            }
+            res
+        } else {
+            match self.instances.len() {
+                0 => {
+                    info!("there are no instances");
+                    None
+                }
+                1 => self.instances.values().next(),
+                _ => {
+                    info!("there is more than one instance");
+                    None
+                }
+            }
+        }
+    }
+}
+
 // Connection notification from Instance to Master
 pub struct Connect(Addr<ArmourDataInstance>);
 
@@ -89,7 +113,7 @@ impl Handler<Disconnect> for ArmourDataMaster {
 #[derive(Message)]
 pub enum MasterCommand {
     ListActive,
-    PolicyFile(usize, std::path::PathBuf),
+    UpdatePolicy(Option<usize>, PolicyRequest),
 }
 
 impl Handler<MasterCommand> for ArmourDataMaster {
@@ -100,11 +124,9 @@ impl Handler<MasterCommand> for ArmourDataMaster {
                 "active instances: {:?}",
                 self.instances.keys().collect::<Vec<&usize>>()
             ),
-            MasterCommand::PolicyFile(id, path) => {
-                if let Some(instance) = self.instances.get(&id) {
-                    instance.do_send(PolicyRequest::UpdateFromFile(path))
-                } else {
-                    info!("instance {} does not exist", id)
+            MasterCommand::UpdatePolicy(id, request) => {
+                if let Some(instance) = self.get_instance(id) {
+                    instance.do_send(request)
                 }
             }
         }
@@ -141,9 +163,10 @@ impl actix::io::WriteHandler<std::io::Error> for ArmourDataInstance {}
 impl StreamHandler<PolicyResponse, std::io::Error> for ArmourDataInstance {
     fn handle(&mut self, msg: PolicyResponse, ctx: &mut Self::Context) {
         match msg {
-            PolicyResponse::Ack => info!("got Ack from proxy"),
+            PolicyResponse::UpdatedPolicy => info!("{}: updated policy", self.id),
+            PolicyResponse::RquestFailed => info!("{}: request failed", self.id),
             PolicyResponse::ShuttingDown => {
-                info!("received shutdown");
+                info!("{}: received shutdown", self.id);
                 self.master.do_send(Disconnect(self.id));
                 ctx.stop()
             }

@@ -36,7 +36,7 @@ pub fn proxy(
                             .then(move |res| {
                                 match res {
                                     // allow payload
-                                    Ok(Ok(Some(true))) => future::Either::A(
+                                    Ok(Ok(Some(true))) | Ok(Ok(None)) => future::Either::A(
                                         req.forward_url(&address).and_then(move |url| {
                                             client
                                                 .request_from(url.as_str(), req.head())
@@ -48,11 +48,9 @@ pub fn proxy(
                                         }),
                                     ),
                                     // reject
-                                    Ok(Ok(Some(false))) | Ok(Ok(None)) => {
-                                        future::Either::B(future::ok(unauthorized(
-                                            "request denied (bad client payload)",
-                                        )))
-                                    }
+                                    Ok(Ok(Some(false))) => future::Either::B(future::ok(
+                                        unauthorized("request denied (bad client payload)"),
+                                    )),
                                     // policy error
                                     Ok(Err(e)) => {
                                         warn!("{}", e);

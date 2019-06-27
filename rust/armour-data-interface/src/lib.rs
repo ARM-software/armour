@@ -7,14 +7,16 @@ use tokio_io::codec::{Decoder, Encoder};
 #[derive(Serialize, Deserialize, Debug, Message)]
 pub enum PolicyRequest {
     UpdateFromFile(std::path::PathBuf),
-    // for testing
-    SayHello,
+    UpdateFromData(Vec<u8>),
+    AllowAll,
+    DenyAll,
 }
 
 #[derive(Serialize, Deserialize, Debug, Message)]
 pub enum PolicyResponse {
-    Ack,
     ShuttingDown,
+    UpdatedPolicy,
+    RquestFailed,
 }
 
 /// Codec for Master -> Data transport
