@@ -69,12 +69,11 @@ fn main() -> io::Result<()> {
             master.do_send(MasterCommand::ListActive)
         } else if let Some(caps) = commands::POLICY.captures(&cmd) {
             let path = PathBuf::from(caps.name("path").unwrap().as_str());
-            match lang::Program::from_file(&path).map(|prog| prog.to_bytes()) {
-                Ok(Ok(bytes)) => master.do_send(MasterCommand::UpdatePolicy(
+            match lang::Program::from_file(&path) {
+                Ok(prog) => master.do_send(MasterCommand::UpdatePolicy(
                     commands::instance(&caps),
-                    PolicyRequest::UpdateFromData(bytes),
+                    PolicyRequest::UpdateFromData(prog),
                 )),
-                Ok(Err(err)) => log::warn!(r#"{:?}: {}"#, path, err),
                 Err(err) => log::warn!(r#"{:?}: {}"#, path, err),
             }
         } else if let Some(caps) = commands::ALLOW_ALL.captures(&cmd) {

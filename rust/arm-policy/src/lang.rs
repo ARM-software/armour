@@ -8,7 +8,6 @@ use petgraph::graph;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::io;
 use types::Typ;
 
 #[derive(Debug, Clone)]
@@ -1190,12 +1189,6 @@ impl Program {
         }
         self.code.0.insert(name.to_string(), e);
         Ok(())
-    }
-    pub fn from_bytes(b: &[u8]) -> Result<Self, io::Error> {
-        bincode::deserialize(b).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-    }
-    pub fn to_bytes(&self) -> Result<Vec<u8>, io::Error> {
-        bincode::serialize(self).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
     pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, Error> {
         use std::io::prelude::Read;

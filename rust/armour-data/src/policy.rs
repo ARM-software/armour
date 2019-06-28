@@ -96,17 +96,11 @@ impl Handler<PolicyRequest> for DataPolicy {
                     self.uds_framed.write(PolicyResponse::RquestFailed)
                 }
             },
-            PolicyRequest::UpdateFromData(d) => match lang::Program::from_bytes(&d) {
-                Ok(prog) => {
-                    self.program = Arc::new(prog);
-                    info!("installed policy from data");
-                    self.uds_framed.write(PolicyResponse::UpdatedPolicy)
-                }
-                Err(e) => {
-                    warn!("{}", e);
-                    self.uds_framed.write(PolicyResponse::RquestFailed)
-                }
-            },
+            PolicyRequest::UpdateFromData(prog) => {
+                self.program = Arc::new(prog);
+                info!("installed policy from data");
+                self.uds_framed.write(PolicyResponse::UpdatedPolicy)
+            }
             PolicyRequest::AllowAll => {
                 self.program = Arc::new(ALLOW_ALL.clone());
                 info!("switched to allow all policy");
