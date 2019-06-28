@@ -142,7 +142,7 @@ impl Handler<MasterCommand> for ArmourDataMaster {
     }
 }
 
-/// Actor that handle communication with a data plane instance
+/// Actor that handles communication with a data plane instance
 ///
 /// There will be one actor per Unix socket connection
 pub struct ArmourDataInstance {
