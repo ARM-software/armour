@@ -10,6 +10,13 @@ use std::collections::HashMap;
 use tokio_codec::FramedRead;
 use tokio_io::{io::WriteHalf, AsyncRead};
 
+pub enum Instances {
+    All,
+    Error,
+    SoleInstance,
+    ID(usize),
+}
+
 pub mod commands;
 
 /// Actor that handles Unix socket connections.
@@ -63,25 +70,31 @@ impl Actor for ArmourDataMaster {
 }
 
 impl ArmourDataMaster {
-    fn get_instance(&self, id: Option<usize>) -> Option<&Addr<ArmourDataInstance>> {
-        if let Some(id) = id {
-            let res = self.instances.get(&id);
-            if res.is_none() {
-                info!("instance {} does not exist", id)
+    fn get_instances(&self, instances: Instances) -> Vec<&Addr<ArmourDataInstance>> {
+        match instances {
+            Instances::Error => {
+                warn!("failed to parse instance ID");
+                Vec::new()
             }
-            res
-        } else {
-            match self.instances.len() {
+            Instances::ID(id) => match self.instances.get(&id) {
+                None => {
+                    info!("instance {} does not exist", id);
+                    Vec::new()
+                }
+                Some(instance) => vec![instance],
+            },
+            Instances::All => self.instances.values().collect(),
+            Instances::SoleInstance => match self.instances.len() {
                 0 => {
-                    info!("there are no instances");
-                    None
+                    warn!("there are no instances");
+                    Vec::new()
                 }
-                1 => self.instances.values().next(),
+                1 => vec![self.instances.values().next().unwrap()],
                 _ => {
-                    info!("there is more than one instance");
-                    None
+                    warn!("there is more than one instance");
+                    Vec::new()
                 }
-            }
+            },
         }
     }
 }
@@ -122,7 +135,7 @@ impl Handler<Disconnect> for ArmourDataMaster {
 #[derive(Message)]
 pub enum MasterCommand {
     ListActive,
-    UpdatePolicy(Option<usize>, PolicyRequest),
+    UpdatePolicy(Instances, PolicyRequest),
 }
 
 impl Handler<MasterCommand> for ArmourDataMaster {
@@ -133,9 +146,9 @@ impl Handler<MasterCommand> for ArmourDataMaster {
                 "active instances: {:?}",
                 self.instances.keys().collect::<Vec<&usize>>()
             ),
-            MasterCommand::UpdatePolicy(id, request) => {
-                if let Some(instance) = self.get_instance(id) {
-                    instance.do_send(request)
+            MasterCommand::UpdatePolicy(instances, request) => {
+                for instance in self.get_instances(instances) {
+                    instance.do_send(request.clone())
                 }
             }
         }

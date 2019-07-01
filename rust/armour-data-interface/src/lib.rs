@@ -38,12 +38,13 @@ trait SerializeEncoder<T: serde::Serialize, E: std::convert::From<std::io::Error
 }
 
 /// Policy update request messages
-#[derive(Serialize, Deserialize, Message)]
+#[derive(Serialize, Deserialize, Message, Clone)]
 pub enum PolicyRequest {
     UpdateFromFile(std::path::PathBuf),
     UpdateFromData(Program),
     AllowAll,
     DenyAll,
+    Shutdown,
 }
 
 /// Messages from proxy instance to master

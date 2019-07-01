@@ -86,6 +86,11 @@ fn main() -> io::Result<()> {
                 commands::instance(&caps),
                 PolicyRequest::DenyAll,
             ))
+        } else if let Some(caps) = commands::SHUTDOWN.captures(&cmd) {
+            master.do_send(MasterCommand::UpdatePolicy(
+                commands::instance(&caps),
+                PolicyRequest::Shutdown,
+            ))
         } else if let Some(caps) = commands::REMOTE.captures(&cmd) {
             master.do_send(MasterCommand::UpdatePolicy(
                 commands::instance(&caps),

@@ -111,6 +111,7 @@ impl Handler<PolicyRequest> for DataPolicy {
                 info!("switched to deny all policy");
                 self.uds_framed.write(PolicyResponse::UpdatedPolicy)
             }
+            PolicyRequest::Shutdown => System::current().stop(),
         }
     }
 }
