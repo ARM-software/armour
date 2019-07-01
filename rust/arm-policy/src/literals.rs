@@ -1,17 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::str::FromStr;
 use url;
 
-#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Display, Clone, Serialize, Deserialize)]
 pub enum Policy {
     Accept,
     Forward,
     Reject,
 }
 
-#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Display, Clone, Serialize, Deserialize)]
 pub enum Method {
     GET,
     POST,
@@ -70,6 +70,18 @@ impl FromStr for Version {
     }
 }
 
+impl fmt::Display for Version {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match self {
+            Version::HTTP_09 => "HTTP/0.9",
+            Version::HTTP_10 => "HTTP/1.0",
+            Version::HTTP_11 => "HTTP/1.1",
+            Version::HTTP_20 => "HTTP/2.0",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 impl Default for Version {
     fn default() -> Self {
         Version::HTTP_11
@@ -87,12 +99,10 @@ pub struct HttpRequest {
 
 impl HttpRequest {
     pub fn method(&self) -> String {
-        // TODO: fmt for Method
-        format!("{:?}", self.method)
+        self.method.to_string()
     }
     pub fn version(&self) -> String {
-        // TODO: fmt for Version
-        format!("{:?}", self.version)
+        self.version.to_string()
     }
     pub fn path(&self) -> String {
         self.path.to_string()
@@ -103,7 +113,11 @@ impl HttpRequest {
         new
     }
     pub fn split_path(&self) -> Vec<String> {
-        self.path.trim_matches('/').split('/').map(|s| s.to_string()).collect()
+        self.path
+            .trim_matches('/')
+            .split('/')
+            .map(|s| s.to_string())
+            .collect()
     }
     pub fn query(&self) -> String {
         self.query.to_string()
@@ -144,6 +158,20 @@ impl HttpRequest {
             }
         }
         pairs
+    }
+    pub fn to_literal(&self) -> Literal {
+        let header_pairs: Vec<Literal> = self
+            .header_pairs()
+            .into_iter()
+            .map(|(h, v)| Literal::Tuple(vec![Literal::StringLiteral(h), Literal::DataLiteral(v)]))
+            .collect();
+        Literal::Tuple(vec![
+            Literal::StringLiteral(self.method()),
+            Literal::StringLiteral(self.version()),
+            Literal::StringLiteral(self.path()),
+            Literal::StringLiteral(self.query()),
+            Literal::List(header_pairs),
+        ])
     }
 }
 

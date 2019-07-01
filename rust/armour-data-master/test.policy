@@ -1,9 +1,9 @@
 external logger @ "../arm-logger/log_sock" {
-   fn print_route(List<str>) -> ()
+   fn log_request(HttpRequest) -> ()
 }
 
 fn require(req: HttpRequest) -> bool {
-   logger::print_route(req.route());
+   logger::log_request(req);
    req.route() == ["a"]
 }
 

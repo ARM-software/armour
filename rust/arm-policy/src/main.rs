@@ -1,4 +1,7 @@
 /// Armour policy language
+#[macro_use]
+extern crate enum_display_derive;
+
 use arm_policy::lang;
 use clap::{crate_version, App, Arg};
 use futures::{future, Future};

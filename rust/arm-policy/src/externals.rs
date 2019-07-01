@@ -200,7 +200,8 @@ impl Externals {
                     Externals::build_value(list.reborrow().get(i as u32), t)?
                 }
             }
-            _ => return Err(Error::from("could not build external literal")),
+            Literal::HttpRequestLiteral(req) => Externals::build_value(v, &req.to_literal())?,
+            Literal::PolicyLiteral(p) => v.set_text(p.to_string().as_str()),
         }
         Ok(())
     }

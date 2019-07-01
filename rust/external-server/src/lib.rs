@@ -12,6 +12,7 @@ use capnp::capability::Promise;
 use capnp::Error;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::{Future, Stream};
+use std::fmt;
 use std::net::ToSocketAddrs;
 use tokio::io::AsyncRead;
 use tokio::runtime::current_thread;
@@ -26,6 +27,48 @@ pub enum Literal {
     List(Vec<Literal>),
     Tuple(Vec<Literal>),
     Unit,
+}
+
+impl Literal {
+    fn is_tuple(&self) -> bool {
+        match self {
+            Literal::Tuple(_) => true,
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Literal::IntLiteral(i) => write!(f, "{}", i),
+            Literal::FloatLiteral(d) => {
+                if 8 < d.abs().log10() as usize {
+                    write!(f, "{:e}", d)
+                } else if d.trunc() == *d {
+                    write!(f, "{:.1}", d)
+                } else {
+                    write!(f, "{}", d)
+                }
+            }
+            Literal::BoolLiteral(b) => write!(f, "{}", b),
+            Literal::DataLiteral(d) => write!(f, "{}", String::from_utf8_lossy(d)),
+            Literal::StringLiteral(s) => write!(f, r#""{}""#, s),
+            Literal::List(lits) | Literal::Tuple(lits) => {
+                let s = lits
+                    .iter()
+                    .map(|l| l.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                if self.is_tuple() {
+                    write!(f, "({})", s)
+                } else {
+                    write!(f, "[{}]", s)
+                }
+            }
+            Literal::Unit => write!(f, "()"),
+        }
+    }
 }
 
 fn build_value(mut v: external::value::Builder<'_>, lit: &Literal) -> Result<(), Error> {
@@ -105,7 +148,7 @@ impl<D: Dispatcher> external::Server for D {
         println!("Call to method: {}", name);
         let args = pry!(self.process_args(pry!(call.get_args())));
         for arg in args.iter() {
-            println!("{:?}", arg)
+            println!("{}", arg)
         }
         println!();
         // dispatch to method implementation and then set the result

@@ -5,6 +5,8 @@ extern crate lazy_static;
 extern crate capnp;
 #[macro_use]
 extern crate capnp_rpc;
+#[macro_use]
+extern crate enum_display_derive;
 
 /// Cap'n Proto interface used by [externals](externals/index.html)
 pub mod external_capnp {
