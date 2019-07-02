@@ -188,7 +188,7 @@ impl StreamHandler<PolicyResponse, std::io::Error> for ArmourDataInstance {
     fn handle(&mut self, msg: PolicyResponse, ctx: &mut Self::Context) {
         match msg {
             PolicyResponse::UpdatedPolicy => info!("{}: updated policy", self.id),
-            PolicyResponse::RquestFailed => info!("{}: request failed", self.id),
+            PolicyResponse::RequestFailed => info!("{}: request failed", self.id),
             PolicyResponse::ShuttingDown => {
                 info!("{}: received shutdown", self.id);
                 self.master.do_send(Disconnect(self.id));

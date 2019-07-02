@@ -52,7 +52,7 @@ pub enum PolicyRequest {
 pub enum PolicyResponse {
     ShuttingDown,
     UpdatedPolicy,
-    RquestFailed,
+    RequestFailed,
 }
 
 /// Transport codec for Master to Proxy instance communication

@@ -93,7 +93,7 @@ impl Handler<PolicyRequest> for DataPolicy {
                 }
                 Err(e) => {
                     warn!(r#"{:?}: {}"#, p, e);
-                    self.uds_framed.write(PolicyResponse::RquestFailed)
+                    self.uds_framed.write(PolicyResponse::RequestFailed)
                 }
             },
             PolicyRequest::UpdateFromData(prog) => {
