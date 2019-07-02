@@ -38,6 +38,35 @@ impl DataPolicy {
             })
             .wait()
     }
+    fn evaluate_policy(
+        &self,
+        function: &str,
+        args: Vec<lang::Expr>,
+    ) -> Box<dyn Future<Item = Option<bool>, Error = lang::Error>> {
+        if self.program.has_function(function) {
+            info!(r#"evaluting "{}"""#, function);
+            Box::new(
+                lang::Expr::call(function, args)
+                    .evaluate(self.program.clone())
+                    .and_then(|result| match result {
+                        lang::Expr::LitExpr(literals::Literal::PolicyLiteral(policy)) => {
+                            info!("result is: {:?}", policy);
+                            future::ok(Some(policy == literals::Policy::Accept))
+                        }
+                        lang::Expr::LitExpr(literals::Literal::BoolLiteral(accept)) => {
+                            info!("result is: {}", accept);
+                            future::ok(Some(accept))
+                        }
+                        _ => future::err(lang::Error::new(
+                            "did not evaluate to a bool or policy literal",
+                        )),
+                    }),
+            )
+        } else {
+            // there is no "function"
+            Box::new(future::ok(None))
+        }
+    }
 }
 
 impl actix::io::WriteHandler<std::io::Error> for DataPolicy {}
@@ -130,48 +159,6 @@ impl Actor for DataPolicy {
     fn stopped(&mut self, _ctx: &mut Self::Context) {
         self.uds_framed.write(PolicyResponse::ShuttingDown);
         info!("stopped Armour policy")
-    }
-}
-
-/// Trait for evaluating policies
-pub trait EvaluatePolicy {
-    fn evaluate_policy(
-        &self,
-        function: &str,
-        args: Vec<lang::Expr>,
-    ) -> Box<dyn Future<Item = Option<bool>, Error = lang::Error>>;
-}
-
-/// Implement EvaluatePolicy trait using Armour policy
-impl EvaluatePolicy for DataPolicy {
-    fn evaluate_policy(
-        &self,
-        function: &str,
-        args: Vec<lang::Expr>,
-    ) -> Box<dyn Future<Item = Option<bool>, Error = lang::Error>> {
-        if self.program.has_function(function) {
-            info!(r#"evaluting "{}"""#, function);
-            Box::new(
-                lang::Expr::call(function, args)
-                    .evaluate(self.program.clone())
-                    .and_then(|result| match result {
-                        lang::Expr::LitExpr(literals::Literal::PolicyLiteral(policy)) => {
-                            info!("result is: {:?}", policy);
-                            future::ok(Some(policy == literals::Policy::Accept))
-                        }
-                        lang::Expr::LitExpr(literals::Literal::BoolLiteral(accept)) => {
-                            info!("result is: {}", accept);
-                            future::ok(Some(accept))
-                        }
-                        _ => future::err(lang::Error::new(
-                            "did not evaluate to a bool or policy literal",
-                        )),
-                    }),
-            )
-        } else {
-            // there is no "function"
-            Box::new(future::ok(None))
-        }
     }
 }
 
