@@ -151,30 +151,19 @@ trait ForwardUrl {
 impl ForwardUrl for HttpRequest {
     fn forward_url(&self, proxy_address: &str) -> Box<dyn Future<Item = url::Url, Error = Error>> {
         let info = self.connection_info();
-        let host = self.headers().get("ForwardTo").map_or_else(
-            || {
-                let s = info.host();
-                if s == proxy_address {
-                    info!("trying to proxy self");
-                    Err("cannot proxy self".to_actix())
-                } else {
-                    Ok(s)
+        let host = info.host();
+        if host == proxy_address {
+            info!("trying to proxy self");
+            Box::new(future::err("cannot proxy self".to_actix()))
+        } else {
+            let url_str = format!("{}://{}{}", info.scheme(), host, self.uri());
+            match url::Url::parse(&url_str) {
+                Ok(url) => {
+                    info!("forward URL is: {}", url);
+                    Box::new(future::ok(url))
                 }
-            },
-            |url| url.to_str().map_err(|e| e.to_actix()),
-        );
-        match host {
-            Ok(host) => {
-                let url_str = format!("{}://{}{}", info.scheme(), host, self.uri());
-                match url::Url::parse(&url_str) {
-                    Ok(url) => {
-                        info!("forward URL is: {}", url);
-                        Box::new(future::ok(url))
-                    }
-                    Err(err) => Box::new(future::err(err.to_actix())),
-                }
+                Err(err) => Box::new(future::err(err.to_actix())),
             }
-            Err(err) => Box::new(future::err(err)),
         }
     }
 }

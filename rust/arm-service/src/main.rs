@@ -31,10 +31,10 @@ fn service(
                 data,
                 info.host(),
                 info.remote().unwrap_or("<unknown>"),
-            //     // req.headers()
-            //     //     .get("x-forwarded-for")
-            //     //     .map(|v| v.to_str().unwrap_or("not a string"))
-            //     //     .unwrap_or("not set"),
+                // req.headers()
+                //     .get("x-forwarded-for")
+                //     .map(|v| v.to_str().unwrap_or("not a string"))
+                //     .unwrap_or("not set"),
             )))
         })
 }
@@ -119,13 +119,22 @@ fn main() -> std::io::Result<()> {
     }
 
     // send a message
-    if let (Some(proxy_port), Some(destination_port)) = (proxy_port, destination_port) {
-        let uri = format!("http://localhost:{}/{}", proxy_port, uri);
+    if let Some(destination_port) = destination_port {
+        let uri = format!(
+            "http://localhost:{}/{}",
+            proxy_port.unwrap_or(destination_port),
+            uri
+        );
         info!("sending: {}", uri);
         actix::Arbiter::spawn(lazy(move || {
-            client::Client::new()
-                .get(uri)
-                .header("ForwardTo", format!("localhost:{}", destination_port))
+            let mut client = client::Client::new().get(uri);
+            if proxy_port.is_some() {
+                client = client.header(
+                    "X-Forwarded-Host",
+                    format!("localhost:{}", destination_port),
+                )
+            };
+            client
                 .send_body(message)
                 .map_err(|_| ())
                 .and_then(move |mut resp| {
@@ -143,7 +152,6 @@ fn main() -> std::io::Result<()> {
                     })
                 })
         }));
-
     };
 
     sys.run()
