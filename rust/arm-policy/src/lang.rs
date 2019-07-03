@@ -784,6 +784,22 @@ impl Expr {
                 ))
             }
             parser::Expr::CallExpr {
+                function,
+                arguments,
+                ..
+            } if (function == "Some" || function == "option::Some") && arguments.len() == 1 => {
+                let (expression, calls, typ) =
+                    Expr::from_loc_expr(arguments.get(0).unwrap(), headers, ret, vars)?.split();
+                Ok(ExprAndMeta::new(
+                    Expr::CallExpr {
+                        function: "Some".to_string(),
+                        arguments: vec![expression],
+                    },
+                    Typ::Tuple(vec![typ]),
+                    vec![calls],
+                ))
+            }
+            parser::Expr::CallExpr {
                 loc,
                 function,
                 arguments,

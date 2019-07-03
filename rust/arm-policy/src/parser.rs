@@ -554,6 +554,7 @@ macro_rules! parse_literal (
                 Token::DataLiteral(d) => Ok((i1, LocLiteral(t1.loc(), Literal::DataLiteral(d)))),
                 Token::StringLiteral(s) => Ok((i1, LocLiteral(t1.loc(), Literal::StringLiteral(s)))),
                 Token::PolicyLiteral(p) => Ok((i1, LocLiteral(t1.loc(), Literal::PolicyLiteral(p)))),
+                Token::Ident(ref s) if s == "None" => Ok((i1, LocLiteral(t1.loc(), Literal::Tuple(Vec::new())))),
                 _ => Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag))),
             }
         }

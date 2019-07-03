@@ -1,6 +1,5 @@
 /// really basic type system
 use super::lexer::Loc;
-use super::literals::Literal;
 use super::parser;
 use parser::{Infix, Prefix};
 use serde::{Deserialize, Serialize};
@@ -18,6 +17,7 @@ pub enum Typ {
     Policy,
     HttpRequest,
     List(Box<Typ>),
+    // tuples of length 0 and 1 are used to manage option types
     Tuple(Vec<Typ>),
 }
 
@@ -34,14 +34,18 @@ impl fmt::Display for Typ {
             Typ::Return => write!(f, "!"),
             Typ::HttpRequest => write!(f, "HttpRequest"),
             Typ::List(t) => write!(f, "List<{}>", t.to_string()),
-            Typ::Tuple(ts) => write!(
-                f,
-                "({})",
-                ts.iter()
-                    .map(|l| l.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
+            Typ::Tuple(ts) => match ts.len() {
+                0 => write!(f, "Option<?>"),
+                1 => write!(f, "Option<{}>", ts.get(0).unwrap()),
+                _ => write!(
+                    f,
+                    "({})",
+                    ts.iter()
+                        .map(|l| l.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                ),
+            },
         }
     }
 }
@@ -86,24 +90,40 @@ impl<'a> fmt::Display for Error<'a> {
 impl Typ {
     pub fn intrinsic(&self) -> Option<String> {
         match self {
-            Typ::Return | Typ::Tuple(_) => None,
+            Typ::Return => None,
             Typ::List(_) => Some("list".to_string()),
+            Typ::Tuple(t) => {
+                if t.len() < 2 {
+                    Some("option".to_string())
+                } else {
+                    None
+                }
+            }
             _ => Some(self.to_string()),
         }
     }
     fn unify(&self, other: &Typ) -> bool {
         match (self, other) {
-            (Typ::Return, _) => true,
-            (_, Typ::Return) => true,
+            (Typ::Return, _) | (_, Typ::Return) => true,
             (Typ::List(l1), Typ::List(l2)) => l1.unify(l2),
             (Typ::Tuple(l1), Typ::Tuple(l2)) => {
-                l1.len() == l2.len() && l1.iter().zip(l2).all(|(t1, t2)| t1.unify(t2))
+                let n1 = l1.len();
+                let n2 = l2.len();
+                (n1 == n2 && l1.iter().zip(l2).all(|(t1, t2)| t1.unify(t2)))
+                    || n1 == 0 && n2 == 1
+                    || n1 == 1 && n2 == 0
             }
             _ => self == other,
         }
     }
+    fn is_option_none(&self) -> bool {
+        match self {
+            Typ::Tuple(t) => t.len() == 0,
+            _ => false,
+        }
+    }
     pub fn pick(&self, other: &Typ) -> Typ {
-        if *self == Typ::Return {
+        if *self == Typ::Return || self.is_option_none() {
             other.clone()
         } else {
             self.clone()
@@ -142,40 +162,25 @@ impl Typ {
             parser::Typ::Cons(c, b) => {
                 if c.id() == "List" {
                     Ok(Typ::List(Box::new(Typ::from_parse(b)?)))
+                } else if c.id() == "Option" {
+                    Ok(Typ::Tuple(vec![Typ::from_parse(b)?]))
                 } else {
                     Err(Error::Parse(format!("expecting \"List\", got {}", c.id())))
                 }
             }
-            parser::Typ::Tuple(l) => {
-                if l.len() == 0 {
-                    Ok(Typ::Unit)
-                } else {
+            parser::Typ::Tuple(l) => match l.len() {
+                0 => Ok(Typ::Unit),
+                1 => Typ::from_parse(l.get(0).unwrap()),
+                _ => {
                     let tys: Result<Vec<Self>, self::Error> =
                         l.iter().map(|x| Typ::from_parse(x)).collect();
                     Ok(Typ::Tuple(tys?))
                 }
-            }
+            },
         }
     }
     pub fn is_unit(&self) -> bool {
         Typ::type_check("", vec![(None, self)], vec![(None, &Typ::Unit)]).is_ok()
-    }
-}
-
-impl Literal {
-    pub fn typ(&self) -> Typ {
-        match self {
-            Literal::Unit => Typ::Unit,
-            Literal::BoolLiteral(_) => Typ::Bool,
-            Literal::IntLiteral(_) => Typ::I64,
-            Literal::FloatLiteral(_) => Typ::F64,
-            Literal::StringLiteral(_) => Typ::Str,
-            Literal::DataLiteral(_) => Typ::Data,
-            Literal::PolicyLiteral(_) => Typ::Policy,
-            Literal::List(l) => l.get(0).map(|l| l.typ()).unwrap_or(Typ::Return),
-            Literal::Tuple(_) => unimplemented!(),
-            Literal::HttpRequestLiteral(_) => Typ::HttpRequest,
-        }
     }
 }
 

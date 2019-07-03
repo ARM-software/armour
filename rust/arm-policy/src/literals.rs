@@ -1,3 +1,4 @@
+use super::types::Typ;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
@@ -217,6 +218,20 @@ impl Literal {
             _ => false,
         }
     }
+    pub fn typ(&self) -> Typ {
+        match self {
+            Literal::Unit => Typ::Unit,
+            Literal::BoolLiteral(_) => Typ::Bool,
+            Literal::IntLiteral(_) => Typ::I64,
+            Literal::FloatLiteral(_) => Typ::F64,
+            Literal::StringLiteral(_) => Typ::Str,
+            Literal::DataLiteral(_) => Typ::Data,
+            Literal::PolicyLiteral(_) => Typ::Policy,
+            Literal::List(l) => l.get(0).map(|t| t.typ()).unwrap_or(Typ::Return),
+            Literal::Tuple(l) => Typ::Tuple((*l).iter().map(|t: &Literal| t.typ()).collect()),
+            Literal::HttpRequestLiteral(_) => Typ::HttpRequest,
+        }
+    }
 }
 
 impl fmt::Display for Literal {
@@ -243,7 +258,11 @@ impl fmt::Display for Literal {
                     .collect::<Vec<String>>()
                     .join(", ");
                 if self.is_tuple() {
-                    write!(f, "({})", s)
+                    match lits.len() {
+                        0 => write!(f, "None"),
+                        1 => write!(f, "Some({})", s),
+                        _ => write!(f, "({})", s),
+                    }
                 } else {
                     write!(f, "[{}]", s)
                 }

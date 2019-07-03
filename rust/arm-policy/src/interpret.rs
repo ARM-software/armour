@@ -81,6 +81,9 @@ impl Literal {
     }
     fn eval_call1(&self, f: &str) -> Option<Self> {
         match (f, self) {
+            ("Some", _) => Some(Literal::Tuple(vec![self.clone()])),
+            ("option::is_none", Literal::Tuple(t)) => Some(Literal::BoolLiteral(t.len() == 0)),
+            ("option::is_some", Literal::Tuple(t)) => Some(Literal::BoolLiteral(t.len() == 1)),
             ("i64::abs", Literal::IntLiteral(i)) => Some(Literal::IntLiteral(i.abs())),
             ("i64::to_str", Literal::IntLiteral(i)) => Some(Literal::StringLiteral(i.to_string())),
             ("str::len", Literal::StringLiteral(s)) => Some(Literal::IntLiteral(s.len() as i64)),
