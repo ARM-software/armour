@@ -162,12 +162,12 @@ It is recommended to start the policy language REPL (Read-Eval-Print loop) with
 
     ```
     if <str-expression1> matches <pat1> and
-       <str-expression1> matches <pat1> and ... {
+       <str-expression2> matches <pat2> and ... {
         <unit-statement>
     }
 
     if <str-expression1> matches <pat1> and
-       <str-expression1> matches <pat1> and ... {
+       <str-expression2> matches <pat2> and ... {
         <statement>
     } else {
         <statement>
