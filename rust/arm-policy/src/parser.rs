@@ -178,6 +178,12 @@ pub enum Expr {
         consequence: BlockStmt,
         alternative: Option<BlockStmt>,
     },
+    IfSomeMatchExpr {
+        var: LocIdent,
+        expr: Box<LocExpr>,
+        consequence: BlockStmt,
+        alternative: Option<BlockStmt>,
+    },
     CallExpr {
         loc: Loc,
         function: String,
@@ -311,6 +317,7 @@ impl PolicyRegex {
 enum LocExprOrMatches {
     Expr(LocExpr),
     Matches(Vec<(LocExpr, Pat)>),
+    SomeMatch(LocIdent, LocExpr),
 }
 
 #[derive(Debug, Clone)]
@@ -913,6 +920,7 @@ named!(parse_if_expr<Tokens, LocExpr>,
         t: tag_token!(Token::If) >>
         b: alt_complete!(
                 do_parse!(m: parse_match_exprs >> (LocExprOrMatches::Matches(m))) |
+                do_parse!(s: parse_some_match >> (LocExprOrMatches::SomeMatch(s.0, s.1))) |
                 do_parse!(e: parse_expr >> (LocExprOrMatches::Expr(e)))
             ) >>
         consequence: parse_block_stmt >>
@@ -922,6 +930,7 @@ named!(parse_if_expr<Tokens, LocExpr>,
             match b {
                 LocExprOrMatches::Expr(expr) => Expr::IfExpr { cond: Box::new(expr), consequence, alternative },
                 LocExprOrMatches::Matches(matches) => Expr::IfMatchExpr { matches, consequence, alternative },
+                LocExprOrMatches::SomeMatch(var, expr) => Expr::IfSomeMatchExpr { var, expr: Box::new(expr), consequence, alternative },
             }
         ))
     )
@@ -934,6 +943,17 @@ named!(parse_else_expr<Tokens, BlockStmt>,
             parse_block_stmt |
             do_parse!(e: parse_if_expr >> (vec![LocStmt::expr_stmt(e, false)]))
         )
+    )
+);
+
+named!(parse_some_match<Tokens, (LocIdent, LocExpr)>,
+    do_parse!(
+        tag_token!(Token::Let) >>
+        tag_token!(Token::Ident("Some".to_string())) >>
+        id: delimited!(tag_token!(Token::LParen), parse_ident!(), tag_token!(Token::RParen)) >>
+        tag_token!(Token::Assign) >>
+        e: parse_expr >>
+        ((id, e))
     )
 );
 

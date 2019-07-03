@@ -178,6 +178,11 @@ pub enum Expr {
         consequence: Box<Expr>,
         alternative: Option<Box<Expr>>,
     },
+    IfSomeMatchExpr {
+        expr: Box<Expr>,
+        consequence: Box<Expr>,
+        alternative: Option<Box<Expr>>,
+    },
     CallExpr {
         function: String,
         arguments: Vec<Expr>,
@@ -208,11 +213,18 @@ impl fmt::Display for Expr {
             } => write!(f, "if <..> {{<..>}} else {{<..>}}"),
             Expr::IfMatchExpr {
                 alternative: None, ..
-            } => write!(f, "if match <..> {{<..>}}"),
+            } => write!(f, "if <..> matches <..> {{<..>}}"),
             Expr::IfMatchExpr {
                 alternative: Some(_),
                 ..
-            } => write!(f, "if match <..> {{<..>}} else {{<..>}}"),
+            } => write!(f, "if <..> matches <..> {{<..>}} else {{<..>}}"),
+            Expr::IfSomeMatchExpr {
+                alternative: None, ..
+            } => write!(f, "if let Some(<..>) = <..> {{<..>}}"),
+            Expr::IfSomeMatchExpr {
+                alternative: Some(_),
+                ..
+            } => write!(f, "if let Some(<..>) = <..> {{<..>}} else {{<..>}}"),
             Expr::CallExpr { function, .. } => write!(f, "{}(<..>)", function),
         }
     }
@@ -274,6 +286,7 @@ impl Expr {
     }
     fn abs(self, i: usize, v: &str) -> Expr {
         match self {
+            Expr::BVar(_) | Expr::LitExpr(_) => self,
             Expr::Var(ref id) => {
                 if id.0 == v {
                     Expr::BVar(i)
@@ -313,6 +326,15 @@ impl Expr {
                 consequence: Box::new(consequence.abs(i, v)),
                 alternative: alternative.map(|e| Box::new(e.abs(i, v))),
             },
+            Expr::IfSomeMatchExpr {
+                expr,
+                consequence,
+                alternative,
+            } => Expr::IfSomeMatchExpr {
+                expr: Box::new(expr.abs(i, v)),
+                consequence: Box::new(consequence.abs(i, v)),
+                alternative: alternative.map(|e| Box::new(e.abs(i, v))),
+            },
             Expr::CallExpr {
                 function,
                 arguments,
@@ -320,7 +342,6 @@ impl Expr {
                 function,
                 arguments: arguments.into_iter().map(|a| a.abs(i, v)).collect(),
             },
-            _ => self, // BVar, LitExpr
         }
     }
     pub fn closure_expr(self, v: &str) -> Expr {
@@ -358,6 +379,7 @@ impl Expr {
             self
         } else {
             match self {
+                Expr::Var(_) | Expr::LitExpr(_) => self,
                 Expr::BVar(j) => {
                     if j >= d {
                         Expr::BVar(j + 1)
@@ -402,6 +424,15 @@ impl Expr {
                     consequence: Box::new(consequence.shift(i, d)),
                     alternative: alternative.map(|a| Box::new(a.shift(i, d))),
                 },
+                Expr::IfSomeMatchExpr {
+                    expr,
+                    consequence,
+                    alternative,
+                } => Expr::IfSomeMatchExpr {
+                    expr: Box::new(expr.shift(i, d)),
+                    consequence: Box::new(consequence.shift(i, d)),
+                    alternative: alternative.map(|e| Box::new(e.shift(i, d))),
+                },
                 Expr::CallExpr {
                     function,
                     arguments,
@@ -409,12 +440,12 @@ impl Expr {
                     function,
                     arguments: arguments.into_iter().map(|a| a.shift(i, d)).collect(),
                 },
-                _ => self, // Var, LitExpr
             }
         }
     }
     pub fn subst(self, i: usize, u: &Expr) -> Expr {
         match self {
+            Expr::Var(_) | Expr::LitExpr(_) => self,
             Expr::BVar(j) => {
                 if j < i {
                     self
@@ -461,6 +492,15 @@ impl Expr {
                 consequence: Box::new(consequence.subst(i, u)),
                 alternative: alternative.map(|a| Box::new(a.subst(i, u))),
             },
+            Expr::IfSomeMatchExpr {
+                expr,
+                consequence,
+                alternative,
+            } => Expr::IfSomeMatchExpr {
+                expr: Box::new(expr.subst(i, u)),
+                consequence: Box::new(consequence.subst(i, u)),
+                alternative: alternative.map(|e| Box::new(e.subst(i, u))),
+            },
             Expr::CallExpr {
                 function,
                 arguments,
@@ -468,7 +508,6 @@ impl Expr {
                 function,
                 arguments: arguments.into_iter().map(|a| a.subst(i, u)).collect(),
             },
-            _ => self, // Var, LitExpr
         }
     }
     pub fn apply(self, u: &Expr) -> Result<Expr, self::Error> {
@@ -616,6 +655,61 @@ impl Expr {
                 )?;
                 Ok(ExprAndMeta::new(
                     Expr::if_else_expr(expr1, expr2, expr3),
+                    typ2.pick(&typ3),
+                    vec![calls1, calls2, calls3],
+                ))
+            }
+            parser::Expr::IfSomeMatchExpr {
+                var,
+                expr,
+                consequence,
+                alternative: None,
+            } => {
+                let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, vars)?.split();
+                let typ1 = typ1.dest_option()?;
+                let id = var.id();
+                let (expr2, calls2, typ2) =
+                    Expr::from_block_stmt(consequence, headers, ret, &vars.add_var(id, &typ1))?
+                        .split();
+                Typ::type_check(
+                    "if-let-expression",
+                    vec![(Some(Expr::block_stmt_loc(consequence, e.loc())), &typ2)],
+                    vec![(None, &Typ::Unit)],
+                )?;
+                Ok(ExprAndMeta::new(
+                    Expr::IfSomeMatchExpr {
+                        expr: Box::new(expr1),
+                        consequence: { Box::new(expr2.closure_expr(id)) },
+                        alternative: None,
+                    },
+                    Typ::Unit,
+                    vec![calls1, calls2],
+                ))
+            }
+            parser::Expr::IfSomeMatchExpr {
+                var,
+                expr,
+                consequence,
+                alternative: Some(alt),
+            } => {
+                let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, vars)?.split();
+                let typ1 = typ1.dest_option()?;
+                let id = var.id();
+                let (expr2, calls2, typ2) =
+                    Expr::from_block_stmt(consequence, headers, ret, &vars.add_var(id, &typ1))?
+                        .split();
+                let (expr3, calls3, typ3) = Expr::from_block_stmt(alt, headers, ret, vars)?.split();
+                Typ::type_check(
+                    "if-let-else-expression",
+                    vec![(Some(Expr::block_stmt_loc(consequence, e.loc())), &typ2)],
+                    vec![(Some(Expr::block_stmt_loc(alt, e.loc())), &typ3)],
+                )?;
+                Ok(ExprAndMeta::new(
+                    Expr::IfSomeMatchExpr {
+                        expr: Box::new(expr1),
+                        consequence: Box::new(expr2.closure_expr(id)),
+                        alternative: Some(Box::new(expr3)),
+                    },
                     typ2.pick(&typ3),
                     vec![calls1, calls2, calls3],
                 ))

@@ -58,6 +58,7 @@ pub enum Error<'a> {
     Mismatch(String, LocType<'a>, LocType<'a>),
     Args(String, usize, usize),
     Parse(String),
+    Dest,
 }
 
 impl<'a> fmt::Display for Error<'a> {
@@ -78,11 +79,11 @@ impl<'a> fmt::Display for Error<'a> {
                 }
                 write!(f, "< {}", lt2.1)?;
                 match &lt2.0 {
-                    Some(loc) => writeln!(f, " on {}", loc)?,
-                    None => writeln!(f, "")?,
+                    Some(loc) => writeln!(f, " on {}", loc),
+                    None => writeln!(f, ""),
                 }
-                Ok(())
             }
+            Error::Dest => write!(f, "expecting Option<..> type"),
         }
     }
 }
@@ -181,6 +182,16 @@ impl Typ {
     }
     pub fn is_unit(&self) -> bool {
         Typ::type_check("", vec![(None, self)], vec![(None, &Typ::Unit)]).is_ok()
+    }
+    pub fn dest_option(&self) -> Result<Typ, Error> {
+        match self {
+            Typ::Tuple(ts) => match ts.as_slice() {
+                [] => Ok(Typ::Return),
+                [t] => Ok(t.clone()),
+                _ => Err(Error::Dest),
+            },
+            _ => Err(Error::Dest),
+        }
     }
 }
 

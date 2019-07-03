@@ -353,7 +353,8 @@ impl Expr {
                 Box::new(e1.eval(env.clone()).and_then(move |res1| match res1 {
                     r @ Expr::ReturnExpr(_) => Box::new(future::ok(r)),
                     Expr::LitExpr(Literal::Tuple(lits)) => {
-                        if vs.len() == lits.len() {
+                        let lits_len = lits.len();
+                        if 1 < lits_len && vs.len() == lits_len {
                             let mut e2a = *e2.clone();
                             let mut apply_err = None;
                             for (v, lit) in vs.iter().zip(lits) {
@@ -514,6 +515,42 @@ impl Expr {
                     }
                 }
                 _ => future::Either::A(future::err(Error::new("eval, if-expression"))),
+            })),
+            Expr::IfSomeMatchExpr {
+                expr,
+                consequence,
+                alternative,
+            } => Box::new(expr.eval(env.clone()).and_then(|res1| match res1 {
+                r @ Expr::ReturnExpr(_) => future::Either::A(future::ok(r)),
+                Expr::LitExpr(Literal::Tuple(t)) => {
+                    if t.len() == 1 {
+                        match consequence.apply(&Expr::LitExpr(t[0].clone())) {
+                            Ok(consequence_apply) => future::Either::B(future::Either::B(
+                                consequence_apply.eval(env).and_then(|res2| match res2 {
+                                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => future::ok(r),
+                                    _ => future::err(Error::new("eval, if-let-expression")),
+                                }),
+                            )),
+                            Err(e) => future::Either::A(future::err(e)),
+                        }
+                    } else {
+                        future::Either::B(match alternative {
+                            None => future::Either::A(future::Either::A(future::ok(
+                                Expr::LitExpr(Literal::Unit),
+                            ))),
+                            Some(alt) => future::Either::A(future::Either::B(
+                                alt.eval(env).and_then(|res2| match res2 {
+                                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => future::ok(r),
+                                    _ => future::err(Error::new("eval, if-let-expression")),
+                                }),
+                            )),
+                        })
+                    }
+                }
+                _ => future::Either::A(future::err(Error::new(format!(
+                    "eval, if-let-expression: {:#?}",
+                    res1
+                )))),
             })),
             Expr::IfMatchExpr {
                 variables,

@@ -61,6 +61,14 @@ It is recommended to start the policy language REPL (Read-Eval-Print loop) with
     [("a", 1), ("b", 2), ("c", 3)]
     ```
 
+- Option: **`Option<ty>`**
+
+    ```
+    Some(1)
+    
+    None
+    ```
+
 ## Expressions, blocks and statements
 
 - Literals (see above)
@@ -161,20 +169,34 @@ It is recommended to start the policy language REPL (Read-Eval-Print loop) with
 - **if match**
 
     ```
-    if <str-expression1> matches <pat1> and
-       <str-expression2> matches <pat2> and ... {
+    if <str-expression1> matches <reg-exp1> and
+       <str-expression2> matches <reg-exp2> and ... {
         <unit-statement>
     }
 
-    if <str-expression1> matches <pat1> and
-       <str-expression2> matches <pat2> and ... {
+    if <str-expression1> matches <reg-exp1> and
+       <str-expression2> matches <reg-exp2> and ... {
         <statement>
     } else {
         <statement>
     }
     ```
 
-## Patterns
+- **if let**
+
+    ```
+    if let Some(<var>) = <expr> {
+        <unit-statement>
+    }
+
+    if let Some(<var>) = <expr> {
+        <statement>
+    } else {
+        <statement>
+    }
+    ```
+
+## Regular expressions
 
 - Literals
 
@@ -200,16 +222,16 @@ It is recommended to start the policy language REPL (Read-Eval-Print loop) with
 
 - Operations
 
-    | Symbol               | Meaning           |
-    ---------------------- | -------------------
-    | .                    | Any               |
-    | `<pat>`?             | Optional          |
-    | `<pat>`!             | Case insensitive  |
-    | `<pat>`%             | Ignore whitespace |
-    | `<pat>`*             | Zero or more      |
-    | `<pat>`+             | One or more       |
-    | `<pat1>` `<pat2>`    | Sequence          |
-    | `<pat1>` \| `<pat2>` | Either            |
+    | Symbol                   | Meaning           |
+    -------------------------- | -------------------
+    | .                        | Any               |
+    | `<regexp>`?              | Optional          |
+    | `<regexp>`!              | Case insensitive  |
+    | `<regexp>`%              | Ignore whitespace |
+    | `<regexp>`*              | Zero or more      |
+    | `<regexp>`+              | One or more       |
+    | `<regexp>` `<regexp>`    | Sequence          |
+    | `<regexp>` \| `<regexp>` | Either            |
 
 ## Function declarations
 
@@ -295,3 +317,10 @@ function               | type
 function               | type
 ---------------------- | ------------------------------------------
 | len                  | `List<ty> -> i64`                         |
+
+### option::
+
+function               | type
+---------------------- | ------------------------------------------
+| is_some              | `Option<ty> -> bool`                      |
+| is_none              | `Option<ty> -> bool`                      |
