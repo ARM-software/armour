@@ -6,13 +6,13 @@ struct ExternalImpl(i64);
 impl ExternalImpl {
     fn sin(args: &[Literal]) -> Result<Literal, Error> {
         match args {
-            &[FloatLiteral(f)] => Ok(FloatLiteral(f64::sin(f))),
+            &[Float(f)] => Ok(Float(f64::sin(f))),
             _ => Err(Error::failed("sin".to_string())),
         }
     }
     fn count(&mut self) -> Result<Literal, Error> {
         self.0 += 1;
-        Ok(IntLiteral(self.0))
+        Ok(Int(self.0))
     }
     fn rev(args: &[Literal]) -> Result<Literal, Error> {
         match args {

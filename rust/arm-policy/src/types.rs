@@ -16,6 +16,7 @@ pub enum Typ {
     Unit,
     Policy,
     HttpRequest,
+    Ipv4Addr,
     List(Box<Typ>),
     // tuples of length 0 and 1 are used to manage option types
     Tuple(Vec<Typ>),
@@ -33,6 +34,7 @@ impl fmt::Display for Typ {
             Typ::Policy => write!(f, "Policy"),
             Typ::Return => write!(f, "!"),
             Typ::HttpRequest => write!(f, "HttpRequest"),
+            Typ::Ipv4Addr => write!(f, "Ipv4Addr"),
             Typ::List(t) => write!(f, "List<{}>", t.to_string()),
             Typ::Tuple(ts) => match ts.len() {
                 0 => write!(f, "Option<?>"),
@@ -154,6 +156,7 @@ impl Typ {
             "str" => Ok(Typ::Str),
             "Policy" => Ok(Typ::Policy),
             "HttpRequest" => Ok(Typ::HttpRequest),
+            "Ipv4Addr" => Ok(Typ::Ipv4Addr),
             s => Err(Error::Parse(s.to_string())),
         }
     }

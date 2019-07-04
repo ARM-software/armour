@@ -37,7 +37,6 @@ impl Headers {
     }
     pub fn builtins(f: &str) -> Option<Signature> {
         match f {
-            "Some" => Some((vec![Typ::Return], Typ::Return)),
             "option::Some" => Some((vec![Typ::Return], Typ::Return)),
             "option::is_none" => Some((vec![Typ::Tuple(Vec::new())], Typ::Bool)),
             "option::is_some" => Some((vec![Typ::Tuple(Vec::new())], Typ::Bool)),

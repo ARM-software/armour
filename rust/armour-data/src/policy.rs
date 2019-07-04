@@ -49,11 +49,11 @@ impl DataPolicy {
                 lang::Expr::call(function, args)
                     .evaluate(self.program.clone())
                     .and_then(|result| match result {
-                        lang::Expr::LitExpr(literals::Literal::PolicyLiteral(policy)) => {
+                        lang::Expr::LitExpr(literals::Literal::Policy(policy)) => {
                             info!("result is: {:?}", policy);
                             future::ok(Some(policy == literals::Policy::Accept))
                         }
-                        lang::Expr::LitExpr(literals::Literal::BoolLiteral(accept)) => {
+                        lang::Expr::LitExpr(literals::Literal::Bool(accept)) => {
                             info!("result is: {}", accept);
                             future::ok(Some(accept))
                         }

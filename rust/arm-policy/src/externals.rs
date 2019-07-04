@@ -1,4 +1,4 @@
-use super::literals::Literal;
+use super::literals::{Literal, ToLiteral};
 use crate::external_capnp::external;
 use capnp::capability::Promise;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
@@ -182,11 +182,11 @@ impl Externals {
     /// Build a Cap'n Proto literal from an Armour literal
     fn build_value(mut v: external::value::Builder<'_>, lit: &Literal) -> Result<(), Error> {
         match lit {
-            Literal::BoolLiteral(b) => v.set_bool(*b),
-            Literal::IntLiteral(i) => v.set_int64(*i),
-            Literal::FloatLiteral(f) => v.set_float64(*f),
-            Literal::StringLiteral(s) => v.set_text(s),
-            Literal::DataLiteral(d) => v.set_data(d),
+            Literal::Bool(b) => v.set_bool(*b),
+            Literal::Int(i) => v.set_int64(*i),
+            Literal::Float(f) => v.set_float64(*f),
+            Literal::Str(s) => v.set_text(s),
+            Literal::Data(d) => v.set_data(d),
             Literal::Unit => v.set_unit(()),
             Literal::Tuple(ts) => {
                 let mut tuple = v.init_tuple(ts.len() as u32);
@@ -200,8 +200,9 @@ impl Externals {
                     Externals::build_value(list.reborrow().get(i as u32), t)?
                 }
             }
-            Literal::HttpRequestLiteral(req) => Externals::build_value(v, &req.to_literal())?,
-            Literal::PolicyLiteral(p) => v.set_text(p.to_string().as_str()),
+            Literal::HttpRequest(req) => Externals::build_value(v, &req.to_literal())?,
+            Literal::Ipv4Addr(ip) => Externals::build_value(v, &ip.to_literal())?,
+            Literal::Policy(p) => v.set_text(p.to_string().as_str()),
         }
         Ok(())
     }
@@ -209,11 +210,11 @@ impl Externals {
     fn read_value(v: external::value::Reader<'_>) -> Result<Literal, capnp::Error> {
         use external::value::Which;
         match v.which() {
-            Ok(Which::Bool(b)) => Ok(Literal::BoolLiteral(b)),
-            Ok(Which::Int64(i)) => Ok(Literal::IntLiteral(i)),
-            Ok(Which::Float64(f)) => Ok(Literal::FloatLiteral(f)),
-            Ok(Which::Text(t)) => Ok(Literal::StringLiteral(t?.to_string())),
-            Ok(Which::Data(d)) => Ok(Literal::DataLiteral(d?.to_vec())),
+            Ok(Which::Bool(b)) => Ok(Literal::Bool(b)),
+            Ok(Which::Int64(i)) => Ok(Literal::Int(i)),
+            Ok(Which::Float64(f)) => Ok(Literal::Float(f)),
+            Ok(Which::Text(t)) => Ok(Literal::Str(t?.to_string())),
+            Ok(Which::Data(d)) => Ok(Literal::Data(d?.to_vec())),
             Ok(Which::Unit(_)) => Ok(Literal::Unit),
             Ok(Which::Tuple(ts)) => {
                 let mut tuple = Vec::new();

@@ -160,18 +160,37 @@ impl HttpRequest {
         }
         pairs
     }
-    pub fn to_literal(&self) -> Literal {
+}
+
+pub trait ToLiteral {
+    fn to_literal(&self) -> Literal;
+}
+
+impl ToLiteral for HttpRequest {
+    fn to_literal(&self) -> Literal {
         let header_pairs: Vec<Literal> = self
             .header_pairs()
             .into_iter()
-            .map(|(h, v)| Literal::Tuple(vec![Literal::StringLiteral(h), Literal::DataLiteral(v)]))
+            .map(|(h, v)| Literal::Tuple(vec![Literal::Str(h), Literal::Data(v)]))
             .collect();
         Literal::Tuple(vec![
-            Literal::StringLiteral(self.method()),
-            Literal::StringLiteral(self.version()),
-            Literal::StringLiteral(self.path()),
-            Literal::StringLiteral(self.query()),
+            Literal::Str(self.method()),
+            Literal::Str(self.version()),
+            Literal::Str(self.path()),
+            Literal::Str(self.query()),
             Literal::List(header_pairs),
+        ])
+    }
+}
+
+impl ToLiteral for std::net::Ipv4Addr {
+    fn to_literal(&self) -> Literal {
+        let [a, b, c, d] = self.octets();
+        Literal::Tuple(vec![
+            Literal::Int(a as i64),
+            Literal::Int(b as i64),
+            Literal::Int(c as i64),
+            Literal::Int(d as i64),
         ])
     }
 }
@@ -199,15 +218,16 @@ impl From<(&str, &str, &str, &str, Vec<(&str, &[u8])>)> for HttpRequest {
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Literal {
-    IntLiteral(i64),
-    FloatLiteral(f64),
-    BoolLiteral(bool),
-    DataLiteral(Vec<u8>),
-    StringLiteral(String),
-    PolicyLiteral(Policy),
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    Data(Vec<u8>),
+    Str(String),
+    Policy(Policy),
+    Ipv4Addr(std::net::Ipv4Addr),
     List(Vec<Literal>),
     Tuple(Vec<Literal>),
-    HttpRequestLiteral(HttpRequest),
+    HttpRequest(HttpRequest),
     Unit,
 }
 
@@ -221,15 +241,16 @@ impl Literal {
     pub fn typ(&self) -> Typ {
         match self {
             Literal::Unit => Typ::Unit,
-            Literal::BoolLiteral(_) => Typ::Bool,
-            Literal::IntLiteral(_) => Typ::I64,
-            Literal::FloatLiteral(_) => Typ::F64,
-            Literal::StringLiteral(_) => Typ::Str,
-            Literal::DataLiteral(_) => Typ::Data,
-            Literal::PolicyLiteral(_) => Typ::Policy,
+            Literal::Bool(_) => Typ::Bool,
+            Literal::Int(_) => Typ::I64,
+            Literal::Float(_) => Typ::F64,
+            Literal::Str(_) => Typ::Str,
+            Literal::Data(_) => Typ::Data,
+            Literal::Policy(_) => Typ::Policy,
+            Literal::Ipv4Addr(_) => Typ::Ipv4Addr,
             Literal::List(l) => l.get(0).map(|t| t.typ()).unwrap_or(Typ::Return),
             Literal::Tuple(l) => Typ::Tuple((*l).iter().map(|t: &Literal| t.typ()).collect()),
-            Literal::HttpRequestLiteral(_) => Typ::HttpRequest,
+            Literal::HttpRequest(_) => Typ::HttpRequest,
         }
     }
 }
@@ -237,8 +258,8 @@ impl Literal {
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Literal::IntLiteral(i) => write!(f, "{}", i),
-            Literal::FloatLiteral(d) => {
+            Literal::Int(i) => write!(f, "{}", i),
+            Literal::Float(d) => {
                 if 8 < d.abs().log10() as usize {
                     write!(f, "{:e}", d)
                 } else if d.trunc() == *d {
@@ -247,10 +268,11 @@ impl fmt::Display for Literal {
                     write!(f, "{}", d)
                 }
             }
-            Literal::BoolLiteral(b) => write!(f, "{}", b),
-            Literal::DataLiteral(d) => write!(f, "{:x?}", d),
-            Literal::StringLiteral(s) => write!(f, r#""{}""#, s),
-            Literal::PolicyLiteral(p) => write!(f, "{:?}", p),
+            Literal::Bool(b) => write!(f, "{}", b),
+            Literal::Data(d) => write!(f, "{:x?}", d),
+            Literal::Str(s) => write!(f, r#""{}""#, s),
+            Literal::Policy(p) => write!(f, "{:?}", p),
+            Literal::Ipv4Addr(ip) => write!(f, "{}", ip),
             Literal::List(lits) | Literal::Tuple(lits) => {
                 let s = lits
                     .iter()
@@ -267,7 +289,7 @@ impl fmt::Display for Literal {
                     write!(f, "[{}]", s)
                 }
             }
-            Literal::HttpRequestLiteral(r) => write!(f, "{:?}", r),
+            Literal::HttpRequest(r) => write!(f, "{:?}", r),
             Literal::Unit => write!(f, "()"),
         }
     }

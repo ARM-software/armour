@@ -71,8 +71,8 @@ fn main() -> io::Result<()> {
                 Some("list") => master.do_send(MasterCommand::ListActive),
                 Some("help") => println!(
                     "COMMANDS:
-    help                  list commands
-    list                  list connected instances
+    help                      list commands
+    list                      list connected instances
 
     [<id>|all] allow all      request allow all policy
     [<id>|all] deny all       request deny all policy
@@ -80,8 +80,8 @@ fn main() -> io::Result<()> {
     [<id>|all] policy <path>  read and request policy from file <path>
     [<id>|all] remote <path>  request read of policy from file <path>
 
-    <id> single instance ID number
-    all  all instances"
+    <id>  single instance ID number
+    all   all instances"
                 ),
                 _ => log::info!("unknown command"),
             }

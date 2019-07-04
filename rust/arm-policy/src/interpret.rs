@@ -15,150 +15,105 @@ use std::sync::Arc;
 impl Literal {
     fn eval_prefix(&self, p: &Prefix) -> Option<Self> {
         match (p, self) {
-            (Prefix::Not, Literal::BoolLiteral(b)) => Some(Literal::BoolLiteral(!b)),
-            (Prefix::PrefixMinus, Literal::IntLiteral(i)) => Some(Literal::IntLiteral(-i)),
+            (Prefix::Not, Literal::Bool(b)) => Some(Literal::Bool(!b)),
+            (Prefix::PrefixMinus, Literal::Int(i)) => Some(Literal::Int(-i)),
             _ => None,
         }
     }
     fn eval_infix(&self, op: &Infix, other: &Literal) -> Option<Self> {
         match (op, self, other) {
-            (Infix::Equal, _, _) => Some(Literal::BoolLiteral(self == other)),
-            (Infix::NotEqual, _, _) => Some(Literal::BoolLiteral(self != other)),
-            (Infix::Plus, Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
-                Some(Literal::IntLiteral(i + j))
+            (Infix::Equal, _, _) => Some(Literal::Bool(self == other)),
+            (Infix::NotEqual, _, _) => Some(Literal::Bool(self != other)),
+            (Infix::Plus, Literal::Int(i), Literal::Int(j)) => Some(Literal::Int(i + j)),
+            (Infix::Minus, Literal::Int(i), Literal::Int(j)) => Some(Literal::Int(i - j)),
+            (Infix::Divide, Literal::Int(_), Literal::Int(0)) => None,
+            (Infix::Divide, Literal::Int(i), Literal::Int(j)) => Some(Literal::Int(i / j)),
+            (Infix::Multiply, Literal::Int(i), Literal::Int(j)) => Some(Literal::Int(i * j)),
+            (Infix::Remainder, Literal::Int(_), Literal::Int(0)) => None,
+            (Infix::Remainder, Literal::Int(i), Literal::Int(j)) => Some(Literal::Int(i % j)),
+            (Infix::LessThan, Literal::Int(i), Literal::Int(j)) => Some(Literal::Bool(i < j)),
+            (Infix::LessThanEqual, Literal::Int(i), Literal::Int(j)) => Some(Literal::Bool(i <= j)),
+            (Infix::GreaterThan, Literal::Int(i), Literal::Int(j)) => Some(Literal::Bool(i > j)),
+            (Infix::GreaterThanEqual, Literal::Int(i), Literal::Int(j)) => {
+                Some(Literal::Bool(i >= j))
             }
-            (Infix::Minus, Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
-                Some(Literal::IntLiteral(i - j))
-            }
-            (Infix::Divide, Literal::IntLiteral(_), Literal::IntLiteral(0)) => None,
-            (Infix::Divide, Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
-                Some(Literal::IntLiteral(i / j))
-            }
-            (Infix::Multiply, Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
-                Some(Literal::IntLiteral(i * j))
-            }
-            (Infix::Remainder, Literal::IntLiteral(_), Literal::IntLiteral(0)) => None,
-            (Infix::Remainder, Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
-                Some(Literal::IntLiteral(i % j))
-            }
-            (Infix::LessThan, Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
-                Some(Literal::BoolLiteral(i < j))
-            }
-            (Infix::LessThanEqual, Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
-                Some(Literal::BoolLiteral(i <= j))
-            }
-            (Infix::GreaterThan, Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
-                Some(Literal::BoolLiteral(i > j))
-            }
-            (Infix::GreaterThanEqual, Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
-                Some(Literal::BoolLiteral(i >= j))
-            }
-            (Infix::And, Literal::BoolLiteral(i), Literal::BoolLiteral(j)) => {
-                Some(Literal::BoolLiteral(*i && *j))
-            }
-            (Infix::Or, Literal::BoolLiteral(i), Literal::BoolLiteral(j)) => {
-                Some(Literal::BoolLiteral(*i || *j))
-            }
+            (Infix::And, Literal::Bool(i), Literal::Bool(j)) => Some(Literal::Bool(*i && *j)),
+            (Infix::Or, Literal::Bool(i), Literal::Bool(j)) => Some(Literal::Bool(*i || *j)),
             (Infix::Concat, Literal::List(i), Literal::List(j)) => Some(Literal::List({
                 let mut k = i.clone();
                 k.append(&mut j.clone());
                 k
             })),
-            (Infix::ConcatStr, Literal::StringLiteral(i), Literal::StringLiteral(j)) => {
-                Some(Literal::StringLiteral(format!("{}{}", i, j)))
+            (Infix::ConcatStr, Literal::Str(i), Literal::Str(j)) => {
+                Some(Literal::Str(format!("{}{}", i, j)))
             }
-            (Infix::In, _, Literal::List(l)) => {
-                Some(Literal::BoolLiteral(l.iter().any(|o| o == self)))
-            }
+            (Infix::In, _, Literal::List(l)) => Some(Literal::Bool(l.iter().any(|o| o == self))),
             _ => None,
         }
     }
     fn eval_call0(f: &str) -> Option<Self> {
         match f {
-            "HttpRequest::default" => Some(Literal::HttpRequestLiteral(Default::default())),
+            "HttpRequest::default" => Some(Literal::HttpRequest(Default::default())),
             _ => None,
         }
     }
     fn eval_call1(&self, f: &str) -> Option<Self> {
         match (f, self) {
-            ("Some", _) => Some(Literal::Tuple(vec![self.clone()])),
-            ("option::is_none", Literal::Tuple(t)) => Some(Literal::BoolLiteral(t.len() == 0)),
-            ("option::is_some", Literal::Tuple(t)) => Some(Literal::BoolLiteral(t.len() == 1)),
-            ("i64::abs", Literal::IntLiteral(i)) => Some(Literal::IntLiteral(i.abs())),
-            ("i64::to_str", Literal::IntLiteral(i)) => Some(Literal::StringLiteral(i.to_string())),
-            ("str::len", Literal::StringLiteral(s)) => Some(Literal::IntLiteral(s.len() as i64)),
-            ("str::to_lowercase", Literal::StringLiteral(s)) => {
-                Some(Literal::StringLiteral(s.to_lowercase()))
-            }
-            ("str::to_uppercase", Literal::StringLiteral(s)) => {
-                Some(Literal::StringLiteral(s.to_uppercase()))
-            }
-            ("str::trim_start", Literal::StringLiteral(s)) => {
-                Some(Literal::StringLiteral(s.trim_start().to_string()))
-            }
-            ("str::trim_end", Literal::StringLiteral(s)) => {
-                Some(Literal::StringLiteral(s.trim_end().to_string()))
-            }
-            ("str::as_bytes", Literal::StringLiteral(s)) => {
-                Some(Literal::DataLiteral(s.as_bytes().to_vec()))
-            }
-            ("str::from_utf8", Literal::DataLiteral(s)) => Some(Literal::StringLiteral(
+            ("option::Some", _) => Some(Literal::Tuple(vec![self.clone()])),
+            ("option::is_none", Literal::Tuple(t)) => Some(Literal::Bool(t.len() == 0)),
+            ("option::is_some", Literal::Tuple(t)) => Some(Literal::Bool(t.len() == 1)),
+            ("i64::abs", Literal::Int(i)) => Some(Literal::Int(i.abs())),
+            ("i64::to_str", Literal::Int(i)) => Some(Literal::Str(i.to_string())),
+            ("str::len", Literal::Str(s)) => Some(Literal::Int(s.len() as i64)),
+            ("str::to_lowercase", Literal::Str(s)) => Some(Literal::Str(s.to_lowercase())),
+            ("str::to_uppercase", Literal::Str(s)) => Some(Literal::Str(s.to_uppercase())),
+            ("str::trim_start", Literal::Str(s)) => Some(Literal::Str(s.trim_start().to_string())),
+            ("str::trim_end", Literal::Str(s)) => Some(Literal::Str(s.trim_end().to_string())),
+            ("str::as_bytes", Literal::Str(s)) => Some(Literal::Data(s.as_bytes().to_vec())),
+            ("str::from_utf8", Literal::Data(s)) => Some(Literal::Str(
                 std::string::String::from_utf8_lossy(s).to_string(),
             )),
-            ("str::to_base64", Literal::StringLiteral(s)) => {
-                Some(Literal::StringLiteral(base64::encode(s)))
+            ("str::to_base64", Literal::Str(s)) => Some(Literal::Str(base64::encode(s))),
+            ("data::to_base64", Literal::Data(d)) => Some(Literal::Str(base64::encode(d))),
+            ("data::len", Literal::Data(d)) => Some(Literal::Int(d.len() as i64)),
+            ("HttpRequest::method", Literal::HttpRequest(req)) => Some(Literal::Str(req.method())),
+            ("HttpRequest::version", Literal::HttpRequest(req)) => {
+                Some(Literal::Str(req.version()))
             }
-            ("data::to_base64", Literal::DataLiteral(d)) => {
-                Some(Literal::StringLiteral(base64::encode(d)))
-            }
-            ("data::len", Literal::DataLiteral(d)) => Some(Literal::IntLiteral(d.len() as i64)),
-            ("HttpRequest::method", Literal::HttpRequestLiteral(req)) => {
-                Some(Literal::StringLiteral(req.method()))
-            }
-            ("HttpRequest::version", Literal::HttpRequestLiteral(req)) => {
-                Some(Literal::StringLiteral(req.version()))
-            }
-            ("HttpRequest::path", Literal::HttpRequestLiteral(req)) => {
-                Some(Literal::StringLiteral(req.path()))
-            }
-            ("HttpRequest::route", Literal::HttpRequestLiteral(req)) => Some(Literal::List(
+            ("HttpRequest::path", Literal::HttpRequest(req)) => Some(Literal::Str(req.path())),
+            ("HttpRequest::route", Literal::HttpRequest(req)) => Some(Literal::List(
                 req.split_path()
                     .into_iter()
-                    .map(|h| Literal::StringLiteral(h))
+                    .map(|h| Literal::Str(h))
                     .collect(),
             )),
-            ("HttpRequest::query", Literal::HttpRequestLiteral(req)) => {
-                Some(Literal::StringLiteral(req.query()))
-            }
-            ("HttpRequest::query_pairs", Literal::HttpRequestLiteral(req)) => Some(Literal::List(
+            ("HttpRequest::query", Literal::HttpRequest(req)) => Some(Literal::Str(req.query())),
+            ("HttpRequest::query_pairs", Literal::HttpRequest(req)) => Some(Literal::List(
                 req.query_pairs()
                     .iter()
                     .map(|(k, v)| {
                         Literal::Tuple(vec![
-                            Literal::StringLiteral(k.to_string()),
-                            Literal::StringLiteral(v.to_string()),
+                            Literal::Str(k.to_string()),
+                            Literal::Str(v.to_string()),
                         ])
                     })
                     .collect(),
             )),
-            ("HttpRequest::header_pairs", Literal::HttpRequestLiteral(req)) => Some(Literal::List(
+            ("HttpRequest::header_pairs", Literal::HttpRequest(req)) => Some(Literal::List(
                 req.header_pairs()
                     .iter()
                     .map(|(k, v)| {
                         Literal::Tuple(vec![
-                            Literal::StringLiteral(k.to_string()),
-                            Literal::StringLiteral(String::from_utf8_lossy(&v).into_owned()),
+                            Literal::Str(k.to_string()),
+                            Literal::Str(String::from_utf8_lossy(&v).into_owned()),
                         ])
                     })
                     .collect(),
             )),
-            ("HttpRequest::headers", Literal::HttpRequestLiteral(req)) => Some(Literal::List(
-                req.headers()
-                    .into_iter()
-                    .map(|h| Literal::StringLiteral(h))
-                    .collect(),
+            ("HttpRequest::headers", Literal::HttpRequest(req)) => Some(Literal::List(
+                req.headers().into_iter().map(|h| Literal::Str(h)).collect(),
             )),
-            ("list::len", Literal::List(l)) => Some(Literal::IntLiteral(l.len() as i64)),
+            ("list::len", Literal::List(l)) => Some(Literal::Int(l.len() as i64)),
             (_, Literal::Tuple(l)) => {
                 if let Ok(i) = f.parse::<usize>() {
                     l.get(i).cloned()
@@ -171,44 +126,36 @@ impl Literal {
     }
     fn eval_call2(&self, f: &str, other: &Literal) -> Option<Self> {
         match (f, self, other) {
-            ("i64::pow", Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
-                Some(Literal::IntLiteral(i.pow(*j as u32)))
+            ("i64::pow", Literal::Int(i), Literal::Int(j)) => Some(Literal::Int(i.pow(*j as u32))),
+            ("i64::min", Literal::Int(i), Literal::Int(j)) => {
+                Some(Literal::Int(std::cmp::min(*i, *j)))
             }
-            ("i64::min", Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
-                Some(Literal::IntLiteral(std::cmp::min(*i, *j)))
+            ("i64::max", Literal::Int(i), Literal::Int(j)) => {
+                Some(Literal::Int(std::cmp::max(*i, *j)))
             }
-            ("i64::max", Literal::IntLiteral(i), Literal::IntLiteral(j)) => {
-                Some(Literal::IntLiteral(std::cmp::max(*i, *j)))
+            ("str::starts_with", Literal::Str(i), Literal::Str(j)) => {
+                Some(Literal::Bool(i.starts_with(j)))
             }
-            ("str::starts_with", Literal::StringLiteral(i), Literal::StringLiteral(j)) => {
-                Some(Literal::BoolLiteral(i.starts_with(j)))
+            ("str::ends_with", Literal::Str(i), Literal::Str(j)) => {
+                Some(Literal::Bool(i.ends_with(j)))
             }
-            ("str::ends_with", Literal::StringLiteral(i), Literal::StringLiteral(j)) => {
-                Some(Literal::BoolLiteral(i.ends_with(j)))
+            ("str::contains", Literal::Str(i), Literal::Str(j)) => {
+                Some(Literal::Bool(i.contains(j)))
             }
-            ("str::contains", Literal::StringLiteral(i), Literal::StringLiteral(j)) => {
-                Some(Literal::BoolLiteral(i.contains(j)))
+            ("HttpRequest::set_path", Literal::HttpRequest(req), Literal::Str(q)) => {
+                Some(Literal::HttpRequest(req.set_path(q)))
             }
-            (
-                "HttpRequest::set_path",
-                Literal::HttpRequestLiteral(req),
-                Literal::StringLiteral(q),
-            ) => Some(Literal::HttpRequestLiteral(req.set_path(q))),
-            (
-                "HttpRequest::set_query",
-                Literal::HttpRequestLiteral(req),
-                Literal::StringLiteral(q),
-            ) => Some(Literal::HttpRequestLiteral(req.set_query(q))),
-            (
-                "HttpRequest::header",
-                Literal::HttpRequestLiteral(req),
-                Literal::StringLiteral(h),
-            ) => Some(Literal::List(
-                req.header(&h)
-                    .into_iter()
-                    .map(|v| Literal::DataLiteral(v))
-                    .collect(),
-            )),
+            ("HttpRequest::set_query", Literal::HttpRequest(req), Literal::Str(q)) => {
+                Some(Literal::HttpRequest(req.set_query(q)))
+            }
+            ("HttpRequest::header", Literal::HttpRequest(req), Literal::Str(h)) => {
+                Some(Literal::List(
+                    req.header(&h)
+                        .into_iter()
+                        .map(|v| Literal::Data(v))
+                        .collect(),
+                ))
+            }
             _ => None,
         }
     }
@@ -216,10 +163,10 @@ impl Literal {
         match (f, self, l1, l2) {
             (
                 "HttpRequest::set_header",
-                Literal::HttpRequestLiteral(req),
-                Literal::StringLiteral(h),
-                Literal::DataLiteral(v),
-            ) => Some(Literal::HttpRequestLiteral(req.set_header(h, v))),
+                Literal::HttpRequest(req),
+                Literal::Str(h),
+                Literal::Data(v),
+            ) => Some(Literal::HttpRequest(req.set_header(h, v))),
             _ => None,
         }
     }
@@ -235,7 +182,7 @@ impl Literal {
     }
     fn is_true(&self) -> bool {
         match self {
-            Literal::BoolLiteral(true) => true,
+            Literal::Bool(true) => true,
             _ => false,
         }
     }
@@ -274,13 +221,14 @@ impl Expr {
             // short circuit for &&
             Expr::InfixExpr(Infix::And, e1, e2) => {
                 Box::new(e1.eval(env.clone()).and_then(move |res1| match res1 {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::BoolLiteral(false)) => {
+                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(false)) => {
                         future::Either::A(future::ok(r))
                     }
-                    Expr::LitExpr(Literal::BoolLiteral(true)) => {
+                    Expr::LitExpr(Literal::Bool(true)) => {
                         future::Either::B(e2.eval(env).and_then(move |res2| match res2 {
-                            r @ Expr::ReturnExpr(_)
-                            | r @ Expr::LitExpr(Literal::BoolLiteral(_)) => future::ok(r),
+                            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(_)) => {
+                                future::ok(r)
+                            }
                             _ => future::err(Error::new("eval, infix")),
                         }))
                     }
@@ -290,13 +238,14 @@ impl Expr {
             // short circuit for ||
             Expr::InfixExpr(Infix::Or, e1, e2) => {
                 Box::new(e1.eval(env.clone()).and_then(|res1| match res1 {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::BoolLiteral(true)) => {
+                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(true)) => {
                         future::Either::A(future::ok(r))
                     }
-                    Expr::LitExpr(Literal::BoolLiteral(false)) => {
+                    Expr::LitExpr(Literal::Bool(false)) => {
                         future::Either::B(e2.eval(env).and_then(|res2| match res2 {
-                            r @ Expr::ReturnExpr(_)
-                            | r @ Expr::LitExpr(Literal::BoolLiteral(_)) => future::ok(r),
+                            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(_)) => {
+                                future::ok(r)
+                            }
                             _ => future::err(Error::new("eval, infix")),
                         }))
                     }
@@ -492,7 +441,7 @@ impl Expr {
                 alternative,
             } => Box::new(cond.eval(env.clone()).and_then(|res1| match res1 {
                 r @ Expr::ReturnExpr(_) => future::Either::A(future::ok(r)),
-                Expr::LitExpr(Literal::BoolLiteral(b)) => {
+                Expr::LitExpr(Literal::Bool(b)) => {
                     if b {
                         future::Either::B(future::Either::B(consequence.eval(env).and_then(
                             |res2| match res2 {
@@ -562,7 +511,7 @@ impl Expr {
                     stream::futures_ordered(matches.into_iter().map(|(e, re)| {
                         e.eval(env.clone()).and_then(move |f| match f {
                             Expr::ReturnExpr(_) => future::ok((f, None)),
-                            Expr::LitExpr(Literal::StringLiteral(ref s)) => {
+                            Expr::LitExpr(Literal::Str(ref s)) => {
                                 let names: Vec<&str> =
                                     re.0.capture_names().filter_map(|s| s).collect();
                                 // if there are no bindings then do a simple "is_match", otherwise collect

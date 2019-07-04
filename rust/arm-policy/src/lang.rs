@@ -238,22 +238,22 @@ impl Expr {
         Expr::LitExpr(Literal::Unit)
     }
     pub fn i64(i: i64) -> Expr {
-        Expr::LitExpr(Literal::IntLiteral(i))
+        Expr::LitExpr(Literal::Int(i))
     }
     pub fn f64(f: f64) -> Expr {
-        Expr::LitExpr(Literal::FloatLiteral(f))
+        Expr::LitExpr(Literal::Float(f))
     }
     pub fn bool(b: bool) -> Expr {
-        Expr::LitExpr(Literal::BoolLiteral(b))
+        Expr::LitExpr(Literal::Bool(b))
     }
     pub fn string(s: &str) -> Expr {
-        Expr::LitExpr(Literal::StringLiteral(s.to_string()))
+        Expr::LitExpr(Literal::Str(s.to_string()))
     }
     pub fn data(d: &[u8]) -> Expr {
-        Expr::LitExpr(Literal::DataLiteral(d.to_vec()))
+        Expr::LitExpr(Literal::Data(d.to_vec()))
     }
     pub fn http_request(r: literals::HttpRequest) -> Expr {
-        Expr::LitExpr(Literal::HttpRequestLiteral(r))
+        Expr::LitExpr(Literal::HttpRequest(r))
     }
     pub fn call(f: &str, arguments: Vec<Expr>) -> Expr {
         Expr::CallExpr {
@@ -881,12 +881,12 @@ impl Expr {
                 function,
                 arguments,
                 ..
-            } if (function == "Some" || function == "option::Some") && arguments.len() == 1 => {
+            } if function == "option::Some" && arguments.len() == 1 => {
                 let (expression, calls, typ) =
                     Expr::from_loc_expr(arguments.get(0).unwrap(), headers, ret, vars)?.split();
                 Ok(ExprAndMeta::new(
                     Expr::CallExpr {
-                        function: "Some".to_string(),
+                        function: function.to_string(),
                         arguments: vec![expression],
                     },
                     Typ::Tuple(vec![typ]),

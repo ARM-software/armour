@@ -555,12 +555,12 @@ macro_rules! parse_literal (
             Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag)))
         } else {
             match t1.tok0().clone() {
-                Token::IntLiteral(i) => Ok((i1, LocLiteral(t1.loc(), Literal::IntLiteral(i)))),
-                Token::FloatLiteral(f) => Ok((i1, LocLiteral(t1.loc(), Literal::FloatLiteral(f)))),
-                Token::BoolLiteral(b) => Ok((i1, LocLiteral(t1.loc(), Literal::BoolLiteral(b)))),
-                Token::DataLiteral(d) => Ok((i1, LocLiteral(t1.loc(), Literal::DataLiteral(d)))),
-                Token::StringLiteral(s) => Ok((i1, LocLiteral(t1.loc(), Literal::StringLiteral(s)))),
-                Token::PolicyLiteral(p) => Ok((i1, LocLiteral(t1.loc(), Literal::PolicyLiteral(p)))),
+                Token::IntLiteral(i) => Ok((i1, LocLiteral(t1.loc(), Literal::Int(i)))),
+                Token::FloatLiteral(f) => Ok((i1, LocLiteral(t1.loc(), Literal::Float(f)))),
+                Token::BoolLiteral(b) => Ok((i1, LocLiteral(t1.loc(), Literal::Bool(b)))),
+                Token::DataLiteral(d) => Ok((i1, LocLiteral(t1.loc(), Literal::Data(d)))),
+                Token::StringLiteral(s) => Ok((i1, LocLiteral(t1.loc(), Literal::Str(s)))),
+                Token::PolicyLiteral(p) => Ok((i1, LocLiteral(t1.loc(), Literal::Policy(p)))),
                 Token::Ident(ref s) if s == "None" => Ok((i1, LocLiteral(t1.loc(), Literal::Tuple(Vec::new())))),
                 _ => Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag))),
             }
@@ -728,7 +728,7 @@ named!(parse_lit_expr<Tokens, LocExpr>, alt_complete!(
     do_parse!(
         tag_token!(Token::Dot) >>
         i: parse_int_literal!() >>
-        (LocExpr(i.0, Expr::LitExpr(Literal::FloatLiteral(format!(".{}", i.1).parse().unwrap()))))
+        (LocExpr(i.0, Expr::LitExpr(Literal::Float(format!(".{}", i.1).parse().unwrap()))))
     ) |
     do_parse!(
         lit: parse_literal!() >>
@@ -737,9 +737,15 @@ named!(parse_lit_expr<Tokens, LocExpr>, alt_complete!(
 ));
 
 named!(parse_ident_expr<Tokens, LocExpr>,
-    do_parse!(
-        ident: parse_ident!() >>
-        (LocExpr(ident.loc(), Expr::IdentExpr(ident.1)))
+    alt_complete!(
+        do_parse!(
+            ident: parse_ident!() >>
+            (LocExpr(ident.loc(), Expr::IdentExpr(ident.1)))
+        ) |
+        do_parse!(
+            t: tag_token!(Token::Some) >>
+            (LocExpr(t.loc(), Expr::IdentExpr(Ident("option::Some".to_string()))))
+        )
     )
 );
 
@@ -949,7 +955,7 @@ named!(parse_else_expr<Tokens, BlockStmt>,
 named!(parse_some_match<Tokens, (LocIdent, LocExpr)>,
     do_parse!(
         tag_token!(Token::Let) >>
-        tag_token!(Token::Ident("Some".to_string())) >>
+        tag_token!(Token::Some) >>
         id: delimited!(tag_token!(Token::LParen), parse_ident!(), tag_token!(Token::RParen)) >>
         tag_token!(Token::Assign) >>
         e: parse_expr >>

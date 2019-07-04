@@ -33,6 +33,7 @@ pub enum Token {
     IntLiteral(i64),
     BoolLiteral(bool),
     PolicyLiteral(literals::Policy),
+    Some,
     // statements
     Assign,
     If,
@@ -408,6 +409,7 @@ fn parse_reserved<'a>(t: Span<'a>) -> LocToken<'a> {
         "and" => LocToken::new(t, Token::AndAlso),
         "as" => LocToken::new(t, Token::As),
         "external" => LocToken::new(t, Token::External),
+        "Some" => LocToken::new(t, Token::Some),
         _ => LocToken::new(t, Token::Ident(string)),
     }
 }
