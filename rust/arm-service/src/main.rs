@@ -9,39 +9,6 @@ use futures::stream::Stream;
 use futures::{future, lazy, Future};
 use std::env;
 
-/// Respond to requests
-fn service(
-    req: HttpRequest,
-    body: web::Payload,
-    port: web::Data<u16>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
-    body.map_err(Error::from)
-        .fold(web::BytesMut::new(), |mut body, chunk| {
-            body.extend_from_slice(&chunk);
-            Ok::<_, Error>(body)
-        })
-        .and_then(move |data| {
-            // Ok(HttpResponse::NotFound().body("not here!"))
-            // Ok(HttpResponse::Ok().body("hello"))
-            let info = req.connection_info();
-            Ok(HttpResponse::Ok().body(format!(
-                r#"port {} received request {} with body {:?}; host {}; remote {}"#,
-                port.get_ref(),
-                req.uri(),
-                data,
-                info.host(),
-                info.remote().unwrap_or("<unknown>"),
-                // req.headers()
-                //     .get("x-forwarded-for")
-                //     .map(|v| v.to_str().unwrap_or("not a string"))
-                //     .unwrap_or("not set"),
-            )))
-        })
-}
-
-fn parse_port(s: &str) -> u16 {
-    s.parse().expect(&format!("bad port: {}", s))
-}
 
 fn main() -> std::io::Result<()> {
     // CLI
@@ -58,18 +25,18 @@ fn main() -> std::io::Result<()> {
                 .help("own port"),
         )
         .arg(
-            Arg::with_name("proxy port")
+            Arg::with_name("proxy")
                 .required(false)
                 .short("p")
                 .takes_value(true)
-                .help("proxy port"),
+                .help("proxy port or socket"),
         )
         .arg(
-            Arg::with_name("destination port")
+            Arg::with_name("destination")
                 .required(false)
                 .short("d")
                 .takes_value(true)
-                .help("desination port"),
+                .help("desination port or socket"),
         )
         .arg(
             Arg::with_name("uri")
@@ -87,8 +54,8 @@ fn main() -> std::io::Result<()> {
         .get_matches();
 
     let own_port = matches.value_of("own port").map(|l| parse_port(l));
-    let proxy_port = matches.value_of("proxy port").map(|l| parse_port(l));
-    let destination_port = matches.value_of("destination port").map(|l| parse_port(l));
+    let proxy = matches.value_of("proxy").map(str::to_string);
+    let destination = matches.value_of("destination").map(str::to_string);
     let uri = matches.value_of("uri").unwrap_or("");
     let message = matches
         .value_of("message")
@@ -119,21 +86,18 @@ fn main() -> std::io::Result<()> {
     }
 
     // send a message
-    if let Some(destination_port) = destination_port {
+    if let Some(destination) = destination {
         let uri = format!(
-            "http://localhost:{}/{}",
-            proxy_port.unwrap_or(destination_port),
+            "http://{}/{}",
+            host(&proxy.clone().unwrap_or(destination.clone())),
             uri
         );
         info!("sending: {}", uri);
+        let mut client = client::Client::new().get(uri);
+        if proxy.is_some() {
+            client = client.header("X-Forwarded-Host", host(&destination))
+        };
         actix::Arbiter::spawn(lazy(move || {
-            let mut client = client::Client::new().get(uri);
-            if proxy_port.is_some() {
-                client = client.header(
-                    "X-Forwarded-Host",
-                    format!("localhost:{}", destination_port),
-                )
-            };
             client
                 .send_body(message)
                 .map_err(|_| ())
@@ -155,4 +119,46 @@ fn main() -> std::io::Result<()> {
     };
 
     sys.run()
+}
+
+fn parse_port(s: &str) -> u16 {
+    s.parse().expect(&format!("bad port: {}", s))
+}
+
+fn host(s: &str) -> String {
+    if let Ok(port) = s.parse::<u16>() {
+        format!("localhost:{}", port)
+    } else {
+        s.to_string()
+    }
+}
+
+/// Respond to requests
+fn service(
+    req: HttpRequest,
+    body: web::Payload,
+    port: web::Data<u16>,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    body.map_err(Error::from)
+        .fold(web::BytesMut::new(), |mut body, chunk| {
+            body.extend_from_slice(&chunk);
+            Ok::<_, Error>(body)
+        })
+        .and_then(move |data| {
+            // Ok(HttpResponse::NotFound().body("not here!"))
+            // Ok(HttpResponse::Ok().body("hello"))
+            let info = req.connection_info();
+            Ok(HttpResponse::Ok().body(format!(
+                r#"port {} received request {} with body {:?}; host {}; remote {}"#,
+                port.get_ref(),
+                req.uri(),
+                data,
+                info.host(),
+                info.remote().unwrap_or("<unknown>"),
+                // req.headers()
+                //     .get("x-forwarded-for")
+                //     .map(|v| v.to_str().unwrap_or("not a string"))
+                //     .unwrap_or("not set"),
+            )))
+        })
 }
