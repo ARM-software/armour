@@ -11,33 +11,17 @@ use super::Instances;
 use regex::Regex;
 
 lazy_static! {
-    pub static ref LIST: Regex = Regex::new(r"^(?i)\s*list\s*$").unwrap();
+    pub static ref MASTER: Regex = Regex::new(r"^(?i)\s*(?P<command>list|help)\s*$").unwrap();
 }
 
 lazy_static! {
-    pub static ref DENY_ALL: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?deny all\s*$"#).unwrap();
+    pub static ref INSTANCE0: Regex =
+        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>deny all|allow all|shutdown)\s*$"#).unwrap();
 }
 
 lazy_static! {
-    pub static ref ALLOW_ALL: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?allow all\s*$"#).unwrap();
-}
-
-lazy_static! {
-    pub static ref SHUTDOWN: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?shutdown\s*$"#).unwrap();
-}
-
-lazy_static! {
-    pub static ref POLICY: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?policy\s+"(?P<path>.*)"\s*$"#)
-            .unwrap();
-}
-
-lazy_static! {
-    pub static ref REMOTE: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?remote\s+"(?P<path>.*)"\s*$"#)
+    pub static ref INSTANCE1: Regex =
+        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>policy|remote)\s+"(?P<path>.*)"\s*$"#)
             .unwrap();
 }
 

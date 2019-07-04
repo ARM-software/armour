@@ -62,39 +62,64 @@ fn main() -> io::Result<()> {
     std::thread::spawn(move || loop {
         let mut cmd = String::new();
         if io::stdin().read_line(&mut cmd).is_err() {
-            println!("error");
+            println!("error reading command");
             return;
         }
-        if commands::LIST.is_match(&cmd) {
-            master.do_send(MasterCommand::ListActive)
-        } else if let Some(caps) = commands::POLICY.captures(&cmd) {
-            let path = PathBuf::from(caps.name("path").unwrap().as_str());
-            match lang::Program::from_file(&path) {
-                Ok(prog) => master.do_send(MasterCommand::UpdatePolicy(
-                    commands::instance(&caps),
-                    PolicyRequest::UpdateFromData(prog),
-                )),
-                Err(err) => log::warn!(r#"{:?}: {}"#, path, err),
+        if let Some(caps) = commands::MASTER.captures(&cmd) {
+            let command = caps.name("command").map(|s| s.as_str().to_lowercase());
+            match command.as_ref().map(String::as_str) {
+                Some("list") => master.do_send(MasterCommand::ListActive),
+                Some("help") => println!(
+                    "COMMANDS:
+    help                  list commands
+    list                  list connected instances
+
+    [<id>|all] allow all      request allow all policy
+    [<id>|all] deny all       request deny all policy
+    [<id>|all] shutdown       request shutdown
+    [<id>|all] policy <path>  read and request policy from file <path>
+    [<id>|all] remote <path>  request read of policy from file <path>
+
+    <id> single instance ID number
+    all  all instances"
+                ),
+                _ => log::info!("unknown command"),
             }
-        } else if let Some(caps) = commands::ALLOW_ALL.captures(&cmd) {
+        } else if let Some(caps) = commands::INSTANCE0.captures(&cmd) {
+            let command = caps.name("command").map(|s| s.as_str().to_lowercase());
+            let request = match command.as_ref().map(String::as_str) {
+                Some("allow all") => PolicyRequest::AllowAll,
+                Some("deny all") => PolicyRequest::DenyAll,
+                Some("shutdown") => PolicyRequest::Shutdown,
+                _ => {
+                    log::info!("unknown command");
+                    return;
+                }
+            };
             master.do_send(MasterCommand::UpdatePolicy(
                 commands::instance(&caps),
-                PolicyRequest::AllowAll,
+                request,
             ))
-        } else if let Some(caps) = commands::DENY_ALL.captures(&cmd) {
+        } else if let Some(caps) = commands::INSTANCE1.captures(&cmd) {
+            let path = PathBuf::from(caps.name("path").unwrap().as_str());
+            let command = caps.name("command").map(|s| s.as_str().to_lowercase());
+            let request = match command.as_ref().map(String::as_str) {
+                Some("policy") => match lang::Program::from_file(&path) {
+                    Ok(prog) => PolicyRequest::UpdateFromData(prog),
+                    Err(err) => {
+                        log::warn!(r#"{:?}: {}"#, path, err);
+                        return;
+                    }
+                },
+                Some("remote") => PolicyRequest::UpdateFromFile(path),
+                _ => {
+                    log::info!("unknown command");
+                    return;
+                }
+            };
             master.do_send(MasterCommand::UpdatePolicy(
                 commands::instance(&caps),
-                PolicyRequest::DenyAll,
-            ))
-        } else if let Some(caps) = commands::SHUTDOWN.captures(&cmd) {
-            master.do_send(MasterCommand::UpdatePolicy(
-                commands::instance(&caps),
-                PolicyRequest::Shutdown,
-            ))
-        } else if let Some(caps) = commands::REMOTE.captures(&cmd) {
-            master.do_send(MasterCommand::UpdatePolicy(
-                commands::instance(&caps),
-                PolicyRequest::UpdateFromFile(PathBuf::from(caps.name("path").unwrap().as_str())),
+                request,
             ))
         } else {
             log::info!("unknown command")

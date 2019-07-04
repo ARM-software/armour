@@ -142,10 +142,16 @@ impl Handler<MasterCommand> for ArmourDataMaster {
     type Result = ();
     fn handle(&mut self, msg: MasterCommand, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
-            MasterCommand::ListActive => info!(
-                "active instances: {:?}",
-                self.instances.keys().collect::<Vec<&usize>>()
-            ),
+            MasterCommand::ListActive => {
+                if self.instances.len() == 0 {
+                    info!("there are no active instances")
+                } else {
+                    info!(
+                        "active instances: {:?}",
+                        self.instances.keys().collect::<Vec<&usize>>()
+                    )
+                }
+            }
             MasterCommand::UpdatePolicy(instances, request) => {
                 for instance in self.get_instances(instances) {
                     instance.do_send(request.clone())
