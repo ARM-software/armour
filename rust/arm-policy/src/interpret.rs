@@ -288,7 +288,11 @@ impl Expr {
             }
             Expr::BlockExpr(b, mut es) => {
                 if es.len() == 0 {
-                    Box::new(future::ok(Expr::LitExpr(Literal::Unit)))
+                    Box::new(future::ok(Expr::LitExpr(if b == Block::List {
+                        Literal::List(Vec::new())
+                    } else {
+                        Literal::Unit
+                    })))
                 } else if b == Block::Block {
                     let e = es.remove(0);
                     Box::new(e.eval(env.clone()).and_then(move |res| {
@@ -687,29 +691,62 @@ impl Expr {
                                         None => future::Either::B(future::Either::A(r.evaluate(env.clone()))),
                                     }
                                 // builtin function
-                                } else if function == "Ipv4Addr::reverse_lookup" {
-                                    // needs to be evaluated with future (async resolver)
-                                    match args.as_slice() {
-                                        &[Expr::LitExpr(Literal::Ipv4Addr(ip))] => {
-                                            let (res, background_fut) = AsyncResolver::new(ResolverConfig::default(), ResolverOpts::default());
-                                            let fut = res.reverse_lookup(std::net::IpAddr::from(ip));
-                                            future::Either::B(future::Either::B(background_fut.map_err(|()| Error::new("Ipv4Addr::reverse_lookup: no background")).and_then(|()| {
-                                                fut.and_then(|res| future::ok(Expr::LitExpr(Literal::Tuple(res.iter().map(|s| Literal::Str(s.to_utf8())).collect()))))
-                                                    .or_else(|_| future::ok(Expr::LitExpr(Literal::Tuple(vec![]))))
-                                            })))
-                                        }
-                                        x => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, x)))),
-                                    }
                                 } else if Headers::is_builtin(&function) {
                                     match args.as_slice() {
                                         &[] => match Literal::eval_call0(&function) {
                                             Some(r) => future::Either::A(future::ok(Expr::LitExpr(r))),
                                             None => future::Either::A(future::err(Error::new("eval, call(0): type error"))),
                                         },
-                                        &[Expr::LitExpr(ref l)] => match l.eval_call1(&function) {
-                                            Some(r) => future::Either::A(future::ok(Expr::LitExpr(r))),
-                                            None => future::Either::A(future::err(Error::new("eval, call(1): type error"))),
-                                        },
+                                        &[Expr::LitExpr(ref l)] => {
+                                            if function == "Ipv4Addr::reverse_lookup" {
+                                                // needs to be evaluated with future (async resolver)
+                                                match l {
+                                                    Literal::Ipv4Addr(ip) => {
+                                                        let (res, background_fut) = AsyncResolver::new(ResolverConfig::default(), ResolverOpts::default());
+                                                        let fut = res.reverse_lookup(std::net::IpAddr::from(*ip));
+                                                        future::Either::B(future::Either::B(future::Either::A(
+                                                            background_fut
+                                                                .map_err(|()| Error::new("Ipv4Addr::reverse_lookup: no background"))
+                                                                .and_then(|()| {
+                                                                    fut.and_then(|res| {
+                                                                        future::ok(Expr::LitExpr(Literal::Tuple(vec![Literal::List(
+                                                                            res.iter().map(|s| Literal::Str(s.to_utf8())).collect(),
+                                                                        )])))
+                                                                    })
+                                                                    .or_else(|_| future::ok(Expr::LitExpr(Literal::Tuple(vec![]))))
+                                                                }),
+                                                        )))
+                                                    }
+                                                    x => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, x)))),
+                                                }
+                                            } else if function == "Ipv4Addr::lookup" {
+                                                // needs to be evaluated with future (async resolver)
+                                                match l {
+                                                    Literal::Str(ref name) => {
+                                                        let (res, background_fut) = AsyncResolver::new(ResolverConfig::default(), ResolverOpts::default());
+                                                        let fut = res.ipv4_lookup(name.clone());
+                                                        future::Either::B(future::Either::B(future::Either::B(
+                                                            background_fut
+                                                                .map_err(|()| Error::new("Ipv4Addr::lookup: no background"))
+                                                                .and_then(|()| {
+                                                                    fut.and_then(|res| {
+                                                                        future::ok(Expr::LitExpr(Literal::Tuple(vec![Literal::List(
+                                                                            res.iter().map(|ip| Literal::Ipv4Addr(*ip)).collect(),
+                                                                        )])))
+                                                                    })
+                                                                    .or_else(|_| future::ok(Expr::LitExpr(Literal::Tuple(vec![]))))
+                                                                }),
+                                                        )))
+                                                    }
+                                                    x => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, x)))),
+                                                }
+                                            } else {
+                                                match l.eval_call1(&function) {
+                                                    Some(r) => future::Either::A(future::ok(Expr::LitExpr(r))),
+                                                    None => future::Either::A(future::err(Error::new("eval, call(1): type error"))),
+                                                }
+                                            }
+                                        }
                                         &[Expr::LitExpr(ref l1), Expr::LitExpr(ref l2)] => match l1.eval_call2(&function, l2) {
                                             Some(r) => future::Either::A(future::ok(Expr::LitExpr(r))),
                                             None => future::Either::A(future::err(Error::new("eval, call(2): type error"))),
@@ -718,10 +755,12 @@ impl Expr {
                                             Some(r) => future::Either::A(future::ok(Expr::LitExpr(r))),
                                             None => future::Either::A(future::err(Error::new("eval, call(3): type error"))),
                                         },
-                                        &[Expr::LitExpr(ref l1), Expr::LitExpr(ref l2), Expr::LitExpr(ref l3), Expr::LitExpr(ref l4)] => match l1.eval_call4(&function, l2, l3, l4) {
-                                            Some(r) => future::Either::A(future::ok(Expr::LitExpr(r))),
-                                            None => future::Either::A(future::err(Error::new("eval, call(4): type error"))),
-                                        },
+                                        &[Expr::LitExpr(ref l1), Expr::LitExpr(ref l2), Expr::LitExpr(ref l3), Expr::LitExpr(ref l4)] => {
+                                            match l1.eval_call4(&function, l2, l3, l4) {
+                                                Some(r) => future::Either::A(future::ok(Expr::LitExpr(r))),
+                                                None => future::Either::A(future::err(Error::new("eval, call(4): type error"))),
+                                            }
+                                        }
                                         x => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, x)))),
                                     }
                                 } else {

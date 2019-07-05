@@ -454,10 +454,10 @@ named!(pub parse_fn_head<Tokens, FnHead>,
         tag_token!(Token::Function) >>
         id: parse_ident!() >>
         tag_token!(Token::LParen) >>
-        params: alt_complete!(parse_params | empty_params) >>
+        params: opt!(parse_params) >>
         tag_token!(Token::RParen) >>
         typ: opt!(preceded!(tag_token!(Token::Arrow), parse_type)) >>
-        (FnHead {id, params, typ})
+        (FnHead {id, params: params.unwrap_or(Vec::new()), typ})
     )
 );
 
@@ -468,10 +468,6 @@ named!(parse_fn_expr<Tokens, FnDecl>,
         (FnDecl {head, body })
     )
 );
-
-fn empty_params(i: Tokens) -> IResult<Tokens, Vec<Param>> {
-    Ok((i, vec![]))
-}
 
 named!(parse_param<Tokens, Param>,
     do_parse!(
@@ -706,11 +702,12 @@ named!(parse_iter_expr<Tokens, LocExpr>,
 named!(parse_paren_expr<Tokens, LocExpr>,
     do_parse!(
         t: tag_token!(Token::LParen) >>
-        es: alt_complete!(parse_exprs | empty_boxed_vec) >>
+        es: opt!(parse_exprs) >>
         tag_token!(Token::RParen) >>
         (LocExpr(
             t.loc(),
             {
+                let es = es.unwrap_or(Vec::new());
                 let n = es.len();
                 if n == 0 {
                     Expr::LitExpr(Literal::Unit)
@@ -760,10 +757,6 @@ named!(parse_exprs<Tokens, Vec<LocExpr>>,
         ([&vec!(e)[..], &es[..]].concat())
     )
 );
-
-fn empty_boxed_vec(i: Tokens) -> IResult<Tokens, Vec<LocExpr>> {
-    Ok((i, vec![]))
-}
 
 fn parse_prefix_expr(input: Tokens) -> IResult<Tokens, LocExpr> {
     let (i1, t1) = try_parse!(
@@ -894,7 +887,7 @@ fn parse_call_expr(input: Tokens, fn_handle: LocExpr) -> IResult<Tokens, LocExpr
     do_parse!(
         input,
         tag_token!(Token::LParen)
-            >> arguments: alt_complete!(parse_exprs | empty_boxed_vec)
+            >> arguments: opt!(parse_exprs)
             >> tag_token!(Token::RParen)
             >> (LocExpr(
                 fn_handle.loc(),
@@ -906,7 +899,7 @@ fn parse_call_expr(input: Tokens, fn_handle: LocExpr) -> IResult<Tokens, LocExpr
                             return Err(nom::Err::Error(error_position!(input, ErrorKind::Tag)))
                         }
                     },
-                    arguments
+                    arguments: arguments.unwrap_or(Vec::new())
                 }
             ))
     )
@@ -915,9 +908,9 @@ fn parse_call_expr(input: Tokens, fn_handle: LocExpr) -> IResult<Tokens, LocExpr
 named!(parse_list_expr<Tokens, LocExpr>,
     do_parse!(
         t: tag_token!(Token::LBracket) >>
-        items: parse_exprs >>
+        items: opt!(parse_exprs) >>
         tag_token!(Token::RBracket) >>
-        (LocExpr(t.loc(), Expr::ListExpr(items)))
+        (LocExpr(t.loc(), Expr::ListExpr(items.unwrap_or(Vec::new()))))
     )
 );
 
@@ -1106,10 +1099,10 @@ named!(parse_head<Tokens, Head>,
         tag_token!(Token::Function) >>
         id: parse_ident!() >>
         tag_token!(Token::LParen) >>
-        typs: alt_complete!(parse_types | empty_types) >>
+        typs: opt!(parse_types) >>
         tag_token!(Token::RParen) >>
         typ: opt!(preceded!(tag_token!(Token::Arrow), parse_type)) >>
-        (Head {id, typs, typ})
+        (Head {id, typs: typs.unwrap_or(Vec::new()), typ})
     )
 );
 
@@ -1129,15 +1122,11 @@ named!(parse_type<Tokens, Typ>, alt_complete!(
 named!(parse_tuple_type<Tokens, Typ>,
     do_parse!(
         tag_token!(Token::LParen) >>
-        typs: alt_complete!(parse_types | empty_types) >>
+        typs: opt!(parse_types) >>
         tag_token!(Token::RParen) >>
-        (Typ::Tuple(typs))
+        (Typ::Tuple(typs.unwrap_or(Vec::new())))
     )
 );
-
-fn empty_types(i: Tokens) -> IResult<Tokens, Vec<Typ>> {
-    Ok((i, vec![]))
-}
 
 named!(parse_comma_type<Tokens, Typ>,
     preceded!(tag_token!(Token::Comma), parse_type)

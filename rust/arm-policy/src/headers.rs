@@ -84,6 +84,10 @@ impl Headers {
                 vec![Typ::HttpRequest, Typ::Str, Typ::Data],
                 Typ::HttpRequest,
             )),
+            "Ipv4Addr::lookup" => Some((
+                vec![Typ::Str],
+                Typ::Tuple(vec![Typ::List(Box::new(Typ::Ipv4Addr))]),
+            )),
             "Ipv4Addr::reverse_lookup" => Some((
                 vec![Typ::Ipv4Addr],
                 Typ::Tuple(vec![Typ::List(Box::new(Typ::Str))]),

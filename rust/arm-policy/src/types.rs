@@ -105,31 +105,36 @@ impl Typ {
             _ => Some(self.to_string()),
         }
     }
-    fn unify(&self, other: &Typ) -> bool {
+    fn can_unify(&self, other: &Typ) -> bool {
         match (self, other) {
             (Typ::Return, _) | (_, Typ::Return) => true,
-            (Typ::List(l1), Typ::List(l2)) => l1.unify(l2),
+            (Typ::List(l1), Typ::List(l2)) => l1.can_unify(l2),
             (Typ::Tuple(l1), Typ::Tuple(l2)) => {
                 let n1 = l1.len();
                 let n2 = l2.len();
-                (n1 == n2 && l1.iter().zip(l2).all(|(t1, t2)| t1.unify(t2)))
+                (n1 == n2 && l1.iter().zip(l2).all(|(t1, t2)| t1.can_unify(t2)))
                     || n1 == 0 && n2 == 1
                     || n1 == 1 && n2 == 0
             }
             _ => self == other,
         }
     }
-    fn is_option_none(&self) -> bool {
-        match self {
-            Typ::Tuple(t) => t.len() == 0,
-            _ => false,
-        }
-    }
-    pub fn pick(&self, other: &Typ) -> Typ {
-        if *self == Typ::Return || self.is_option_none() {
-            other.clone()
-        } else {
-            self.clone()
+    pub fn unify(&self, other: &Typ) -> Typ {
+        match (self, other) {
+            (Typ::Return, x) | (x, Typ::Return) => x.clone(),
+            (Typ::List(l1), Typ::List(l2)) => Typ::List(Box::new(l1.unify(l2))),
+            (Typ::Tuple(l1), Typ::Tuple(l2)) => {
+                let n1 = l1.len();
+                let n2 = l2.len();
+                if n1 == 0 {
+                    other.clone()
+                } else if n2 == 0 {
+                    self.clone()
+                } else {
+                    Typ::Tuple(l1.iter().zip(l2).map(|(t1, t2)| t1.unify(t2)).collect())
+                }
+            }
+            _ => self.clone(),
         }
     }
     pub fn type_check<'a>(s: &str, v1: LocTypes<'a>, v2: LocTypes<'a>) -> Result<(), Error<'a>> {
@@ -137,7 +142,7 @@ impl Typ {
         let len2 = v2.len();
         if len1 == len2 {
             for (t1, t2) in v1.into_iter().zip(v2.into_iter()) {
-                if !t1.1.unify(&t2.1) {
+                if !t1.1.can_unify(&t2.1) {
                     return Err(Error::Mismatch(s.to_string(), t1, t2));
                 }
             }

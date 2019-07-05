@@ -546,7 +546,7 @@ impl Expr {
                     Typ::type_check("list", vec![(Some(e.loc()), &ty)], vec![(None, &typ)])?;
                     exprs.push(expr);
                     calls.push(call);
-                    typ = typ.pick(&ty);
+                    typ = typ.unify(&ty);
                 }
                 Ok(ExprAndMeta::new(
                     Expr::BlockExpr(Block::List, exprs),
@@ -655,7 +655,7 @@ impl Expr {
                 )?;
                 Ok(ExprAndMeta::new(
                     Expr::if_else_expr(expr1, expr2, expr3),
-                    typ2.pick(&typ3),
+                    typ2.unify(&typ3),
                     vec![calls1, calls2, calls3],
                 ))
             }
@@ -666,7 +666,9 @@ impl Expr {
                 alternative: None,
             } => {
                 let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, vars)?.split();
-                let typ1 = typ1.dest_option()?;
+                let typ1 = typ1.dest_option().map_err(|_| {
+                    Error::new(format!("expecting option type in if-let at {}", e.loc()))
+                })?;
                 let id = var.id();
                 let (expr2, calls2, typ2) =
                     Expr::from_block_stmt(consequence, headers, ret, &vars.add_var(id, &typ1))?
@@ -693,7 +695,9 @@ impl Expr {
                 alternative: Some(alt),
             } => {
                 let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, vars)?.split();
-                let typ1 = typ1.dest_option()?;
+                let typ1 = typ1.dest_option().map_err(|_| {
+                    Error::new(format!("expecting option type in if-let at {}", e.loc()))
+                })?;
                 let id = var.id();
                 let (expr2, calls2, typ2) =
                     Expr::from_block_stmt(consequence, headers, ret, &vars.add_var(id, &typ1))?
@@ -710,7 +714,7 @@ impl Expr {
                         consequence: Box::new(expr2.closure_expr(id)),
                         alternative: Some(Box::new(expr3)),
                     },
-                    typ2.pick(&typ3),
+                    typ2.unify(&typ3),
                     vec![calls1, calls2, calls3],
                 ))
             }
@@ -806,7 +810,7 @@ impl Expr {
                                 consequence: { Box::new(expr1) },
                                 alternative: Some(Box::new(expr2)),
                             },
-                            typ1,
+                            typ1.unify(&typ2),
                             calls,
                         )
                     }
