@@ -43,6 +43,8 @@ It is recommended to start the policy language REPL (Read-Eval-Print loop) with
 
 - **`HttpRequest`**
 
+- **`Ipv4Addr`**
+
 ### Composite
 
 - Tuples: **`( ty0, ty1, ...)`**
@@ -278,6 +280,16 @@ function               | type
 | set_path             | `(HttpRequest, str) -> HttpRequest`      |
 | set_query            | `(HttpRequest, str) -> HttpRequest`      |
 | set_header           | `(HttpRequest, str, str) -> HttpRequest` |
+
+### Ipv4Addr::
+
+function               | type
+---------------------- | ------------------------------------------
+| from                 | `(i64, i64, i64, i64) -> Ipv4Addr`       |
+| octets               | `Ipv4Addr -> (i64, i64, i64, i64)`       |
+| localhost            | `() -> Ipv4Addr`                         |
+| reverse_lookup       | `Ipv4Addr -> Option<List<str>>`          |
+| lookup               | `str -> Option<List<Ipv4Addr>>`          |
 
 ### i64::
 
