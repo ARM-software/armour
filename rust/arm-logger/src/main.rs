@@ -10,12 +10,19 @@ impl ExternalImpl {
             _ => Err(Error::failed("log_request".to_string())),
         }
     }
+    fn socket(args: &[Literal]) -> Result<Literal, Error> {
+        match args {
+            &[Str(_), List(_), Int(_)] => Ok(Literal::Unit),
+            _ => Err(Error::failed("log_request".to_string())),
+        }
+    }
 }
 
 impl Dispatcher for ExternalImpl {
     fn dispatch(&mut self, name: &str, args: &[Literal]) -> Result<Literal, Error> {
         match name {
             "log_request" => ExternalImpl::log_request(args),
+            "socket" => ExternalImpl::socket(args),
             _ => Err(Error::unimplemented(name.to_string())),
         }
     }

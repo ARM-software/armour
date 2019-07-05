@@ -87,40 +87,42 @@ fn main() -> io::Result<()> {
             }
         } else if let Some(caps) = commands::INSTANCE0.captures(&cmd) {
             let command = caps.name("command").map(|s| s.as_str().to_lowercase());
-            let request = match command.as_ref().map(String::as_str) {
-                Some("allow all") => PolicyRequest::AllowAll,
-                Some("deny all") => PolicyRequest::DenyAll,
-                Some("shutdown") => PolicyRequest::Shutdown,
+            if let Some(request) = match command.as_ref().map(String::as_str) {
+                Some("allow all") => Some(PolicyRequest::AllowAll),
+                Some("deny all") => Some(PolicyRequest::DenyAll),
+                Some("shutdown") => Some(PolicyRequest::Shutdown),
                 _ => {
                     log::info!("unknown command");
-                    return;
+                    None
                 }
-            };
-            master.do_send(MasterCommand::UpdatePolicy(
-                commands::instance(&caps),
-                request,
-            ))
+            } {
+                master.do_send(MasterCommand::UpdatePolicy(
+                    commands::instance(&caps),
+                    request,
+                ))
+            }
         } else if let Some(caps) = commands::INSTANCE1.captures(&cmd) {
             let path = PathBuf::from(caps.name("path").unwrap().as_str());
             let command = caps.name("command").map(|s| s.as_str().to_lowercase());
-            let request = match command.as_ref().map(String::as_str) {
+            if let Some(request) = match command.as_ref().map(String::as_str) {
                 Some("policy") => match lang::Program::from_file(&path) {
-                    Ok(prog) => PolicyRequest::UpdateFromData(prog),
+                    Ok(prog) => Some(PolicyRequest::UpdateFromData(prog)),
                     Err(err) => {
                         log::warn!(r#"{:?}: {}"#, path, err);
-                        return;
+                        None
                     }
                 },
-                Some("remote") => PolicyRequest::UpdateFromFile(path),
+                Some("remote") => Some(PolicyRequest::UpdateFromFile(path)),
                 _ => {
                     log::info!("unknown command");
-                    return;
+                    None
                 }
-            };
-            master.do_send(MasterCommand::UpdatePolicy(
-                commands::instance(&caps),
-                request,
-            ))
+            } {
+                master.do_send(MasterCommand::UpdatePolicy(
+                    commands::instance(&caps),
+                    request,
+                ))
+            }
         } else {
             log::info!("unknown command")
         }
