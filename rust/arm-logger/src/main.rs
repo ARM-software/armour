@@ -1,28 +1,12 @@
 use capnp::Error;
-use external_server::{Dispatcher, External, Literal, Literal::*};
+use external_server::{Dispatcher, External, Literal};
 
 struct ExternalImpl(i64);
 
-impl ExternalImpl {
-    fn log_request(args: &[Literal]) -> Result<Literal, Error> {
-        match args {
-            &[Tuple(_)] => Ok(Literal::Unit),
-            _ => Err(Error::failed("log_request".to_string())),
-        }
-    }
-    fn socket(args: &[Literal]) -> Result<Literal, Error> {
-        match args {
-            &[Str(_), List(_), Int(_)] => Ok(Literal::Unit),
-            _ => Err(Error::failed("log_request".to_string())),
-        }
-    }
-}
-
 impl Dispatcher for ExternalImpl {
-    fn dispatch(&mut self, name: &str, args: &[Literal]) -> Result<Literal, Error> {
+    fn dispatch(&mut self, name: &str, _args: &[Literal]) -> Result<Literal, Error> {
         match name {
-            "log_request" => ExternalImpl::log_request(args),
-            "socket" => ExternalImpl::socket(args),
+            "log" => Ok(Literal::Unit),
             _ => Err(Error::unimplemented(name.to_string())),
         }
     }

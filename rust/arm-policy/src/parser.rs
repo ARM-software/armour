@@ -37,7 +37,7 @@ pub enum Typ {
 
 pub struct Head {
     id: LocIdent,
-    typs: Vec<Typ>,
+    typs: Option<Vec<Typ>>,
     typ: Option<Typ>,
 }
 
@@ -45,11 +45,11 @@ impl Head {
     pub fn name(&self) -> &str {
         self.id.id()
     }
-    pub fn args(&self) -> &Vec<Typ> {
-        &self.typs
+    pub fn args(&self) -> Option<&Vec<Typ>> {
+        self.typs.as_ref()
     }
-    pub fn typ_id(&self) -> &Option<Typ> {
-        &self.typ
+    pub fn typ_id(&self) -> Option<&Typ> {
+        self.typ.as_ref()
     }
     pub fn loc(&self) -> Loc {
         self.id.loc()
@@ -1099,10 +1099,13 @@ named!(parse_head<Tokens, Head>,
         tag_token!(Token::Function) >>
         id: parse_ident!() >>
         tag_token!(Token::LParen) >>
-        typs: opt!(parse_types) >>
+        typs: alt_complete!(
+                value!(None, tag_token!(Token::Underscore)) |
+                do_parse!(typs: opt!(parse_types) >> (Some(typs.unwrap_or(Vec::new()))))
+        ) >>
         tag_token!(Token::RParen) >>
         typ: opt!(preceded!(tag_token!(Token::Arrow), parse_type)) >>
-        (Head {id, typs: typs.unwrap_or(Vec::new()), typ})
+        (Head {id, typs, typ})
     )
 );
 

@@ -24,10 +24,10 @@ impl Headers {
     pub fn new() -> Headers {
         Headers(HashMap::new())
     }
-    pub fn add_function(&mut self, name: &str, args: Vec<Typ>, ret: &Typ) -> Result<(), Error> {
+    pub fn add_function(&mut self, name: &str, sig: Signature) -> Result<(), Error> {
         if self
             .0
-            .insert(name.to_string(), (args, ret.to_owned()))
+            .insert(name.to_string(), sig)
             .is_some()
         {
             Err(Error::new(format!("duplicate function \"{}\"", name)))
@@ -36,68 +36,69 @@ impl Headers {
         }
     }
     pub fn builtins(f: &str) -> Option<Signature> {
+        let sig = |args, ty| Some(Signature::new(args, ty));
         match f {
-            "option::Some" => Some((vec![Typ::Return], Typ::Return)),
-            "option::is_none" => Some((vec![Typ::any_option()], Typ::Bool)),
-            "option::is_some" => Some((vec![Typ::any_option()], Typ::Bool)),
-            "i64::abs" => Some((vec![Typ::I64], Typ::I64)),
-            "i64::to_str" => Some((vec![Typ::I64], Typ::Str)),
-            "str::len" => Some((vec![Typ::Str], Typ::I64)),
-            "str::to_lowercase" => Some((vec![Typ::Str], Typ::Str)),
-            "str::to_uppercase" => Some((vec![Typ::Str], Typ::Str)),
-            "str::trim_start" => Some((vec![Typ::Str], Typ::Str)),
-            "str::trim_end" => Some((vec![Typ::Str], Typ::Str)),
-            "str::as_bytes" => Some((vec![Typ::Str], Typ::Data)),
-            "str::from_utf8" => Some((vec![Typ::Data], Typ::Str)),
-            "str::to_base64" => Some((vec![Typ::Str], Typ::Str)),
-            "data::to_base64" => Some((vec![Typ::Data], Typ::Str)),
-            "data::len" => Some((vec![Typ::Data], Typ::I64)),
-            "i64::pow" => Some((vec![Typ::I64, Typ::I64], Typ::I64)),
-            "i64::min" => Some((vec![Typ::I64, Typ::I64], Typ::I64)),
-            "i64::max" => Some((vec![Typ::I64, Typ::I64], Typ::I64)),
-            "str::starts_with" => Some((vec![Typ::Str, Typ::Str], Typ::Bool)),
-            "str::ends_with" => Some((vec![Typ::Str, Typ::Str], Typ::Bool)),
-            "str::contains" => Some((vec![Typ::Str, Typ::Str], Typ::Bool)),
-            "list::len" => Some((vec![Typ::List(Box::new(Typ::Return))], Typ::I64)),
-            "HttpRequest::default" => Some((vec![], Typ::HttpRequest)),
-            "HttpRequest::method" => Some((vec![Typ::HttpRequest], Typ::Str)),
-            "HttpRequest::version" => Some((vec![Typ::HttpRequest], Typ::Str)),
-            "HttpRequest::path" => Some((vec![Typ::HttpRequest], Typ::Str)),
-            "HttpRequest::route" => Some((vec![Typ::HttpRequest], Typ::List(Box::new(Typ::Str)))),
-            "HttpRequest::query" => Some((vec![Typ::HttpRequest], Typ::Str)),
-            "HttpRequest::query_pairs" => Some((
+            "option::Some" => sig(vec![Typ::Return], Typ::Return),
+            "option::is_none" => sig(vec![Typ::any_option()], Typ::Bool),
+            "option::is_some" => sig(vec![Typ::any_option()], Typ::Bool),
+            "i64::abs" => sig(vec![Typ::I64], Typ::I64),
+            "i64::to_str" => sig(vec![Typ::I64], Typ::Str),
+            "str::len" => sig(vec![Typ::Str], Typ::I64),
+            "str::to_lowercase" => sig(vec![Typ::Str], Typ::Str),
+            "str::to_uppercase" => sig(vec![Typ::Str], Typ::Str),
+            "str::trim_start" => sig(vec![Typ::Str], Typ::Str),
+            "str::trim_end" => sig(vec![Typ::Str], Typ::Str),
+            "str::as_bytes" => sig(vec![Typ::Str], Typ::Data),
+            "str::from_utf8" => sig(vec![Typ::Data], Typ::Str),
+            "str::to_base64" => sig(vec![Typ::Str], Typ::Str),
+            "data::to_base64" => sig(vec![Typ::Data], Typ::Str),
+            "data::len" => sig(vec![Typ::Data], Typ::I64),
+            "i64::pow" => sig(vec![Typ::I64, Typ::I64], Typ::I64),
+            "i64::min" => sig(vec![Typ::I64, Typ::I64], Typ::I64),
+            "i64::max" => sig(vec![Typ::I64, Typ::I64], Typ::I64),
+            "str::starts_with" => sig(vec![Typ::Str, Typ::Str], Typ::Bool),
+            "str::ends_with" => sig(vec![Typ::Str, Typ::Str], Typ::Bool),
+            "str::contains" => sig(vec![Typ::Str, Typ::Str], Typ::Bool),
+            "list::len" => sig(vec![Typ::List(Box::new(Typ::Return))], Typ::I64),
+            "HttpRequest::default" => sig(vec![], Typ::HttpRequest),
+            "HttpRequest::method" => sig(vec![Typ::HttpRequest], Typ::Str),
+            "HttpRequest::version" => sig(vec![Typ::HttpRequest], Typ::Str),
+            "HttpRequest::path" => sig(vec![Typ::HttpRequest], Typ::Str),
+            "HttpRequest::route" => sig(vec![Typ::HttpRequest], Typ::List(Box::new(Typ::Str))),
+            "HttpRequest::query" => sig(vec![Typ::HttpRequest], Typ::Str),
+            "HttpRequest::query_pairs" => sig(
                 vec![Typ::HttpRequest],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::Str, Typ::Str]))),
-            )),
-            "HttpRequest::header" => Some((
+            ),
+            "HttpRequest::header" => sig(
                 vec![Typ::HttpRequest, Typ::Str],
                 Typ::List(Box::new(Typ::Data)).option(),
-            )),
-            "HttpRequest::headers" => Some((vec![Typ::HttpRequest], Typ::List(Box::new(Typ::Str)))),
-            "HttpRequest::header_pairs" => Some((
+            ),
+            "HttpRequest::headers" => sig(vec![Typ::HttpRequest], Typ::List(Box::new(Typ::Str))),
+            "HttpRequest::header_pairs" => sig(
                 vec![Typ::HttpRequest],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::Str, Typ::Data]))),
-            )),
-            "HttpRequest::set_path" => Some((vec![Typ::HttpRequest, Typ::Str], Typ::HttpRequest)),
-            "HttpRequest::set_query" => Some((vec![Typ::HttpRequest, Typ::Str], Typ::HttpRequest)),
-            "HttpRequest::set_header" => Some((
+            ),
+            "HttpRequest::set_path" => sig(vec![Typ::HttpRequest, Typ::Str], Typ::HttpRequest),
+            "HttpRequest::set_query" => sig(vec![Typ::HttpRequest, Typ::Str], Typ::HttpRequest),
+            "HttpRequest::set_header" => sig(
                 vec![Typ::HttpRequest, Typ::Str, Typ::Data],
                 Typ::HttpRequest,
-            )),
-            "Ipv4Addr::lookup" => Some((
+            ),
+            "Ipv4Addr::lookup" => sig(
                 vec![Typ::Str],
                 Typ::Tuple(vec![Typ::List(Box::new(Typ::Ipv4Addr))]),
-            )),
-            "Ipv4Addr::reverse_lookup" => Some((
+            ),
+            "Ipv4Addr::reverse_lookup" => sig(
                 vec![Typ::Ipv4Addr],
                 Typ::Tuple(vec![Typ::List(Box::new(Typ::Str))]),
-            )),
-            "Ipv4Addr::localhost" => Some((vec![], Typ::Ipv4Addr)),
-            "Ipv4Addr::from" => Some((vec![Typ::I64, Typ::I64, Typ::I64, Typ::I64], Typ::Ipv4Addr)),
-            "Ipv4Addr::octets" => Some((
+            ),
+            "Ipv4Addr::localhost" => sig(vec![], Typ::Ipv4Addr),
+            "Ipv4Addr::from" => sig(vec![Typ::I64, Typ::I64, Typ::I64, Typ::I64], Typ::Ipv4Addr),
+            "Ipv4Addr::octets" => sig(
                 vec![Typ::Ipv4Addr],
                 Typ::Tuple(vec![Typ::I64, Typ::I64, Typ::I64, Typ::I64]),
-            )),
+            ),
             _ => None,
         }
     }
@@ -108,7 +109,7 @@ impl Headers {
         (Headers::builtins(name).or(self.0.get(name).cloned()))
     }
     pub fn return_typ(&self, name: &str) -> Result<Typ, Error> {
-        Ok(self.typ(name).ok_or(Error::new("no current function"))?.1)
+        Ok(self.typ(name).ok_or(Error::new("no current function"))?.typ())
     }
     pub fn resolve(name: &str, typs: &Vec<Typ>) -> String {
         if name.starts_with(".::") {

@@ -91,8 +91,12 @@ impl<'a> fmt::Display for Error<'a> {
 }
 
 impl Typ {
-    pub fn any_option() -> Typ {Typ::Tuple(Vec::new())}
-    pub fn option(&self) -> Typ {Typ::Tuple(vec![self.clone()])}
+    pub fn any_option() -> Typ {
+        Typ::Tuple(Vec::new())
+    }
+    pub fn option(&self) -> Typ {
+        Typ::Tuple(vec![self.clone()])
+    }
     pub fn intrinsic(&self) -> Option<String> {
         match self {
             Typ::Return => None,
@@ -244,7 +248,23 @@ impl parser::Param {
     }
 }
 
-pub type Signature = (Vec<Typ>, Typ);
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Signature(Option<Vec<Typ>>, Typ);
+
+impl Signature {
+    pub fn new(args: Vec<Typ>, typ: Typ) -> Self {
+        Signature(Some(args), typ)
+    }
+    pub fn any(typ: Typ) -> Self {
+        Signature(None, typ)
+    }
+    pub fn split(self) -> (Option<Vec<Typ>>, Typ) {
+        (self.0, self.1)
+    }
+    pub fn typ(self) -> Typ {
+        self.1
+    }
+}
 
 impl parser::FnDecl {
     // TODO: report location of errors
@@ -254,7 +274,7 @@ impl parser::FnDecl {
             None => Typ::Unit,
         };
         let args: Result<Vec<Typ>, Error> = self.args().iter().map(|a| a.typ()).collect();
-        Ok((args?, ty))
+        Ok(Signature::new(args?, ty))
     }
 }
 
@@ -265,8 +285,12 @@ impl parser::Head {
             Some(id) => Typ::from_parse(id)?,
             None => Typ::Unit,
         };
-        let args: Result<Vec<Typ>, Error> =
-            self.args().iter().map(|a| Typ::from_parse(a)).collect();
-        Ok((args?, ty))
+        if let Some(args) = self.args() {
+            let args: Result<Vec<Typ>, Error> = args.iter().map(|a| Typ::from_parse(a)).collect();
+            Ok(Signature::new(args?, ty))
+        } else {
+            Ok(Signature::any(ty))
+        }
+
     }
 }

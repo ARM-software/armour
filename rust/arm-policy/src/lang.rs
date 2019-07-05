@@ -908,14 +908,18 @@ impl Expr {
                     .collect();
                 let (expressions, mut calls, types) = ExprAndMeta::split_vec(expressions?);
                 let function = &Headers::resolve(function, &types);
-                if let Some((args, typ)) = headers.typ(function) {
-                    let args = args.iter().map(|t| (None, t)).collect();
-                    let types = arguments
-                        .iter()
-                        .map(|e| Some(e.loc()))
-                        .zip(types.iter())
-                        .collect();
-                    Typ::type_check(function, types, args)?;
+                if let Some((args, typ)) = headers.typ(function).map(types::Signature::split) {
+                    // external functions *can* be declared so that they accept any argument,
+                    // so only check the arguments when their types are declared
+                    if let Some(args) = args {
+                        let args = args.iter().map(|t| (None, t)).collect();
+                        let types = arguments
+                            .iter()
+                            .map(|e| Some(e.loc()))
+                            .zip(types.iter())
+                            .collect();
+                        Typ::type_check(function, types, args)?
+                    };
                     calls.push(
                         vec![Call {
                             name: function.to_string(),
@@ -1332,7 +1336,7 @@ impl std::str::FromStr for Program {
                     match decl {
                         parser::Decl::FnDecl(decl) => {
                             let name = decl.name();
-                            let (args, typ) = decl.typ().map_err(|err| {
+                            let sig = decl.typ().map_err(|err| {
                                 Error::new(&format!(
                                     "function \"{}\" at {}: {}",
                                     name,
@@ -1340,14 +1344,14 @@ impl std::str::FromStr for Program {
                                     err
                                 ))
                             })?;
-                            prog.headers.add_function(name, args, &typ)?;
+                            prog.headers.add_function(name, sig)?;
                             call_graph.add_node(name);
                         }
                         parser::Decl::External(e) => {
                             let ename = e.name();
                             for h in e.headers.iter() {
                                 let name = &format!("{}::{}", ename, h.name());
-                                let (args, typ) = h.typ().map_err(|err| {
+                                let sig = h.typ().map_err(|err| {
                                     Error::new(&format!(
                                         "header \"{}\" at {}: {}",
                                         name,
@@ -1355,7 +1359,7 @@ impl std::str::FromStr for Program {
                                         err
                                     ))
                                 })?;
-                                prog.headers.add_function(name, args, &typ)?;
+                                prog.headers.add_function(name, sig)?;
                                 call_graph.add_node(name);
                             }
                             if prog.externals.add_external(ename, e.url()) {

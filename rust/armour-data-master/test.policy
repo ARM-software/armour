@@ -1,15 +1,14 @@
 external logger @ "../arm-logger/log_sock" {
-  fn log_request(HttpRequest) -> ()
-  fn socket(str, List<Ipv4Addr>, i64) -> ()
+  fn log(_) -> ()
 }
 
 fn require(req: HttpRequest) -> bool {
-  logger::log_request(req);
+  logger::log(req);
   if let Some(hosts) = req.header("x-forwarded-host") {
     map host in hosts {
       if str::from_utf8(host) matches [name] ":" [port as i64] {
         if let Some(ips) = Ipv4Addr::lookup(name) {
-          logger::socket(name, ips, port)
+          logger::log(name, ips, port)
         }
       }
     };
