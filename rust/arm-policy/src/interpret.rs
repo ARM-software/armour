@@ -62,7 +62,7 @@ impl Literal {
     }
     fn eval_call1(&self, f: &str) -> Option<Self> {
         match (f, self) {
-            ("option::Some", _) => Some(Literal::Tuple(vec![self.clone()])),
+            ("option::Some", _) => Some(self.some()),
             ("option::is_none", Literal::Tuple(t)) => Some(Literal::Bool(t.len() == 0)),
             ("option::is_some", Literal::Tuple(t)) => Some(Literal::Bool(t.len() == 1)),
             ("i64::abs", Literal::Int(i)) => Some(Literal::Int(i.abs())),
@@ -79,43 +79,14 @@ impl Literal {
             ("str::to_base64", Literal::Str(s)) => Some(Literal::Str(base64::encode(s))),
             ("data::to_base64", Literal::Data(d)) => Some(Literal::Str(base64::encode(d))),
             ("data::len", Literal::Data(d)) => Some(Literal::Int(d.len() as i64)),
-            ("HttpRequest::method", Literal::HttpRequest(req)) => Some(Literal::Str(req.method())),
-            ("HttpRequest::version", Literal::HttpRequest(req)) => {
-                Some(Literal::Str(req.version()))
-            }
-            ("HttpRequest::path", Literal::HttpRequest(req)) => Some(Literal::Str(req.path())),
-            ("HttpRequest::route", Literal::HttpRequest(req)) => Some(Literal::List(
-                req.split_path()
-                    .into_iter()
-                    .map(|h| Literal::Str(h))
-                    .collect(),
-            )),
-            ("HttpRequest::query", Literal::HttpRequest(req)) => Some(Literal::Str(req.query())),
-            ("HttpRequest::query_pairs", Literal::HttpRequest(req)) => Some(Literal::List(
-                req.query_pairs()
-                    .iter()
-                    .map(|(k, v)| {
-                        Literal::Tuple(vec![
-                            Literal::Str(k.to_string()),
-                            Literal::Str(v.to_string()),
-                        ])
-                    })
-                    .collect(),
-            )),
-            ("HttpRequest::header_pairs", Literal::HttpRequest(req)) => Some(Literal::List(
-                req.header_pairs()
-                    .iter()
-                    .map(|(k, v)| {
-                        Literal::Tuple(vec![
-                            Literal::Str(k.to_string()),
-                            Literal::Str(String::from_utf8_lossy(&v).into_owned()),
-                        ])
-                    })
-                    .collect(),
-            )),
-            ("HttpRequest::headers", Literal::HttpRequest(req)) => Some(Literal::List(
-                req.headers().into_iter().map(|h| Literal::Str(h)).collect(),
-            )),
+            ("HttpRequest::method", Literal::HttpRequest(req)) => Some(req.method()),
+            ("HttpRequest::version", Literal::HttpRequest(req)) => Some(req.version()),
+            ("HttpRequest::path", Literal::HttpRequest(req)) => Some(req.path()),
+            ("HttpRequest::route", Literal::HttpRequest(req)) => Some(req.route()),
+            ("HttpRequest::query", Literal::HttpRequest(req)) => Some(req.query()),
+            ("HttpRequest::query_pairs", Literal::HttpRequest(req)) => Some(req.query_pairs()),
+            ("HttpRequest::header_pairs", Literal::HttpRequest(req)) => Some(req.header_pairs()),
+            ("HttpRequest::headers", Literal::HttpRequest(req)) => Some(req.headers()),
             ("list::len", Literal::List(l)) => Some(Literal::Int(l.len() as i64)),
             ("Ipv4Addr::octets", Literal::Ipv4Addr(ip)) => Some(ip.to_literal()),
             (_, Literal::Tuple(l)) => {
@@ -153,12 +124,7 @@ impl Literal {
                 Some(Literal::HttpRequest(req.set_query(q)))
             }
             ("HttpRequest::header", Literal::HttpRequest(req), Literal::Str(h)) => {
-                Some(Literal::List(
-                    req.header(&h)
-                        .into_iter()
-                        .map(|v| Literal::Data(v))
-                        .collect(),
-                ))
+                Some(req.header(&h))
             }
             _ => None,
         }
@@ -709,11 +675,11 @@ impl Expr {
                                                                 .map_err(|()| Error::new("Ipv4Addr::reverse_lookup: no background"))
                                                                 .and_then(|()| {
                                                                     fut.and_then(|res| {
-                                                                        future::ok(Expr::LitExpr(Literal::Tuple(vec![Literal::List(
+                                                                        future::ok(Expr::LitExpr(Literal::List(
                                                                             res.iter().map(|s| Literal::Str(s.to_utf8())).collect(),
-                                                                        )])))
+                                                                        ).some()))
                                                                     })
-                                                                    .or_else(|_| future::ok(Expr::LitExpr(Literal::Tuple(vec![]))))
+                                                                    .or_else(|_| future::ok(Expr::LitExpr(Literal::none())))
                                                                 }),
                                                         )))
                                                     }
@@ -730,11 +696,11 @@ impl Expr {
                                                                 .map_err(|()| Error::new("Ipv4Addr::lookup: no background"))
                                                                 .and_then(|()| {
                                                                     fut.and_then(|res| {
-                                                                        future::ok(Expr::LitExpr(Literal::Tuple(vec![Literal::List(
+                                                                        future::ok(Expr::LitExpr(Literal::List(
                                                                             res.iter().map(|ip| Literal::Ipv4Addr(*ip)).collect(),
-                                                                        )])))
+                                                                        ).some()))
                                                                     })
-                                                                    .or_else(|_| future::ok(Expr::LitExpr(Literal::Tuple(vec![]))))
+                                                                    .or_else(|_| future::ok(Expr::LitExpr(Literal::none())))
                                                                 }),
                                                         )))
                                                     }

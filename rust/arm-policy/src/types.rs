@@ -91,6 +91,7 @@ impl<'a> fmt::Display for Error<'a> {
 }
 
 impl Typ {
+    pub fn option() -> Typ {Typ::Tuple(Vec::new())}
     pub fn intrinsic(&self) -> Option<String> {
         match self {
             Typ::Return => None,

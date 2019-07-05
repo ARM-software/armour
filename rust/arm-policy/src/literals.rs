@@ -99,44 +99,59 @@ pub struct HttpRequest {
 }
 
 impl HttpRequest {
-    pub fn method(&self) -> String {
-        self.method.to_string()
+    pub fn method(&self) -> Literal {
+        Literal::Str(self.method.to_string())
     }
-    pub fn version(&self) -> String {
-        self.version.to_string()
+    pub fn version(&self) -> Literal {
+        Literal::Str(self.version.to_string())
     }
-    pub fn path(&self) -> String {
-        self.path.to_string()
+    pub fn path(&self) -> Literal {
+        Literal::Str(self.path.to_string())
     }
     pub fn set_path(&self, s: &str) -> HttpRequest {
         let mut new = self.clone();
         new.path = s.to_string();
         new
     }
-    pub fn split_path(&self) -> Vec<String> {
-        self.path
-            .trim_matches('/')
-            .split('/')
-            .map(|s| s.to_string())
-            .collect()
+    pub fn route(&self) -> Literal {
+        Literal::List(
+            self.path
+                .trim_matches('/')
+                .split('/')
+                .map(|s| Literal::Str(s.to_string()))
+                .collect(),
+        )
     }
-    pub fn query(&self) -> String {
-        self.query.to_string()
+    pub fn query(&self) -> Literal {
+        Literal::Str(self.query.to_string())
     }
     pub fn set_query(&self, s: &str) -> HttpRequest {
         let mut new = self.clone();
         new.query = s.to_string();
         new
     }
-    pub fn query_pairs(&self) -> Vec<(String, String)> {
+    pub fn query_pairs(&self) -> Literal {
         if let Ok(url) = url::Url::parse(&format!("http://x/?{}", self.query)) {
-            url.query_pairs().into_owned().collect()
+            Literal::List(
+                url.query_pairs()
+                    .map(|(k, v)| {
+                        Literal::Tuple(vec![
+                            Literal::Str(k.to_string()),
+                            Literal::Str(v.to_string()),
+                        ])
+                    })
+                    .collect(),
+            )
         } else {
-            Vec::new()
+            Literal::List(Vec::new())
         }
     }
-    pub fn header(&self, s: &str) -> Vec<Vec<u8>> {
-        self.headers.get(s).unwrap_or(&Vec::new()).to_vec()
+    pub fn header(&self, s: &str) -> Literal {
+        match self.headers.get(s) {
+            None => Literal::none(),
+            Some(vs) => Literal::List(vs.iter().map(|v| Literal::Data(v.clone())).collect()).some(),
+        }
+
     }
     pub fn set_header(&self, k: &str, v: &[u8]) -> HttpRequest {
         let mut new = self.clone();
@@ -148,17 +163,25 @@ impl HttpRequest {
         }
         new
     }
-    pub fn headers(&self) -> Vec<String> {
-        self.headers.keys().cloned().collect()
+    pub fn headers(&self) -> Literal {
+        Literal::List(
+            self.headers
+                .keys()
+                .map(|k| Literal::Str(k.to_string()))
+                .collect(),
+        )
     }
-    pub fn header_pairs(&self) -> Vec<(String, Vec<u8>)> {
+    pub fn header_pairs(&self) -> Literal {
         let mut pairs = Vec::new();
         for (k, vs) in self.headers.iter() {
             for v in vs {
-                pairs.push((k.clone(), v.clone()))
+                pairs.push(Literal::Tuple(vec![
+                    Literal::Str(k.to_string()),
+                    Literal::Data(v.to_vec()),
+                ]))
             }
         }
-        pairs
+        Literal::List(pairs)
     }
 }
 
@@ -168,17 +191,12 @@ pub trait ToLiteral {
 
 impl ToLiteral for HttpRequest {
     fn to_literal(&self) -> Literal {
-        let header_pairs: Vec<Literal> = self
-            .header_pairs()
-            .into_iter()
-            .map(|(h, v)| Literal::Tuple(vec![Literal::Str(h), Literal::Data(v)]))
-            .collect();
         Literal::Tuple(vec![
-            Literal::Str(self.method()),
-            Literal::Str(self.version()),
-            Literal::Str(self.path()),
-            Literal::Str(self.query()),
-            Literal::List(header_pairs),
+            self.method(),
+            self.version(),
+            self.path(),
+            self.query(),
+            self.header_pairs(),
         ])
     }
 }
@@ -252,6 +270,12 @@ impl Literal {
             Literal::Tuple(l) => Typ::Tuple((*l).iter().map(|t: &Literal| t.typ()).collect()),
             Literal::HttpRequest(_) => Typ::HttpRequest,
         }
+    }
+    pub fn none() -> Literal {
+        Literal::Tuple(Vec::new())
+    }
+    pub fn some(&self) -> Literal {
+        Literal::Tuple(vec![self.clone()])
     }
 }
 

@@ -266,20 +266,20 @@ external <external name> @ "<url>" {
 ### HttpRequest::
 
 function               | type
----------------------- | ------------------------------------------
-| default              | `() -> HttpRequest`                      |
-| method               | `HttpRequest -> str`                     |
-| version              | `HttpRequest -> str`                     |
-| path                 | `HttpRequest -> str`                     |
-| route                | `HttpRequest -> List<str>`               |
-| query                | `HttpRequest -> str`                     |
-| header               | `(HttpRequest, str) -> str`              |
-| headers              | `HttpRequest -> List<str>`               |
-| query_pairs          | `HttpRequest -> List<(str, str)>`        |
-| header_pairs         | `HttpRequest -> List<(str, data)>`       |
-| set_path             | `(HttpRequest, str) -> HttpRequest`      |
-| set_query            | `(HttpRequest, str) -> HttpRequest`      |
-| set_header           | `(HttpRequest, str, str) -> HttpRequest` |
+---------------------- | -------------------------------------------
+| default              | `() -> HttpRequest`                       |
+| method               | `HttpRequest -> str`                      |
+| version              | `HttpRequest -> str`                      |
+| path                 | `HttpRequest -> str`                      |
+| route                | `HttpRequest -> List<str>`                |
+| query                | `HttpRequest -> str`                      |
+| header               | `(HttpRequest, str) -> Option<List<data>>`|
+| headers              | `HttpRequest -> List<str>`                |
+| query_pairs          | `HttpRequest -> List<(str, str)>`         |
+| header_pairs         | `HttpRequest -> List<(str, data)>`        |
+| set_path             | `(HttpRequest, str) -> HttpRequest`       |
+| set_query            | `(HttpRequest, str) -> HttpRequest`       |
+| set_header           | `(HttpRequest, str, data) -> HttpRequest` |
 
 ### Ipv4Addr::
 
