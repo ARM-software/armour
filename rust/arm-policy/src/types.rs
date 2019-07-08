@@ -5,7 +5,7 @@ use parser::{Infix, Prefix};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Typ {
     Return,
     Bool,
@@ -55,7 +55,7 @@ impl fmt::Display for Typ {
 type LocType<'a> = (Option<Loc>, &'a Typ);
 type LocTypes<'a> = Vec<LocType<'a>>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Error<'a> {
     Mismatch(String, LocType<'a>, LocType<'a>),
     Args(String, usize, usize),
@@ -261,8 +261,26 @@ impl Signature {
     pub fn split(self) -> (Option<Vec<Typ>>, Typ) {
         (self.0, self.1)
     }
+    pub fn split_as_ref(&self) -> (Option<&Vec<Typ>>, &Typ) {
+        (self.0.as_ref(), &self.1)
+    }
     pub fn typ(self) -> Typ {
         self.1
+    }
+}
+
+impl fmt::Display for Signature {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(")?;
+        match self.0 {
+            Some(ref tys) => {
+                for ty in tys {
+                    write!(f, "{},", ty)?
+                }
+            }
+            None => write!(f, "_")?,
+        }
+        write!(f, ") -> {}", self.1)
     }
 }
 

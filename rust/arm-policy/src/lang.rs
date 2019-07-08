@@ -255,6 +255,12 @@ impl Expr {
     pub fn http_request(r: literals::HttpRequest) -> Expr {
         Expr::LitExpr(Literal::HttpRequest(r))
     }
+    pub fn none() -> Expr {
+        Expr::LitExpr(Literal::none())
+    }
+    pub fn some(l: Literal) -> Expr {
+        Expr::LitExpr(Literal::some(&l))
+    }
     pub fn call(f: &str, arguments: Vec<Expr>) -> Expr {
         Expr::CallExpr {
             function: f.to_string(),
@@ -862,7 +868,13 @@ impl Expr {
                 };
                 let (expr2, calls2, typ2) =
                     Expr::from_block_stmt(body, headers, ret, &iter_vars)?.split();
-                if *op != parser::Iter::Map {
+                if *op == parser::Iter::FilterMap {
+                    Typ::type_check(
+                        "filter_map-expression",
+                        vec![(Some(Expr::block_stmt_loc(body, e.loc())), &typ2)],
+                        vec![(None, &Typ::any_option())],
+                    )?
+                } else if *op != parser::Iter::Map && *op != parser::Iter::For {
                     Typ::type_check(
                         "all/any/filter-expression",
                         vec![(Some(Expr::block_stmt_loc(body, e.loc())), &typ2)],
@@ -871,12 +883,13 @@ impl Expr {
                 }
                 Ok(ExprAndMeta::new(
                     expr2.iter_expr(op, vs, expr1),
-                    if *op == parser::Iter::Map {
-                        Typ::List(Box::new(typ2))
-                    } else if *op == parser::Iter::Filter {
-                        typ1
-                    } else {
-                        Typ::Bool
+                    match op {
+                        parser::Iter::All | parser::Iter::Any => Typ::Bool,
+                        parser::Iter::Filter => typ1,
+                        // type check above will ensure unwrap is successful
+                        parser::Iter::FilterMap => Typ::List(Box::new(typ2.dest_option().unwrap())),
+                        parser::Iter::For => Typ::Unit,
+                        parser::Iter::Map => Typ::List(Box::new(typ2)),
                     },
                     vec![calls1, calls2],
                 ))
@@ -1308,12 +1321,66 @@ impl Program {
         self.code.0.insert(name.to_string(), e);
         Ok(())
     }
-    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, Error> {
+    fn type_check1(
+        function: &str,
+        sig1: &types::Signature,
+        sig2: &types::Signature,
+    ) -> Result<(), Error> {
+        let (args1, ty1) = sig1.split_as_ref();
+        let (args2, ty2) = sig2.split_as_ref();
+        Typ::type_check(function, vec![(None, ty1)], vec![(None, ty2)]).map_err(Error::from)?;
+        match (args1, args2) {
+            (Some(a1), Some(a2)) => {
+                let a1 = a1.iter().map(|t| (None, t)).collect();
+                let a2 = a2.iter().map(|t| (None, t)).collect();
+                Typ::type_check(function, a1, a2).map_err(Error::from)
+            }
+            (Some(_), None) => Err(Error::new(format!(
+                "type of function not general enough: {}",
+                function
+            ))),
+            (None, None) | (None, Some(_)) => Ok(()),
+        }
+    }
+    fn type_check(&self, function: &str, sigs: &Vec<types::Signature>) -> Result<(), Error> {
+        match self.headers.typ(function) {
+            Some(f_sig) => {
+                if sigs
+                    .iter()
+                    .any(|sig| Program::type_check1(function, &f_sig, sig).is_ok())
+                {
+                    Ok(())
+                } else {
+                    let mut possible = String::new();
+                    for sig in sigs {
+                        possible.push_str(&sig.to_string());
+                        possible.push_str("\n")
+                    }
+                    Err(Error::new(format!(
+                        r#"unable to find suitable instance of function "{}"\npossible types are:\n{}"#,
+                        function, possible
+                    )))
+                }
+            }
+            None => Ok(()), // ok if not present
+        }
+    }
+    pub fn check_from_file<P: AsRef<std::path::Path>>(
+        path: P,
+        check: &Vec<(String, Vec<types::Signature>)>,
+    ) -> Result<Self, Error> {
         use std::io::prelude::Read;
         let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
         let mut buf = String::new();
         reader.read_to_string(&mut buf).unwrap();
-        buf.parse()
+        let prog: Self = buf.parse()?;
+        for (f, sigs) in check {
+            prog.type_check(f.as_str(), sigs)?
+        }
+        Ok(prog)
+    }
+    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, Error> {
+        Program::check_from_file(path, &Vec::new())
     }
 }
 

@@ -3,7 +3,7 @@
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
 use arm_policy::lang;
-use armour_data_interface::PolicyRequest;
+use armour_data_interface::{PolicyRequest, POLICY_SIG};
 use armour_data_master as master;
 use clap::{crate_version, App, Arg};
 use master::{commands, MasterCommand};
@@ -105,7 +105,7 @@ fn main() -> io::Result<()> {
             let path = PathBuf::from(caps.name("path").unwrap().as_str());
             let command = caps.name("command").map(|s| s.as_str().to_lowercase());
             if let Some(request) = match command.as_ref().map(String::as_str) {
-                Some("policy") => match lang::Program::from_file(&path) {
+                Some("policy") => match lang::Program::check_from_file(&path, &*POLICY_SIG) {
                     Ok(prog) => Some(PolicyRequest::UpdateFromData(prog)),
                     Err(err) => {
                         log::warn!(r#"{:?}: {}"#, path, err);

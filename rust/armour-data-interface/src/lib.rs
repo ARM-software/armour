@@ -1,6 +1,13 @@
 /// Communication interface between data plane master and proxy instances
+
+#[macro_use]
+extern crate lazy_static;
+
 use actix::prelude::*;
-use arm_policy::lang::Program;
+use arm_policy::{
+    lang::Program,
+    types::{Signature, Typ},
+};
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
@@ -35,6 +42,35 @@ trait SerializeEncoder<T: serde::Serialize, E: std::convert::From<std::io::Error
         dst.put(msg_ref);
         Ok(())
     }
+}
+
+lazy_static! {
+    pub static ref POLICY_SIG: Vec<(String, Vec<Signature>)> = {
+        let require_args = vec![Typ::HttpRequest, Typ::Tuple(vec![Typ::Ipv4Addr, Typ::I64])];
+        vec![
+            (
+                "require".to_string(),
+                vec![
+                    Signature::new(require_args.clone(), Typ::Bool),
+                    Signature::new(require_args, Typ::Policy),
+                ],
+            ),
+            (
+                "client_payload".to_string(),
+                vec![
+                    Signature::new(vec![Typ::Data], Typ::Bool),
+                    Signature::new(vec![Typ::Data], Typ::Policy),
+                ],
+            ),
+            (
+                "server_payload".to_string(),
+                vec![
+                    Signature::new(vec![Typ::Data], Typ::Bool),
+                    Signature::new(vec![Typ::Data], Typ::Policy),
+                ],
+            ),
+        ]
+    };
 }
 
 /// Policy update request messages

@@ -18,7 +18,7 @@ pub fn proxy(
     address: web::Data<String>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     policy
-        .send(policy::Evaluate::Require(req.to_expression()))
+        .send(policy::Evaluate::Require(req.to_expression(), req.peer_addr().to_expression()))
         .then(move |res| match res {
             // allow request
             Ok(Ok(Some(true))) => future::Either::A(

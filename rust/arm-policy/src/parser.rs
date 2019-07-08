@@ -139,8 +139,10 @@ pub type BlockStmt = Vec<LocStmt>;
 pub enum Iter {
     All,
     Any,
-    Map,
     Filter,
+    FilterMap,
+    For,
+    Map,
 }
 
 impl std::fmt::Display for Iter {
@@ -148,8 +150,10 @@ impl std::fmt::Display for Iter {
         match self {
             Iter::All => write!(f, "all"),
             Iter::Any => write!(f, "any"),
-            Iter::Map => write!(f, "map"),
             Iter::Filter => write!(f, "filter"),
+            Iter::FilterMap => write!(f, "filter_map"),
+            Iter::Map => write!(f, "map"),
+            Iter::For => write!(f, "for"),
         }
     }
 }
@@ -674,8 +678,10 @@ named!(parse_iter_expr<Tokens, LocExpr>,
         t: alt!(
             tag_token!(Token::All) |
             tag_token!(Token::Any) |
-            tag_token!(Token::Map) |
-            tag_token!(Token::Filter)
+            tag_token!(Token::Filter) |
+            tag_token!(Token::FilterMap) |
+            tag_token!(Token::For) |
+            tag_token!(Token::Map)
         ) >>
         idents: parse_idents >>
         tag_token!(Token::In) >>
@@ -687,8 +693,10 @@ named!(parse_iter_expr<Tokens, LocExpr>,
                 op: match t.tok0() {
                     Token::All => Iter::All,
                     Token::Any => Iter::Any,
-                    Token::Map => Iter::Map,
                     Token::Filter => Iter::Filter,
+                    Token::FilterMap => Iter::FilterMap,
+                    Token::For => Iter::For,
+                    Token::Map => Iter::Map,
                     _ => unreachable!(),
                 },
                 idents,

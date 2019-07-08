@@ -4,6 +4,7 @@ use actix_web::web;
 use arm_policy::{lang, literals};
 use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse};
 use futures::{future, Future};
+use literals::ToLiteral;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio_codec::FramedRead;
@@ -84,7 +85,7 @@ impl StreamHandler<PolicyRequest, std::io::Error> for DataPolicy {
 
 /// Internal proxy message for requesting function evaluation over the policy
 pub enum Evaluate {
-    Require(lang::Expr),
+    Require(lang::Expr, lang::Expr),
     ClientPayload(lang::Expr),
     ServerPayload(lang::Expr),
 }
@@ -98,7 +99,7 @@ impl Handler<Evaluate> for DataPolicy {
 
     fn handle(&mut self, msg: Evaluate, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
-            Evaluate::Require(arg) => self.evaluate_policy("require", vec![arg]),
+            Evaluate::Require(arg1, arg2) => self.evaluate_policy("require", vec![arg1, arg2]),
             Evaluate::ClientPayload(arg) => self.evaluate_policy("client_payload", vec![arg]),
             Evaluate::ServerPayload(arg) => self.evaluate_policy("server_payload", vec![arg]),
         }
@@ -111,7 +112,10 @@ impl Handler<PolicyRequest> for DataPolicy {
     fn handle(&mut self, msg: PolicyRequest, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
             // Attempt to load a new policy from a file
-            PolicyRequest::UpdateFromFile(p) => match lang::Program::from_file(p.as_path()) {
+            PolicyRequest::UpdateFromFile(p) => match lang::Program::check_from_file(
+                p.as_path(),
+                &*armour_data_interface::POLICY_SIG,
+            ) {
                 Ok(prog) => {
                     self.program = Arc::new(prog);
                     info!(
@@ -192,5 +196,19 @@ impl ToArmourExpression for web::Bytes {
 impl ToArmourExpression for web::BytesMut {
     fn to_expression(&self) -> lang::Expr {
         lang::Expr::data(self)
+    }
+}
+
+impl ToArmourExpression for Option<std::net::SocketAddr> {
+    fn to_expression(&self) -> lang::Expr {
+        match self {
+            Some(std::net::SocketAddr::V4(addr)) => {
+                lang::Expr::some(literals::Literal::Tuple(vec![
+                    addr.ip().to_literal(),
+                    literals::Literal::Int(addr.port() as i64),
+                ]))
+            }
+            _ => lang::Expr::none(),
+        }
     }
 }

@@ -2,16 +2,31 @@ external logger @ "../arm-logger/log_sock" {
   fn log(_) -> ()
 }
 
-fn require(req: HttpRequest) -> bool {
-  logger::log(req);
-  if let Some(hosts) = req.header("x-forwarded-host") {
-    map host in hosts {
+fn ips(req: HttpRequest, name: str) -> List<(str, List<Ipv4Addr>, i64)> {
+  if let Some(hosts) = req.header(name) {
+    filter_map host in hosts {
       if str::from_utf8(host) matches [name] ":" [port as i64] {
         if let Some(ips) = Ipv4Addr::lookup(name) {
-          logger::log(name, ips, port)
+          Some((name, ips, port))
+        } else {
+          None
         }
+      } else {
+        None
       }
-    };
+    }
+  } else {
+    []
+  }
+}
+
+fn require(req: HttpRequest, peer_addr: (Ipv4Addr, i64)) -> bool {
+  logger::log(req);
+  for x in ips(req, "x-forwarded-host") {
+     logger::log("x-forwarded-host", x)
+  };
+  for x in ips(req, "host") {
+     logger::log("host", x, "peer_addr", peer_addr)
   };
   req.route() == ["a"]
 }

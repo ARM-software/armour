@@ -277,6 +277,15 @@ impl Literal {
     pub fn some(&self) -> Literal {
         Literal::Tuple(vec![self.clone()])
     }
+    pub fn dest_some(&self) -> Option<Literal> {
+        match self {
+            Literal::Tuple(v) => match v.as_slice() {
+                &[ref l] => Some(l.clone()),
+                _ => None,
+            }
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Literal {
