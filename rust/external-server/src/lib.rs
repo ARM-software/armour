@@ -45,7 +45,7 @@ impl fmt::Display for Literal {
             Literal::Float(d) => {
                 if 8 < d.abs().log10() as usize {
                     write!(f, "{:e}", d)
-                } else if d.trunc() == *d {
+                } else if (d.trunc() - *d).abs() < std::f64::EPSILON {
                     write!(f, "{:.1}", d)
                 } else {
                     write!(f, "{}", d)
@@ -61,7 +61,11 @@ impl fmt::Display for Literal {
                     .collect::<Vec<String>>()
                     .join(", ");
                 if self.is_tuple() {
-                    write!(f, "({})", s)
+                    match lits.len() {
+                        0 => write!(f, "None"),
+                        1 => write!(f, "Some({})", s),
+                        _ => write!(f, "({})", s),
+                    }
                 } else {
                     write!(f, "[{}]", s)
                 }
@@ -90,7 +94,6 @@ fn build_value(mut v: external::value::Builder<'_>, lit: &Literal) -> Result<(),
             for (i, t) in ts.iter().enumerate() {
                 build_value(list.reborrow().get(i as u32), t)?
             }
-
         }
     }
     Ok(())
@@ -189,14 +192,12 @@ fn tls_rpc_future(
                 Default::default(),
             );
             let rpc_system = RpcSystem::new(Box::new(network), Some(external.client));
-            Ok(current_thread::spawn(
-                rpc_system.map_err(|e| println!("error: {:?}", e)),
-            ))
+            current_thread::spawn(rpc_system.map_err(|e| println!("error: {:?}", e)));
+            Ok(())
         });
         println!("new TLS connection");
-        Ok(current_thread::spawn(
-            tls_accept.map_err(|e| println!("error: {:?}", e)),
-        ))
+        current_thread::spawn(tls_accept.map_err(|e| println!("error: {:?}", e)));
+        Ok(())
     });
     Ok(Box::new(fut))
 }
@@ -290,7 +291,7 @@ impl External {
                 .to_socket_addrs()
                 .map_err(|_| Error::failed(SOCKET_ERROR.to_string()))?
                 .next()
-                .ok_or(Error::failed(SOCKET_ERROR.to_string()))?;
+                .ok_or_else(|| Error::failed(SOCKET_ERROR.to_string()))?;
             let socket = tokio::net::TcpListener::bind(&addr)
                 .map_err(|err| Error::failed(format!("{}", err)))?;
             fut = tls_rpc_future(socket, external)?;
@@ -304,7 +305,7 @@ impl External {
         } else {
             return Err(Error::failed("could not bind".to_string()));
         };
-
-        Ok(current_thread::block_on_all(fut).unwrap())
+        current_thread::block_on_all(fut).unwrap();
+        Ok(())
     }
 }

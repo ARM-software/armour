@@ -77,12 +77,12 @@ impl<'a> fmt::Display for Error<'a> {
                 write!(f, "> {}", lt1.1)?;
                 match &lt1.0 {
                     Some(loc) => writeln!(f, " on {}", loc)?,
-                    None => writeln!(f, "")?,
+                    None => writeln!(f)?,
                 }
                 write!(f, "< {}", lt2.1)?;
                 match &lt2.0 {
                     Some(loc) => writeln!(f, " on {}", loc),
-                    None => writeln!(f, ""),
+                    None => writeln!(f),
                 }
             }
             Error::Dest => write!(f, "expecting Option<..> type"),
@@ -157,7 +157,7 @@ impl Typ {
             Err(Error::Args(s.to_string(), len1, len2))
         }
     }
-    fn try_from_str<'a>(s: &'a str) -> Result<Self, self::Error<'a>> {
+    fn try_from_str(s: &str) -> Result<Self, self::Error> {
         match s {
             "unit" => Ok(Typ::Unit),
             "bool" => Ok(Typ::Bool),
@@ -171,7 +171,7 @@ impl Typ {
             s => Err(Error::Parse(s.to_string())),
         }
     }
-    fn from_parse<'a>(ty: &'a parser::Typ) -> Result<Self, self::Error<'a>> {
+    fn from_parse(ty: &parser::Typ) -> Result<Self, self::Error> {
         match ty {
             parser::Typ::Atom(a) => Typ::try_from_str(a.id()),
             parser::Typ::Cons(c, b) => {
@@ -312,6 +312,5 @@ impl parser::Head {
         } else {
             Ok(Signature::any(ty))
         }
-
     }
 }

@@ -100,7 +100,7 @@ impl Externals {
         self.timeout = t
     }
     pub fn timeout(&self) -> Duration {
-        self.timeout.clone()
+        self.timeout
     }
     pub fn add_external(&mut self, name: &str, addr: &str) -> bool {
         self.externals
@@ -277,7 +277,7 @@ impl Externals {
         }
     }
     pub fn get_socket(&self, external: &str) -> Option<String> {
-        self.externals.get(external).map(|x| x.clone())
+        self.externals.get(external).cloned()
     }
     pub fn request(
         external: String,

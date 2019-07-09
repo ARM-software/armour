@@ -72,14 +72,12 @@ fn main() -> io::Result<()> {
                 let fut = e
                     .evaluate(prog.clone())
                     .and_then(|r| {
-                        future::ok({
-                            println!(": {}", r.clone());
-                        })
+                        println!(": {}", r.clone());
+                        future::ok(())
                     })
                     .or_else(|err| {
-                        future::ok({
-                            eprintln!("{}", err);
-                        })
+                        eprintln!("{}", err);
+                        future::ok(())
                     })
                     .map_err(|_: ()| (std::io::ErrorKind::Other));
                 sys.block_on(fut)?

@@ -63,7 +63,7 @@ impl Literal {
     fn eval_call1(&self, f: &str) -> Option<Self> {
         match (f, self) {
             ("option::Some", _) => Some(self.some()),
-            ("option::is_none", Literal::Tuple(t)) => Some(Literal::Bool(t.len() == 0)),
+            ("option::is_none", Literal::Tuple(t)) => Some(Literal::Bool(t.is_empty())),
             ("option::is_some", Literal::Tuple(t)) => Some(Literal::Bool(t.len() == 1)),
             ("i64::abs", Literal::Int(i)) => Some(Literal::Int(i.abs())),
             ("i64::to_str", Literal::Int(i)) => Some(Literal::Str(i.to_string())),
@@ -140,6 +140,7 @@ impl Literal {
             _ => None,
         }
     }
+    #[allow(clippy::many_single_char_names)]
     fn eval_call4(&self, f: &str, l1: &Literal, l2: &Literal, l3: &Literal) -> Option<Self> {
         match (f, self, l1, l2, l3) {
             (
@@ -253,7 +254,7 @@ impl Expr {
                 }))
             }
             Expr::BlockExpr(b, mut es) => {
-                if es.len() == 0 {
+                if es.is_empty() {
                     Box::new(future::ok(Expr::LitExpr(if b == Block::List {
                         Literal::List(Vec::new())
                     } else {
@@ -262,7 +263,7 @@ impl Expr {
                 } else if b == Block::Block {
                     let e = es.remove(0);
                     Box::new(e.eval(env.clone()).and_then(move |res| {
-                        if res.is_return() || es.len() == 0 {
+                        if res.is_return() || es.is_empty() {
                             future::Either::A(future::ok(res))
                         } else {
                             future::Either::B(Expr::BlockExpr(b, es).eval(env))
@@ -331,7 +332,6 @@ impl Expr {
                                 "eval, let-expression (literal not a tuple)",
                             )))
                         }
-
                     }
                     _ => Box::new(future::err(Error::new("eval, let-expression"))),
                 }))
@@ -409,7 +409,8 @@ impl Expr {
                                             future::ok(Expr::LitExpr(Literal::List(filtered_lits)))
                                         }
                                         Iter::FilterMap => {
-                                            let filtered_lits = iter_lits.iter()
+                                            let filtered_lits = iter_lits
+                                                .iter()
                                                 .filter_map(Literal::dest_some)
                                                 .collect();
                                             future::ok(Expr::LitExpr(Literal::List(filtered_lits)))
@@ -510,7 +511,7 @@ impl Expr {
                                     re.0.capture_names().filter_map(|s| s).collect();
                                 // if there are no bindings then do a simple "is_match", otherwise collect
                                 // variable captures
-                                if names.len() == 0 {
+                                if names.is_empty() {
                                     if re.0.is_match(s) {
                                         future::ok((f, Some(HashMap::new())))
                                     } else {
@@ -739,7 +740,7 @@ impl Expr {
                                 } else {
                                     // external function (RPC)
                                     match function.split("::").collect::<Vec<&str>>().as_slice() {
-                                        &[external, method] => future::Either::B(future::Either::A(env.external(external, method, args))),
+                                        [external, method] => future::Either::B(future::Either::A(env.external(external, method, args))),
                                         _ => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, args)))),
                                     }
                                 }

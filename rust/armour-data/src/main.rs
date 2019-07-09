@@ -39,7 +39,10 @@ fn main() -> std::io::Result<()> {
     // process the command line arguments
     let proxy_port = matches
         .value_of("proxy port")
-        .map(|port| port.parse().expect(&format!("bad port: {}", port)))
+        .map(|port| {
+            port.parse()
+                .unwrap_or_else(|_| panic!("bad port: {}", port))
+        })
         .unwrap_or(DEFAULT_PROXY_PORT);
 
     // start Actix system

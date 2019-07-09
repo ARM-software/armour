@@ -17,19 +17,12 @@ impl std::fmt::Display for Error {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Headers(HashMap<String, Signature>);
 
 impl Headers {
-    pub fn new() -> Headers {
-        Headers(HashMap::new())
-    }
     pub fn add_function(&mut self, name: &str, sig: Signature) -> Result<(), Error> {
-        if self
-            .0
-            .insert(name.to_string(), sig)
-            .is_some()
-        {
+        if self.0.insert(name.to_string(), sig).is_some() {
             Err(Error::new(format!("duplicate function \"{}\"", name)))
         } else {
             Ok(())
@@ -106,12 +99,15 @@ impl Headers {
         Headers::builtins(name).is_some() || name.parse::<usize>().is_ok()
     }
     pub fn typ(&self, name: &str) -> Option<Signature> {
-        (Headers::builtins(name).or(self.0.get(name).cloned()))
+        (Headers::builtins(name).or_else(|| self.0.get(name).cloned()))
     }
     pub fn return_typ(&self, name: &str) -> Result<Typ, Error> {
-        Ok(self.typ(name).ok_or(Error::new("no current function"))?.typ())
+        Ok(self
+            .typ(name)
+            .ok_or_else(|| Error::new("no current function"))?
+            .typ())
     }
-    pub fn resolve(name: &str, typs: &Vec<Typ>) -> String {
+    pub fn resolve(name: &str, typs: &[Typ]) -> String {
         if name.starts_with(".::") {
             let rest = name.trim_start_matches(".::");
             let ty = typs

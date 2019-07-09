@@ -151,7 +151,6 @@ impl HttpRequest {
             None => Literal::none(),
             Some(vs) => Literal::List(vs.iter().map(|v| Literal::Data(v.clone())).collect()).some(),
         }
-
     }
     pub fn set_header(&self, k: &str, v: &[u8]) -> HttpRequest {
         let mut new = self.clone();
@@ -204,6 +203,7 @@ impl ToLiteral for HttpRequest {
 impl ToLiteral for std::net::Ipv4Addr {
     fn to_literal(&self) -> Literal {
         let [a, b, c, d] = self.octets();
+        #[allow(clippy::cast_lossless)]
         Literal::Tuple(vec![
             Literal::Int(a as i64),
             Literal::Int(b as i64),
@@ -214,6 +214,7 @@ impl ToLiteral for std::net::Ipv4Addr {
 }
 
 impl From<(&str, &str, &str, &str, Vec<(&str, &[u8])>)> for HttpRequest {
+    #[allow(clippy::type_complexity)]
     fn from(req: (&str, &str, &str, &str, Vec<(&str, &[u8])>)) -> Self {
         let (method, version, path, query, h) = req;
         let mut headers: BTreeMap<String, Vec<Vec<u8>>> = BTreeMap::new();
@@ -280,9 +281,9 @@ impl Literal {
     pub fn dest_some(&self) -> Option<Literal> {
         match self {
             Literal::Tuple(v) => match v.as_slice() {
-                &[ref l] => Some(l.clone()),
+                [ref l] => Some(l.clone()),
                 _ => None,
-            }
+            },
             _ => None,
         }
     }
@@ -295,7 +296,7 @@ impl fmt::Display for Literal {
             Literal::Float(d) => {
                 if 8 < d.abs().log10() as usize {
                     write!(f, "{:e}", d)
-                } else if d.trunc() == *d {
+                } else if (d.trunc() - *d).abs() < std::f64::EPSILON {
                     write!(f, "{:.1}", d)
                 } else {
                     write!(f, "{}", d)

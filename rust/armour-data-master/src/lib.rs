@@ -135,7 +135,7 @@ impl Handler<Disconnect> for ArmourDataMaster {
 #[derive(Message)]
 pub enum MasterCommand {
     ListActive,
-    UpdatePolicy(Instances, PolicyRequest),
+    UpdatePolicy(Instances, Box<PolicyRequest>),
 }
 
 impl Handler<MasterCommand> for ArmourDataMaster {
@@ -143,7 +143,7 @@ impl Handler<MasterCommand> for ArmourDataMaster {
     fn handle(&mut self, msg: MasterCommand, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
             MasterCommand::ListActive => {
-                if self.instances.len() == 0 {
+                if self.instances.is_empty() {
                     info!("there are no active instances")
                 } else {
                     info!(
@@ -154,7 +154,7 @@ impl Handler<MasterCommand> for ArmourDataMaster {
             }
             MasterCommand::UpdatePolicy(instances, request) => {
                 for instance in self.get_instances(instances) {
-                    instance.do_send(request.clone())
+                    instance.do_send(*request.clone())
                 }
             }
         }

@@ -120,9 +120,9 @@ pub struct Tokens<'a> {
 }
 
 impl<'a> Tokens<'a> {
-    pub fn new(vec: &'a Vec<LocToken>) -> Self {
+    pub fn new(vec: &'a [LocToken]) -> Self {
         Tokens {
-            tok: vec.as_slice(),
+            tok: vec,
             start: 0,
             end: vec.len(),
         }
@@ -389,7 +389,7 @@ fn lex_number<'a>(input: Span<'a>) -> IResult<Span, LocToken<'a>> {
 }
 
 // Reserved or ident
-fn parse_reserved<'a>(t: Span<'a>) -> LocToken<'a> {
+fn parse_reserved(t: Span) -> LocToken {
     let string = t.to_string();
     match string.as_ref() {
         "fn" => LocToken::new(t, Token::Function),

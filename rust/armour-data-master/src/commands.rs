@@ -34,7 +34,7 @@ pub fn instance(caps: &regex::Captures) -> Instances {
                 Instances::All
             } else {
                 s.parse::<usize>()
-                    .map(|i| Instances::ID(i))
+                    .map(Instances::ID)
                     .unwrap_or(Instances::Error)
             }
         }

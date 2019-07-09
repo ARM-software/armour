@@ -46,12 +46,7 @@ fn main() -> io::Result<()> {
     let listener = tokio_uds::UnixListener::bind(socket.clone())?;
     let master_clone = master.clone();
     let _server = master::ArmourDataServer::create(|ctx| {
-        ctx.add_message_stream(
-            listener
-                .incoming()
-                .map_err(|_| ())
-                .map(|st| master::UdsConnect(st)),
-        );
+        ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(master::UdsConnect));
         master::ArmourDataServer {
             master: master_clone,
             socket,
@@ -98,7 +93,7 @@ fn main() -> io::Result<()> {
             } {
                 master.do_send(MasterCommand::UpdatePolicy(
                     commands::instance(&caps),
-                    request,
+                    Box::new(request),
                 ))
             }
         } else if let Some(caps) = commands::INSTANCE1.captures(&cmd) {
@@ -120,7 +115,7 @@ fn main() -> io::Result<()> {
             } {
                 master.do_send(MasterCommand::UpdatePolicy(
                     commands::instance(&caps),
-                    request,
+                    Box::new(request),
                 ))
             }
         } else {

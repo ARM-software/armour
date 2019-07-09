@@ -9,7 +9,6 @@ use futures::stream::Stream;
 use futures::{future, lazy, Future};
 use std::env;
 
-
 fn main() -> std::io::Result<()> {
     // CLI
     let matches = ClapApp::new("arm-service")
@@ -80,7 +79,7 @@ fn main() -> std::io::Result<()> {
                 .default_service(web::route().to_async(service))
         })
         .bind(socket.clone())
-        .expect(&format!("failed to bind to http://{}", socket));
+        .unwrap_or_else(|_| panic!("failed to bind to http://{}", socket));
         info!("starting service: {}", socket);
         server.start();
     }
@@ -89,7 +88,7 @@ fn main() -> std::io::Result<()> {
     if let Some(destination) = destination {
         let uri = format!(
             "http://{}/{}",
-            host(&proxy.clone().unwrap_or(destination.clone())),
+            host(&proxy.clone().unwrap_or_else(|| destination.clone())),
             uri
         );
         info!("sending: {}", uri);
@@ -106,13 +105,12 @@ fn main() -> std::io::Result<()> {
                         if own_port.is_none() {
                             actix::System::current().stop()
                         };
-                        future::ok(
-                            if let Ok(text) = String::from_utf8(body.as_ref().to_vec()) {
-                                println!("{:?}: {}", resp.status(), text)
-                            } else {
-                                println!("{:?}: {:?}", resp.status(), body)
-                            },
-                        )
+                        if let Ok(text) = String::from_utf8(body.as_ref().to_vec()) {
+                            println!("{:?}: {}", resp.status(), text);
+                        } else {
+                            println!("{:?}: {:?}", resp.status(), body);
+                        }
+                        future::ok(())
                     })
                 })
         }));
@@ -122,7 +120,7 @@ fn main() -> std::io::Result<()> {
 }
 
 fn parse_port(s: &str) -> u16 {
-    s.parse().expect(&format!("bad port: {}", s))
+    s.parse().unwrap_or_else(|_| panic!("bad port: {}", s))
 }
 
 fn host(s: &str) -> String {

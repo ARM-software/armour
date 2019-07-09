@@ -461,7 +461,7 @@ named!(pub parse_fn_head<Tokens, FnHead>,
         params: opt!(parse_params) >>
         tag_token!(Token::RParen) >>
         typ: opt!(preceded!(tag_token!(Token::Arrow), parse_type)) >>
-        (FnHead {id, params: params.unwrap_or(Vec::new()), typ})
+        (FnHead {id, params: params.unwrap_or_default(), typ})
     )
 );
 
@@ -715,7 +715,7 @@ named!(parse_paren_expr<Tokens, LocExpr>,
         (LocExpr(
             t.loc(),
             {
-                let es = es.unwrap_or(Vec::new());
+                let es = es.unwrap_or_default();
                 let n = es.len();
                 if n == 0 {
                     Expr::LitExpr(Literal::Unit)
@@ -907,7 +907,7 @@ fn parse_call_expr(input: Tokens, fn_handle: LocExpr) -> IResult<Tokens, LocExpr
                             return Err(nom::Err::Error(error_position!(input, ErrorKind::Tag)))
                         }
                     },
-                    arguments: arguments.unwrap_or(Vec::new())
+                    arguments: arguments.unwrap_or_default()
                 }
             ))
     )
@@ -918,7 +918,7 @@ named!(parse_list_expr<Tokens, LocExpr>,
         t: tag_token!(Token::LBracket) >>
         items: opt!(parse_exprs) >>
         tag_token!(Token::RBracket) >>
-        (LocExpr(t.loc(), Expr::ListExpr(items.unwrap_or(Vec::new()))))
+        (LocExpr(t.loc(), Expr::ListExpr(items.unwrap_or_default())))
     )
 );
 
@@ -1109,7 +1109,7 @@ named!(parse_head<Tokens, Head>,
         tag_token!(Token::LParen) >>
         typs: alt_complete!(
                 value!(None, tag_token!(Token::Underscore)) |
-                do_parse!(typs: opt!(parse_types) >> (Some(typs.unwrap_or(Vec::new()))))
+                do_parse!(typs: opt!(parse_types) >> (Some(typs.unwrap_or_default())))
         ) >>
         tag_token!(Token::RParen) >>
         typ: opt!(preceded!(tag_token!(Token::Arrow), parse_type)) >>
@@ -1135,7 +1135,7 @@ named!(parse_tuple_type<Tokens, Typ>,
         tag_token!(Token::LParen) >>
         typs: opt!(parse_types) >>
         tag_token!(Token::RParen) >>
-        (Typ::Tuple(typs.unwrap_or(Vec::new())))
+        (Typ::Tuple(typs.unwrap_or_default()))
     )
 );
 

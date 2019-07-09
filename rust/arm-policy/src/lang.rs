@@ -110,12 +110,10 @@ impl ExprAndMeta {
     }
 }
 
+#[derive(Default)]
 pub struct ReturnType(Option<Typ>);
 
 impl ReturnType {
-    pub fn new() -> ReturnType {
-        ReturnType(None)
-    }
     pub fn get(&self) -> Option<Typ> {
         self.0.clone()
     }
@@ -522,7 +520,7 @@ impl Expr {
             _ => Err(Error::new("apply: expression is not a closure")),
         }
     }
-    fn block_stmt_loc(v: &parser::BlockStmt, default: lexer::Loc) -> lexer::Loc {
+    fn block_stmt_loc(v: &[parser::LocStmt], default: lexer::Loc) -> lexer::Loc {
         v.get(0).map_or(default, |s| s.loc().clone())
     }
     fn from_loc_expr(
@@ -951,7 +949,7 @@ impl Expr {
                     ))
                 } else if let Ok(i) = function.parse::<usize>() {
                     match types.as_slice() {
-                        &[Typ::Tuple(ref l)] => {
+                        [Typ::Tuple(ref l)] => {
                             if i < l.len() {
                                 Ok(ExprAndMeta::new(
                                     Expr::CallExpr {
@@ -1000,7 +998,7 @@ impl Expr {
         match block.split_first() {
             Some((stmt, rest)) => match stmt.stmt() {
                 parser::Stmt::ReturnStmt(re) => {
-                    if rest.len() == 0 {
+                    if rest.is_empty() {
                         let (expr, calls, typ) =
                             Expr::from_loc_expr(re, headers, ret, vars)?.split();
                         // need to type check typ against function return type
@@ -1038,7 +1036,7 @@ impl Expr {
                             stmt.loc()
                         )
                     };
-                    if rest.len() == 0 {
+                    if rest.is_empty() {
                         Ok(ExprAndMeta::new(
                             expr1,
                             if *has_semi { Typ::Unit } else { typ1 },
@@ -1124,11 +1122,10 @@ impl Expr {
         headers: &Headers,
         vars: &Vars,
     ) -> Result<ExprAndMeta, Error> {
-        let mut ret = ReturnType::new();
+        let mut ret = ReturnType::default();
         let em = Expr::from_loc_expr(e, headers, &mut ret, vars)?;
-        match ret.get() {
-            Some(rtype) => Typ::type_check("REPL", vec![(None, &em.typ)], vec![(None, &rtype)])?,
-            None => (),
+        if let Some(rtype) = ret.get() {
+            Typ::type_check("REPL", vec![(None, &em.typ)], vec![(None, &rtype)])?
         }
         Ok(em)
     }
@@ -1138,25 +1135,23 @@ impl Expr {
         vars: &Vars,
         name: Option<&str>,
     ) -> Result<ExprAndMeta, self::Error> {
-        let mut ret = ReturnType::new();
+        let mut ret = ReturnType::default();
         let em = Expr::from_block_stmt(block, headers, &mut ret, vars)?;
         // check if type of "return" calls is type of statement
-        match ret.get() {
-            Some(rtype) => Typ::type_check(
+        if let Some(rtype) = ret.get() {
+            Typ::type_check(
                 name.unwrap_or("REPL"),
                 vec![(None, &em.typ)],
                 vec![(None, &rtype)],
-            )?,
-            None => (),
+            )?
         }
         // check if declared return type of function is type of statement
-        match name {
-            Some(name) => Typ::type_check(
+        if let Some(name) = name {
+            Typ::type_check(
                 name,
                 vec![(None, &em.typ)],
                 vec![(None, &headers.return_typ(name)?)],
-            )?,
-            None => (),
+            )?
         }
         Ok(em)
     }
@@ -1203,7 +1198,7 @@ impl std::str::FromStr for Expr {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::from_string(s, &mut Headers::new())
+        Self::from_string(s, &Headers::default())
     }
 }
 
@@ -1260,7 +1255,7 @@ impl Program {
         Program {
             code: Code::new(),
             externals: externals::Externals::default(),
-            headers: Headers::new(),
+            headers: Headers::default(),
         }
     }
     pub fn has_function(&self, name: &str) -> bool {
@@ -1305,17 +1300,17 @@ impl Program {
     }
     fn add_decl(&mut self, call_graph: &mut CallGraph, decl: &parser::FnDecl) -> Result<(), Error> {
         // println!("{:#?}", decl);
-        let (name, e, calls) = Expr::from_decl(decl, &mut self.headers)?;
+        let (name, e, calls) = Expr::from_decl(decl, &self.headers)?;
         // println!(r#""{}": {:#?}"#, name, e);
         let own_idx = call_graph
             .nodes
             .get(name)
-            .ok_or(Error::new(&format!("cannot find \"{}\" node", name)))?;
+            .ok_or_else(|| Error::new(&format!("cannot find \"{}\" node", name)))?;
         for c in calls.into_iter().filter(|c| !Headers::is_builtin(&c.name)) {
             let call_idx = call_graph
                 .nodes
                 .get(&c.name)
-                .ok_or(Error::new(&format!("cannot find \"{}\" node", c.name)))?;
+                .ok_or_else(|| Error::new(&format!("cannot find \"{}\" node", c.name)))?;
             call_graph.graph.add_edge(*own_idx, *call_idx, c.loc);
         }
         self.code.0.insert(name.to_string(), e);
@@ -1342,7 +1337,7 @@ impl Program {
             (None, None) | (None, Some(_)) => Ok(()),
         }
     }
-    fn type_check(&self, function: &str, sigs: &Vec<types::Signature>) -> Result<(), Error> {
+    fn type_check(&self, function: &str, sigs: &[types::Signature]) -> Result<(), Error> {
         match self.headers.typ(function) {
             Some(f_sig) => {
                 if sigs
@@ -1367,7 +1362,7 @@ impl Program {
     }
     pub fn check_from_file<P: AsRef<std::path::Path>>(
         path: P,
-        check: &Vec<(String, Vec<types::Signature>)>,
+        check: &[(String, Vec<types::Signature>)],
     ) -> Result<Self, Error> {
         use std::io::prelude::Read;
         let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
@@ -1437,9 +1432,8 @@ impl std::str::FromStr for Program {
                 }
                 // process declarations
                 for decl in prog_parse {
-                    match decl {
-                        parser::Decl::FnDecl(decl) => prog.add_decl(&mut call_graph, &decl)?,
-                        _ => (),
+                    if let parser::Decl::FnDecl(decl) = decl {
+                        prog.add_decl(&mut call_graph, &decl)?
                     }
                 }
                 call_graph.check_for_cycles()?;
