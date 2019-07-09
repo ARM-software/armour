@@ -17,6 +17,7 @@ fn main() -> Result<(), Error> {
     if args.len() == 2 {
         External::start(args[1].as_str(), ExternalImpl(0))
     } else {
-        Ok(println!("usage: {} ADDRESS[:PORT]", args[0]))
+        println!("usage: {} ADDRESS[:PORT]", args[0]);
+        Ok(())
     }
 }
