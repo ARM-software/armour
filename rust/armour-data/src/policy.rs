@@ -152,7 +152,7 @@ impl Handler<PolicyRequest> for DataPolicy {
 lazy_static! {
     /// Static "allow all" policy
     pub static ref ALLOW_ALL: lang::Program =
-        lang::Program::from_str("fn require(r: HttpRequest, peer_addr: (Ipv4Addr, i64)) -> bool {true}").unwrap();
+        lang::Program::from_str("fn require(r: HttpRequest, peer_addr: Option<Ipv4Addr>) -> bool {true}").unwrap();
 }
 
 impl Actor for DataPolicy {
@@ -202,12 +202,7 @@ impl ToArmourExpression for web::BytesMut {
 impl ToArmourExpression for Option<std::net::SocketAddr> {
     fn to_expression(&self) -> lang::Expr {
         match self {
-            Some(std::net::SocketAddr::V4(addr)) => {
-                lang::Expr::some(literals::Literal::Tuple(vec![
-                    addr.ip().to_literal(),
-                    literals::Literal::Int(addr.port() as i64),
-                ]))
-            }
+            Some(std::net::SocketAddr::V4(addr)) => lang::Expr::some(addr.ip().to_literal()),
             _ => lang::Expr::none(),
         }
     }

@@ -141,7 +141,7 @@ pub enum Iter {
     Any,
     Filter,
     FilterMap,
-    For,
+    ForEach,
     Map,
 }
 
@@ -153,7 +153,7 @@ impl std::fmt::Display for Iter {
             Iter::Filter => write!(f, "filter"),
             Iter::FilterMap => write!(f, "filter_map"),
             Iter::Map => write!(f, "map"),
-            Iter::For => write!(f, "for"),
+            Iter::ForEach => write!(f, "foreach"),
         }
     }
 }
@@ -680,7 +680,7 @@ named!(parse_iter_expr<Tokens, LocExpr>,
             tag_token!(Token::Any) |
             tag_token!(Token::Filter) |
             tag_token!(Token::FilterMap) |
-            tag_token!(Token::For) |
+            tag_token!(Token::ForEach) |
             tag_token!(Token::Map)
         ) >>
         idents: parse_idents >>
@@ -695,7 +695,7 @@ named!(parse_iter_expr<Tokens, LocExpr>,
                     Token::Any => Iter::Any,
                     Token::Filter => Iter::Filter,
                     Token::FilterMap => Iter::FilterMap,
-                    Token::For => Iter::For,
+                    Token::ForEach => Iter::ForEach,
                     Token::Map => Iter::Map,
                     _ => unreachable!(),
                 },

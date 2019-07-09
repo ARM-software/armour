@@ -393,7 +393,7 @@ impl Expr {
                                         Iter::Map => {
                                             future::ok(Expr::LitExpr(Literal::List(iter_lits)))
                                         }
-                                        Iter::For => future::ok(Expr::unit()),
+                                        Iter::ForEach => future::ok(Expr::unit()),
                                         Iter::Filter => {
                                             let filtered_lits = lits
                                                 .into_iter()

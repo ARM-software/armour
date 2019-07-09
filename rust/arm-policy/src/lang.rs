@@ -874,7 +874,7 @@ impl Expr {
                         vec![(Some(Expr::block_stmt_loc(body, e.loc())), &typ2)],
                         vec![(None, &Typ::any_option())],
                     )?
-                } else if *op != parser::Iter::Map && *op != parser::Iter::For {
+                } else if *op != parser::Iter::Map && *op != parser::Iter::ForEach {
                     Typ::type_check(
                         "all/any/filter-expression",
                         vec![(Some(Expr::block_stmt_loc(body, e.loc())), &typ2)],
@@ -888,7 +888,7 @@ impl Expr {
                         parser::Iter::Filter => typ1,
                         // type check above will ensure unwrap is successful
                         parser::Iter::FilterMap => Typ::List(Box::new(typ2.dest_option().unwrap())),
-                        parser::Iter::For => Typ::Unit,
+                        parser::Iter::ForEach => Typ::Unit,
                         parser::Iter::Map => Typ::List(Box::new(typ2)),
                     },
                     vec![calls1, calls2],

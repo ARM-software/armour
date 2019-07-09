@@ -20,12 +20,12 @@ fn lookup_ip(req: HttpRequest, name: str) -> List<(str, List<Ipv4Addr>, i64)> {
   }
 }
 
-fn require(req: HttpRequest, peer_addr: (Ipv4Addr, i64)) -> bool {
+fn require(req: HttpRequest, peer_addr: Option<Ipv4Addr>) -> bool {
   logger::log(req);
-  for ip in lookup_ip(req, "x-forwarded-host") {
+  foreach ip in lookup_ip(req, "x-forwarded-host") {
      logger::log("x-forwarded-host", ip)
   };
-  for ip in lookup_ip(req, "host") {
+  foreach ip in lookup_ip(req, "host") {
      logger::log("host", ip, "peer_addr", peer_addr)
   };
   req.route() == ["a"]
