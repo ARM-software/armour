@@ -127,7 +127,7 @@ It is recommended to start the policy language REPL (Read-Eval-Print loop) with
     : true
     ```
 
-- **all**, **any**, **filter**, **filter_map**, **for**, **map**
+- **all**, **any**, **filter**, **filter_map**, **foreach**, **map**
 
     ```
     > all x in [1, 2, 4] { x < 3 }
