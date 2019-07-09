@@ -152,7 +152,7 @@ impl Handler<PolicyRequest> for DataPolicy {
 lazy_static! {
     /// Static "allow all" policy
     pub static ref ALLOW_ALL: lang::Program =
-        lang::Program::from_str("fn require(r:HttpRequest) -> bool {true}").unwrap();
+        lang::Program::from_str("fn require(r: HttpRequest, peer_addr: (Ipv4Addr, i64)) -> bool {true}").unwrap();
 }
 
 impl Actor for DataPolicy {
