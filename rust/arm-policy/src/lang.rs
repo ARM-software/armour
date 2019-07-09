@@ -1351,13 +1351,13 @@ impl Program {
                 {
                     Ok(())
                 } else {
-                    let mut possible = String::new();
-                    for sig in sigs {
-                        possible.push_str(&sig.to_string());
-                        possible.push_str("\n")
-                    }
+                    let possible = sigs
+                        .iter()
+                        .map(|sig| sig.to_string())
+                        .collect::<Vec<String>>()
+                        .join("; ");
                     Err(Error::new(format!(
-                        r#"unable to find suitable instance of function "{}"\npossible types are:\n{}"#,
+                        r#"unable to find suitable instance of function "{}". possible types are: {}"#,
                         function, possible
                     )))
                 }

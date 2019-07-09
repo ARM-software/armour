@@ -273,11 +273,14 @@ impl fmt::Display for Signature {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(")?;
         match self.0 {
-            Some(ref tys) => {
-                for ty in tys {
-                    write!(f, "{},", ty)?
-                }
-            }
+            Some(ref tys) => write!(
+                f,
+                "{}",
+                tys.iter()
+                    .map(|ty| ty.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )?,
             None => write!(f, "_")?,
         }
         write!(f, ") -> {}", self.1)
