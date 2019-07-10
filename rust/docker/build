@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -e
+set -x
 # Build rust binary
 cd ..
 cargo build --target-dir $1 --release -p $2
+cp $1/release/$2 "$OLDPWD"
 cd -
-cp $1/release/$2 .
 # Create docker image
 docker build --build-arg BINARY=$2 -t $2 .
 docker images
