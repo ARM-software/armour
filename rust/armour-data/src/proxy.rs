@@ -2,9 +2,31 @@
 
 use super::policy::{self, ToArmourExpression};
 use actix_web::client::{self, Client, ClientRequest, ClientResponse, SendRequestError};
-use actix_web::{web, Error, HttpRequest, HttpResponse, ResponseError};
+use actix_web::{
+    middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
+};
 use futures::stream::Stream;
 use futures::{future, Future};
+
+pub fn start_proxy(
+    policy: actix::Addr<policy::DataPolicy>,
+    proxy_port: u16,
+) -> std::io::Result<actix_web::dev::Server> {
+    let socket_address = format!("localhost:{}", proxy_port);
+    let socket = socket_address.to_string();
+    log::info!("starting proxy server: http://{}", socket);
+    let server = HttpServer::new(move || {
+        App::new()
+            .data(policy.clone())
+            .data(Client::new())
+            .data(socket.clone())
+            .wrap(middleware::Logger::default())
+            .default_service(web::route().to_async(proxy))
+    })
+    .bind(socket_address)?
+    .start();
+    Ok(server)
+}
 
 /// Main HttpRequest proxy
 ///
@@ -18,7 +40,10 @@ pub fn proxy(
     address: web::Data<String>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     policy
-        .send(policy::Evaluate::Require(req.to_expression(), req.peer_addr().to_expression()))
+        .send(policy::Evaluate::Require(
+            req.to_expression(),
+            req.peer_addr().to_expression(),
+        ))
         .then(move |res| match res {
             // allow request
             Ok(Ok(Some(true))) => future::Either::A(
