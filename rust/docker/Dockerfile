@@ -4,7 +4,8 @@ MAINTAINER Anthony Fox <anthony.fox@arm.com>
 ARG BINARY
 ARG BINARY2
 
-COPY $BINARY $BINARY2 /root/
+COPY $BINARY /root/$BINARY/
+COPY $BINARY2 /root/$BINARY2/
 
 RUN apt update \
   && apt install -y --no-install-recommends build-essential curl ca-certificates libssl-dev pkg-config \
