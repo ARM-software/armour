@@ -1,5 +1,4 @@
 use actix::prelude::*;
-use actix_web::{client::Client, middleware, web, App, HttpServer};
 use armour_data::{policy, proxy};
 use clap::{crate_version, App as ClapApp, Arg};
 use std::env;
@@ -66,24 +65,11 @@ fn main() -> std::io::Result<()> {
     });
 
     // start up the proxy server
-    let socket_address = format!("localhost:{}", proxy_port);
-    let socket = socket_address.to_string();
-    log::info!("starting proxy server: http://{}", socket);
-    HttpServer::new(move || {
-        App::new()
-            .data(policy.clone())
-            .data(Client::new())
-            .data(socket.clone())
-            .wrap(middleware::Logger::default())
-            .default_service(web::route().to_async(proxy::proxy))
-    })
-    .bind(socket_address)
-    .map_err(|e| {
+    proxy::start_proxy(policy, proxy_port).map_err(|e| {
         // stop if we cannot bind to socket address
-        System::current().stop();
+        actix::System::current().stop();
         e
-    })?
-    .start();
+    })?;
 
     // handle Control-C
     let ctrl_c = tokio_signal::ctrl_c().flatten_stream();
