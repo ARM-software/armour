@@ -3,9 +3,17 @@ set -e
 set -x
 # Build rust binaries
 cd ..
+if [ ! -d "$OLDPWD"/bins ]
+then
+  mkdir "$OLDPWD"/bins
+else
+  if [ "$(ls -A "$OLDPWD"/bins)" ]; then
+    rm -rf "$OLDPWD"/bins/*
+  fi
+fi
 for arg in ${@:2}; do
   cargo build --target-dir "$1" --release -p $arg
-  cp $1/release/$arg "$OLDPWD"/bins
+  cp $1/release/$arg "$OLDPWD"/bins/
 done
 cd -
 # Build the docker image
