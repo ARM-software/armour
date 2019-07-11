@@ -11,6 +11,7 @@ use arm_policy::{
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use tokio_io::codec::{Decoder, Encoder};
 
 trait DeserializeDecoder<T: serde::de::DeserializeOwned, E: std::convert::From<std::io::Error>> {
@@ -76,19 +77,26 @@ lazy_static! {
 /// Policy update request messages
 #[derive(Serialize, Deserialize, Message, Clone)]
 pub enum PolicyRequest {
-    UpdateFromFile(std::path::PathBuf),
-    UpdateFromData(Program),
     AllowAll,
     DenyAll,
+    QueryActivePorts,
     Shutdown,
+    StopAll,
+    Start(u16),
+    Stop(u16),
+    UpdateFromData(Program),
+    UpdateFromFile(std::path::PathBuf),
 }
 
 /// Messages from proxy instance to master
 #[derive(Serialize, Deserialize, Debug, Message)]
 pub enum PolicyResponse {
+    Started,
+    Stopped,
     ShuttingDown,
     UpdatedPolicy,
     RequestFailed,
+    ActivePorts(HashSet<u16>),
 }
 
 /// Transport codec for Master to Proxy instance communication

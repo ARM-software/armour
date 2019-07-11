@@ -13,8 +13,7 @@ pub fn start_proxy(
     proxy_port: u16,
 ) -> std::io::Result<actix_web::dev::Server> {
     let socket_address = format!("localhost:{}", proxy_port);
-    let socket = socket_address.to_string();
-    log::info!("starting proxy server: http://{}", socket);
+    let socket = socket_address.clone();
     let server = HttpServer::new(move || {
         App::new()
             .data(policy.clone())
@@ -23,8 +22,9 @@ pub fn start_proxy(
             .wrap(middleware::Logger::default())
             .default_service(web::route().to_async(proxy))
     })
-    .bind(socket_address)?
+    .bind(&socket_address)?
     .start();
+    log::info!("starting proxy server: http://{}", socket_address);
     Ok(server)
 }
 

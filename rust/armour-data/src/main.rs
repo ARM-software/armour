@@ -1,11 +1,11 @@
 use actix::prelude::*;
-use armour_data::{policy, proxy};
+use armour_data::policy;
+use armour_data_interface::PolicyRequest;
 use clap::{crate_version, App as ClapApp, Arg};
 use std::env;
 
 fn main() -> std::io::Result<()> {
     // defaults
-    const DEFAULT_PROXY_PORT: u16 = 8443;
     const DEFAULT_MASTER_SOCKET: &str = "../armour-data-master/armour";
 
     // CLI
@@ -17,10 +17,7 @@ fn main() -> std::io::Result<()> {
             Arg::with_name("proxy port")
                 .short("p")
                 .takes_value(true)
-                .help(&format!(
-                    "Proxy port number (default: {})",
-                    DEFAULT_PROXY_PORT
-                )),
+                .help("Proxy port number"),
         )
         .arg(
             Arg::with_name("master socket")
@@ -36,13 +33,10 @@ fn main() -> std::io::Result<()> {
     env_logger::init();
 
     // process the command line arguments
-    let proxy_port = matches
-        .value_of("proxy port")
-        .map(|port| {
-            port.parse()
-                .unwrap_or_else(|_| panic!("bad port: {}", port))
-        })
-        .unwrap_or(DEFAULT_PROXY_PORT);
+    let proxy_port = matches.value_of("proxy port").map(|port| {
+        port.parse()
+            .unwrap_or_else(|_| panic!("bad port: {}", port))
+    });
 
     // start Actix system
     let sys = actix::System::new("armour-data");
@@ -65,11 +59,9 @@ fn main() -> std::io::Result<()> {
     });
 
     // start up the proxy server
-    proxy::start_proxy(policy, proxy_port).map_err(|e| {
-        // stop if we cannot bind to socket address
-        actix::System::current().stop();
-        e
-    })?;
+    if let Some(port) = proxy_port {
+        policy.do_send(PolicyRequest::Start(port))
+    };
 
     // handle Control-C
     let ctrl_c = tokio_signal::ctrl_c().flatten_stream();
