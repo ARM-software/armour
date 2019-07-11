@@ -113,7 +113,7 @@ impl Externals {
         match socket.to_socket_addrs() {
             Ok(mut iter) => {
                 if let Some(addr) = iter.next() {
-                    let mut builder = native_tls::TlsConnector::builder();
+                    let builder = native_tls::TlsConnector::builder();
                     #[cfg(debug_assertions)]
                     builder.danger_accept_invalid_certs(true);
                     let tls_connector = tokio_tls::TlsConnector::from(
