@@ -2,15 +2,15 @@
 set -e
 set -x
 # Build rust binaries
-cd ..
-if [ ! -d "$OLDPWD"/bins ]
+if [ ! -d bins ]
 then
-  mkdir "$OLDPWD"/bins
+  mkdir bins
 else
-  if [ "$(ls -A "$OLDPWD"/bins)" ]; then
-    rm -rf "$OLDPWD"/bins/*
+  if [ "$(ls -A bins)" ]; then
+    rm -rf bins/*
   fi
 fi
+cd ..
 for arg in ${@:2}; do
   cargo build --target-dir "$1" --release -p $arg
   cp $1/release/$arg "$OLDPWD"/bins/
