@@ -1,11 +1,7 @@
 FROM ubuntu
 MAINTAINER Anthony Fox <anthony.fox@arm.com>
 
-ARG BINARY
-ARG BINARY2
-
-COPY $BINARY /root/$BINARY/
-COPY $BINARY2 /root/$BINARY2/
+COPY bins /root
 
 RUN apt update \
   && apt install -y --no-install-recommends build-essential curl ca-certificates libssl-dev pkg-config \

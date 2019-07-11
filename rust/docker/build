@@ -1,19 +1,14 @@
 #!/usr/bin/env bash
 set -e
 set -x
-# Build rust binary
+# Build rust binaries
 cd ..
-for i in "${@:2}"
-do
-  cargo build --target-dir $1 --release -p $i
-  cp $1/release/$i "$OLDPWD"
+for arg in ${@:2}; do
+  cargo build --target-dir "$1" --release -p $arg
+  cp $1/release/$arg "$OLDPWD"/bins
 done
 cd -
-if [ ! -z "$3" ]
-then
-  docker build --build-arg BINARY=$2 --build-arg BINARY2=$3  -t $2 .
-else
-  docker build --build-arg BINARY=$2 -t $2 .
-fi
+# Build the docker image
+docker build -t $2 .
 docker images
 echo "Done"
