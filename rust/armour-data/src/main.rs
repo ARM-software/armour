@@ -5,9 +5,6 @@ use clap::{crate_version, App as ClapApp, Arg};
 use std::env;
 
 fn main() -> std::io::Result<()> {
-    // defaults
-    const DEFAULT_MASTER_SOCKET: &str = "../armour-data-master/armour";
-
     // CLI
     let matches = ClapApp::new("armour-proxy")
         .version(crate_version!())
@@ -22,7 +19,7 @@ fn main() -> std::io::Result<()> {
         .arg(
             Arg::with_name("master socket")
                 .index(1)
-                .required(false)
+                .required(true)
                 .help("Unix socket of data plane master"),
         )
         .get_matches();
@@ -45,9 +42,7 @@ fn main() -> std::io::Result<()> {
     // (should possibly use actix::sync::SyncArbiter)
 
     // install the CLI policy
-    let master_socket = matches
-        .value_of("policy file")
-        .unwrap_or(DEFAULT_MASTER_SOCKET);
+    let master_socket = matches.value_of("master socket").unwrap();
 
     let policy = policy::DataPolicy::create_policy(master_socket).unwrap_or_else(|e| {
         log::warn!(
