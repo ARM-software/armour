@@ -12,7 +12,7 @@ pub fn start_proxy(
     policy: actix::Addr<policy::DataPolicy>,
     proxy_port: u16,
 ) -> std::io::Result<actix_web::dev::Server> {
-    let socket_address = format!("localhost:{}", proxy_port);
+    let socket_address = format!("0.0.0.0:{}", proxy_port);
     let socket = socket_address.clone();
     let server = HttpServer::new(move || {
         App::new()

@@ -71,7 +71,7 @@ fn main() -> std::io::Result<()> {
 
     // start up the service server
     if let Some(port) = own_port {
-        let socket = format!("localhost:{}", port);
+        let socket = format!("0.0.0.0:{}", port);
         let server = HttpServer::new(move || {
             App::new()
                 .data(port)
