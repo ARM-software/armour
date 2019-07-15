@@ -1,7 +1,0 @@
-[workspace]
-
-members = [
-    "iptables-server",
-    "iptables-client",
-    "iptables-lib",
-]
