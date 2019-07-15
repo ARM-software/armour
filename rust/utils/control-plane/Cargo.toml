@@ -1,7 +1,0 @@
-[workspace]
-
-members = [
-    "control-plane-server", 
-    "control-plane-client", 
-    "control-plane-lib",
-]
