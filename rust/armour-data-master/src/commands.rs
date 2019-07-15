@@ -11,17 +11,17 @@ use super::Instances;
 use regex::Regex;
 
 lazy_static! {
-    pub static ref MASTER: Regex = Regex::new(r"^(?i)\s*(?P<command>list|help)\s*$").unwrap();
+    pub static ref MASTER: Regex = Regex::new(r"^(?i)\s*(?P<command>list|help|quit)\s*$").unwrap();
 }
 
 lazy_static! {
     pub static ref INSTANCE0: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>deny all|allow all|shutdown)\s*$"#).unwrap();
+        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>deny all|allow all|shutdown|ports|stop all)\s*$"#).unwrap();
 }
 
 lazy_static! {
     pub static ref INSTANCE1: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>policy|remote)\s+"(?P<path>.*)"\s*$"#)
+        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>policy|remote|start|stop)\s+(?P<arg>.*)\s*$"#)
             .unwrap();
 }
 
@@ -34,7 +34,7 @@ pub fn instance(caps: &regex::Captures) -> Instances {
                 Instances::All
             } else {
                 s.parse::<usize>()
-                    .map(|i| Instances::ID(i))
+                    .map(Instances::ID)
                     .unwrap_or(Instances::Error)
             }
         }

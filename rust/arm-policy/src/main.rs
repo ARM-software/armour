@@ -68,19 +68,18 @@ fn main() -> io::Result<()> {
         reader.read_to_string(&mut buf)?;
         match lang::Expr::from_string(&buf, &headers) {
             Ok(e) => {
-                let fut =
-                    e.evaluate(prog.clone())
+                // println!("{:#?}", e);
+                let fut = e
+                    .evaluate(prog.clone())
                     .and_then(|r| {
-                        future::ok({
-                            println!(": {}", r.clone());
-                        })
+                        println!(": {}", r.clone());
+                        future::ok(())
                     })
                     .or_else(|err| {
-                        future::ok({
-                            eprintln!("{}", err);
-                        })
-                    }).map_err(|_: ()| (std::io::ErrorKind::Other));
-                // println!("{:#?}", e);
+                        eprintln!("{}", err);
+                        future::ok(())
+                    })
+                    .map_err(|_: ()| (std::io::ErrorKind::Other));
                 sys.block_on(fut)?
             }
             Err(err) => {

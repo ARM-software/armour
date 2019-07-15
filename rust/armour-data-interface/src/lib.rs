@@ -1,9 +1,17 @@
 /// Communication interface between data plane master and proxy instances
+
+#[macro_use]
+extern crate lazy_static;
+
 use actix::prelude::*;
-use arm_policy::lang::Program;
+use arm_policy::{
+    lang::Program,
+    types::{Signature, Typ},
+};
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use tokio_io::codec::{Decoder, Encoder};
 
 trait DeserializeDecoder<T: serde::de::DeserializeOwned, E: std::convert::From<std::io::Error>> {
@@ -37,22 +45,58 @@ trait SerializeEncoder<T: serde::Serialize, E: std::convert::From<std::io::Error
     }
 }
 
+lazy_static! {
+    pub static ref POLICY_SIG: Vec<(String, Vec<Signature>)> = {
+        let require_args = vec![Typ::HttpRequest, Typ::Ipv4Addr.option()];
+        vec![
+            (
+                "require".to_string(),
+                vec![
+                    Signature::new(require_args.clone(), Typ::Bool),
+                    Signature::new(require_args, Typ::Policy),
+                ],
+            ),
+            (
+                "client_payload".to_string(),
+                vec![
+                    Signature::new(vec![Typ::Data], Typ::Bool),
+                    Signature::new(vec![Typ::Data], Typ::Policy),
+                ],
+            ),
+            (
+                "server_payload".to_string(),
+                vec![
+                    Signature::new(vec![Typ::Data], Typ::Bool),
+                    Signature::new(vec![Typ::Data], Typ::Policy),
+                ],
+            ),
+        ]
+    };
+}
+
 /// Policy update request messages
 #[derive(Serialize, Deserialize, Message, Clone)]
 pub enum PolicyRequest {
-    UpdateFromFile(std::path::PathBuf),
-    UpdateFromData(Program),
     AllowAll,
     DenyAll,
+    QueryActivePorts,
     Shutdown,
+    StopAll,
+    Start(u16),
+    Stop(u16),
+    UpdateFromData(Program),
+    UpdateFromFile(std::path::PathBuf),
 }
 
 /// Messages from proxy instance to master
 #[derive(Serialize, Deserialize, Debug, Message)]
 pub enum PolicyResponse {
+    Started,
+    Stopped,
     ShuttingDown,
     UpdatedPolicy,
     RequestFailed,
+    ActivePorts(HashSet<u16>),
 }
 
 /// Transport codec for Master to Proxy instance communication

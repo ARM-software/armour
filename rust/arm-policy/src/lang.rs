@@ -110,12 +110,10 @@ impl ExprAndMeta {
     }
 }
 
+#[derive(Default)]
 pub struct ReturnType(Option<Typ>);
 
 impl ReturnType {
-    pub fn new() -> ReturnType {
-        ReturnType(None)
-    }
     pub fn get(&self) -> Option<Typ> {
         self.0.clone()
     }
@@ -238,22 +236,28 @@ impl Expr {
         Expr::LitExpr(Literal::Unit)
     }
     pub fn i64(i: i64) -> Expr {
-        Expr::LitExpr(Literal::IntLiteral(i))
+        Expr::LitExpr(Literal::Int(i))
     }
     pub fn f64(f: f64) -> Expr {
-        Expr::LitExpr(Literal::FloatLiteral(f))
+        Expr::LitExpr(Literal::Float(f))
     }
     pub fn bool(b: bool) -> Expr {
-        Expr::LitExpr(Literal::BoolLiteral(b))
+        Expr::LitExpr(Literal::Bool(b))
     }
     pub fn string(s: &str) -> Expr {
-        Expr::LitExpr(Literal::StringLiteral(s.to_string()))
+        Expr::LitExpr(Literal::Str(s.to_string()))
     }
     pub fn data(d: &[u8]) -> Expr {
-        Expr::LitExpr(Literal::DataLiteral(d.to_vec()))
+        Expr::LitExpr(Literal::Data(d.to_vec()))
     }
     pub fn http_request(r: literals::HttpRequest) -> Expr {
-        Expr::LitExpr(Literal::HttpRequestLiteral(r))
+        Expr::LitExpr(Literal::HttpRequest(r))
+    }
+    pub fn none() -> Expr {
+        Expr::LitExpr(Literal::none())
+    }
+    pub fn some(l: Literal) -> Expr {
+        Expr::LitExpr(Literal::some(&l))
     }
     pub fn call(f: &str, arguments: Vec<Expr>) -> Expr {
         Expr::CallExpr {
@@ -516,7 +520,7 @@ impl Expr {
             _ => Err(Error::new("apply: expression is not a closure")),
         }
     }
-    fn block_stmt_loc(v: &parser::BlockStmt, default: lexer::Loc) -> lexer::Loc {
+    fn block_stmt_loc(v: &[parser::LocStmt], default: lexer::Loc) -> lexer::Loc {
         v.get(0).map_or(default, |s| s.loc().clone())
     }
     fn from_loc_expr(
@@ -546,7 +550,7 @@ impl Expr {
                     Typ::type_check("list", vec![(Some(e.loc()), &ty)], vec![(None, &typ)])?;
                     exprs.push(expr);
                     calls.push(call);
-                    typ = typ.pick(&ty);
+                    typ = typ.unify(&ty);
                 }
                 Ok(ExprAndMeta::new(
                     Expr::BlockExpr(Block::List, exprs),
@@ -655,7 +659,7 @@ impl Expr {
                 )?;
                 Ok(ExprAndMeta::new(
                     Expr::if_else_expr(expr1, expr2, expr3),
-                    typ2.pick(&typ3),
+                    typ2.unify(&typ3),
                     vec![calls1, calls2, calls3],
                 ))
             }
@@ -666,7 +670,9 @@ impl Expr {
                 alternative: None,
             } => {
                 let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, vars)?.split();
-                let typ1 = typ1.dest_option()?;
+                let typ1 = typ1.dest_option().map_err(|_| {
+                    Error::new(format!("expecting option type in if-let at {}", e.loc()))
+                })?;
                 let id = var.id();
                 let (expr2, calls2, typ2) =
                     Expr::from_block_stmt(consequence, headers, ret, &vars.add_var(id, &typ1))?
@@ -693,7 +699,9 @@ impl Expr {
                 alternative: Some(alt),
             } => {
                 let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, vars)?.split();
-                let typ1 = typ1.dest_option()?;
+                let typ1 = typ1.dest_option().map_err(|_| {
+                    Error::new(format!("expecting option type in if-let at {}", e.loc()))
+                })?;
                 let id = var.id();
                 let (expr2, calls2, typ2) =
                     Expr::from_block_stmt(consequence, headers, ret, &vars.add_var(id, &typ1))?
@@ -710,7 +718,7 @@ impl Expr {
                         consequence: Box::new(expr2.closure_expr(id)),
                         alternative: Some(Box::new(expr3)),
                     },
-                    typ2.pick(&typ3),
+                    typ2.unify(&typ3),
                     vec![calls1, calls2, calls3],
                 ))
             }
@@ -806,7 +814,7 @@ impl Expr {
                                 consequence: { Box::new(expr1) },
                                 alternative: Some(Box::new(expr2)),
                             },
-                            typ1,
+                            typ1.unify(&typ2),
                             calls,
                         )
                     }
@@ -858,7 +866,13 @@ impl Expr {
                 };
                 let (expr2, calls2, typ2) =
                     Expr::from_block_stmt(body, headers, ret, &iter_vars)?.split();
-                if *op != parser::Iter::Map {
+                if *op == parser::Iter::FilterMap {
+                    Typ::type_check(
+                        "filter_map-expression",
+                        vec![(Some(Expr::block_stmt_loc(body, e.loc())), &typ2)],
+                        vec![(None, &Typ::any_option())],
+                    )?
+                } else if *op != parser::Iter::Map && *op != parser::Iter::ForEach {
                     Typ::type_check(
                         "all/any/filter-expression",
                         vec![(Some(Expr::block_stmt_loc(body, e.loc())), &typ2)],
@@ -867,12 +881,13 @@ impl Expr {
                 }
                 Ok(ExprAndMeta::new(
                     expr2.iter_expr(op, vs, expr1),
-                    if *op == parser::Iter::Map {
-                        Typ::List(Box::new(typ2))
-                    } else if *op == parser::Iter::Filter {
-                        typ1
-                    } else {
-                        Typ::Bool
+                    match op {
+                        parser::Iter::All | parser::Iter::Any => Typ::Bool,
+                        parser::Iter::Filter => typ1,
+                        // type check above will ensure unwrap is successful
+                        parser::Iter::FilterMap => Typ::List(Box::new(typ2.dest_option().unwrap())),
+                        parser::Iter::ForEach => Typ::Unit,
+                        parser::Iter::Map => Typ::List(Box::new(typ2)),
                     },
                     vec![calls1, calls2],
                 ))
@@ -881,12 +896,12 @@ impl Expr {
                 function,
                 arguments,
                 ..
-            } if (function == "Some" || function == "option::Some") && arguments.len() == 1 => {
+            } if function == "option::Some" && arguments.len() == 1 => {
                 let (expression, calls, typ) =
                     Expr::from_loc_expr(arguments.get(0).unwrap(), headers, ret, vars)?.split();
                 Ok(ExprAndMeta::new(
                     Expr::CallExpr {
-                        function: "Some".to_string(),
+                        function: function.to_string(),
                         arguments: vec![expression],
                     },
                     Typ::Tuple(vec![typ]),
@@ -904,14 +919,18 @@ impl Expr {
                     .collect();
                 let (expressions, mut calls, types) = ExprAndMeta::split_vec(expressions?);
                 let function = &Headers::resolve(function, &types);
-                if let Some((args, typ)) = headers.typ(function) {
-                    let args = args.iter().map(|t| (None, t)).collect();
-                    let types = arguments
-                        .iter()
-                        .map(|e| Some(e.loc()))
-                        .zip(types.iter())
-                        .collect();
-                    Typ::type_check(function, types, args)?;
+                if let Some((args, typ)) = headers.typ(function).map(types::Signature::split) {
+                    // external functions *can* be declared so that they accept any argument,
+                    // so only check the arguments when their types are declared
+                    if let Some(args) = args {
+                        let args = args.iter().map(|t| (None, t)).collect();
+                        let types = arguments
+                            .iter()
+                            .map(|e| Some(e.loc()))
+                            .zip(types.iter())
+                            .collect();
+                        Typ::type_check(function, types, args)?
+                    };
                     calls.push(
                         vec![Call {
                             name: function.to_string(),
@@ -930,7 +949,7 @@ impl Expr {
                     ))
                 } else if let Ok(i) = function.parse::<usize>() {
                     match types.as_slice() {
-                        &[Typ::Tuple(ref l)] => {
+                        [Typ::Tuple(ref l)] => {
                             if i < l.len() {
                                 Ok(ExprAndMeta::new(
                                     Expr::CallExpr {
@@ -979,7 +998,7 @@ impl Expr {
         match block.split_first() {
             Some((stmt, rest)) => match stmt.stmt() {
                 parser::Stmt::ReturnStmt(re) => {
-                    if rest.len() == 0 {
+                    if rest.is_empty() {
                         let (expr, calls, typ) =
                             Expr::from_loc_expr(re, headers, ret, vars)?.split();
                         // need to type check typ against function return type
@@ -1017,7 +1036,7 @@ impl Expr {
                             stmt.loc()
                         )
                     };
-                    if rest.len() == 0 {
+                    if rest.is_empty() {
                         Ok(ExprAndMeta::new(
                             expr1,
                             if *has_semi { Typ::Unit } else { typ1 },
@@ -1103,11 +1122,10 @@ impl Expr {
         headers: &Headers,
         vars: &Vars,
     ) -> Result<ExprAndMeta, Error> {
-        let mut ret = ReturnType::new();
+        let mut ret = ReturnType::default();
         let em = Expr::from_loc_expr(e, headers, &mut ret, vars)?;
-        match ret.get() {
-            Some(rtype) => Typ::type_check("REPL", vec![(None, &em.typ)], vec![(None, &rtype)])?,
-            None => (),
+        if let Some(rtype) = ret.get() {
+            Typ::type_check("REPL", vec![(None, &em.typ)], vec![(None, &rtype)])?
         }
         Ok(em)
     }
@@ -1117,25 +1135,23 @@ impl Expr {
         vars: &Vars,
         name: Option<&str>,
     ) -> Result<ExprAndMeta, self::Error> {
-        let mut ret = ReturnType::new();
+        let mut ret = ReturnType::default();
         let em = Expr::from_block_stmt(block, headers, &mut ret, vars)?;
         // check if type of "return" calls is type of statement
-        match ret.get() {
-            Some(rtype) => Typ::type_check(
+        if let Some(rtype) = ret.get() {
+            Typ::type_check(
                 name.unwrap_or("REPL"),
                 vec![(None, &em.typ)],
                 vec![(None, &rtype)],
-            )?,
-            None => (),
+            )?
         }
         // check if declared return type of function is type of statement
-        match name {
-            Some(name) => Typ::type_check(
+        if let Some(name) = name {
+            Typ::type_check(
                 name,
                 vec![(None, &em.typ)],
                 vec![(None, &headers.return_typ(name)?)],
-            )?,
-            None => (),
+            )?
         }
         Ok(em)
     }
@@ -1182,7 +1198,7 @@ impl std::str::FromStr for Expr {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::from_string(s, &mut Headers::new())
+        Self::from_string(s, &Headers::default())
     }
 }
 
@@ -1239,7 +1255,7 @@ impl Program {
         Program {
             code: Code::new(),
             externals: externals::Externals::default(),
-            headers: Headers::new(),
+            headers: Headers::default(),
         }
     }
     pub fn has_function(&self, name: &str) -> bool {
@@ -1284,28 +1300,82 @@ impl Program {
     }
     fn add_decl(&mut self, call_graph: &mut CallGraph, decl: &parser::FnDecl) -> Result<(), Error> {
         // println!("{:#?}", decl);
-        let (name, e, calls) = Expr::from_decl(decl, &mut self.headers)?;
+        let (name, e, calls) = Expr::from_decl(decl, &self.headers)?;
         // println!(r#""{}": {:#?}"#, name, e);
         let own_idx = call_graph
             .nodes
             .get(name)
-            .ok_or(Error::new(&format!("cannot find \"{}\" node", name)))?;
+            .ok_or_else(|| Error::new(&format!("cannot find \"{}\" node", name)))?;
         for c in calls.into_iter().filter(|c| !Headers::is_builtin(&c.name)) {
             let call_idx = call_graph
                 .nodes
                 .get(&c.name)
-                .ok_or(Error::new(&format!("cannot find \"{}\" node", c.name)))?;
+                .ok_or_else(|| Error::new(&format!("cannot find \"{}\" node", c.name)))?;
             call_graph.graph.add_edge(*own_idx, *call_idx, c.loc);
         }
         self.code.0.insert(name.to_string(), e);
         Ok(())
     }
-    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, Error> {
+    fn type_check1(
+        function: &str,
+        sig1: &types::Signature,
+        sig2: &types::Signature,
+    ) -> Result<(), Error> {
+        let (args1, ty1) = sig1.split_as_ref();
+        let (args2, ty2) = sig2.split_as_ref();
+        Typ::type_check(function, vec![(None, ty1)], vec![(None, ty2)]).map_err(Error::from)?;
+        match (args1, args2) {
+            (Some(a1), Some(a2)) => {
+                let a1 = a1.iter().map(|t| (None, t)).collect();
+                let a2 = a2.iter().map(|t| (None, t)).collect();
+                Typ::type_check(function, a1, a2).map_err(Error::from)
+            }
+            (Some(_), None) => Err(Error::new(format!(
+                "type of function not general enough: {}",
+                function
+            ))),
+            (None, None) | (None, Some(_)) => Ok(()),
+        }
+    }
+    fn type_check(&self, function: &str, sigs: &[types::Signature]) -> Result<(), Error> {
+        match self.headers.typ(function) {
+            Some(f_sig) => {
+                if sigs
+                    .iter()
+                    .any(|sig| Program::type_check1(function, &f_sig, sig).is_ok())
+                {
+                    Ok(())
+                } else {
+                    let possible = sigs
+                        .iter()
+                        .map(|sig| sig.to_string())
+                        .collect::<Vec<String>>()
+                        .join("; ");
+                    Err(Error::new(format!(
+                        r#"unable to find suitable instance of function "{}". possible types are: {}"#,
+                        function, possible
+                    )))
+                }
+            }
+            None => Ok(()), // ok if not present
+        }
+    }
+    pub fn check_from_file<P: AsRef<std::path::Path>>(
+        path: P,
+        check: &[(String, Vec<types::Signature>)],
+    ) -> Result<Self, Error> {
         use std::io::prelude::Read;
         let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
         let mut buf = String::new();
         reader.read_to_string(&mut buf).unwrap();
-        buf.parse()
+        let prog: Self = buf.parse()?;
+        for (f, sigs) in check {
+            prog.type_check(f.as_str(), sigs)?
+        }
+        Ok(prog)
+    }
+    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, Error> {
+        Program::check_from_file(path, &Vec::new())
     }
 }
 
@@ -1328,7 +1398,7 @@ impl std::str::FromStr for Program {
                     match decl {
                         parser::Decl::FnDecl(decl) => {
                             let name = decl.name();
-                            let (args, typ) = decl.typ().map_err(|err| {
+                            let sig = decl.typ().map_err(|err| {
                                 Error::new(&format!(
                                     "function \"{}\" at {}: {}",
                                     name,
@@ -1336,14 +1406,14 @@ impl std::str::FromStr for Program {
                                     err
                                 ))
                             })?;
-                            prog.headers.add_function(name, args, &typ)?;
+                            prog.headers.add_function(name, sig)?;
                             call_graph.add_node(name);
                         }
                         parser::Decl::External(e) => {
                             let ename = e.name();
                             for h in e.headers.iter() {
                                 let name = &format!("{}::{}", ename, h.name());
-                                let (args, typ) = h.typ().map_err(|err| {
+                                let sig = h.typ().map_err(|err| {
                                     Error::new(&format!(
                                         "header \"{}\" at {}: {}",
                                         name,
@@ -1351,7 +1421,7 @@ impl std::str::FromStr for Program {
                                         err
                                     ))
                                 })?;
-                                prog.headers.add_function(name, args, &typ)?;
+                                prog.headers.add_function(name, sig)?;
                                 call_graph.add_node(name);
                             }
                             if prog.externals.add_external(ename, e.url()) {
@@ -1362,9 +1432,8 @@ impl std::str::FromStr for Program {
                 }
                 // process declarations
                 for decl in prog_parse {
-                    match decl {
-                        parser::Decl::FnDecl(decl) => prog.add_decl(&mut call_graph, &decl)?,
-                        _ => (),
+                    if let parser::Decl::FnDecl(decl) = decl {
+                        prog.add_decl(&mut call_graph, &decl)?
                     }
                 }
                 call_graph.check_for_cycles()?;

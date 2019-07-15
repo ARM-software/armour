@@ -3,7 +3,7 @@
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
 use arm_policy::lang;
-use armour_data_interface::PolicyRequest;
+use armour_data_interface::{PolicyRequest, POLICY_SIG};
 use armour_data_master as master;
 use clap::{crate_version, App, Arg};
 use master::{commands, MasterCommand};
@@ -46,12 +46,7 @@ fn main() -> io::Result<()> {
     let listener = tokio_uds::UnixListener::bind(socket.clone())?;
     let master_clone = master.clone();
     let _server = master::ArmourDataServer::create(|ctx| {
-        ctx.add_message_stream(
-            listener
-                .incoming()
-                .map_err(|_| ())
-                .map(|st| master::UdsConnect(st)),
-        );
+        ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(master::UdsConnect));
         master::ArmourDataServer {
             master: master_clone,
             socket,
@@ -69,60 +64,85 @@ fn main() -> io::Result<()> {
             let command = caps.name("command").map(|s| s.as_str().to_lowercase());
             match command.as_ref().map(String::as_str) {
                 Some("list") => master.do_send(MasterCommand::ListActive),
+                Some("quit") => master.do_send(MasterCommand::Quit),
                 Some("help") => println!(
                     "COMMANDS:
-    help                  list commands
-    list                  list connected instances
+    help                      list commands
+    list                      list connected instances
+    quit                      shutdown master and all instances
 
     [<id>|all] allow all      request allow all policy
     [<id>|all] deny all       request deny all policy
+    [<id>|all] ports          list active ports
     [<id>|all] shutdown       request shutdown
+    [<id>|all] stop all       stop listening on all ports
     [<id>|all] policy <path>  read and request policy from file <path>
     [<id>|all] remote <path>  request read of policy from file <path>
+    [<id>|all] start <port>   start listening on port <port>
+    [<id>|all] stop <port>    stop listening on port <port>
 
-    <id> single instance ID number
-    all  all instances"
+    <id>  single instance ID number
+    all   all instances"
                 ),
                 _ => log::info!("unknown command"),
             }
         } else if let Some(caps) = commands::INSTANCE0.captures(&cmd) {
             let command = caps.name("command").map(|s| s.as_str().to_lowercase());
-            let request = match command.as_ref().map(String::as_str) {
-                Some("allow all") => PolicyRequest::AllowAll,
-                Some("deny all") => PolicyRequest::DenyAll,
-                Some("shutdown") => PolicyRequest::Shutdown,
+            if let Some(request) = match command.as_ref().map(String::as_str) {
+                Some("ports") => Some(PolicyRequest::QueryActivePorts),
+                Some("allow all") => Some(PolicyRequest::AllowAll),
+                Some("deny all") => Some(PolicyRequest::DenyAll),
+                Some("shutdown") => Some(PolicyRequest::Shutdown),
+                Some("stop all") => Some(PolicyRequest::StopAll),
                 _ => {
                     log::info!("unknown command");
-                    return;
+                    None
                 }
-            };
-            master.do_send(MasterCommand::UpdatePolicy(
-                commands::instance(&caps),
-                request,
-            ))
+            } {
+                master.do_send(MasterCommand::UpdatePolicy(
+                    commands::instance(&caps),
+                    Box::new(request),
+                ))
+            }
         } else if let Some(caps) = commands::INSTANCE1.captures(&cmd) {
-            let path = PathBuf::from(caps.name("path").unwrap().as_str());
+            let arg = caps.name("arg").unwrap().as_str().trim_matches('"');
             let command = caps.name("command").map(|s| s.as_str().to_lowercase());
-            let request = match command.as_ref().map(String::as_str) {
-                Some("policy") => match lang::Program::from_file(&path) {
-                    Ok(prog) => PolicyRequest::UpdateFromData(prog),
-                    Err(err) => {
-                        log::warn!(r#"{:?}: {}"#, path, err);
-                        return;
+            if let Some(request) = match command.as_ref().map(String::as_str) {
+                Some(s @ "start") | Some(s @ "stop") => {
+                    if let Ok(port) = arg.parse::<u16>() {
+                        Some(if s == "start" {
+                            PolicyRequest::Start(port)
+                        } else {
+                            PolicyRequest::Stop(port)
+                        })
+                    } else {
+                        log::warn!("{}: expecting port number, got {}", s, arg);
+                        None
                     }
-                },
-                Some("remote") => PolicyRequest::UpdateFromFile(path),
+                }
+                Some("policy") => {
+                    let path = PathBuf::from(arg);
+                    match lang::Program::check_from_file(&path, &*POLICY_SIG) {
+                        Ok(prog) => Some(PolicyRequest::UpdateFromData(prog)),
+                        Err(err) => {
+                            log::warn!(r#"{:?}: {}"#, path, err);
+                            None
+                        }
+                    }
+                }
+                Some("remote") => Some(PolicyRequest::UpdateFromFile(PathBuf::from(arg))),
                 _ => {
                     log::info!("unknown command");
-                    return;
+                    None
                 }
-            };
-            master.do_send(MasterCommand::UpdatePolicy(
-                commands::instance(&caps),
-                request,
-            ))
+            } {
+                master.do_send(MasterCommand::UpdatePolicy(
+                    commands::instance(&caps),
+                    Box::new(request),
+                ))
+            }
         } else {
-            log::info!("unknown command")
+            log::info!("unknown command <none>")
         }
     });
 

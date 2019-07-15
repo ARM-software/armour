@@ -1,0 +1,56 @@
+version: "3.5"
+services:
+
+  server-1:
+    container_name: server-1
+    hostname: server-1
+    build:
+      context: .
+      dockerfile: dockerfile-client-python
+    image: client-python
+    command: tail -f /dev/null
+    volumes:
+      - ./flask-server:/flask-server
+    expose:
+      - "8080"
+    # ports:
+    #   - "8080:8080"
+    networks:
+      srv-net-1:
+        ipv4_address: 172.19.0.2
+
+  server-2:
+    container_name: server-2
+    hostname: server-2
+    image: client-python
+    command: tail -f /dev/null
+    volumes:
+      - ./flask-server:/flask-server
+    expose:
+      - "8080"
+    # ports:
+    #   - "8080:8080"
+    networks:
+      srv-net-2:
+        ipv4_address: 172.20.0.2
+
+networks:
+  srv-net-1:
+    name: srv-net-1
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: srv-net-1
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.19.0.0/28
+
+  srv-net-2:
+    name: srv-net-2
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: srv-net-2
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/28

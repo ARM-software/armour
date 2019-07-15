@@ -1,9 +1,12 @@
 //! actix-web support for Armour policies
+use super::proxy::start_proxy;
 use actix::prelude::*;
 use actix_web::web;
 use arm_policy::{lang, literals};
 use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse};
 use futures::{future, Future};
+use literals::ToLiteral;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio_codec::FramedRead;
@@ -17,6 +20,8 @@ pub struct DataPolicy {
     program: Arc<lang::Program>,
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, PolicyCodec>,
+    // proxies
+    proxies: HashMap<u16, Box<actix_web::dev::Server>>,
 }
 
 impl DataPolicy {
@@ -32,6 +37,7 @@ impl DataPolicy {
                     DataPolicy {
                         program: Arc::new(lang::Program::new()),
                         uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
+                        proxies: HashMap::new(),
                     }
                 });
                 future::ok(addr)
@@ -49,11 +55,11 @@ impl DataPolicy {
                 lang::Expr::call(function, args)
                     .evaluate(self.program.clone())
                     .and_then(|result| match result {
-                        lang::Expr::LitExpr(literals::Literal::PolicyLiteral(policy)) => {
+                        lang::Expr::LitExpr(literals::Literal::Policy(policy)) => {
                             info!("result is: {:?}", policy);
                             future::ok(Some(policy == literals::Policy::Accept))
                         }
-                        lang::Expr::LitExpr(literals::Literal::BoolLiteral(accept)) => {
+                        lang::Expr::LitExpr(literals::Literal::Bool(accept)) => {
                             info!("result is: {}", accept);
                             future::ok(Some(accept))
                         }
@@ -84,7 +90,7 @@ impl StreamHandler<PolicyRequest, std::io::Error> for DataPolicy {
 
 /// Internal proxy message for requesting function evaluation over the policy
 pub enum Evaluate {
-    Require(lang::Expr),
+    Require(lang::Expr, lang::Expr),
     ClientPayload(lang::Expr),
     ServerPayload(lang::Expr),
 }
@@ -98,7 +104,7 @@ impl Handler<Evaluate> for DataPolicy {
 
     fn handle(&mut self, msg: Evaluate, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
-            Evaluate::Require(arg) => self.evaluate_policy("require", vec![arg]),
+            Evaluate::Require(arg1, arg2) => self.evaluate_policy("require", vec![arg1, arg2]),
             Evaluate::ClientPayload(arg) => self.evaluate_policy("client_payload", vec![arg]),
             Evaluate::ServerPayload(arg) => self.evaluate_policy("server_payload", vec![arg]),
         }
@@ -108,10 +114,46 @@ impl Handler<Evaluate> for DataPolicy {
 impl Handler<PolicyRequest> for DataPolicy {
     type Result = ();
 
-    fn handle(&mut self, msg: PolicyRequest, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) -> Self::Result {
         match msg {
+            PolicyRequest::QueryActivePorts => {
+                let ports: HashSet<u16> = self.proxies.keys().map(|port| port.to_owned()).collect();
+                self.uds_framed.write(PolicyResponse::ActivePorts(ports))
+            }
+            PolicyRequest::Stop(port) => match self.proxies.get(&port) {
+                Some(server) => {
+                    server.stop(true); // graceful stop
+                    self.proxies.remove(&port);
+                    log::info!("stopped proxy on port {}", port);
+                    self.uds_framed.write(PolicyResponse::Stopped)
+                }
+                None => {
+                    log::warn!("there is no proxy to stop on port {}", port);
+                    self.uds_framed.write(PolicyResponse::RequestFailed)
+                }
+            },
+            PolicyRequest::StopAll => {
+                for (port, server) in self.proxies.drain() {
+                    server.stop(true); // graceful stop
+                    log::info!("stopped proxy on port {}", port);
+                    self.uds_framed.write(PolicyResponse::Stopped)
+                }
+            }
+            PolicyRequest::Start(port) => match start_proxy(ctx.address(), port) {
+                Ok(server) => {
+                    self.proxies.insert(port, Box::new(server));
+                    self.uds_framed.write(PolicyResponse::Started)
+                }
+                Err(err) => {
+                    warn!("failed to start proxy on port {}: {}", port, err);
+                    self.uds_framed.write(PolicyResponse::RequestFailed)
+                }
+            },
             // Attempt to load a new policy from a file
-            PolicyRequest::UpdateFromFile(p) => match lang::Program::from_file(p.as_path()) {
+            PolicyRequest::UpdateFromFile(p) => match lang::Program::check_from_file(
+                p.as_path(),
+                &*armour_data_interface::POLICY_SIG,
+            ) {
                 Ok(prog) => {
                     self.program = Arc::new(prog);
                     info!(
@@ -148,7 +190,7 @@ impl Handler<PolicyRequest> for DataPolicy {
 lazy_static! {
     /// Static "allow all" policy
     pub static ref ALLOW_ALL: lang::Program =
-        lang::Program::from_str("fn require(r:HttpRequest) -> bool {true}").unwrap();
+        lang::Program::from_str("fn require(r: HttpRequest, peer_addr: Option<Ipv4Addr>) -> bool {true}").unwrap();
 }
 
 impl Actor for DataPolicy {
@@ -192,5 +234,14 @@ impl ToArmourExpression for web::Bytes {
 impl ToArmourExpression for web::BytesMut {
     fn to_expression(&self) -> lang::Expr {
         lang::Expr::data(self)
+    }
+}
+
+impl ToArmourExpression for Option<std::net::SocketAddr> {
+    fn to_expression(&self) -> lang::Expr {
+        match self {
+            Some(std::net::SocketAddr::V4(addr)) => lang::Expr::some(addr.ip().to_literal()),
+            _ => lang::Expr::none(),
+        }
     }
 }

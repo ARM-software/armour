@@ -37,7 +37,7 @@ pub enum Typ {
 
 pub struct Head {
     id: LocIdent,
-    typs: Vec<Typ>,
+    typs: Option<Vec<Typ>>,
     typ: Option<Typ>,
 }
 
@@ -45,11 +45,11 @@ impl Head {
     pub fn name(&self) -> &str {
         self.id.id()
     }
-    pub fn args(&self) -> &Vec<Typ> {
-        &self.typs
+    pub fn args(&self) -> Option<&Vec<Typ>> {
+        self.typs.as_ref()
     }
-    pub fn typ_id(&self) -> &Option<Typ> {
-        &self.typ
+    pub fn typ_id(&self) -> Option<&Typ> {
+        self.typ.as_ref()
     }
     pub fn loc(&self) -> Loc {
         self.id.loc()
@@ -139,8 +139,10 @@ pub type BlockStmt = Vec<LocStmt>;
 pub enum Iter {
     All,
     Any,
-    Map,
     Filter,
+    FilterMap,
+    ForEach,
+    Map,
 }
 
 impl std::fmt::Display for Iter {
@@ -148,8 +150,10 @@ impl std::fmt::Display for Iter {
         match self {
             Iter::All => write!(f, "all"),
             Iter::Any => write!(f, "any"),
-            Iter::Map => write!(f, "map"),
             Iter::Filter => write!(f, "filter"),
+            Iter::FilterMap => write!(f, "filter_map"),
+            Iter::Map => write!(f, "map"),
+            Iter::ForEach => write!(f, "foreach"),
         }
     }
 }
@@ -454,10 +458,10 @@ named!(pub parse_fn_head<Tokens, FnHead>,
         tag_token!(Token::Function) >>
         id: parse_ident!() >>
         tag_token!(Token::LParen) >>
-        params: alt_complete!(parse_params | empty_params) >>
+        params: opt!(parse_params) >>
         tag_token!(Token::RParen) >>
         typ: opt!(preceded!(tag_token!(Token::Arrow), parse_type)) >>
-        (FnHead {id, params, typ})
+        (FnHead {id, params: params.unwrap_or_default(), typ})
     )
 );
 
@@ -468,10 +472,6 @@ named!(parse_fn_expr<Tokens, FnDecl>,
         (FnDecl {head, body })
     )
 );
-
-fn empty_params(i: Tokens) -> IResult<Tokens, Vec<Param>> {
-    Ok((i, vec![]))
-}
 
 named!(parse_param<Tokens, Param>,
     do_parse!(
@@ -555,13 +555,13 @@ macro_rules! parse_literal (
             Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag)))
         } else {
             match t1.tok0().clone() {
-                Token::IntLiteral(i) => Ok((i1, LocLiteral(t1.loc(), Literal::IntLiteral(i)))),
-                Token::FloatLiteral(f) => Ok((i1, LocLiteral(t1.loc(), Literal::FloatLiteral(f)))),
-                Token::BoolLiteral(b) => Ok((i1, LocLiteral(t1.loc(), Literal::BoolLiteral(b)))),
-                Token::DataLiteral(d) => Ok((i1, LocLiteral(t1.loc(), Literal::DataLiteral(d)))),
-                Token::StringLiteral(s) => Ok((i1, LocLiteral(t1.loc(), Literal::StringLiteral(s)))),
-                Token::PolicyLiteral(p) => Ok((i1, LocLiteral(t1.loc(), Literal::PolicyLiteral(p)))),
-                Token::Ident(ref s) if s == "None" => Ok((i1, LocLiteral(t1.loc(), Literal::Tuple(Vec::new())))),
+                Token::IntLiteral(i) => Ok((i1, LocLiteral(t1.loc(), Literal::Int(i)))),
+                Token::FloatLiteral(f) => Ok((i1, LocLiteral(t1.loc(), Literal::Float(f)))),
+                Token::BoolLiteral(b) => Ok((i1, LocLiteral(t1.loc(), Literal::Bool(b)))),
+                Token::DataLiteral(d) => Ok((i1, LocLiteral(t1.loc(), Literal::Data(d)))),
+                Token::StringLiteral(s) => Ok((i1, LocLiteral(t1.loc(), Literal::Str(s)))),
+                Token::PolicyLiteral(p) => Ok((i1, LocLiteral(t1.loc(), Literal::Policy(p)))),
+                Token::Ident(ref s) if s == "None" => Ok((i1, LocLiteral(t1.loc(), Literal::none()))),
                 _ => Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag))),
             }
         }
@@ -678,8 +678,10 @@ named!(parse_iter_expr<Tokens, LocExpr>,
         t: alt!(
             tag_token!(Token::All) |
             tag_token!(Token::Any) |
-            tag_token!(Token::Map) |
-            tag_token!(Token::Filter)
+            tag_token!(Token::Filter) |
+            tag_token!(Token::FilterMap) |
+            tag_token!(Token::ForEach) |
+            tag_token!(Token::Map)
         ) >>
         idents: parse_idents >>
         tag_token!(Token::In) >>
@@ -691,8 +693,10 @@ named!(parse_iter_expr<Tokens, LocExpr>,
                 op: match t.tok0() {
                     Token::All => Iter::All,
                     Token::Any => Iter::Any,
-                    Token::Map => Iter::Map,
                     Token::Filter => Iter::Filter,
+                    Token::FilterMap => Iter::FilterMap,
+                    Token::ForEach => Iter::ForEach,
+                    Token::Map => Iter::Map,
                     _ => unreachable!(),
                 },
                 idents,
@@ -706,11 +710,12 @@ named!(parse_iter_expr<Tokens, LocExpr>,
 named!(parse_paren_expr<Tokens, LocExpr>,
     do_parse!(
         t: tag_token!(Token::LParen) >>
-        es: alt_complete!(parse_exprs | empty_boxed_vec) >>
+        es: opt!(parse_exprs) >>
         tag_token!(Token::RParen) >>
         (LocExpr(
             t.loc(),
             {
+                let es = es.unwrap_or_default();
                 let n = es.len();
                 if n == 0 {
                     Expr::LitExpr(Literal::Unit)
@@ -728,7 +733,7 @@ named!(parse_lit_expr<Tokens, LocExpr>, alt_complete!(
     do_parse!(
         tag_token!(Token::Dot) >>
         i: parse_int_literal!() >>
-        (LocExpr(i.0, Expr::LitExpr(Literal::FloatLiteral(format!(".{}", i.1).parse().unwrap()))))
+        (LocExpr(i.0, Expr::LitExpr(Literal::Float(format!(".{}", i.1).parse().unwrap()))))
     ) |
     do_parse!(
         lit: parse_literal!() >>
@@ -737,9 +742,15 @@ named!(parse_lit_expr<Tokens, LocExpr>, alt_complete!(
 ));
 
 named!(parse_ident_expr<Tokens, LocExpr>,
-    do_parse!(
-        ident: parse_ident!() >>
-        (LocExpr(ident.loc(), Expr::IdentExpr(ident.1)))
+    alt_complete!(
+        do_parse!(
+            ident: parse_ident!() >>
+            (LocExpr(ident.loc(), Expr::IdentExpr(ident.1)))
+        ) |
+        do_parse!(
+            t: tag_token!(Token::Some) >>
+            (LocExpr(t.loc(), Expr::IdentExpr(Ident("option::Some".to_string()))))
+        )
     )
 );
 
@@ -754,10 +765,6 @@ named!(parse_exprs<Tokens, Vec<LocExpr>>,
         ([&vec!(e)[..], &es[..]].concat())
     )
 );
-
-fn empty_boxed_vec(i: Tokens) -> IResult<Tokens, Vec<LocExpr>> {
-    Ok((i, vec![]))
-}
 
 fn parse_prefix_expr(input: Tokens) -> IResult<Tokens, LocExpr> {
     let (i1, t1) = try_parse!(
@@ -888,7 +895,7 @@ fn parse_call_expr(input: Tokens, fn_handle: LocExpr) -> IResult<Tokens, LocExpr
     do_parse!(
         input,
         tag_token!(Token::LParen)
-            >> arguments: alt_complete!(parse_exprs | empty_boxed_vec)
+            >> arguments: opt!(parse_exprs)
             >> tag_token!(Token::RParen)
             >> (LocExpr(
                 fn_handle.loc(),
@@ -900,7 +907,7 @@ fn parse_call_expr(input: Tokens, fn_handle: LocExpr) -> IResult<Tokens, LocExpr
                             return Err(nom::Err::Error(error_position!(input, ErrorKind::Tag)))
                         }
                     },
-                    arguments
+                    arguments: arguments.unwrap_or_default()
                 }
             ))
     )
@@ -909,9 +916,9 @@ fn parse_call_expr(input: Tokens, fn_handle: LocExpr) -> IResult<Tokens, LocExpr
 named!(parse_list_expr<Tokens, LocExpr>,
     do_parse!(
         t: tag_token!(Token::LBracket) >>
-        items: parse_exprs >>
+        items: opt!(parse_exprs) >>
         tag_token!(Token::RBracket) >>
-        (LocExpr(t.loc(), Expr::ListExpr(items)))
+        (LocExpr(t.loc(), Expr::ListExpr(items.unwrap_or_default())))
     )
 );
 
@@ -949,7 +956,7 @@ named!(parse_else_expr<Tokens, BlockStmt>,
 named!(parse_some_match<Tokens, (LocIdent, LocExpr)>,
     do_parse!(
         tag_token!(Token::Let) >>
-        tag_token!(Token::Ident("Some".to_string())) >>
+        tag_token!(Token::Some) >>
         id: delimited!(tag_token!(Token::LParen), parse_ident!(), tag_token!(Token::RParen)) >>
         tag_token!(Token::Assign) >>
         e: parse_expr >>
@@ -1100,7 +1107,10 @@ named!(parse_head<Tokens, Head>,
         tag_token!(Token::Function) >>
         id: parse_ident!() >>
         tag_token!(Token::LParen) >>
-        typs: alt_complete!(parse_types | empty_types) >>
+        typs: alt_complete!(
+                value!(None, tag_token!(Token::Underscore)) |
+                do_parse!(typs: opt!(parse_types) >> (Some(typs.unwrap_or_default())))
+        ) >>
         tag_token!(Token::RParen) >>
         typ: opt!(preceded!(tag_token!(Token::Arrow), parse_type)) >>
         (Head {id, typs, typ})
@@ -1123,15 +1133,11 @@ named!(parse_type<Tokens, Typ>, alt_complete!(
 named!(parse_tuple_type<Tokens, Typ>,
     do_parse!(
         tag_token!(Token::LParen) >>
-        typs: alt_complete!(parse_types | empty_types) >>
+        typs: opt!(parse_types) >>
         tag_token!(Token::RParen) >>
-        (Typ::Tuple(typs))
+        (Typ::Tuple(typs.unwrap_or_default()))
     )
 );
-
-fn empty_types(i: Tokens) -> IResult<Tokens, Vec<Typ>> {
-    Ok((i, vec![]))
-}
 
 named!(parse_comma_type<Tokens, Typ>,
     preceded!(tag_token!(Token::Comma), parse_type)

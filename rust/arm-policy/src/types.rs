@@ -5,7 +5,7 @@ use parser::{Infix, Prefix};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Typ {
     Return,
     Bool,
@@ -16,6 +16,7 @@ pub enum Typ {
     Unit,
     Policy,
     HttpRequest,
+    Ipv4Addr,
     List(Box<Typ>),
     // tuples of length 0 and 1 are used to manage option types
     Tuple(Vec<Typ>),
@@ -33,6 +34,7 @@ impl fmt::Display for Typ {
             Typ::Policy => write!(f, "Policy"),
             Typ::Return => write!(f, "!"),
             Typ::HttpRequest => write!(f, "HttpRequest"),
+            Typ::Ipv4Addr => write!(f, "Ipv4Addr"),
             Typ::List(t) => write!(f, "List<{}>", t.to_string()),
             Typ::Tuple(ts) => match ts.len() {
                 0 => write!(f, "Option<?>"),
@@ -53,7 +55,7 @@ impl fmt::Display for Typ {
 type LocType<'a> = (Option<Loc>, &'a Typ);
 type LocTypes<'a> = Vec<LocType<'a>>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Error<'a> {
     Mismatch(String, LocType<'a>, LocType<'a>),
     Args(String, usize, usize),
@@ -75,12 +77,12 @@ impl<'a> fmt::Display for Error<'a> {
                 write!(f, "> {}", lt1.1)?;
                 match &lt1.0 {
                     Some(loc) => writeln!(f, " on {}", loc)?,
-                    None => writeln!(f, "")?,
+                    None => writeln!(f)?,
                 }
                 write!(f, "< {}", lt2.1)?;
                 match &lt2.0 {
                     Some(loc) => writeln!(f, " on {}", loc),
-                    None => writeln!(f, ""),
+                    None => writeln!(f),
                 }
             }
             Error::Dest => write!(f, "expecting Option<..> type"),
@@ -89,6 +91,12 @@ impl<'a> fmt::Display for Error<'a> {
 }
 
 impl Typ {
+    pub fn any_option() -> Typ {
+        Typ::Tuple(Vec::new())
+    }
+    pub fn option(&self) -> Typ {
+        Typ::Tuple(vec![self.clone()])
+    }
     pub fn intrinsic(&self) -> Option<String> {
         match self {
             Typ::Return => None,
@@ -103,31 +111,36 @@ impl Typ {
             _ => Some(self.to_string()),
         }
     }
-    fn unify(&self, other: &Typ) -> bool {
+    fn can_unify(&self, other: &Typ) -> bool {
         match (self, other) {
             (Typ::Return, _) | (_, Typ::Return) => true,
-            (Typ::List(l1), Typ::List(l2)) => l1.unify(l2),
+            (Typ::List(l1), Typ::List(l2)) => l1.can_unify(l2),
             (Typ::Tuple(l1), Typ::Tuple(l2)) => {
                 let n1 = l1.len();
                 let n2 = l2.len();
-                (n1 == n2 && l1.iter().zip(l2).all(|(t1, t2)| t1.unify(t2)))
+                (n1 == n2 && l1.iter().zip(l2).all(|(t1, t2)| t1.can_unify(t2)))
                     || n1 == 0 && n2 == 1
                     || n1 == 1 && n2 == 0
             }
             _ => self == other,
         }
     }
-    fn is_option_none(&self) -> bool {
-        match self {
-            Typ::Tuple(t) => t.len() == 0,
-            _ => false,
-        }
-    }
-    pub fn pick(&self, other: &Typ) -> Typ {
-        if *self == Typ::Return || self.is_option_none() {
-            other.clone()
-        } else {
-            self.clone()
+    pub fn unify(&self, other: &Typ) -> Typ {
+        match (self, other) {
+            (Typ::Return, x) | (x, Typ::Return) => x.clone(),
+            (Typ::List(l1), Typ::List(l2)) => Typ::List(Box::new(l1.unify(l2))),
+            (Typ::Tuple(l1), Typ::Tuple(l2)) => {
+                let n1 = l1.len();
+                let n2 = l2.len();
+                if n1 == 0 {
+                    other.clone()
+                } else if n2 == 0 {
+                    self.clone()
+                } else {
+                    Typ::Tuple(l1.iter().zip(l2).map(|(t1, t2)| t1.unify(t2)).collect())
+                }
+            }
+            _ => self.clone(),
         }
     }
     pub fn type_check<'a>(s: &str, v1: LocTypes<'a>, v2: LocTypes<'a>) -> Result<(), Error<'a>> {
@@ -135,7 +148,7 @@ impl Typ {
         let len2 = v2.len();
         if len1 == len2 {
             for (t1, t2) in v1.into_iter().zip(v2.into_iter()) {
-                if !t1.1.unify(&t2.1) {
+                if !t1.1.can_unify(&t2.1) {
                     return Err(Error::Mismatch(s.to_string(), t1, t2));
                 }
             }
@@ -144,7 +157,7 @@ impl Typ {
             Err(Error::Args(s.to_string(), len1, len2))
         }
     }
-    fn try_from_str<'a>(s: &'a str) -> Result<Self, self::Error<'a>> {
+    fn try_from_str(s: &str) -> Result<Self, self::Error> {
         match s {
             "unit" => Ok(Typ::Unit),
             "bool" => Ok(Typ::Bool),
@@ -154,10 +167,11 @@ impl Typ {
             "str" => Ok(Typ::Str),
             "Policy" => Ok(Typ::Policy),
             "HttpRequest" => Ok(Typ::HttpRequest),
+            "Ipv4Addr" => Ok(Typ::Ipv4Addr),
             s => Err(Error::Parse(s.to_string())),
         }
     }
-    fn from_parse<'a>(ty: &'a parser::Typ) -> Result<Self, self::Error<'a>> {
+    fn from_parse(ty: &parser::Typ) -> Result<Self, self::Error> {
         match ty {
             parser::Typ::Atom(a) => Typ::try_from_str(a.id()),
             parser::Typ::Cons(c, b) => {
@@ -234,7 +248,44 @@ impl parser::Param {
     }
 }
 
-pub type Signature = (Vec<Typ>, Typ);
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Signature(Option<Vec<Typ>>, Typ);
+
+impl Signature {
+    pub fn new(args: Vec<Typ>, typ: Typ) -> Self {
+        Signature(Some(args), typ)
+    }
+    pub fn any(typ: Typ) -> Self {
+        Signature(None, typ)
+    }
+    pub fn split(self) -> (Option<Vec<Typ>>, Typ) {
+        (self.0, self.1)
+    }
+    pub fn split_as_ref(&self) -> (Option<&Vec<Typ>>, &Typ) {
+        (self.0.as_ref(), &self.1)
+    }
+    pub fn typ(self) -> Typ {
+        self.1
+    }
+}
+
+impl fmt::Display for Signature {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(")?;
+        match self.0 {
+            Some(ref tys) => write!(
+                f,
+                "{}",
+                tys.iter()
+                    .map(|ty| ty.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )?,
+            None => write!(f, "_")?,
+        }
+        write!(f, ") -> {}", self.1)
+    }
+}
 
 impl parser::FnDecl {
     // TODO: report location of errors
@@ -244,7 +295,7 @@ impl parser::FnDecl {
             None => Typ::Unit,
         };
         let args: Result<Vec<Typ>, Error> = self.args().iter().map(|a| a.typ()).collect();
-        Ok((args?, ty))
+        Ok(Signature::new(args?, ty))
     }
 }
 
@@ -255,8 +306,11 @@ impl parser::Head {
             Some(id) => Typ::from_parse(id)?,
             None => Typ::Unit,
         };
-        let args: Result<Vec<Typ>, Error> =
-            self.args().iter().map(|a| Typ::from_parse(a)).collect();
-        Ok((args?, ty))
+        if let Some(args) = self.args() {
+            let args: Result<Vec<Typ>, Error> = args.iter().map(|a| Typ::from_parse(a)).collect();
+            Ok(Signature::new(args?, ty))
+        } else {
+            Ok(Signature::any(ty))
+        }
     }
 }

@@ -33,6 +33,7 @@ pub enum Token {
     IntLiteral(i64),
     BoolLiteral(bool),
     PolicyLiteral(literals::Policy),
+    Some,
     // statements
     Assign,
     If,
@@ -59,8 +60,10 @@ pub enum Token {
     Function,
     All,
     Any,
-    Map,
     Filter,
+    FilterMap,
+    ForEach,
+    Map,
     Let,
     Return,
     In,
@@ -117,9 +120,9 @@ pub struct Tokens<'a> {
 }
 
 impl<'a> Tokens<'a> {
-    pub fn new(vec: &'a Vec<LocToken>) -> Self {
+    pub fn new(vec: &'a [LocToken]) -> Self {
         Tokens {
-            tok: vec.as_slice(),
+            tok: vec,
             start: 0,
             end: vec.len(),
         }
@@ -386,14 +389,16 @@ fn lex_number<'a>(input: Span<'a>) -> IResult<Span, LocToken<'a>> {
 }
 
 // Reserved or ident
-fn parse_reserved<'a>(t: Span<'a>) -> LocToken<'a> {
+fn parse_reserved(t: Span) -> LocToken {
     let string = t.to_string();
     match string.as_ref() {
         "fn" => LocToken::new(t, Token::Function),
         "all" => LocToken::new(t, Token::All),
         "any" => LocToken::new(t, Token::Any),
-        "map" => LocToken::new(t, Token::Map),
         "filter" => LocToken::new(t, Token::Filter),
+        "filter_map" => LocToken::new(t, Token::FilterMap),
+        "foreach" => LocToken::new(t, Token::ForEach),
+        "map" => LocToken::new(t, Token::Map),
         "let" => LocToken::new(t, Token::Let),
         "if" => LocToken::new(t, Token::If),
         "else" => LocToken::new(t, Token::Else),
@@ -408,6 +413,7 @@ fn parse_reserved<'a>(t: Span<'a>) -> LocToken<'a> {
         "and" => LocToken::new(t, Token::AndAlso),
         "as" => LocToken::new(t, Token::As),
         "external" => LocToken::new(t, Token::External),
+        "Some" => LocToken::new(t, Token::Some),
         _ => LocToken::new(t, Token::Ident(string)),
     }
 }

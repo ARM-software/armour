@@ -83,7 +83,12 @@ impl ArmourDataMaster {
                 }
                 Some(instance) => vec![instance],
             },
-            Instances::All => self.instances.values().collect(),
+            Instances::All => {
+                if self.instances.is_empty() {
+                    warn!("there are no instances")
+                };
+                self.instances.values().collect()
+            }
             Instances::SoleInstance => match self.instances.len() {
                 0 => {
                     warn!("there are no instances");
@@ -135,15 +140,17 @@ impl Handler<Disconnect> for ArmourDataMaster {
 #[derive(Message)]
 pub enum MasterCommand {
     ListActive,
-    UpdatePolicy(Instances, PolicyRequest),
+    Quit,
+    UpdatePolicy(Instances, Box<PolicyRequest>),
 }
 
 impl Handler<MasterCommand> for ArmourDataMaster {
     type Result = ();
     fn handle(&mut self, msg: MasterCommand, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
+            MasterCommand::Quit => System::current().stop(),
             MasterCommand::ListActive => {
-                if self.instances.len() == 0 {
+                if self.instances.is_empty() {
                     info!("there are no active instances")
                 } else {
                     info!(
@@ -154,7 +161,7 @@ impl Handler<MasterCommand> for ArmourDataMaster {
             }
             MasterCommand::UpdatePolicy(instances, request) => {
                 for instance in self.get_instances(instances) {
-                    instance.do_send(request.clone())
+                    instance.do_send(*request.clone())
                 }
             }
         }
@@ -193,6 +200,8 @@ impl actix::io::WriteHandler<std::io::Error> for ArmourDataInstance {}
 impl StreamHandler<PolicyResponse, std::io::Error> for ArmourDataInstance {
     fn handle(&mut self, msg: PolicyResponse, ctx: &mut Self::Context) {
         match msg {
+            PolicyResponse::Started => info!("{}: started a proxy", self.id),
+            PolicyResponse::Stopped => info!("{}: stopped a proxy", self.id),
             PolicyResponse::UpdatedPolicy => info!("{}: updated policy", self.id),
             PolicyResponse::RequestFailed => info!("{}: request failed", self.id),
             PolicyResponse::ShuttingDown => {
@@ -200,6 +209,7 @@ impl StreamHandler<PolicyResponse, std::io::Error> for ArmourDataInstance {
                 self.master.do_send(Disconnect(self.id));
                 ctx.stop()
             }
+            PolicyResponse::ActivePorts(ports) => info!("{}: active ports: {:?}", self.id, ports),
         }
     }
 }

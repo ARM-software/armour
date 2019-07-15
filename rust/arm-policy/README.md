@@ -43,6 +43,8 @@ It is recommended to start the policy language REPL (Read-Eval-Print loop) with
 
 - **`HttpRequest`**
 
+- **`Ipv4Addr`**
+
 ### Composite
 
 - Tuples: **`( ty0, ty1, ...)`**
@@ -125,7 +127,7 @@ It is recommended to start the policy language REPL (Read-Eval-Print loop) with
     : true
     ```
 
-- **all**, **any**, **filter**, **map**
+- **all**, **any**, **filter**, **filter_map**, **foreach**, **map**
 
     ```
     > all x in [1, 2, 4] { x < 3 }
@@ -264,20 +266,30 @@ external <external name> @ "<url>" {
 ### HttpRequest::
 
 function               | type
+---------------------- | -------------------------------------------
+| default              | `() -> HttpRequest`                       |
+| method               | `HttpRequest -> str`                      |
+| version              | `HttpRequest -> str`                      |
+| path                 | `HttpRequest -> str`                      |
+| route                | `HttpRequest -> List<str>`                |
+| query                | `HttpRequest -> str`                      |
+| header               | `(HttpRequest, str) -> Option<List<data>>`|
+| headers              | `HttpRequest -> List<str>`                |
+| query_pairs          | `HttpRequest -> List<(str, str)>`         |
+| header_pairs         | `HttpRequest -> List<(str, data)>`        |
+| set_path             | `(HttpRequest, str) -> HttpRequest`       |
+| set_query            | `(HttpRequest, str) -> HttpRequest`       |
+| set_header           | `(HttpRequest, str, data) -> HttpRequest` |
+
+### Ipv4Addr::
+
+function               | type
 ---------------------- | ------------------------------------------
-| default              | `() -> HttpRequest`                      |
-| method               | `HttpRequest -> str`                     |
-| version              | `HttpRequest -> str`                     |
-| path                 | `HttpRequest -> str`                     |
-| route                | `HttpRequest -> List<str>`               |
-| query                | `HttpRequest -> str`                     |
-| header               | `(HttpRequest, str) -> str`              |
-| headers              | `HttpRequest -> List<str>`               |
-| query_pairs          | `HttpRequest -> List<(str, str)>`        |
-| header_pairs         | `HttpRequest -> List<(str, data)>`       |
-| set_path             | `(HttpRequest, str) -> HttpRequest`      |
-| set_query            | `(HttpRequest, str) -> HttpRequest`      |
-| set_header           | `(HttpRequest, str, str) -> HttpRequest` |
+| from                 | `(i64, i64, i64, i64) -> Ipv4Addr`       |
+| octets               | `Ipv4Addr -> (i64, i64, i64, i64)`       |
+| localhost            | `() -> Ipv4Addr`                         |
+| reverse_lookup       | `Ipv4Addr -> Option<List<str>>`          |
+| lookup               | `str -> Option<List<Ipv4Addr>>`          |
 
 ### i64::
 
