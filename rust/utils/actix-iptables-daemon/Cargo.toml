@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "actix-iptables-server",
+    "actix-iptables-client",
+    "actix-iptables-lib",
+]
