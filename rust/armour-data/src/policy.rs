@@ -50,17 +50,18 @@ impl DataPolicy {
         args: Vec<lang::Expr>,
     ) -> Box<dyn Future<Item = Option<bool>, Error = lang::Error>> {
         if self.program.has_function(function) {
+            let now = std::time::Instant::now();
             info!(r#"evaluting "{}"""#, function);
             Box::new(
                 lang::Expr::call(function, args)
                     .evaluate(self.program.clone())
-                    .and_then(|result| match result {
+                    .and_then(move |result| match result {
                         lang::Expr::LitExpr(literals::Literal::Policy(policy)) => {
-                            info!("result is: {:?}", policy);
+                            info!("result is: {:?} ({:?})", policy, now.elapsed());
                             future::ok(Some(policy == literals::Policy::Accept))
                         }
                         lang::Expr::LitExpr(literals::Literal::Bool(accept)) => {
-                            info!("result is: {}", accept);
+                            info!("result is: {} ({:?})", accept, now.elapsed());
                             future::ok(Some(accept))
                         }
                         _ => future::err(lang::Error::new(
