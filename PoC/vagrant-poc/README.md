@@ -25,3 +25,10 @@
 	
 			./testall.sh 
 	
+### docker-machine binding (from https://blog.scottlowe.org/2018/01/24/update-on-using-docker-machine-with-vagrant/)
+	docker-machine create -d generic \
+	--generic-ssh-user vagrant \
+	--generic-ssh-key ~/.vagrant.d/insecure_private_key \
+	--generic-ssh-port 2222 \
+	--generic-ip-address 127.0.0.1 \
+	default
