@@ -1,4 +1,5 @@
-##Steps:
+Steps
+=====
 Setup the VM
 
 	vagrant up
@@ -21,7 +22,8 @@ Run the docker compose file
 Create the iptable rules
 
 	./iptables-generate.sh
-###Test:
+Test
+====
 To run the test, open 4 different terminal windows and ssh into the vagrant VM:
 
 - Terminal 1:
