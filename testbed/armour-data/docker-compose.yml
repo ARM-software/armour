@@ -1,5 +1,13 @@
-version: "3.5"
+version: "3.0"
 services:
+  armour-data:
+    container_name: armour-data
+    hostname: armour-data
+    image: armour-data-master
+    tty: true
+    networks:
+      proxy-net:
+        ipv4_address: 172.18.0.2
 
   server-1:
     container_name: server-1
@@ -13,8 +21,6 @@ services:
       - ./flask-server:/flask-server
     expose:
       - "8080"
-    # ports:
-    #   - "8080:8080"
     networks:
       srv-net-1:
         ipv4_address: 172.19.0.2
@@ -22,21 +28,21 @@ services:
   server-2:
     container_name: server-2
     hostname: server-2
+    build:
+      context: .
+      dockerfile: dockerfile-client-python
     image: client-python
     command: tail -f /dev/null
     volumes:
       - ./flask-server:/flask-server
     expose:
       - "8080"
-    # ports:
-    #   - "8080:8080"
     networks:
       srv-net-2:
         ipv4_address: 172.20.0.2
 
 networks:
   srv-net-1:
-    name: srv-net-1
     driver: bridge
     driver_opts:
       com.docker.network.bridge.name: srv-net-1
@@ -46,7 +52,6 @@ networks:
         - subnet: 172.19.0.0/28
 
   srv-net-2:
-    name: srv-net-2
     driver: bridge
     driver_opts:
       com.docker.network.bridge.name: srv-net-2
@@ -54,3 +59,11 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/28
+
+  proxy-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: proxy-net
+    ipam:
+      config:
+        - subnet: 172.18.0.0/28
