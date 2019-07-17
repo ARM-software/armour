@@ -84,6 +84,12 @@ fn main() -> std::io::Result<()> {
         server.start();
     }
 
+    let stop = move || {
+        if own_port.is_none() {
+            actix::System::current().stop()
+        }
+    };
+
     // send a message
     if let Some(destination) = destination {
         let uri = format!(
@@ -99,19 +105,25 @@ fn main() -> std::io::Result<()> {
         actix::Arbiter::spawn(lazy(move || {
             client
                 .send_body(message)
-                .map_err(|_| ())
+                .map_err(move |err| {
+                    warn!("{}", err);
+                    stop()
+                })
                 .and_then(move |mut resp| {
-                    resp.body().map_err(|_| ()).and_then(move |body| {
-                        if own_port.is_none() {
-                            actix::System::current().stop()
-                        };
-                        if let Ok(text) = String::from_utf8(body.as_ref().to_vec()) {
-                            println!("{:?}: {}", resp.status(), text);
-                        } else {
-                            println!("{:?}: {:?}", resp.status(), body);
-                        }
-                        future::ok(())
-                    })
+                    resp.body()
+                        .map_err(move |err| {
+                            warn!("{}", err);
+                            stop()
+                        })
+                        .and_then(move |body| {
+                            stop();
+                            if let Ok(text) = String::from_utf8(body.as_ref().to_vec()) {
+                                println!("{:?}: {}", resp.status(), text);
+                            } else {
+                                println!("{:?}: {:?}", resp.status(), body);
+                            }
+                            future::ok(())
+                        })
                 })
         }));
     };

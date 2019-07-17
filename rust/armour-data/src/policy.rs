@@ -1,5 +1,5 @@
 //! actix-web support for Armour policies
-use super::proxy::start_proxy;
+use super::{http_proxy, tcp_proxy};
 use actix::prelude::*;
 use actix_web::web;
 use arm_policy::{lang, literals};
@@ -21,7 +21,8 @@ pub struct DataPolicy {
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, PolicyCodec>,
     // proxies
-    proxies: HashMap<u16, Box<actix_web::dev::Server>>,
+    http_proxies: HashMap<u16, Box<actix_web::dev::Server>>,
+    tcp_proxies: HashMap<u16, Addr<tcp_proxy::TcpDataServer>>,
 }
 
 impl DataPolicy {
@@ -37,7 +38,8 @@ impl DataPolicy {
                     DataPolicy {
                         program: Arc::new(lang::Program::new()),
                         uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
-                        proxies: HashMap::new(),
+                        http_proxies: HashMap::new(),
+                        tcp_proxies: HashMap::new(),
                     }
                 });
                 future::ok(addr)
@@ -118,35 +120,68 @@ impl Handler<PolicyRequest> for DataPolicy {
     fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) -> Self::Result {
         match msg {
             PolicyRequest::QueryActivePorts => {
-                let ports: HashSet<u16> = self.proxies.keys().map(|port| port.to_owned()).collect();
-                self.uds_framed.write(PolicyResponse::ActivePorts(ports))
+                let http: HashSet<u16> = self
+                    .http_proxies
+                    .keys()
+                    .map(|port| port.to_owned())
+                    .collect();
+                let tcp: HashSet<u16> = self
+                    .tcp_proxies
+                    .keys()
+                    .map(|port| port.to_owned())
+                    .collect();
+                self.uds_framed
+                    .write(PolicyResponse::ActivePorts { http, tcp })
             }
-            PolicyRequest::Stop(port) => match self.proxies.get(&port) {
+            PolicyRequest::Stop(port) => match self.http_proxies.get(&port) {
                 Some(server) => {
                     server.stop(true); // graceful stop
-                    self.proxies.remove(&port);
+                    self.http_proxies.remove(&port);
                     log::info!("stopped proxy on port {}", port);
                     self.uds_framed.write(PolicyResponse::Stopped)
                 }
-                None => {
-                    log::warn!("there is no proxy to stop on port {}", port);
-                    self.uds_framed.write(PolicyResponse::RequestFailed)
-                }
+                None => match self.tcp_proxies.get(&port) {
+                    Some(server) => {
+                        server.do_send(tcp_proxy::Stop);
+                        self.tcp_proxies.remove(&port);
+                        log::info!("stopped TCP proxy on port {}", port);
+                        self.uds_framed.write(PolicyResponse::Stopped)
+                    }
+                    None => {
+                        log::warn!("there is no proxy to stop on port {}", port);
+                        self.uds_framed.write(PolicyResponse::RequestFailed)
+                    }
+                },
             },
             PolicyRequest::StopAll => {
-                for (port, server) in self.proxies.drain() {
+                for (port, server) in self.http_proxies.drain() {
                     server.stop(true); // graceful stop
                     log::info!("stopped proxy on port {}", port);
                     self.uds_framed.write(PolicyResponse::Stopped)
                 }
+                for (port, server) in self.tcp_proxies.drain() {
+                    server.do_send(tcp_proxy::Stop);
+                    log::info!("stopped TCP proxy on port {}", port);
+                    self.uds_framed.write(PolicyResponse::Stopped)
+                }
             }
-            PolicyRequest::Start(port) => match start_proxy(ctx.address(), port) {
+            PolicyRequest::Start(port) => match http_proxy::start_proxy(ctx.address(), port) {
                 Ok(server) => {
-                    self.proxies.insert(port, Box::new(server));
+                    self.http_proxies.insert(port, Box::new(server));
                     self.uds_framed.write(PolicyResponse::Started)
                 }
                 Err(err) => {
                     warn!("failed to start proxy on port {}: {}", port, err);
+                    self.uds_framed.write(PolicyResponse::RequestFailed)
+                }
+            },
+            PolicyRequest::StartTcp(port, socket) => match tcp_proxy::start_proxy(port, socket) {
+                Ok(server) => {
+                    self.tcp_proxies.insert(port, server);
+                    self.uds_framed.write(PolicyResponse::Started)
+                }
+                Err(err) => {
+                    warn!("failed to start TCP proxy on port {}: {}", port, err);
                     self.uds_framed.write(PolicyResponse::RequestFailed)
                 }
             },

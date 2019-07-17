@@ -84,6 +84,7 @@ pub enum PolicyRequest {
     StopAll,
     Start(u16),
     Stop(u16),
+    StartTcp(u16, std::net::SocketAddr),
     UpdateFromData(Program),
     UpdateFromFile(std::path::PathBuf),
 }
@@ -96,7 +97,10 @@ pub enum PolicyResponse {
     ShuttingDown,
     UpdatedPolicy,
     RequestFailed,
-    ActivePorts(HashSet<u16>),
+    ActivePorts {
+        http: HashSet<u16>,
+        tcp: HashSet<u16>,
+    },
 }
 
 /// Transport codec for Master to Proxy instance communication

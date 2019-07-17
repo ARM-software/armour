@@ -209,7 +209,7 @@ impl StreamHandler<PolicyResponse, std::io::Error> for ArmourDataInstance {
                 self.master.do_send(Disconnect(self.id));
                 ctx.stop()
             }
-            PolicyResponse::ActivePorts(ports) => info!("{}: active ports: {:?}", self.id, ports),
+            PolicyResponse::ActivePorts{http, tcp} => info!("{}: active ports: http {:?}, tcp {:?}", self.id, http, tcp),
         }
     }
 }

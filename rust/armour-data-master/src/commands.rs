@@ -25,6 +25,12 @@ lazy_static! {
             .unwrap();
 }
 
+lazy_static! {
+    pub static ref INSTANCE2: Regex =
+        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>start tcp)\s+(?P<port>[[:digit:]]+)\s+(?P<arg>.*)\s*$"#)
+            .unwrap();
+}
+
 /// get and parse "instance" block of regular expression capture
 pub fn instance(caps: &regex::Captures) -> Instances {
     match caps.name("instance") {
