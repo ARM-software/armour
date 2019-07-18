@@ -13,12 +13,11 @@ pub fn start_proxy(
     proxy_port: u16,
 ) -> std::io::Result<actix_web::dev::Server> {
     let socket_address = format!("0.0.0.0:{}", proxy_port);
-    let socket = socket_address.clone();
     let server = HttpServer::new(move || {
         App::new()
             .data(policy.clone())
             .data(Client::new())
-            .data(socket.clone())
+            .data(proxy_port)
             .wrap(middleware::Logger::default())
             .default_service(web::route().to_async(proxy))
     })
@@ -37,7 +36,7 @@ pub fn proxy(
     payload: web::Payload,
     policy: web::Data<actix::Addr<policy::DataPolicy>>,
     client: web::Data<Client>,
-    address: web::Data<String>,
+    proxy_port: web::Data<u16>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     policy
         .send(policy::Evaluate::Require(
@@ -62,7 +61,7 @@ pub fn proxy(
                                 match res {
                                     // allow payload
                                     Ok(Ok(Some(true))) | Ok(Ok(None)) => future::Either::A(
-                                        req.forward_url(&address).and_then(move |url| {
+                                        req.forward_url(*proxy_port).and_then(move |url| {
                                             client
                                                 .request_from(url.as_str(), req.head())
                                                 .set_x_forward_for(req.peer_addr())
@@ -167,29 +166,45 @@ fn unauthorized(message: &'static str) -> HttpResponse {
 
 /// Extract a forwarding URL
 trait ForwardUrl {
-    fn forward_url(&self, proxy_address: &str) -> Box<dyn Future<Item = url::Url, Error = Error>>
+    fn forward_url(&self, proxy_port: u16) -> Box<dyn Future<Item = url::Url, Error = Error>>
     where
         Self: Sized;
 }
 
 // Get forwarding address from headers
 impl ForwardUrl for HttpRequest {
-    fn forward_url(&self, proxy_address: &str) -> Box<dyn Future<Item = url::Url, Error = Error>> {
+    fn forward_url(&self, proxy_port: u16) -> Box<dyn Future<Item = url::Url, Error = Error>> {
         let info = self.connection_info();
-        let host = info.host();
-        if host == proxy_address {
-            info!("trying to proxy self");
-            Box::new(future::err("cannot proxy self".to_actix()))
-        } else {
-            let url_str = format!("{}://{}{}", info.scheme(), host, self.uri());
-            match url::Url::parse(&url_str) {
-                Ok(url) => {
+        match url::Url::parse(&format!(
+            "{}://{}{}",
+            info.scheme(),
+            info.host(),
+            self.uri()
+        )) {
+            Ok(url) => {
+                if url.port().unwrap_or(80) == proxy_port
+                    && url.host().map(is_local_host).unwrap_or(true)
+                {
+                    warn!("trying to proxy self");
+                    Box::new(future::err("cannot proxy self".to_actix()))
+                } else {
                     info!("forward URL is: {}", url);
                     Box::new(future::ok(url))
                 }
-                Err(err) => Box::new(future::err(err.to_actix())),
             }
+            Err(err) => Box::new(future::err(err.to_actix())),
         }
+    }
+}
+
+fn is_local_host(host: url::Host<&str>) -> bool {
+    match host {
+        url::Host::Domain("localhost") => true,
+        url::Host::Ipv4(v4) => {
+            v4.is_unspecified() || v4.is_broadcast() || v4 == std::net::Ipv4Addr::LOCALHOST
+        }
+        url::Host::Ipv6(v6) => v6.is_unspecified() || v6 == std::net::Ipv6Addr::LOCALHOST,
+        _ => false,
     }
 }
 
