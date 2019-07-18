@@ -1,10 +1,10 @@
 FROM golang:alpine as builder
-
-RUN apk update && apk add --no-cache git xz curl
+RUN apk update && apk add --no-cache git xz curl && curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 WORKDIR $GOPATH/src/accounting/app/
 COPY listener.go .
+COPY Gopkg.toml .
 
-RUN go get -d -v
+RUN dep ensure
 RUN curl -LO https://github.com/upx/upx/releases/download/v3.95/upx-3.95-amd64_linux.tar.xz
 RUN tar -xvf upx-3.95-amd64_linux.tar.xz
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -v -installsuffix cgo -ldflags="-s" -o /go/bin/listener

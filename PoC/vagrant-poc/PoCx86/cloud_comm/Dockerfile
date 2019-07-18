@@ -1,5 +1,4 @@
 FROM golang:alpine as builder
-
 RUN apk update && apk add --no-cache git
 WORKDIR $GOPATH/src/cloud-update/app/
 COPY listener.go .

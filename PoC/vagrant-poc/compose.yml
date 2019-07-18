@@ -28,7 +28,8 @@ services:
       args:
         registry: git.research.arm.com:4567
     networks:
-      - mynet
+      notif:
+        ipv4_address: 172.39.0.2
     ports:
       - 80:80/tcp
 
@@ -38,24 +39,39 @@ services:
       args:
         registry: git.research.arm.com:4567
     environment:
-        MONGO_CONN: "mongodb://kvminst-1.ausrd.arm.com:80/Ledger"
+        MONGO_CONN: "mongodb://mongo/Ledger"
         INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
+    depends_on:
+      - mongo
     networks:
-      - mynet
+      mongo-web:
+        ipv4_address: 172.38.0.2
     ports:
       - 81:81/tcp
+
+  mongo:
+    image: mongo
+    networks:
+      mongo:
+        ipv4_address: 172.37.0.2
+
   cloud-update:
     build: ./cloud_comm
     networks:
-      - mynet
+      cloud:
+        ipv4_address: 172.36.0.2
     ports:
       - 5000
+
   accounting:
     build: ./accounting
     environment:
-      MONGO_CONN: "mongodb://kvminst-1.ausrd.arm.com:80"
+      MONGO_CONN: "mongodb://mongo"
+    depends_on:
+      - mongo
     networks:
-      - mynet
+      acconuting:
+        ipv4_address: 172.35.0.2
     ports:
       - 5000
 
@@ -71,7 +87,8 @@ services:
     cap_add: ["SYS_RAWIO"]
     privileged: true
     networks:
-      - mynet
+      context:
+        ipv4_address: 172.34.0.2
     ports:
       - 5000
 
@@ -84,7 +101,8 @@ services:
       - /var/lib/poc-mysql:/var/lib/mysql
       - /mysql-initdb-config:/docker-entrypoint-initdb.d
     networks:
-      - mynet
+      mysql:
+        ipv4_address: 172.33.0.2
 
   dbread:
     build:
@@ -93,8 +111,11 @@ services:
         registry: git.research.arm.com:4567
     environment:
       DB_CONN: "mysql://dbint:raspberry@mysql:3306/PoC"
+    depends_on:
+      - mysql
     networks:
-      - mynet
+      dbr:
+        ipv4_address: 172.32.0.2
     ports:
       - 5000
 
@@ -105,8 +126,11 @@ services:
         registry: git.research.arm.com:4567
     environment:
       DB_CONN: "mysql://dbint:raspberry@mysql:3306/PoC"
+    depends_on:
+      - mysql
     networks:
-      - mynet
+      dbw:
+        ipv4_address: 172.31.0.2
     ports:
       - 5000
 
@@ -118,7 +142,8 @@ services:
     environment:
       PULSE_SERVER: tcp:pulse:4713
     networks:
-      - mynet
+      dtp:
+        ipv4_address: 172.30.0.2
     ports:
       - 5000
 
@@ -129,8 +154,11 @@ services:
         registry: git.research.arm.com:4567
     environment:
       DB_CONN_REGIST: "mysql://dbint:raspberry@mysql:3306/PoC_Registration"
+    depends_on:
+      - mysql
     networks:
-      - mynet
+      debug:
+        ipv4_address: 172.29.0.2
     ports:
       - 5000
 
@@ -139,16 +167,19 @@ services:
     environment:
       RUNLEVEL: "debug"
       DB_CONN_REGIST: "mysql://dbint:raspberry@mysql:3306/PoC_Registration"
+    depends_on:
+      - mysql
     networks:
-      - mynet
-    #    ipv4_address: 172.38.0.1
+      launch:
+        ipv4_address: 172.28.0.2
     ports:
       - 5000
 
   mqtt-debug:
     build: ./mosquitto_trusted
     networks:
-      - mynet
+      mdebug:
+        ipv4_address: 172.27.0.2
     ports:
       - 1883:1883
       - 8883
@@ -157,7 +188,8 @@ services:
   mqtt-trusted:
     build: ./mosquitto_trusted
     networks:
-      - mynet
+      trust:
+        ipv4_address: 172.26.0.2
     ports:
       - 1883
       - 8883
@@ -166,7 +198,8 @@ services:
   mqtt-public:
     build: ./mosquitto_public
     networks:
-      - mynet
+      public:
+        ipv4_address: 172.25.0.2
     ports:
       - 1883
       - 8883
@@ -178,7 +211,8 @@ services:
       args:
         registry: git.research.arm.com:4567
     networks:
-      - mynet
+      colibri:
+        ipv4_address: 172.24.0.2
     ports:
       - 5000
 
@@ -188,7 +222,8 @@ services:
       args:
         registry: git.research.arm.com:4567
     networks:
-      - mynet
+      pharm:
+        ipv4_address: 172.23.0.2
     ports:
       - 5000
 
@@ -199,7 +234,8 @@ services:
       - /dev/snd:/dev/snd
     privileged: true
     networks:
-      - mynet
+      pulse:
+        ipv4_address: 172.22.0.2
     ports:
       - 4713:4713/tcp
 
@@ -209,7 +245,8 @@ services:
       args:
         registry: git.research.arm.com:4567
     networks:
-      - mynet
+      verify:
+        ipv4_address: 172.21.0.2
     ports:
       - 5000
 
@@ -222,7 +259,8 @@ services:
       HR_RUN_FLAG: "-O"
     privileged: true
     networks:
-      - mynet
+      conv:
+        ipv4_address: 172.20.0.2
     ports:
       - 5000
 
@@ -232,7 +270,8 @@ services:
     environment:
       DEVICE: "28*"
     networks:
-      - mynet
+      temp:
+        ipv4_address: 172.19.0.2
 
   vitals:
     build: ./vitals
@@ -241,11 +280,181 @@ services:
     volumes:
       - /dev/ttyAMA0:/dev/ttyAMA0
     networks:
-      - mynet
+      vitals:
+        ipv4_address: 172.18.0.2
 networks:
-  mynet:
+  vitals:
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: vitals
     ipam:
-      driver: default
       config:
-        - subnet: "172.38.0.0/16"
+        - subnet: 172.18.0.0/28
+
+  temp:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: temp
+    ipam:
+      config:
+        - subnet: 172.19.0.0/28
+
+  conv:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: conv
+    ipam:
+      config:
+        - subnet: 172.20.0.0/28
+
+  verify:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: verify
+    ipam:
+      config:
+        - subnet: 172.21.0.0/28
+
+  pulse:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: pulse
+    ipam:
+      config:
+        - subnet: 172.22.0.0/28
+
+  pharm:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: pharm
+    ipam:
+      config:
+        - subnet: 172.23.0.0/28
+
+  colibri:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: colibri
+    ipam:
+      config:
+        - subnet: 172.24.0.0/28
+
+  public:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: public
+    ipam:
+      config:
+        - subnet: 172.25.0.0/28
+
+  trust:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: trust
+    ipam:
+      config:
+        - subnet: 172.26.0.0/28
+
+  mdebug:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: mdebug
+    ipam:
+      config:
+        - subnet: 172.27.0.0/28
+
+  launch:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: launch
+    ipam:
+      config:
+        - subnet: 172.28.0.0/28
+
+  debug:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: debug
+    ipam:
+      config:
+        - subnet: 172.29.0.0/28
+
+  dtp:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: dtp
+    ipam:
+      config:
+        - subnet: 172.30.0.0/28
+
+  dbw:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: dbw
+    ipam:
+      config:
+        - subnet: 172.31.0.0/28
+
+  dbr:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: dbr
+    ipam:
+      config:
+        - subnet: 172.32.0.0/28
+
+  mysql:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: mysql
+    ipam:
+      config:
+        - subnet: 172.33.0.0/28
+
+  context:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: context
+    ipam:
+      config:
+        - subnet: 172.34.0.0/28
+
+  accounting:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: accounting
+    ipam:
+      config:
+        - subnet: 172.35.0.0/28
+
+  cloud:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: cloud
+    ipam:
+      config:
+        - subnet: 172.36.0.0/28
+
+  mongo:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: mongo
+    ipam:
+      config:
+        - subnet: 172.37.0.0/28
+
+  mongo-web:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: mongo-web
+    ipam:
+      config:
+        - subnet: 172.38.0.0/28
+
+  notif:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: notif
+    ipam:
+      config:
+        - subnet: 172.39.0.0/28

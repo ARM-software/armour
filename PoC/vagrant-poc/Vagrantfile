@@ -15,11 +15,12 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: <<-SHELL
     sudo apt-get update
     sudo apt-get install -y git
-    sudo apt-get install -y mongodb
     sudo mkdir /var/lib/poc-mysql
     sudo mkdir /mysql-initdb-config
     cp /vagrant/initdb.sql /mysql-initdb-config
     echo "export COMPOSE_HTTP_TIMEOUT=360" >> /etc/profile.d/myvar.sh
+    docker build -t pihealth_trimmed /vagrant/PoCx86/pihealth_trimmed/
+    docker build -t mosquitto /vagrant/PoCx86/mosquitto/
     mkdir -p /home/vagrant/PoC
     cd /home/vagrant/PoC
     sudo git config --global --unset https.proxy
@@ -56,13 +57,6 @@ Vagrant.configure("2") do |config|
       cp /vagrant/PoCx86/${dir}/Dockerfile ${dir}/
     done
       cp /vagrant/docker-compose.yml /home/vagrant/PoC
-      rm -f ./debug/debug_tools/testall.sh
-      cp /vagrant/PoCx86/testall.sh ./debug/debug_tools/
-      chmod u+x /home/vagrant/PoC/debug/debug_tools/testall.sh
-      add=$(ifconfig enp0s8 | grep 'inet ' | cut -d: -f2 | awk '{print $2}')
-      sed -i 's|kvminst-1.ausrd.arm.com:80|'"${add}"'|g' /home/vagrant/PoC/docker-compose.yml
-      sudo sed -i 's|127.0.0.1|0.0.0.0|g' /etc/mongodb.conf
-      sudo service mongodb restart
   SHELL
 
   config.vm.provision :docker_compose, rebuild: true, run: "always", yml: "/home/vagrant/PoC/docker-compose.yml"

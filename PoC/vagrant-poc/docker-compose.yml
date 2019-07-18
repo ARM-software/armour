@@ -38,22 +38,34 @@ services:
       args:
         registry: git.research.arm.com:4567
     environment:
-        MONGO_CONN: "mongodb://kvminst-1.ausrd.arm.com:80/Ledger"
+        MONGO_CONN: "mongodb://mongo/Ledger"
         INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
+    depends_on:
+      - mongo
     networks:
       - mynet
     ports:
       - 81:81/tcp
+
+  mongo:
+    image: mongo
+    networks:
+      - mynet
+
   cloud-update:
     build: ./cloud_comm
     networks:
       - mynet
     ports:
       - 5000
+
   accounting:
     build: ./accounting
     environment:
-      MONGO_CONN: "mongodb://kvminst-1.ausrd.arm.com:80"
+      MONGO_CONN: "mongodb://mongo"
+      MY_NODE_NAME: "PoC-armour"
+    depends_on:
+      - mongo
     networks:
       - mynet
     ports:
@@ -93,6 +105,8 @@ services:
         registry: git.research.arm.com:4567
     environment:
       DB_CONN: "mysql://dbint:raspberry@mysql:3306/PoC"
+    depends_on:
+      - mysql
     networks:
       - mynet
     ports:
@@ -105,6 +119,8 @@ services:
         registry: git.research.arm.com:4567
     environment:
       DB_CONN: "mysql://dbint:raspberry@mysql:3306/PoC"
+    depends_on:
+      - mysql
     networks:
       - mynet
     ports:
@@ -129,6 +145,8 @@ services:
         registry: git.research.arm.com:4567
     environment:
       DB_CONN_REGIST: "mysql://dbint:raspberry@mysql:3306/PoC_Registration"
+    depends_on:
+      - mysql
     networks:
       - mynet
     ports:
@@ -139,6 +157,8 @@ services:
     environment:
       RUNLEVEL: "debug"
       DB_CONN_REGIST: "mysql://dbint:raspberry@mysql:3306/PoC_Registration"
+    depends_on:
+      - mysql
     networks:
       - mynet
     #    ipv4_address: 172.38.0.1
