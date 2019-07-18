@@ -1,15 +1,16 @@
-use super::literals;
 /// lexer
 // Originally based on https://github.com/Rydgel/monkey-rust/tree/master/lib/lexer
 // There have been significant modifications, in particular making use of nom_locate
-use nom::types::CompleteStr;
+use super::literals;
+use nom::character::complete::{alpha1, digit1, not_line_ending};
+use nom::number::complete::recognize_float;
 use nom::*;
-use nom_locate::LocatedSpan;
+use nom5_locate::LocatedSpan;
 use std::fmt;
 use std::iter::Enumerate;
 use std::ops::{Range, RangeFrom, RangeFull, RangeTo};
 
-pub type Span<'a> = LocatedSpan<CompleteStr<'a>>;
+pub type Span<'a> = LocatedSpan<&'a str>;
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub struct Loc(u32, usize);
@@ -99,12 +100,12 @@ impl<'a> LocToken<'a> {
     pub fn new(loc: Span<'a>, tok: Token) -> LocToken<'a> {
         LocToken { loc, tok }
     }
-    fn new_span(line: u32, offset: usize, s: &'a str, tok: Token) -> LocToken<'a> {
+    fn new_span(line: u32, offset: usize, fragment: &'a str, tok: Token) -> LocToken<'a> {
         LocToken {
             loc: LocatedSpan {
                 line,
                 offset,
-                fragment: CompleteStr(s),
+                fragment,
             },
             tok,
         }
@@ -140,13 +141,6 @@ impl<'a> nom::InputLength for Tokens<'a> {
     #[inline]
     fn input_len(&self) -> usize {
         self.tok.len()
-    }
-}
-
-impl<'a> nom::AtEof for Tokens<'a> {
-    #[inline]
-    fn at_eof(&self) -> bool {
-        true
     }
 }
 
@@ -222,7 +216,6 @@ impl<'a> nom::Slice<RangeFull> for Tokens<'a> {
 
 impl<'a> nom::InputIter for Tokens<'a> {
     type Item = &'a LocToken<'a>;
-    type RawItem = LocToken<'a>;
     type Iter = Enumerate<::std::slice::Iter<'a, LocToken<'a>>>;
     type IterElem = ::std::slice::Iter<'a, LocToken<'a>>;
 
@@ -237,9 +230,9 @@ impl<'a> nom::InputIter for Tokens<'a> {
     #[inline]
     fn position<P>(&self, predicate: P) -> Option<usize>
     where
-        P: Fn(Self::RawItem) -> bool,
+        P: Fn(Self::Item) -> bool,
     {
-        self.tok.iter().position(|b| predicate(b.clone()))
+        self.tok.iter().position(|b| predicate(b))
     }
     #[inline]
     fn slice_index(&self, count: usize) -> Option<usize> {
@@ -285,64 +278,64 @@ impl<'a> fmt::Display for Tokens<'a> {
 named!(lex_operator<Span, LocToken>,
     switch!(
         take!(1),
-        t @ LocatedSpan{fragment: CompleteStr("@"), ..} => value!(LocToken::new(t, Token::At)) |
-        t @ LocatedSpan{fragment: CompleteStr("?"), ..} => value!(LocToken::new(t, Token::Optional)) |
-        t @ LocatedSpan{fragment: CompleteStr("."), ..} => value!(LocToken::new(t, Token::Dot)) |
-        t @ LocatedSpan{fragment: CompleteStr("_"), ..} => value!(LocToken::new(t, Token::Underscore)) |
-        t @ LocatedSpan{fragment: CompleteStr("*"), ..} => value!(LocToken::new(t, Token::Multiply)) |
-        t @ LocatedSpan{fragment: CompleteStr("%"), ..} => value!(LocToken::new(t, Token::Percent)) |
-        t @ LocatedSpan{fragment: CompleteStr(","), ..} => value!(LocToken::new(t, Token::Comma)) |
-        t @ LocatedSpan{fragment: CompleteStr(";"), ..} => value!(LocToken::new(t, Token::SemiColon)) |
-        t @ LocatedSpan{fragment: CompleteStr("("), ..} => value!(LocToken::new(t, Token::LParen)) |
-        t @ LocatedSpan{fragment: CompleteStr(")"), ..} => value!(LocToken::new(t, Token::RParen)) |
-        t @ LocatedSpan{fragment: CompleteStr("{"), ..} => value!(LocToken::new(t, Token::LBrace)) |
-        t @ LocatedSpan{fragment: CompleteStr("}"), ..} => value!(LocToken::new(t, Token::RBrace)) |
-        t @ LocatedSpan{fragment: CompleteStr("["), ..} => value!(LocToken::new(t, Token::LBracket)) |
-        t @ LocatedSpan{fragment: CompleteStr("]"), ..} => value!(LocToken::new(t, Token::RBracket)) |
+        t @ LocatedSpan{fragment: "@", ..} => value!(LocToken::new(t, Token::At)) |
+        t @ LocatedSpan{fragment: "?", ..} => value!(LocToken::new(t, Token::Optional)) |
+        t @ LocatedSpan{fragment: ".", ..} => value!(LocToken::new(t, Token::Dot)) |
+        t @ LocatedSpan{fragment: "_", ..} => value!(LocToken::new(t, Token::Underscore)) |
+        t @ LocatedSpan{fragment: "*", ..} => value!(LocToken::new(t, Token::Multiply)) |
+        t @ LocatedSpan{fragment: "%", ..} => value!(LocToken::new(t, Token::Percent)) |
+        t @ LocatedSpan{fragment: ",", ..} => value!(LocToken::new(t, Token::Comma)) |
+        t @ LocatedSpan{fragment: ";", ..} => value!(LocToken::new(t, Token::SemiColon)) |
+        t @ LocatedSpan{fragment: "(", ..} => value!(LocToken::new(t, Token::LParen)) |
+        t @ LocatedSpan{fragment: ")", ..} => value!(LocToken::new(t, Token::RParen)) |
+        t @ LocatedSpan{fragment: "{", ..} => value!(LocToken::new(t, Token::LBrace)) |
+        t @ LocatedSpan{fragment: "}", ..} => value!(LocToken::new(t, Token::RBrace)) |
+        t @ LocatedSpan{fragment: "[", ..} => value!(LocToken::new(t, Token::LBracket)) |
+        t @ LocatedSpan{fragment: "]", ..} => value!(LocToken::new(t, Token::RBracket)) |
 
-        LocatedSpan{fragment: CompleteStr("+"), line: l, offset: o} => 
+        LocatedSpan{fragment: "+", line: l, offset: o} => 
             alt!(
                do_parse!(tag!("+") >> (LocToken::new_span(l, o, "++", Token::PlusPlus))) |
                value!(LocToken::new_span(l, o, "+", Token::Plus))
             ) |
-        LocatedSpan{fragment: CompleteStr(":"), line: l, offset: o} => 
+        LocatedSpan{fragment: ":", line: l, offset: o} => 
             alt!(
                do_parse!(tag!(":") >> (LocToken::new_span(l, o, "::", Token::ColonColon))) |
                value!(LocToken::new_span(l, o, ":", Token::Colon))
             ) |
-        LocatedSpan{fragment: CompleteStr("/"), line: l, offset: o} =>
+        LocatedSpan{fragment: "/", line: l, offset: o} =>
             alt!(
                 do_parse!(tag!("/") >> t: not_line_ending >> (LocToken::new(t, Token::Comment(t.to_string())))) |
                 value!(LocToken::new_span(l, o, "/", Token::Divide))
             ) |
-        LocatedSpan{fragment: CompleteStr("|"), line: l, offset: o} =>
+        LocatedSpan{fragment: "|", line: l, offset: o} =>
             alt!(
                 do_parse!(tag!("|") >> (LocToken::new_span(l, o, "||", Token::Or))) |
                 value!(LocToken::new_span(l, o, "|", Token::Bar))
             ) |
-        LocatedSpan{fragment: CompleteStr("&"), line: l, offset: o} =>
+        LocatedSpan{fragment: "&", line: l, offset: o} =>
             do_parse!(tag!("&") >> (LocToken::new_span(l, o, "&&", Token::And))) |
-        LocatedSpan{fragment: CompleteStr("-"), line: l, offset: o} =>
+        LocatedSpan{fragment: "-", line: l, offset: o} =>
             alt!(
                 do_parse!(tag!(">") >> (LocToken::new_span(l, o, "->", Token::Arrow))) |
                 value!(LocToken::new_span(l, o, "-", Token::Minus))
             ) |
-        LocatedSpan{fragment: CompleteStr("<"), line: l, offset: o} =>
+        LocatedSpan{fragment: "<", line: l, offset: o} =>
             alt!(
                 do_parse!(tag!("=") >> (LocToken::new_span(l, o, "<=", Token::LessThanEqual))) |
                 value!(LocToken::new_span(l, o, "<", Token::LessThan))
             ) |
-        LocatedSpan{fragment: CompleteStr(">"), line: l, offset: o} =>
+        LocatedSpan{fragment: ">", line: l, offset: o} =>
             alt!(
                 do_parse!(tag!("=") >> (LocToken::new_span(l, o, ">=", Token::GreaterThanEqual))) |
                 value!(LocToken::new_span(l, o, ">", Token::GreaterThan))
             ) |
-        LocatedSpan{fragment: CompleteStr("="), line: l, offset: o} =>
+        LocatedSpan{fragment: "=", line: l, offset: o} =>
             alt!(
                 do_parse!(tag!("=") >> (LocToken::new_span(l, o, "==", Token::Equal))) |
                 value!(LocToken::new_span(l, o, "=", Token::Assign))
             ) |
-        LocatedSpan{fragment: CompleteStr("!"), line: l, offset: o} =>
+        LocatedSpan{fragment: "!", line: l, offset: o} =>
             alt!(
                 do_parse!(tag!("=") >> (LocToken::new_span(l, o, "!=", Token::NotEqual))) |
                 value!(LocToken::new_span(l, o, "!", Token::Not))
@@ -350,42 +343,44 @@ named!(lex_operator<Span, LocToken>,
   )
 );
 
-fn lex_number_<'a>(input: Span<'a>, double_span: Span<'a>) -> IResult<Span<'a>, LocToken<'a>> {
-    let float = double_span.to_string();
-    if float.ends_with('.') {
-        if float.starts_with('-') {
-            do_parse!(input, t: tag!("-") >> (LocToken::new(t, Token::Minus)))
-        } else {
-            do_parse!(
-                input,
-                i: recognize!(digit)
-                    >> (LocToken::new(i, Token::IntLiteral(i.to_string().parse().unwrap())))
-            )
-        }
-    } else if float.starts_with('.') && !float.contains('e') {
-        do_parse!(input, t: tag!(".") >> (LocToken::new(t, Token::Dot)))
-    } else if let Ok(number) = float.parse::<i64>() {
-        do_parse!(
-            input,
-            i: opt!(tag!("-"))
-                >> j: recognize!(digit)
-                >> (LocToken::new(i.unwrap_or(j), Token::IntLiteral(number)))
-        )
-    } else {
-        do_parse!(
-            input,
-            d: recognize!(double)
-                >> (LocToken::new(d, Token::FloatLiteral(float.parse().unwrap())))
-        )
-    }
-}
-
 // Number literals
-fn lex_number<'a>(input: Span<'a>) -> IResult<Span, LocToken<'a>> {
-    do_parse!(
-        input,
-        d: peek!(recognize!(double)) >> r: apply!(lex_number_, d) >> (r)
-    )
+fn lex_number<'a, E: error::ParseError<Span<'a>>>(
+    input: Span<'a>,
+) -> IResult<Span<'a>, LocToken, E> {
+    match recognize_float::<Span, E>(input) {
+        Ok((_rest, float)) => {
+            if float.fragment.ends_with('.') {
+                if float.fragment.starts_with('-') {
+                    do_parse!(input, t: tag!("-") >> (LocToken::new(t, Token::Minus)))
+                } else {
+                    do_parse!(
+                        input,
+                        i: recognize!(digit1)
+                            >> (LocToken::new(
+                                i,
+                                Token::IntLiteral(i.to_string().parse().unwrap())
+                            ))
+                    )
+                }
+            } else if float.fragment.starts_with('.') && !float.fragment.contains('e') {
+                do_parse!(input, t: tag!(".") >> (LocToken::new(t, Token::Dot)))
+            } else if let Ok(number) = float.fragment.parse::<i64>() {
+                do_parse!(
+                    input,
+                    opt!(tag!("-"))
+                        >> t: recognize!(digit1)
+                        >> (LocToken::new(t, Token::IntLiteral(number)))
+                )
+            } else {
+                do_parse!(
+                    input,
+                    t: recognize_float
+                        >> (LocToken::new(t, Token::FloatLiteral(float.fragment.parse().unwrap())))
+                )
+            }
+        }
+        Err(e) => Err(e),
+    }
 }
 
 // Reserved or ident
@@ -418,21 +413,9 @@ fn parse_reserved(t: Span) -> LocToken {
     }
 }
 
-fn take1alpha(s: Span) -> IResult<Span, ()> {
-    if let Some(c) = s.fragment.as_bytes().iter().next() {
-        if c.as_char().is_alphabetic() {
-            Ok((s, ()))
-        } else {
-            Err(Err::Incomplete(Needed::Size(1)))
-        }
-    } else {
-        Err(Err::Incomplete(Needed::Size(1)))
-    }
-}
-
 named!(lex_reserved_ident<Span, LocToken>,
     do_parse!(
-        peek!(take1alpha) >>
+        peek!(recognize!(alpha1)) >>
         s: take_while1!(|c| char::is_alphanumeric(c) || c == '_') >>
         (parse_reserved(s))
     )
@@ -468,19 +451,19 @@ named!(lex_illegal<Span, LocToken>,
 );
 
 named!(lex_token<Span, LocToken>,
-    alt_complete!(
-        lex_number |
-        lex_string |
-        lex_reserved_ident |
-        lex_operator |
-        lex_illegal
+    alt!(
+        complete!(lex_number) |
+        complete!(lex_string) |
+        complete!(lex_reserved_ident) |
+        complete!(lex_operator) |
+        complete!(lex_illegal)
     )
 );
 
 named!(lex_tokens<Span, Vec<LocToken>>, ws!(many0!(lex_token)));
 
 pub fn lex(buf: &str) -> Vec<LocToken> {
-    let (loc, mut tokens) = lex_tokens(Span::new(CompleteStr(buf))).unwrap();
+    let (loc, mut tokens) = lex_tokens(Span::new(buf)).unwrap();
     tokens.push(LocToken::new(loc, Token::EOF));
     tokens
         .into_iter()

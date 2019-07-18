@@ -1024,7 +1024,7 @@ impl Expr {
                 }
                 parser::Stmt::ExprStmt(se, has_semi) => {
                     let (expr1, calls1, typ1) = Expr::from_loc_expr(
-                        &parser::LocExpr::new(stmt.loc(), se),
+                        &parser::LocExpr::new(&stmt.loc(), se),
                         headers,
                         ret,
                         vars,
@@ -1185,7 +1185,7 @@ impl Expr {
                     // println!("{:#?}", e);
                     Ok(Expr::check_from_loc_expr(&e, headers, &Vars::new())?.expr)
                 }
-                Err(nom::Err::Error(nom::Context::Code(toks, _))) => {
+                Err(nom::Err::Error((toks, _))) => {
                     Err(self::Error(format!("syntax error: {}", toks.tok[0])))
                 }
                 Err(err) => Err(self::Error(format!("{:?}", err))),
@@ -1439,29 +1439,27 @@ impl std::str::FromStr for Program {
                 call_graph.check_for_cycles()?;
                 Ok(prog)
             }
-            Err(nom::Err::Error(nom::Context::Code(toks, _))) => {
-                match parser::parse_fn_head(toks) {
-                    Ok((rest, head)) => {
-                        let s = format!(
-                            r#"syntax error in body of function "{}" starting at line {:?}"#,
-                            head.name(),
-                            toks.tok[0].loc.line
-                        );
-                        match parser::parse_block_stmt(rest) {
-                            Ok(_) => unreachable!(),
-                            Err(nom::Err::Error(nom::Context::Code(toks, _))) => {
-                                Err(self::Error(format!("{}\nsee: {}", s, toks.tok[0])))
-                            }
-                            Err(e) => Err(self::Error(format!("{}\n{:?}", s, e))),
+            Err(nom::Err::Error((toks, _))) => match parser::parse_fn_head(toks) {
+                Ok((rest, head)) => {
+                    let s = format!(
+                        r#"syntax error in body of function "{}" starting at line {:?}"#,
+                        head.name(),
+                        toks.tok[0].loc.line
+                    );
+                    match parser::parse_block_stmt(rest) {
+                        Ok(_) => unreachable!(),
+                        Err(nom::Err::Error((toks, _))) => {
+                            Err(self::Error(format!("{}\nsee: {}", s, toks.tok[0])))
                         }
+                        Err(e) => Err(self::Error(format!("{}\n{:?}", s, e))),
                     }
-                    Err(nom::Err::Error(nom::Context::Code(toks, _))) => Err(self::Error(format!(
-                        "syntax error in function header, starting: {}",
-                        toks.tok[0]
-                    ))),
-                    Err(e) => Err(self::Error(format!("{:?}", e))),
                 }
-            }
+                Err(nom::Err::Error((toks, _))) => Err(self::Error(format!(
+                    "syntax error in function header, starting: {}",
+                    toks.tok[0]
+                ))),
+                Err(e) => Err(self::Error(format!("{:?}", e))),
+            },
             Err(e) => Err(self::Error(format!("{:?}", e))),
         }
     }
