@@ -38,6 +38,13 @@ fn main() -> std::io::Result<()> {
                 .help("desination port or socket"),
         )
         .arg(
+            Arg::with_name("host")
+                .required(false)
+                .short("h")
+                .takes_value(true)
+                .help("host header"),
+        )
+        .arg(
             Arg::with_name("uri")
                 .required(false)
                 .short("u")
@@ -94,6 +101,9 @@ fn main() -> std::io::Result<()> {
         let mut client = client::Client::new().get(uri);
         if proxy.is_some() {
             client = client.header("X-Forwarded-Host", host(&destination))
+        };
+        if let Some(host) = matches.value_of("host") {
+            client = client.header("host", host)
         };
         actix::Arbiter::spawn(lazy(move || {
             client
