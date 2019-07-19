@@ -5,6 +5,9 @@ services:
     hostname: armour-data
     image: armour-data-master
     tty: true
+    extra_hosts:
+      - "server-1:172.19.0.2"
+      - "server-2:172.20.0.2"
     networks:
       proxy-net:
         ipv4_address: 172.18.0.2
@@ -12,6 +15,9 @@ services:
   server-1:
     container_name: server-1
     hostname: server-1
+    extra_hosts:
+      - "armour-data:172.18.0.2"
+      - "server-2:172.20.0.2"
     build:
       context: .
       dockerfile: dockerfile-client-python
@@ -28,6 +34,9 @@ services:
   server-2:
     container_name: server-2
     hostname: server-2
+    extra_hosts:
+      - "server-1:172.19.0.2"
+      - "armour-data:172.18.0.2"
     build:
       context: .
       dockerfile: dockerfile-client-python

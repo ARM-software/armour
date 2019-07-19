@@ -36,14 +36,16 @@ To run the test, open 4 different terminal windows and ssh into the vagrant VM:
 		docker exec -it armour-data bash
 		cd /root/
 	- Test HTTP
-	
+
 			./armour-data armour -p 8080
 	- Test TCP
-	
+
 			./armour-data armour
 		- Terminal 1:
-		
-				start tcp 8080 172.19.0.2:8080
+
+				forward 8080 172.19.0.2:8080
+				or
+				forward 8080 server-1:8080
 - Terminal 3:
 
 		docker exec -it server-1 python3 /flask-server/server.py -d
