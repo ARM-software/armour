@@ -56,10 +56,7 @@ fn main() -> std::io::Result<()> {
     let proxy = matches.value_of("proxy").map(str::to_string);
     let destination = matches.value_of("destination").map(str::to_string);
     let uri = matches.value_of("uri").unwrap_or("");
-    let message = matches
-        .value_of("message")
-        .unwrap_or("<no message>")
-        .to_string();
+    let message = matches.value_of("message").unwrap_or("").trim().to_string();
 
     // enable logging
     env::set_var("RUST_LOG", "arm_service=debug,actix_web=debug");
@@ -84,11 +81,7 @@ fn main() -> std::io::Result<()> {
         server.start();
     }
 
-    let stop = move || {
-        if own_port.is_none() {
-            actix::System::current().stop()
-        }
-    };
+    let done = own_port.is_none();
 
     // send a message
     if let Some(destination) = destination {
@@ -105,18 +98,13 @@ fn main() -> std::io::Result<()> {
         actix::Arbiter::spawn(lazy(move || {
             client
                 .send_body(message)
-                .map_err(move |err| {
-                    warn!("{}", err);
-                    stop()
-                })
+                .map_err(move |err| stop(done, Some(("send: ", err))))
                 .and_then(move |mut resp| {
                     resp.body()
-                        .map_err(move |err| {
-                            warn!("{}", err);
-                            stop()
-                        })
+                        .limit(1024 * 1024)
+                        .map_err(move |err| stop(done, Some(("response: ", err))))
                         .and_then(move |body| {
-                            stop();
+                            stop(done, None::<(_, bool)>);
                             if let Ok(text) = String::from_utf8(body.as_ref().to_vec()) {
                                 println!("{:?}: {}", resp.status(), text);
                             } else {
@@ -129,6 +117,15 @@ fn main() -> std::io::Result<()> {
     };
 
     sys.run()
+}
+
+fn stop<E: std::fmt::Display>(b: bool, m: Option<(&str, E)>) {
+    if let Some((s, e)) = m {
+        warn!("{}{}", s, e);
+    }
+    if b {
+        actix::System::current().stop()
+    }
 }
 
 fn parse_port(s: &str) -> u16 {
