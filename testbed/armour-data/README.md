@@ -18,7 +18,7 @@ Build the armou-data docker images
 Run the docker compose file
 
 	cd /vagrant
-	docker-compose up
+	docker-compose up -d
 Create the iptable rules
 
 	./iptables-generate.sh
@@ -34,8 +34,16 @@ To run the test, open 4 different terminal windows and ssh into the vagrant VM:
 - Terminal 2:
 
 		docker exec -it armour-data bash
-		cd /root/	
-		./armour-data armour -p 8080
+		cd /root/
+	- Test HTTP
+	
+			./armour-data armour -p 8080
+	- Test TCP
+	
+			./armour-data armour
+		- Terminal 1:
+		
+				start tcp 8080 172.19.0.2:8080
 - Terminal 3:
 
 		docker exec -it server-1 python3 /flask-server/server.py -d
@@ -50,7 +58,7 @@ we should get `request denied`
 - Try the curl cmd again in terminal 4:
 
 		docker exec server-2 curl http://172.19.0.2:8080
-	
+
 we should get `response`
 
 - To change the policy to deny all, in terminal 1:
