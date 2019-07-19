@@ -58,6 +58,8 @@ Vagrant.configure("2") do |config|
       cp /vagrant/PoCx86/${dir}/Dockerfile ${dir}/
     done
       cp /vagrant/docker-compose.yml /home/vagrant/PoC
+      sudo touch /home/vagrant/PoC/digital-dolly/blue_hr/__init__.py
+      sudo sed -i 's/from queue/from multiprocessing/g' /home/vagrant/PoC/digital-dolly/listener.py
   SHELL
 
   config.vm.provision :docker_compose, rebuild: true, run: "always", yml: "/home/vagrant/PoC/docker-compose.yml"

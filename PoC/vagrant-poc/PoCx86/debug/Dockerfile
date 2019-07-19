@@ -7,7 +7,6 @@ RUN  mkdir -p /var/log/supervisord && apk add git alpine-sdk glib-dev mariadb-de
      apk add python3 && \
      pip3 install --upgrade pip && \
      pip install requests && \
-     pip install git+https://git.research.arm.com/rsh/emerge/health-poc/rule-engine.git#egg=contract_build_launch && \
      apk del git alpine-sdk glib-dev
 
 CMD [ "supervisord", "-n", "-c", "/etc/supervisord.conf" ]
