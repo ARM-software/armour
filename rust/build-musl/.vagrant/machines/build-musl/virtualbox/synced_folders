@@ -1,1 +1,0 @@
-{"virtualbox":{"/home/vagrant/rust":{"guestpath":"/home/vagrant/rust","hostpath":"/Users/guspet02/arm/armour/rust","disabled":false,"__vagrantfile":true},"/vagrant":{"guestpath":"/vagrant","hostpath":"/Users/guspet02/arm/armour/rust/build-musl","disabled":false,"__vagrantfile":true}}}
