@@ -3,6 +3,7 @@
 use super::policy::{self, ToArmourExpression};
 use actix_web::client::{self, Client, ClientRequest, ClientResponse, SendRequestError};
 use actix_web::{
+    http::header::{HeaderName, HeaderValue},
     middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
 use futures::stream::Stream;
@@ -64,7 +65,7 @@ pub fn proxy(
                                         req.forward_url(*proxy_port).and_then(move |url| {
                                             client
                                                 .request_from(url.as_str(), req.head())
-                                                .set_x_forward_for(req.peer_addr())
+                                                .process_headers(req.peer_addr())
                                                 // forward the request (with the original client payload)
                                                 .send_body(client_payload)
                                                 // send the response back to the client
@@ -115,41 +116,52 @@ pub fn response(
     >,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match res {
-        Ok(mut res) => {
+        Ok(res) => {
             let mut client_resp = HttpResponse::build(res.status());
-            for (header_name, header_value) in
-                res.headers().iter().filter(|(h, _)| *h != "connection")
+            for (header_name, header_value) in res
+                .headers()
+                .iter()
+                .filter(|(h, _)| *h != "connection" && *h != "content-encoding")
             {
+                // debug!("header {}: {:?}", header_name, header_value);
                 client_resp.header(header_name.clone(), header_value.clone());
             }
             // get the server payload
-            future::Either::A(res.body().from_err().and_then(move |server_payload| {
-                policy
-                    .send(policy::Evaluate::ServerPayload(
-                        server_payload.to_expression(),
-                    ))
-                    .then(move |res| match res {
-                        // allow
-                        Ok(Ok(Some(true))) | Ok(Ok(None)) => {
-                            future::ok(client_resp.body(server_payload))
-                        }
-                        // reject
-                        Ok(Ok(Some(false))) => future::ok(
-                            HttpResponse::Unauthorized()
-                                .body("request denied (bad server payload)"),
-                        ),
-                        // policy error
-                        Ok(Err(e)) => {
-                            warn!("{}", e);
-                            future::ok(internal())
-                        }
-                        // actor error
-                        Err(e) => {
-                            warn!("{}", e);
-                            future::ok(internal())
-                        }
+            future::Either::A(
+                res.from_err()
+                    .fold(web::BytesMut::new(), |mut body, chunk| {
+                        body.extend_from_slice(&chunk);
+                        Ok::<_, Error>(body)
                     })
-            }))
+                    .and_then(move |server_payload| {
+                        // debug!("{:?}", server_payload);
+                        policy
+                            .send(policy::Evaluate::ServerPayload(
+                                server_payload.to_expression(),
+                            ))
+                            .then(move |res| match res {
+                                // allow
+                                Ok(Ok(Some(true))) | Ok(Ok(None)) => {
+                                    future::ok(client_resp.body(server_payload))
+                                }
+                                // reject
+                                Ok(Ok(Some(false))) => future::ok(
+                                    HttpResponse::Unauthorized()
+                                        .body("request denied (bad server payload)"),
+                                ),
+                                // policy error
+                                Ok(Err(e)) => {
+                                    warn!("{}", e);
+                                    future::ok(internal())
+                                }
+                                // actor error
+                                Err(e) => {
+                                    warn!("{}", e);
+                                    future::ok(internal())
+                                }
+                            })
+                    }),
+            )
         }
         // error response when connecting to server
         Err(err) => future::Either::B(future::ok(err.error_response())),
@@ -209,17 +221,27 @@ fn is_local_host(host: url::Host<&str>) -> bool {
 }
 
 /// Conditionally set the `x-forwarded-for` header to be a TCP socket address
-trait SetForwardFor {
-    fn set_x_forward_for(self, a: Option<std::net::SocketAddr>) -> Self;
+trait ProcessHeaders {
+    fn process_headers(self, peer_addr: Option<std::net::SocketAddr>) -> Self;
 }
 
-impl SetForwardFor for ClientRequest {
-    fn set_x_forward_for(self, a: Option<std::net::SocketAddr>) -> Self {
-        if let Some(addr) = a {
-            self.header("x-forwarded-for", format!("{}", addr))
+impl ProcessHeaders for ClientRequest {
+    fn process_headers(self, peer_addr: Option<std::net::SocketAddr>) -> Self {
+        let mut req;
+        if let Some(addr) = peer_addr {
+            req = self.header("x-forwarded-for", format!("{}", addr))
         } else {
-            self
+            req = self
+        };
+        if let Some(host) = req.headers().get("x-forwarded-host").cloned() {
+            let headers = req.headers_mut();
+            headers.remove("x-forwarded-host");
+            headers.insert(
+                HeaderName::from_static("host"),
+                HeaderValue::from_bytes(host.as_ref()).unwrap(),
+            );
         }
+        req
     }
 }
 

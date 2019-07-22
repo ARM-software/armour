@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 actix = "0.8"
-actix-web = "1.0"
+actix-web = {version = "1.0", features = ["client", "ssl"]}
 env_logger = "0.6"
 log = "0.4"
 get_if_addrs = "0.5"

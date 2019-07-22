@@ -109,16 +109,22 @@ fn main() -> std::io::Result<()> {
             client
                 .send_body(message)
                 .map_err(move |err| stop(done, Some(("send: ", err))))
-                .and_then(move |mut resp| {
-                    resp.body()
-                        .limit(1024 * 1024)
+                .and_then(move |resp| {
+                    let status = resp.status();
+                    resp.from_err::<Error>()
+                        .fold(web::BytesMut::new(), |mut body, chunk| {
+                            body.extend_from_slice(&chunk);
+                            Ok::<_, Error>(body)
+                        })
+                        // .body()
+                        // .limit(1024 * 1024)
                         .map_err(move |err| stop(done, Some(("response: ", err))))
                         .and_then(move |body| {
                             stop(done, None::<(_, bool)>);
                             if let Ok(text) = String::from_utf8(body.as_ref().to_vec()) {
-                                println!("{:?}: {}", resp.status(), text);
+                                println!("{:?}: {}", status, text);
                             } else {
-                                println!("{:?}: {:?}", resp.status(), body);
+                                println!("{:?}: {:?}", status, body);
                             }
                             future::ok(())
                         })
@@ -164,6 +170,7 @@ fn service(
         .and_then(move |data| {
             // Ok(HttpResponse::NotFound().body("not here!"))
             // Ok(HttpResponse::Ok().body("hello"))
+            // debug!("{:?}", req.headers());
             let info = req.connection_info();
             Ok(HttpResponse::Ok().body(format!(
                 r#"port {} received request {} with body {:?}; host {}; remote {}"#,
@@ -172,10 +179,6 @@ fn service(
                 data,
                 info.host(),
                 info.remote().unwrap_or("<unknown>"),
-                // req.headers()
-                //     .get("x-forwarded-for")
-                //     .map(|v| v.to_str().unwrap_or("not a string"))
-                //     .unwrap_or("not set"),
             )))
         })
 }
