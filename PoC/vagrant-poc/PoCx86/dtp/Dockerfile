@@ -1,10 +1,8 @@
 FROM pihealth_trimmed
 
-RUN mkdir -p /var/log/supervisord && \
-    mkdir -p /audio && \
+RUN mkdir -p /audio && \
     apk update && \
-    apk add pulseaudio pulseaudio-utils g++ ffmpeg git && \
-    pip install gunicorn pydub git+https://git.research.arm.com/rsh/emerge/health-poc/debug-tools.git#egg=debug_tools && \
+    apk add pulseaudio pulseaudio-utils g++ ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
 COPY supervisord.conf /etc/supervisord.conf

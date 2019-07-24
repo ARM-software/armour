@@ -6,6 +6,7 @@ COPY supervisord.conf /etc/supervisord.conf
 RUN  mkdir -p /var/log/supervisord && apk add git alpine-sdk glib-dev mariadb-dev && \
      apk add python3 && \
      pip3 install --upgrade pip && \
+     pip install paho.mqtt && \
      pip install requests && \
      apk del git alpine-sdk glib-dev
 

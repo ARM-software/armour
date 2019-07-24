@@ -8,6 +8,4 @@ RUN apk add --no-cache --virtual .build-deps alpine-sdk && \
 COPY flask ./flask
 COPY supervisord.conf /etc/supervisord.conf
 
-RUN mkdir -p /var/log/supervisord
-
 CMD [ "supervisord", "-n", "-c", "/etc/supervisord.conf" ]
