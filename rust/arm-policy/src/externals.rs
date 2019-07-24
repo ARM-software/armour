@@ -287,7 +287,7 @@ impl Externals {
         socket: String,
         timeout: Duration,
     ) -> Box<dyn Future<Item = Literal, Error = Error>> {
-        println!("making call to: {}", socket);
+        log::debug!("making call to: {}", socket);
         if let Some(p) = socket.as_str().get_to_socket_addrs() {
             if cfg!(target_env = "musl") {
                 // for musl builds we are not able to use TLS (too much hassle with OpenSSL)

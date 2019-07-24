@@ -66,7 +66,7 @@ fn main() -> std::io::Result<()> {
     let message = matches.value_of("message").unwrap_or("").trim().to_string();
 
     // enable logging
-    env::set_var("RUST_LOG", "arm_service=debug,actix_web=debug");
+    env::set_var("RUST_LOG", "arm_service=info,actix_web=debug");
     env::set_var("RUST_BACKTRACE", "0");
     env_logger::init();
 
@@ -111,13 +111,12 @@ fn main() -> std::io::Result<()> {
                 .map_err(move |err| stop(done, Some(("send: ", err))))
                 .and_then(move |resp| {
                     let status = resp.status();
+                    debug!("{:?}", resp.headers());
                     resp.from_err::<Error>()
                         .fold(web::BytesMut::new(), |mut body, chunk| {
                             body.extend_from_slice(&chunk);
                             Ok::<_, Error>(body)
                         })
-                        // .body()
-                        // .limit(1024 * 1024)
                         .map_err(move |err| stop(done, Some(("response: ", err))))
                         .and_then(move |body| {
                             stop(done, None::<(_, bool)>);

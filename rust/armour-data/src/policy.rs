@@ -50,31 +50,26 @@ impl DataPolicy {
         &self,
         function: &str,
         args: Vec<lang::Expr>,
-    ) -> Box<dyn Future<Item = Option<bool>, Error = lang::Error>> {
-        if self.program.has_function(function) {
-            let now = std::time::Instant::now();
-            info!(r#"evaluting "{}"""#, function);
-            Box::new(
-                lang::Expr::call(function, args)
-                    .evaluate(self.program.clone())
-                    .and_then(move |result| match result {
-                        lang::Expr::LitExpr(literals::Literal::Policy(policy)) => {
-                            info!("result is: {:?} ({:?})", policy, now.elapsed());
-                            future::ok(Some(policy == literals::Policy::Accept))
-                        }
-                        lang::Expr::LitExpr(literals::Literal::Bool(accept)) => {
-                            info!("result is: {} ({:?})", accept, now.elapsed());
-                            future::ok(Some(accept))
-                        }
-                        _ => future::err(lang::Error::new(
-                            "did not evaluate to a bool or policy literal",
-                        )),
-                    }),
-            )
-        } else {
-            // there is no "function"
-            Box::new(future::ok(None))
-        }
+    ) -> Box<dyn Future<Item = bool, Error = lang::Error>> {
+        let now = std::time::Instant::now();
+        info!(r#"evaluting "{}"""#, function);
+        Box::new(
+            lang::Expr::call(function, args)
+                .evaluate(self.program.clone())
+                .and_then(move |result| match result {
+                    lang::Expr::LitExpr(literals::Literal::Policy(policy)) => {
+                        info!("result is: {:?} ({:?})", policy, now.elapsed());
+                        future::ok(policy == literals::Policy::Accept)
+                    }
+                    lang::Expr::LitExpr(literals::Literal::Bool(accept)) => {
+                        info!("result is: {} ({:?})", accept, now.elapsed());
+                        future::ok(accept)
+                    }
+                    _ => future::err(lang::Error::new(
+                        "did not evaluate to a bool or policy literal",
+                    )),
+                }),
+        )
     }
 }
 
@@ -91,6 +86,29 @@ impl StreamHandler<PolicyRequest, std::io::Error> for DataPolicy {
     }
 }
 
+/// Internal proxy message for checking if a policy function exits
+pub enum Check {
+    Require,
+    ClientPayload,
+    ServerPayload,
+}
+
+impl Message for Check {
+    type Result = bool;
+}
+
+impl Handler<Check> for DataPolicy {
+    type Result = bool;
+
+    fn handle(&mut self, msg: Check, _ctx: &mut Context<Self>) -> Self::Result {
+        match msg {
+            Check::Require => self.program.has_function("require"),
+            Check::ClientPayload => self.program.has_function("client_payload"),
+            Check::ServerPayload => self.program.has_function("server_payload"),
+        }
+    }
+}
+
 /// Internal proxy message for requesting function evaluation over the policy
 pub enum Evaluate {
     Require(lang::Expr, lang::Expr),
@@ -99,11 +117,11 @@ pub enum Evaluate {
 }
 
 impl Message for Evaluate {
-    type Result = Result<Option<bool>, lang::Error>;
+    type Result = Result<bool, lang::Error>;
 }
 
 impl Handler<Evaluate> for DataPolicy {
-    type Result = Box<dyn Future<Item = Option<bool>, Error = lang::Error>>;
+    type Result = Box<dyn Future<Item = bool, Error = lang::Error>>;
 
     fn handle(&mut self, msg: Evaluate, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
