@@ -42,6 +42,14 @@ pub fn proxy(
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     policy.send(policy::Check).then(|p| {
         match p {
+            // reject request
+            Ok(Policy::Policy {
+                require: false,
+                client_payload: false,
+                server_payload: false,
+            }) => future::Either::B(future::Either::A(future::ok(unauthorized(
+                "request denied",
+            )))),
             // check "require"
             Ok(p @ Policy::Policy { require: true, .. }) => future::Either::A(
                 policy
@@ -81,10 +89,6 @@ pub fn proxy(
                     proxy_port,
                 )))
             }
-            // reject request
-            Ok(Policy::DenyAll) => future::Either::B(future::Either::A(future::ok(unauthorized(
-                "request denied",
-            )))),
             // actor error from sending message Check
             Err(err) => {
                 warn!("{}", err);
@@ -168,7 +172,6 @@ pub fn request(
                 // send the response back to the client
                 .then(|res| response(p, policy, res))
         })),
-        Policy::DenyAll => unreachable!(), // should have been handled already by "proxy"
     }
 }
 
@@ -213,10 +216,9 @@ pub fn response(
                                     // allow
                                     Ok(Ok(true)) => future::ok(client_resp.body(server_payload)),
                                     // reject
-                                    Ok(Ok(false)) => future::ok(
-                                        HttpResponse::Unauthorized()
-                                            .body("request denied (bad server payload)"),
-                                    ),
+                                    Ok(Ok(false)) => future::ok(unauthorized(
+                                        "request denied (bad server payload)",
+                                    )),
                                     // policy error
                                     Ok(Err(e)) => {
                                         warn!("{}", e);
@@ -235,7 +237,6 @@ pub fn response(
                     server_payload: false,
                     ..
                 } => future::Either::B(future::ok(client_resp.streaming(res.take_payload()))),
-                Policy::DenyAll => unreachable!(), // should have been handled already by "proxy"
             })
         }
         // error response when connecting to server

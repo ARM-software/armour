@@ -207,7 +207,6 @@ impl Actor for TcpDataServerInstance {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        // self.client.do_send(ConnectServer(ctx.address()));
         self.client
             .send(ConnectServer(ctx.address()))
             .into_actor(self)

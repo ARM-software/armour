@@ -6,7 +6,7 @@ use std::env;
 
 fn main() -> std::io::Result<()> {
     // CLI
-    let matches = ClapApp::new("armour-proxy")
+    let matches = ClapApp::new("armour-data")
         .version(crate_version!())
         .author("Anthony Fox <anthony.fox@arm.com> and Gustavo Petri <gustavo.petri@arm.com>")
         .about("Armour Proxy, with support for Security Policies")

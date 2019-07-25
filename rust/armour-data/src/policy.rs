@@ -109,7 +109,6 @@ impl Message for Check {
 #[derive(MessageResponse)]
 pub enum Policy {
     AllowAll,
-    DenyAll,
     Policy {
         require: bool,
         client_payload: bool,
@@ -130,7 +129,6 @@ impl Handler<Check> for DataPolicy {
                 p.has_function("client_payload"),
                 p.has_function("server_payload"),
             ) {
-                (false, false, false) => Policy::DenyAll,
                 (require, client_payload, server_payload) => Policy::Policy {
                     require,
                     client_payload,
