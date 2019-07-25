@@ -1,7 +1,6 @@
 FROM pihealth_trimmed
 
-RUN pip install --no-cache-dir pexpect influxdb && \
-    apk del .build-deps
+RUN apk del .build-deps
 
 COPY blue_hr /blue_hr
 COPY listener.py /listener.py

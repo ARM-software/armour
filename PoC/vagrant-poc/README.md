@@ -33,7 +33,9 @@
 	--generic-ip-address 127.0.0.1 \
 	default
 
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-Dockerfile: install git
-add __init__.py in blue_hr directory
-listener.py: from multiprocessing import Queue
+
+	#sudo sed -i 's/app = Flask(__name__)/app = Flask(__name__) \napp.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False/g' /home/vagrant/PoC/dbread/flask/app.py
+	#sudo sed -i 's/app = Flask(__name__)/app = Flask(__name__) \napp.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False/g' /home/vagrant/PoC/dbwrite/flask/app.py
+	#sudo sed -i 's/app = Flask(__name__)/app = Flask(__name__) \napp.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False/g' /home/vagrant/PoC/verify_id/webapp/listener.py
+
+	docker run -it --net poc_accounting --env MONGO_CONN="mongodb://172.37.0.2" --env MY_NODE_NAME="PoC-armour" poc_accounting

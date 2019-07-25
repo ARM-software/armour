@@ -270,7 +270,7 @@ services:
       - 5000
 
   mysql:
-    image: mariadb
+    build: ./mysql
     hostname: mysql
     extra_hosts:
       - "armour-data:172.40.0.2"
@@ -298,9 +298,6 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: PoC
-    volumes:
-      - /var/lib/poc-mysql:/var/lib/mysql
-      - /mysql-initdb-config:/docker-entrypoint-initdb.d
     networks:
       mysql:
         ipv4_address: 172.33.0.2

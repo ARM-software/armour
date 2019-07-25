@@ -88,13 +88,10 @@ services:
       - 5000
 
   mysql:
-    image: mariadb
+    build: ./mysql
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: PoC
-    volumes:
-      - /var/lib/poc-mysql:/var/lib/mysql
-      - /mysql-initdb-config:/docker-entrypoint-initdb.d
     networks:
       - mynet
 
