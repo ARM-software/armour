@@ -164,7 +164,6 @@ impl<D: Dispatcher> external::Server for D {
     }
 }
 
-#[cfg(not(target_env = "musl"))]
 fn tls_rpc_future(
     socket: tokio::net::TcpListener,
     external: external::Client,
@@ -197,36 +196,6 @@ fn tls_rpc_future(
         });
         println!("new TLS connection");
         current_thread::spawn(tls_accept.map_err(|e| println!("error: {:?}", e)));
-        Ok(())
-    });
-    Ok(Box::new(fut))
-}
-
-#[cfg(target_env = "musl")]
-fn tls_rpc_future(
-    socket: tokio::net::TcpListener,
-    external: external::Client,
-) -> Result<Box<dyn Future<Item = (), Error = std::io::Error>>, Error> {
-    tcp_rpc_future(socket, external)
-}
-
-#[cfg(target_env = "musl")]
-fn tcp_rpc_future(
-    socket: tokio::net::TcpListener,
-    external: external::Client,
-) -> Result<Box<dyn Future<Item = (), Error = std::io::Error>>, Error> {
-    let fut = socket.incoming().for_each(move |socket| {
-        socket.set_nodelay(true)?;
-        let (reader, writer) = socket.split();
-        let network = twoparty::VatNetwork::new(
-            reader,
-            writer,
-            rpc_twoparty_capnp::Side::Server,
-            Default::default(),
-        );
-        let rpc_system = RpcSystem::new(Box::new(network), Some(external.clone().client));
-        println!("WARNING: new insecure connection");
-        current_thread::spawn(rpc_system.map_err(|e| println!("error: {:?}", e)));
         Ok(())
     });
     Ok(Box::new(fut))

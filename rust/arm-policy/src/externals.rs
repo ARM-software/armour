@@ -134,27 +134,6 @@ impl Externals {
             Err(err) => Box::new(future::err(Error::from(err))),
         }
     }
-    fn get_tcp_stream<T: std::net::ToSocketAddrs>(
-        socket: T,
-    ) -> Box<dyn Future<Item = tokio::net::TcpStream, Error = Error>> {
-        match socket.to_socket_addrs() {
-            Ok(mut iter) => {
-                if let Some(addr) = iter.next() {
-                    Box::new(
-                        tokio::net::TcpStream::connect(&addr)
-                            .and_then(|sock| match sock.set_nodelay(true) {
-                                Ok(_) => future::ok(sock),
-                                Err(err) => future::err(err),
-                            })
-                            .from_err(),
-                    )
-                } else {
-                    Box::new(future::err(Error::from("socket address")))
-                }
-            }
-            Err(err) => Box::new(future::err(Error::from(err))),
-        }
-    }
     fn get_uds_stream<P: AsRef<std::path::Path>>(
         path: P,
     ) -> Box<dyn Future<Item = tokio_uds::UnixStream, Error = Error> + Send> {
@@ -289,21 +268,11 @@ impl Externals {
     ) -> Box<dyn Future<Item = Literal, Error = Error>> {
         log::debug!("making call to: {}", socket);
         if let Some(p) = socket.as_str().get_to_socket_addrs() {
-            if cfg!(target_env = "musl") {
-                // for musl builds we are not able to use TLS (too much hassle with OpenSSL)
-                Box::new(Externals::get_tcp_stream(p).and_then(move |stream| {
-                    let (client, rpc_system) = Externals::get_capnp_client(stream);
-                    actix::spawn(rpc_system.map_err(|_| ()));
-                    Externals::call_request(Call::new(&external, &method, args), timeout, client)
-                }))
-            } else {
-                // for non-musl builds we use TLS
-                Box::new(Externals::get_tls_stream(p).and_then(move |stream| {
-                    let (client, rpc_system) = Externals::get_capnp_client(stream);
-                    actix::spawn(rpc_system.map_err(|_| ()));
-                    Externals::call_request(Call::new(&external, &method, args), timeout, client)
-                }))
-            }
+            Box::new(Externals::get_tls_stream(p).and_then(move |stream| {
+                let (client, rpc_system) = Externals::get_capnp_client(stream);
+                actix::spawn(rpc_system.map_err(|_| ()));
+                Externals::call_request(Call::new(&external, &method, args), timeout, client)
+            }))
         } else if let Some(p) = socket.as_str().get_path() {
             Box::new(Externals::get_uds_stream(p).and_then(move |stream| {
                 let (client, rpc_system) = Externals::get_capnp_client(stream);
