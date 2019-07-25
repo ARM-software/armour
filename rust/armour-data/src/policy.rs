@@ -7,7 +7,6 @@ use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse};
 use futures::{future, Future};
 use literals::ToLiteral;
 use std::collections::{HashMap, HashSet};
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio_codec::FramedRead;
 use tokio_io::{io::WriteHalf, AsyncRead};
@@ -18,6 +17,7 @@ use tokio_io::{io::WriteHalf, AsyncRead};
 pub struct DataPolicy {
     /// policy program
     program: Arc<lang::Program>,
+    allow_all: bool,
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, PolicyCodec>,
     // proxies
@@ -36,7 +36,8 @@ impl DataPolicy {
                     let (r, w) = stream.split();
                     ctx.add_stream(FramedRead::new(r, PolicyCodec));
                     DataPolicy {
-                        program: Arc::new(lang::Program::new()),
+                        program: Arc::new(lang::Program::default()),
+                        allow_all: false,
                         uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
                         http_proxies: HashMap::new(),
                         tcp_proxies: HashMap::new(),
@@ -46,35 +47,42 @@ impl DataPolicy {
             })
             .wait()
     }
+    fn set_policy(&mut self, p: lang::Program) {
+        self.program = Arc::new(p);
+        self.allow_all = false
+    }
+    fn deny_all_policy(&mut self) {
+        self.program = Arc::new(lang::Program::default());
+        self.allow_all = false
+    }
+    fn allow_all_policy(&mut self) {
+        self.program = Arc::new(lang::Program::default());
+        self.allow_all = true
+    }
     fn evaluate_policy(
         &self,
         function: &str,
         args: Vec<lang::Expr>,
-    ) -> Box<dyn Future<Item = Option<bool>, Error = lang::Error>> {
-        if self.program.has_function(function) {
-            let now = std::time::Instant::now();
-            info!(r#"evaluting "{}"""#, function);
-            Box::new(
-                lang::Expr::call(function, args)
-                    .evaluate(self.program.clone())
-                    .and_then(move |result| match result {
-                        lang::Expr::LitExpr(literals::Literal::Policy(policy)) => {
-                            info!("result is: {:?} ({:?})", policy, now.elapsed());
-                            future::ok(Some(policy == literals::Policy::Accept))
-                        }
-                        lang::Expr::LitExpr(literals::Literal::Bool(accept)) => {
-                            info!("result is: {} ({:?})", accept, now.elapsed());
-                            future::ok(Some(accept))
-                        }
-                        _ => future::err(lang::Error::new(
-                            "did not evaluate to a bool or policy literal",
-                        )),
-                    }),
-            )
-        } else {
-            // there is no "function"
-            Box::new(future::ok(None))
-        }
+    ) -> Box<dyn Future<Item = bool, Error = lang::Error>> {
+        let now = std::time::Instant::now();
+        info!(r#"evaluting "{}"""#, function);
+        Box::new(
+            lang::Expr::call(function, args)
+                .evaluate(self.program.clone())
+                .and_then(move |result| match result {
+                    lang::Expr::LitExpr(literals::Literal::Policy(policy)) => {
+                        info!("result is: {:?} ({:?})", policy, now.elapsed());
+                        future::ok(policy == literals::Policy::Accept)
+                    }
+                    lang::Expr::LitExpr(literals::Literal::Bool(accept)) => {
+                        info!("result is: {} ({:?})", accept, now.elapsed());
+                        future::ok(accept)
+                    }
+                    _ => future::err(lang::Error::new(
+                        "did not evaluate to a bool or policy literal",
+                    )),
+                }),
+        )
     }
 }
 
@@ -91,6 +99,48 @@ impl StreamHandler<PolicyRequest, std::io::Error> for DataPolicy {
     }
 }
 
+/// Internal proxy message for checking if a policy function exits
+pub struct Check;
+
+impl Message for Check {
+    type Result = Policy;
+}
+
+#[derive(MessageResponse)]
+pub enum Policy {
+    AllowAll,
+    DenyAll,
+    Policy {
+        require: bool,
+        client_payload: bool,
+        server_payload: bool,
+    },
+}
+
+impl Handler<Check> for DataPolicy {
+    type Result = Policy;
+
+    fn handle(&mut self, _msg: Check, _ctx: &mut Context<Self>) -> Self::Result {
+        if self.allow_all {
+            Policy::AllowAll
+        } else {
+            let p = &self.program;
+            match (
+                p.has_function("require"),
+                p.has_function("client_payload"),
+                p.has_function("server_payload"),
+            ) {
+                (false, false, false) => Policy::DenyAll,
+                (require, client_payload, server_payload) => Policy::Policy {
+                    require,
+                    client_payload,
+                    server_payload,
+                },
+            }
+        }
+    }
+}
+
 /// Internal proxy message for requesting function evaluation over the policy
 pub enum Evaluate {
     Require(lang::Expr, lang::Expr),
@@ -99,11 +149,11 @@ pub enum Evaluate {
 }
 
 impl Message for Evaluate {
-    type Result = Result<Option<bool>, lang::Error>;
+    type Result = Result<bool, lang::Error>;
 }
 
 impl Handler<Evaluate> for DataPolicy {
-    type Result = Box<dyn Future<Item = Option<bool>, Error = lang::Error>>;
+    type Result = Box<dyn Future<Item = bool, Error = lang::Error>>;
 
     fn handle(&mut self, msg: Evaluate, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
@@ -137,32 +187,32 @@ impl Handler<PolicyRequest> for DataPolicy {
                 Some(server) => {
                     server.stop(true); // graceful stop
                     self.http_proxies.remove(&port);
-                    log::info!("stopped proxy on port {}", port);
-                    self.uds_framed.write(PolicyResponse::Stopped)
+                    self.uds_framed.write(PolicyResponse::Stopped);
+                    info!("stopped proxy on port {}", port)
                 }
                 None => match self.tcp_proxies.get(&port) {
                     Some(server) => {
                         server.do_send(tcp_proxy::Stop);
                         self.tcp_proxies.remove(&port);
-                        log::info!("stopped TCP proxy on port {}", port);
-                        self.uds_framed.write(PolicyResponse::Stopped)
+                        self.uds_framed.write(PolicyResponse::Stopped);
+                        info!("stopped TCP proxy on port {}", port)
                     }
                     None => {
-                        log::warn!("there is no proxy to stop on port {}", port);
-                        self.uds_framed.write(PolicyResponse::RequestFailed)
+                        self.uds_framed.write(PolicyResponse::RequestFailed);
+                        warn!("there is no proxy to stop on port {}", port)
                     }
                 },
             },
             PolicyRequest::StopAll => {
                 for (port, server) in self.http_proxies.drain() {
                     server.stop(true); // graceful stop
-                    log::info!("stopped proxy on port {}", port);
-                    self.uds_framed.write(PolicyResponse::Stopped)
+                    self.uds_framed.write(PolicyResponse::Stopped);
+                    info!("stopped proxy on port {}", port)
                 }
                 for (port, server) in self.tcp_proxies.drain() {
                     server.do_send(tcp_proxy::Stop);
-                    log::info!("stopped TCP proxy on port {}", port);
-                    self.uds_framed.write(PolicyResponse::Stopped)
+                    self.uds_framed.write(PolicyResponse::Stopped);
+                    info!("stopped TCP proxy on port {}", port)
                 }
             }
             PolicyRequest::Start(port) => match http_proxy::start_proxy(ctx.address(), port) {
@@ -171,8 +221,8 @@ impl Handler<PolicyRequest> for DataPolicy {
                     self.uds_framed.write(PolicyResponse::Started)
                 }
                 Err(err) => {
-                    warn!("failed to start proxy on port {}: {}", port, err);
-                    self.uds_framed.write(PolicyResponse::RequestFailed)
+                    self.uds_framed.write(PolicyResponse::RequestFailed);
+                    warn!("failed to start proxy on port {}: {}", port, err)
                 }
             },
             PolicyRequest::StartTcp(port, socket) => match tcp_proxy::start_proxy(port, socket) {
@@ -181,8 +231,8 @@ impl Handler<PolicyRequest> for DataPolicy {
                     self.uds_framed.write(PolicyResponse::Started)
                 }
                 Err(err) => {
-                    warn!("failed to start TCP proxy on port {}: {}", port, err);
-                    self.uds_framed.write(PolicyResponse::RequestFailed)
+                    self.uds_framed.write(PolicyResponse::RequestFailed);
+                    warn!("failed to start TCP proxy on port {}: {}", port, err)
                 }
             },
             // Attempt to load a new policy from a file
@@ -191,42 +241,36 @@ impl Handler<PolicyRequest> for DataPolicy {
                 &*armour_data_interface::POLICY_SIG,
             ) {
                 Ok(prog) => {
-                    self.program = Arc::new(prog);
+                    self.set_policy(prog);
+                    self.uds_framed.write(PolicyResponse::UpdatedPolicy);
                     info!(
                         "installed policy: \"{}\"",
                         p.to_str().unwrap_or("<unknown>")
-                    );
-                    self.uds_framed.write(PolicyResponse::UpdatedPolicy)
+                    )
                 }
                 Err(e) => {
-                    warn!(r#"{:?}: {}"#, p, e);
-                    self.uds_framed.write(PolicyResponse::RequestFailed)
+                    self.uds_framed.write(PolicyResponse::RequestFailed);
+                    warn!(r#"{:?}: {}"#, p, e)
                 }
             },
             PolicyRequest::UpdateFromData(prog) => {
-                self.program = Arc::new(prog);
-                info!("installed policy from data");
-                self.uds_framed.write(PolicyResponse::UpdatedPolicy)
+                self.set_policy(prog);
+                self.uds_framed.write(PolicyResponse::UpdatedPolicy);
+                info!("installed policy from data")
             }
             PolicyRequest::AllowAll => {
-                self.program = Arc::new(ALLOW_ALL.clone());
-                info!("switched to allow all policy");
-                self.uds_framed.write(PolicyResponse::UpdatedPolicy)
+                self.allow_all_policy();
+                self.uds_framed.write(PolicyResponse::UpdatedPolicy);
+                info!("switched to allow all policy")
             }
             PolicyRequest::DenyAll => {
-                self.program = Arc::new(lang::Program::new());
-                info!("switched to deny all policy");
-                self.uds_framed.write(PolicyResponse::UpdatedPolicy)
+                self.deny_all_policy();
+                self.uds_framed.write(PolicyResponse::UpdatedPolicy);
+                info!("switched to deny all policy")
             }
             PolicyRequest::Shutdown => System::current().stop(),
         }
     }
-}
-
-lazy_static! {
-    /// Static "allow all" policy
-    pub static ref ALLOW_ALL: lang::Program =
-        lang::Program::from_str("fn require(r: HttpRequest, peer_addr: Option<Ipv4Addr>) -> bool {true}").unwrap();
 }
 
 impl Actor for DataPolicy {

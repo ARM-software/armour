@@ -1,10 +1,10 @@
 //! HTTP proxy with Armour policies
 
-use super::policy::{self, ToArmourExpression};
+use super::policy::{self, Policy, ToArmourExpression};
 use actix_web::client::{self, Client, ClientRequest, ClientResponse, SendRequestError};
 use actix_web::{
-    http::header::{HeaderName, HeaderValue},
-    middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
+    http::header::{ContentEncoding, HeaderName, HeaderValue},
+    middleware, web, App, Error, HttpMessage, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
 use futures::stream::Stream;
 use futures::{future, Future};
@@ -19,6 +19,7 @@ pub fn start_proxy(
             .data(policy.clone())
             .data(Client::new())
             .data(proxy_port)
+            .wrap(middleware::Compress::new(ContentEncoding::Auto))
             .wrap(middleware::Logger::default())
             .default_service(web::route().to_async(proxy))
     })
@@ -39,84 +40,149 @@ pub fn proxy(
     client: web::Data<Client>,
     proxy_port: web::Data<u16>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
-    policy
-        .send(policy::Evaluate::Require(
-            req.to_expression(),
-            req.peer_addr().to_expression(),
-        ))
-        .then(move |res| match res {
+    policy.send(policy::Check).then(|p| {
+        match p {
+            // check "require"
+            Ok(p @ Policy::Policy { require: true, .. }) => future::Either::A(
+                policy
+                    .send(policy::Evaluate::Require(
+                        req.to_expression(),
+                        req.peer_addr().to_expression(),
+                    ))
+                    .then(move |res| match res {
+                        // allow request
+                        Ok(Ok(true)) => {
+                            future::Either::A(request(p, req, payload, policy, client, proxy_port))
+                        }
+                        // reject
+                        Ok(Ok(false)) => {
+                            future::Either::B(future::ok(unauthorized("request denied")))
+                        }
+                        // policy error
+                        Ok(Err(e)) => {
+                            warn!("{}", e);
+                            future::Either::B(future::ok(internal()))
+                        }
+                        // actor error
+                        Err(e) => {
+                            warn!("{}", e);
+                            future::Either::B(future::ok(internal()))
+                        }
+                    }),
+            ),
             // allow request
-            Ok(Ok(Some(true))) => future::Either::A(
-                payload
-                    .from_err()
-                    .fold(web::BytesMut::new(), |mut body, chunk| {
-                        body.extend_from_slice(&chunk);
-                        Ok::<_, Error>(body)
-                    })
-                    .and_then(move |client_payload| {
-                        policy
-                            .send(policy::Evaluate::ClientPayload(
-                                client_payload.to_expression(),
-                            ))
-                            .then(move |res| {
-                                match res {
-                                    // allow payload
-                                    Ok(Ok(Some(true))) | Ok(Ok(None)) => future::Either::A(
-                                        req.forward_url(*proxy_port).and_then(move |url| {
+            Ok(Policy::AllowAll) | Ok(Policy::Policy { require: false, .. }) => {
+                future::Either::B(future::Either::B(request(
+                    p.unwrap(),
+                    req,
+                    payload,
+                    policy,
+                    client,
+                    proxy_port,
+                )))
+            }
+            // reject request
+            Ok(Policy::DenyAll) => future::Either::B(future::Either::A(future::ok(unauthorized(
+                "request denied",
+            )))),
+            // actor error from sending message Check
+            Err(err) => {
+                warn!("{}", err);
+                future::Either::B(future::Either::A(future::ok(internal())))
+            }
+        }
+    })
+}
+
+// Process request (so far it's allow by the policy)
+pub fn request(
+    p: Policy,
+    req: HttpRequest,
+    payload: web::Payload,
+    policy: web::Data<actix::Addr<policy::DataPolicy>>,
+    client: web::Data<Client>,
+    proxy_port: web::Data<u16>,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    match p {
+        // check client payload
+        Policy::Policy {
+            client_payload: true,
+            ..
+        } => future::Either::A(
+            payload
+                .from_err()
+                .fold(web::BytesMut::new(), |mut body, chunk| {
+                    body.extend_from_slice(&chunk);
+                    Ok::<_, Error>(body)
+                })
+                .and_then(move |client_payload| {
+                    policy
+                        .send(policy::Evaluate::ClientPayload(
+                            client_payload.to_expression(),
+                        ))
+                        .then(move |res| {
+                            match res {
+                                // allow payload
+                                Ok(Ok(true)) => {
+                                    future::Either::A(req.forward_url(*proxy_port).and_then(
+                                        move |url| {
                                             client
                                                 .request_from(url.as_str(), req.head())
                                                 .process_headers(req.peer_addr())
                                                 // forward the request (with the original client payload)
                                                 .send_body(client_payload)
                                                 // send the response back to the client
-                                                .then(|res| response(policy, res))
-                                        }),
-                                    ),
-                                    // reject
-                                    Ok(Ok(Some(false))) => future::Either::B(future::ok(
-                                        unauthorized("request denied (bad client payload)"),
-                                    )),
-                                    // policy error
-                                    Ok(Err(e)) => {
-                                        warn!("{}", e);
-                                        future::Either::B(future::ok(internal()))
-                                    }
-                                    // actor error
-                                    Err(e) => {
-                                        warn!("{}", e);
-                                        future::Either::B(future::ok(internal()))
-                                    }
+                                                .then(|res| response(p, policy, res))
+                                        },
+                                    ))
                                 }
-                            })
-                    }),
-            ),
-            // reject
-            Ok(Ok(Some(false))) | Ok(Ok(None)) => {
-                future::Either::B(future::ok(unauthorized("request denied")))
-            }
-            // policy error
-            Ok(Err(e)) => {
-                warn!("{}", e);
-                future::Either::B(future::ok(internal()))
-            }
-            // actor error
-            Err(e) => {
-                warn!("{}", e);
-                future::Either::B(future::ok(internal()))
-            }
-        })
+                                // reject
+                                Ok(Ok(false)) => future::Either::B(future::ok(unauthorized(
+                                    "request denied (bad client payload)",
+                                ))),
+                                // policy error
+                                Ok(Err(e)) => {
+                                    warn!("{}", e);
+                                    future::Either::B(future::ok(internal()))
+                                }
+                                // actor error
+                                Err(e) => {
+                                    warn!("{}", e);
+                                    future::Either::B(future::ok(internal()))
+                                }
+                            }
+                        })
+                }),
+        ),
+        // allow client payload without check
+        Policy::AllowAll
+        | Policy::Policy {
+            client_payload: false,
+            ..
+        } => future::Either::B(req.forward_url(*proxy_port).and_then(move |url| {
+            client
+                .request_from(url.as_str(), req.head())
+                .process_headers(req.peer_addr())
+                // forward the request (with the original client payload)
+                .send_stream(payload)
+                // send the response back to the client
+                .then(|res| response(p, policy, res))
+        })),
+        Policy::DenyAll => unreachable!(), // should have been handled already by "proxy"
+    }
 }
 
 /// Send server response back to client
 pub fn response(
+    p: Policy,
     policy: web::Data<actix::Addr<policy::DataPolicy>>,
     res: Result<
-        ClientResponse<impl Stream<Item = web::Bytes, Error = client::PayloadError>>,
+        ClientResponse<impl Stream<Item = web::Bytes, Error = client::PayloadError> + 'static>,
         SendRequestError,
     >,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match res {
-        Ok(res) => {
+        Ok(mut res) => {
             let mut client_resp = HttpResponse::build(res.status());
             for (header_name, header_value) in res
                 .headers()
@@ -126,42 +192,51 @@ pub fn response(
                 // debug!("header {}: {:?}", header_name, header_value);
                 client_resp.header(header_name.clone(), header_value.clone());
             }
-            // get the server payload
-            future::Either::A(
-                res.from_err()
-                    .fold(web::BytesMut::new(), |mut body, chunk| {
-                        body.extend_from_slice(&chunk);
-                        Ok::<_, Error>(body)
-                    })
-                    .and_then(move |server_payload| {
-                        // debug!("{:?}", server_payload);
-                        policy
-                            .send(policy::Evaluate::ServerPayload(
-                                server_payload.to_expression(),
-                            ))
-                            .then(move |res| match res {
-                                // allow
-                                Ok(Ok(Some(true))) | Ok(Ok(None)) => {
-                                    future::ok(client_resp.body(server_payload))
-                                }
-                                // reject
-                                Ok(Ok(Some(false))) => future::ok(
-                                    HttpResponse::Unauthorized()
-                                        .body("request denied (bad server payload)"),
-                                ),
-                                // policy error
-                                Ok(Err(e)) => {
-                                    warn!("{}", e);
-                                    future::ok(internal())
-                                }
-                                // actor error
-                                Err(e) => {
-                                    warn!("{}", e);
-                                    future::ok(internal())
-                                }
-                            })
-                    }),
-            )
+            future::Either::A(match p {
+                Policy::Policy {
+                    server_payload: true,
+                    ..
+                } => future::Either::A(
+                    // get the server payload
+                    res.from_err()
+                        .fold(web::BytesMut::new(), |mut body, chunk| {
+                            body.extend_from_slice(&chunk);
+                            Ok::<_, Error>(body)
+                        })
+                        .and_then(move |server_payload| {
+                            // debug!("{:?}", server_payload);
+                            policy
+                                .send(policy::Evaluate::ServerPayload(
+                                    server_payload.to_expression(),
+                                ))
+                                .then(move |res| match res {
+                                    // allow
+                                    Ok(Ok(true)) => future::ok(client_resp.body(server_payload)),
+                                    // reject
+                                    Ok(Ok(false)) => future::ok(
+                                        HttpResponse::Unauthorized()
+                                            .body("request denied (bad server payload)"),
+                                    ),
+                                    // policy error
+                                    Ok(Err(e)) => {
+                                        warn!("{}", e);
+                                        future::ok(internal())
+                                    }
+                                    // actor error
+                                    Err(e) => {
+                                        warn!("{}", e);
+                                        future::ok(internal())
+                                    }
+                                })
+                        }),
+                ),
+                Policy::AllowAll
+                | Policy::Policy {
+                    server_payload: false,
+                    ..
+                } => future::Either::B(future::ok(client_resp.streaming(res.take_payload()))),
+                Policy::DenyAll => unreachable!(), // should have been handled already by "proxy"
+            })
         }
         // error response when connecting to server
         Err(err) => future::Either::B(future::ok(err.error_response())),

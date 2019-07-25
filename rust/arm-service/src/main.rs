@@ -116,8 +116,6 @@ fn main() -> std::io::Result<()> {
                             body.extend_from_slice(&chunk);
                             Ok::<_, Error>(body)
                         })
-                        // .body()
-                        // .limit(1024 * 1024)
                         .map_err(move |err| stop(done, Some(("response: ", err))))
                         .and_then(move |body| {
                             stop(done, None::<(_, bool)>);

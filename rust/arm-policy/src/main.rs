@@ -37,7 +37,7 @@ fn main() -> io::Result<()> {
         prog = lang::Program::from_file(filename)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
     } else {
-        prog = lang::Program::new()
+        prog = lang::Program::default()
     }
 
     if let Some(timeout) = matches.value_of("timeout") {

@@ -1202,14 +1202,8 @@ impl std::str::FromStr for Expr {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Code(HashMap<String, Expr>);
-
-impl Code {
-    fn new() -> Code {
-        Code(HashMap::new())
-    }
-}
 
 struct CallGraph {
     graph: graph::DiGraph<String, lexer::Loc>,
@@ -1243,7 +1237,7 @@ impl CallGraph {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Program {
     pub code: Code,
     pub externals: externals::Externals,
@@ -1251,13 +1245,6 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn new() -> Program {
-        Program {
-            code: Code::new(),
-            externals: externals::Externals::default(),
-            headers: Headers::default(),
-        }
-    }
     pub fn has_function(&self, name: &str) -> bool {
         self.code.0.contains_key(name)
     }
@@ -1379,12 +1366,6 @@ impl Program {
     }
 }
 
-impl Default for Program {
-    fn default() -> Self {
-        Program::new()
-    }
-}
-
 impl std::str::FromStr for Program {
     type Err = Error;
 
@@ -1392,7 +1373,7 @@ impl std::str::FromStr for Program {
         match parser::parse_program(lexer::Tokens::new(&lexer::lex(buf))) {
             Ok((_rest, prog_parse)) => {
                 let mut call_graph = CallGraph::new();
-                let mut prog = Program::new();
+                let mut prog = Program::default();
                 // process headers (for type information)
                 for decl in prog_parse.iter() {
                     match decl {
