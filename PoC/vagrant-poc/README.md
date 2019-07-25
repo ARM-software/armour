@@ -11,6 +11,17 @@
 1. Run vagrant
 
 		vagrant up
+		curl https://sh.rustup.rs -sSf | sh
+		sudo apt-get -y install openssl
+		sudo apt-get install -y libssl-dev
+		sudo apt install -y cargo
+Clone the armour repo
+
+		git clone https://git.research.arm.com/antfox02/armour.git
+Build the armou-data docker images
+
+		cd armour/rust/docker
+		./build ~/armour/rust/armour-data-master/ armour-data-master armour-data
 2. Get the ip address of the enp0s8 interface, it would be something like 10.1.x.x and test the ip on a browser and 10.1.x.x:81 to see the contracts executing
 3. Execute a contract:
 

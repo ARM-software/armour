@@ -49,11 +49,6 @@ services:
     ports:
       - 5000
 
-  hostapd:
-    build: ./hostapd
-    network_mode: "host"
-    cap_add: ["NET_ADMIN"]
-
   notifications:
     build:
       context: ./notifications
