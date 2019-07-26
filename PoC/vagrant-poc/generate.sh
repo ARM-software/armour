@@ -14,11 +14,11 @@ sudo iptables -I DOCKER-USER -i proxy-net -o poc_+ -j ACCEPT
 
 for i in "${rest_endpoints[@]}"; do
   IFS=':' read -ra ports <<< "$i"
-  sudo iptables -t nat -I PREROUTING -i poc_+ -d ${ports[0]} --dport ${ports[1]} -j DNAT --to-destination $proxy_ip:$rest_port
+  sudo iptables -t nat -I PREROUTING -i poc_+ -p tcp -d ${ports[0]} --dport ${ports[1]} -j DNAT --to-destination $proxy_ip:$rest_port
 done
 
 for i in "${tcp_endpoints[@]}"; do
   IFS=':' read -ra ports <<< "$i"
-  sudo iptables -t nat -I PREROUTING -i poc_+ -d ${ports[0]} --dport ${ports[1]} -j DNAT --to-destination $proxy_ip:$tcp_port
+  sudo iptables -t nat -I PREROUTING -i poc_+ -p tcp -d ${ports[0]} --dport ${ports[1]} -j DNAT --to-destination $proxy_ip:$tcp_port
   let "tcp_port++"
 done
