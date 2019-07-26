@@ -12,6 +12,7 @@ use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::net::IpAddr;
 use tokio_io::codec::{Decoder, Encoder};
 
 trait DeserializeDecoder<T: serde::de::DeserializeOwned, E: std::convert::From<std::io::Error>> {
@@ -144,4 +145,32 @@ impl Encoder for MasterCodec {
     fn encode(&mut self, msg: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
         self.serialize_encode(msg, dst)
     }
+}
+
+lazy_static! {
+    pub static ref INTERFACE_IPS: HashSet<IpAddr> = {
+        let set: HashSet<String> = ["lo", "lo0", "en0"].iter().map(|s| s.to_string()).collect();
+        if let Ok(interfaces) = get_if_addrs::get_if_addrs() {
+            interfaces
+                .into_iter()
+                .filter_map(|i| {
+                    if set.contains(&i.name) {
+                        Some(i.ip())
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        } else {
+            HashSet::new()
+        }
+    };
+}
+
+pub fn own_ip(s: &IpAddr) -> bool {
+    INTERFACE_IPS.contains(s)
+        || match s {
+            IpAddr::V4(v4) => v4.is_unspecified() || v4.is_broadcast(),
+            IpAddr::V6(v6) => v6.is_unspecified(),
+        }
 }

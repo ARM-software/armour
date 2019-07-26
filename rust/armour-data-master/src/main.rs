@@ -3,12 +3,12 @@
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
 use arm_policy::lang;
-use armour_data_interface::{PolicyRequest, POLICY_SIG};
+use armour_data_interface::{own_ip, PolicyRequest, POLICY_SIG};
 use armour_data_master as master;
 use clap::{crate_version, App, Arg};
 use master::{commands, MasterCommand};
 use std::io;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 fn main() -> io::Result<()> {
@@ -217,28 +217,19 @@ where
     std::io::Error::new(std::io::ErrorKind::Other, e)
 }
 
-fn to_self(s: &IpAddr) -> bool {
-    match s {
-        IpAddr::V4(v4) => {
-            v4.is_unspecified() || v4.is_broadcast() || *v4 == std::net::Ipv4Addr::LOCALHOST
-        }
-        IpAddr::V6(v6) => v6.is_unspecified() || *v6 == std::net::Ipv6Addr::LOCALHOST,
-    }
-}
-
 fn parse_socket(s: &str, own_port: u16) -> io::Result<SocketAddr> {
     match url::Url::parse(format!("x://{}", s).as_str()) {
         Ok(url) => {
             match (
                 url.host_str(),
                 url.port(),
-                trust_dns_resolver::Resolver::default(),
+                trust_dns_resolver::Resolver::from_system_conf(),
             ) {
                 (Some(host), Some(port), Ok(resolver)) => match resolver.lookup_ip(host) {
                     Ok(res) => {
                         if let Some(ip) = res.iter().next() {
                             let socket = SocketAddr::from((ip, port));
-                            if port == own_port && to_self(&socket.ip()) {
+                            if port == own_port && own_ip(&socket.ip()) {
                                 Err(other("forward to self"))
                             } else {
                                 Ok(socket)

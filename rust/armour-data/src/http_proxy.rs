@@ -6,8 +6,11 @@ use actix_web::{
     http::header::{ContentEncoding, HeaderName, HeaderValue},
     middleware, web, App, Error, HttpMessage, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
+use armour_data_interface::own_ip;
 use futures::stream::Stream;
 use futures::{future, Future};
+use std::collections::HashSet;
+use std::net::IpAddr;
 
 pub fn start_proxy(
     policy: actix::Addr<policy::DataPolicy>,
@@ -285,14 +288,29 @@ impl ForwardUrl for HttpRequest {
     }
 }
 
+lazy_static! {
+    pub static ref LOCAL_HOST_NAMES: HashSet<String> = {
+        let mut names = HashSet::new();
+        if let Ok(resolver) = trust_dns_resolver::Resolver::from_system_conf() {
+            for ip in armour_data_interface::INTERFACE_IPS.iter() {
+                if let Ok(interface_names) = resolver.reverse_lookup(*ip) {
+                    names.extend(
+                        interface_names
+                            .into_iter()
+                            .map(|name| name.to_ascii().trim_end_matches('.').to_lowercase()),
+                    )
+                }
+            }
+        };
+        names
+    };
+}
+
 fn is_local_host(host: url::Host<&str>) -> bool {
     match host {
-        url::Host::Domain("localhost") => true,
-        url::Host::Ipv4(v4) => {
-            v4.is_unspecified() || v4.is_broadcast() || v4 == std::net::Ipv4Addr::LOCALHOST
-        }
-        url::Host::Ipv6(v6) => v6.is_unspecified() || v6 == std::net::Ipv6Addr::LOCALHOST,
-        _ => false,
+        url::Host::Domain(domain) => LOCAL_HOST_NAMES.contains(&domain.to_ascii_lowercase()),
+        url::Host::Ipv4(v4) => own_ip(&IpAddr::V4(v4)),
+        url::Host::Ipv6(v6) => own_ip(&IpAddr::V6(v6)),
     }
 }
 
