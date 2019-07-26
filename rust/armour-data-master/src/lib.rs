@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use tokio_codec::FramedRead;
 use tokio_io::{io::WriteHalf, AsyncRead};
 
+#[derive(PartialEq)]
 pub enum Instances {
     All,
     Error,
@@ -208,7 +209,9 @@ impl StreamHandler<PolicyResponse, std::io::Error> for ArmourDataInstance {
                 self.master.do_send(Disconnect(self.id));
                 ctx.stop()
             }
-            PolicyResponse::ActivePorts{http, tcp} => info!("{}: active ports: http {:?}, tcp {:?}", self.id, http, tcp),
+            PolicyResponse::ActivePorts { http, tcp } => {
+                info!("{}: active ports: http {:?}, tcp {:?}", self.id, http, tcp)
+            }
         }
     }
 }

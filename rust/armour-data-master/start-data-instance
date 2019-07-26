@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+cd ../armour-data
+cargo run ../armour-data-master/armour

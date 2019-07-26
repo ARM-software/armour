@@ -7,7 +7,7 @@ use armour_data_interface::{own_ip, PolicyRequest, POLICY_SIG};
 use armour_data_master as master;
 use clap::{crate_version, App, Arg};
 use master::{commands, MasterCommand};
-use std::io;
+use std::io::{self, BufRead};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -58,19 +58,9 @@ fn main() -> io::Result<()> {
     std::thread::spawn(move || loop {
         let mut cmd = String::new();
         if io::stdin().read_line(&mut cmd).is_err() {
-            println!("error reading command");
-            return;
-        }
-        if let Some(caps) = commands::MASTER.captures(&cmd) {
-            master_command(&master, caps)
-        } else if let Some(caps) = commands::INSTANCE0.captures(&cmd) {
-            instance0_command(&master, caps)
-        } else if let Some(caps) = commands::INSTANCE2.captures(&cmd) {
-            instance2_command(&master, caps)
-        } else if let Some(caps) = commands::INSTANCE1.captures(&cmd) {
-            instance1_command(&master, caps)
+            log::warn!("error reading command")
         } else {
-            log::info!("unknown command <none>")
+            run_command(&master, &cmd)
         }
     });
 
@@ -88,16 +78,41 @@ fn main() -> io::Result<()> {
     sys.run()
 }
 
+fn run_command(master: &Addr<master::ArmourDataMaster>, cmd: &str) {
+    let cmd = cmd.trim();
+    if cmd != "" {
+        if let Some(caps) = commands::MASTER.captures(&cmd) {
+            master_command(&master, caps)
+        } else if let Some(caps) = commands::INSTANCE0.captures(&cmd) {
+            instance0_command(&master, caps)
+        } else if let Some(caps) = commands::INSTANCE2.captures(&cmd) {
+            instance2_command(&master, caps)
+        } else if let Some(caps) = commands::INSTANCE1.captures(&cmd) {
+            instance1_command(&master, caps)
+        } else {
+            log::info!("unknown command <none>")
+        }
+    }
+}
+
 fn master_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captures) {
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     match command.as_ref().map(String::as_str) {
         Some("list") => master.do_send(MasterCommand::ListActive),
         Some("quit") => master.do_send(MasterCommand::Quit),
+        Some("launch") => match std::process::Command::new("./start-data-instance").spawn() {
+            Ok(child) => log::info!("started processs: {}", child.id()),
+            Err(err) => log::warn!("failed to spawn data plane instance: {}", err),
+        },
         Some("help") => println!(
             "COMMANDS:
     help                      list commands
+    launch                    start a new instance
     list                      list connected instances
     quit                      shutdown master and all instances
+
+    run <file>                run commands from <file>
+    wait <seconds>            wait for 'min(10, <seconds>)' seconds to elapse
 
     [<id>|all] allow all      request allow all policy
     [<id>|all] deny all       request deny all policy
@@ -166,6 +181,47 @@ fn instance1_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captu
             }
         }
         Some("remote") => Some(PolicyRequest::UpdateFromFile(PathBuf::from(arg))),
+        Some("wait") => {
+            if commands::instance(&caps) == master::Instances::SoleInstance {
+                if let Ok(delay) = arg.parse::<u8>() {
+                    std::thread::sleep(std::time::Duration::from_secs(delay.min(10).into()))
+                } else {
+                    log::warn!("expecting u8, got {}", arg);
+                }
+            } else {
+                log::info!("unknown command")
+            };
+            None
+        }
+        Some("run") => {
+            if commands::instance(&caps) == master::Instances::SoleInstance {
+                match std::fs::File::open(PathBuf::from(arg)) {
+                    Ok(file) => {
+                        let mut buf_reader = std::io::BufReader::new(file);
+                        let mut line = 1;
+                        let mut done = false;
+                        while !done {
+                            let mut cmd = String::new();
+                            if buf_reader.read_line(&mut cmd).is_err() {
+                                log::warn!("{}: error reading command on line {}", arg, line);
+                                done = true
+                            } else {
+                                cmd = cmd.trim().to_string();
+                                if cmd != "" {
+                                    log::info!(r#"run command: "{}""#, cmd);
+                                    run_command(master, &cmd)
+                                };
+                                line += 1
+                            }
+                        }
+                    }
+                    Err(err) => log::warn!("{}", err),
+                }
+            } else {
+                log::info!("unknown command")
+            };
+            None
+        }
         _ => {
             log::info!("unknown command");
             None

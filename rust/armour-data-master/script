@@ -1,0 +1,7 @@
+launch
+wait 1
+start 8443
+wait 2
+stop all
+wait 2
+quit

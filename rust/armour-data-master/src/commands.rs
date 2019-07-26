@@ -11,7 +11,8 @@ use super::Instances;
 use regex::Regex;
 
 lazy_static! {
-    pub static ref MASTER: Regex = Regex::new(r"^(?i)\s*(?P<command>list|help|quit)\s*$").unwrap();
+    pub static ref MASTER: Regex =
+        Regex::new(r"^(?i)\s*(?P<command>list|help|launch|quit)\s*$").unwrap();
 }
 
 lazy_static! {
@@ -21,7 +22,7 @@ lazy_static! {
 
 lazy_static! {
     pub static ref INSTANCE1: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>policy|remote|start|stop)\s+(?P<arg>.*)\s*$"#)
+        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>policy|remote|start|stop|wait|run)\s+(?P<arg>.*)\s*$"#)
             .unwrap();
 }
 
