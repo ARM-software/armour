@@ -1,68 +1,128 @@
-Steps
-=====
-Setup the VM
+Preliminaries
+=============
 
-	vagrant up
-	vagrant ssh
-	curl https://sh.rustup.rs -sSf | sh
-	sudo apt-get -y install openssl
-	sudo apt-get install -y libssl-dev
-	sudo apt install -y cargo
-Clone the armour repo
+The following assumes a Mac setup (though this is not essential). Note: network (DNS) issues under Vagrant are likely, so repeating the instructions may be needed.
 
-	git clone https://git.research.arm.com/antfox02/armour.git
-Build the armou-data docker images
+### Docker
 
-	cd armour/rust/docker
-	./build ~/armour/rust/armour-data-master/ armour-data-master armour-data
-Run the docker compose file
+Install and run [Docker Desktop](https://www.docker.com/products/docker-desktop). Alternatively, Docker can be installed using Self Service (Jamf).
 
-	cd /vagrant
-	docker-compose up -d
-Create the iptable rules
+### Vargrant
 
-	./iptables-generate.sh
+Download and install [Vagrant](https://www.vagrantup.com/downloads.html). By default it will be installed under `/opt/vagrant`. To uninstall follow [these instruction](https://www.vagrantup.com/docs/installation/uninstallation.html).
+
+Alternatively, you can also manage the Vagrant installation using [Homebrew](https://brew.sh).
+
+```shell
+$ brew cask install vagrant
+```
+
+Testbed Setup
+=============
+
+1. Install the docker compose plugin
+
+    ```shell
+    $ vagrant plugin install vagrant-docker-compose
+    ```
+
+1. Bring up the Vagrant VM
+
+    ```shell
+    $ cd armour/testbed/armour-data
+    $ vagrant up
+    # NOTE: attach to network bridge 1 (en0)
+    ```
+
+1. Setup the Vagrant VM for Rust (cargo)
+
+    ```shell
+    $ vagrant ssh
+    vagrant@ubuntu-bionic:~$ curl https://sh.rustup.rs -sSf | sh -s -- -y
+    vagrant@ubuntu-bionic:~$ . .profile
+    vagrant@ubuntu-bionic:~$ sudo apt-get -y install libssl-dev
+    ```
+
+1. Clone the armour repo.
+
+    ```shell
+    vagrant@ubuntu-bionic:~$ git clone https://git.research.arm.com/antfox02/armour.git
+    ```
+
+1. Build the armour-data docker images
+
+    ```shell
+    vagrant@ubuntu-bionic:~$ cd ~/armour/rust/docker
+    vagrant@ubuntu-bionic:~$ ./build ~/armour/rust/armour-data-master armour-data-master armour-data
+    ```
+
 Test
 ====
-To run the test, open 4 different terminal windows and ssh into the vagrant VM:
 
-- Terminal 1:
 
-		docker exec -it armour-data bash
-		cd /root/
-		./armour-data-master
-- Terminal 2:
+1. Run the docker compose file
 
-		docker exec -it armour-data bash
-		cd /root/
-	- Test HTTP
+    ```shell
+	vagrant@ubuntu-bionic:~$ cd /vagrant
+	vagrant@ubuntu-bionic:~$ docker-compose up -d
+	```
+	
+1. Create the iptable rules
 
-			./armour-data armour -p 8080
-	- Test TCP
+    ```shell
+   vagrant@ubuntu-bionic:~$ cd ~/armour/testbed/armour-data
+	vagrant@ubuntu-bionic:~$ ./iptables-generate.sh
+	```
+	
+1. To run the test, open three different terminal windows and ssh into the vagrant VM:
 
-			./armour-data armour
-		- Terminal 1:
+    - Terminal 1 (Armour data plane):
 
-				forward 8080 172.19.0.2:8080
-				or
-				forward 8080 server-1:8080
-- Terminal 3:
+        ```shell
+        vagrant@ubuntu-bionic:~$ docker exec -it armour-data bash
+        root@armour-data:/home# cd /root
+        root@armour-data:/home# ./armour-data-master
+        ```
+        
+        Start an HTTP proxy on port 8080
+        
+        ```
+        launch
+        start 8080
+        ```
 
-		docker exec -it server-1 python3 /flask-server/server.py -d
-- Terminal 4:
+    - Terminal 2 (Flask server):
 
-		docker exec server-2 curl http://172.19.0.2:8080
-we should get `request denied`
+        ```shell
+        vagrant@ubuntu-bionic:~$ docker exec -it server-1 python3 /flask-server/server.py -d
+        ```
 
-- Go back to terminal 1 and apply an allow policy:
+    - Terminal 3 (client):
 
-		allow all
-- Try the curl cmd again in terminal 4:
+        ```shell
+        vagrant@ubuntu-bionic:~$ docker exec server-2 curl http://server-1:8080
+        ```
 
-		docker exec server-2 curl http://172.19.0.2:8080
+        we should get `request denied`
 
-we should get `response`
 
-- To change the policy to deny all, in terminal 1:
+    - Go back to terminal 1 and apply an allow policy:
 
-		deny all
+        ```shell
+        allow all
+        ```
+
+    - Try the curl command again in terminal 3:
+
+        ```shell
+        vagrant@ubuntu-bionic:~$ docker exec server-2 curl http://server-1:8080
+        ```
+
+        We should now get `response`. We can switch back to blocking with `deny all`.
+
+    - Go back to terminal 1 and switch to TCP proxying:
+
+        ```shell
+        stop 8080
+        forward 8080 server-1:8080
+        ```
