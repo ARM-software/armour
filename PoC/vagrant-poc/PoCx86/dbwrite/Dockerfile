@@ -1,5 +1,6 @@
 FROM pihealth_trimmed
 
+RUN apk add mariadb-connector-c
 RUN apk del .build-deps
 
 COPY flask ./flask
