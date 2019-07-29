@@ -7,7 +7,7 @@ use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse};
 use futures::{future, Future};
 use literals::ToLiteral;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio_codec::FramedRead;
 use tokio_io::{io::WriteHalf, AsyncRead};
 
@@ -16,7 +16,7 @@ use tokio_io::{io::WriteHalf, AsyncRead};
 /// Currently, a "policy" is just an Armour program with "require", "client_payload" and "server_payload" functions.
 pub struct DataPolicy {
     /// policy program
-    program: Arc<lang::Program>,
+    program: Arc<Mutex<lang::Program>>,
     allow_all: bool,
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, PolicyCodec>,
@@ -26,6 +26,9 @@ pub struct DataPolicy {
 }
 
 impl DataPolicy {
+    fn default_policy() -> Arc<Mutex<lang::Program>> {
+        Arc::new(Mutex::new(lang::Program::default()))
+    }
     /// Start a new policy actor that connects to a data plane master on a Unix socket.
     pub fn create_policy<P: AsRef<std::path::Path>>(
         master_socket: P,
@@ -36,7 +39,7 @@ impl DataPolicy {
                     let (r, w) = stream.split();
                     ctx.add_stream(FramedRead::new(r, PolicyCodec));
                     DataPolicy {
-                        program: Arc::new(lang::Program::default()),
+                        program: DataPolicy::default_policy(),
                         allow_all: false,
                         uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
                         http_proxies: HashMap::new(),
@@ -48,15 +51,15 @@ impl DataPolicy {
             .wait()
     }
     fn set_policy(&mut self, p: lang::Program) {
-        self.program = Arc::new(p);
+        self.program = Arc::new(Mutex::new(p));
         self.allow_all = false
     }
     fn deny_all_policy(&mut self) {
-        self.program = Arc::new(lang::Program::default());
+        self.program = DataPolicy::default_policy();
         self.allow_all = false
     }
     fn allow_all_policy(&mut self) {
-        self.program = Arc::new(lang::Program::default());
+        self.program = DataPolicy::default_policy();
         self.allow_all = true
     }
     fn evaluate_policy(
@@ -68,7 +71,7 @@ impl DataPolicy {
         info!(r#"evaluting "{}"""#, function);
         Box::new(
             lang::Expr::call(function, args)
-                .evaluate(self.program.clone())
+                .evaluate(Arc::new(self.program.lock().unwrap().clone()))
                 .and_then(move |result| match result {
                     lang::Expr::LitExpr(literals::Literal::Policy(policy)) => {
                         info!("result is: {:?} ({:?})", policy, now.elapsed());
@@ -123,7 +126,7 @@ impl Handler<Check> for DataPolicy {
         if self.allow_all {
             Policy::AllowAll
         } else {
-            let p = &self.program;
+            let p = self.program.lock().unwrap();
             match (
                 p.has_function("require"),
                 p.has_function("client_payload"),
