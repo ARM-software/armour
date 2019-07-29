@@ -1,5 +1,5 @@
 use actix::prelude::*;
-use armour_data::policy;
+use armour_data::{http_proxy, policy};
 use armour_data_interface::PolicyRequest;
 use clap::{crate_version, App as ClapApp, Arg};
 use std::env;
@@ -34,6 +34,8 @@ fn main() -> std::io::Result<()> {
         port.parse()
             .unwrap_or_else(|_| panic!("bad port: {}", port))
     });
+
+    log::info!("local host names are: {:?}", *http_proxy::LOCAL_HOST_NAMES);
 
     // start Actix system
     let sys = actix::System::new("armour-data");
