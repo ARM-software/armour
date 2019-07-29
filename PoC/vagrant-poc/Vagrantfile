@@ -22,6 +22,7 @@ Vagrant.configure("2") do |config|
     docker image build -t pihealth_trimmed /vagrant/PoCx86/pihealth_trimmed/
     docker image build -t mosquitto /vagrant/PoCx86/mosquitto/
     git clone https://git.research.arm.com/antfox02/armour.git
+    mkdir /vagrant/map
     mkdir -p /home/vagrant/PoC
     cd /home/vagrant/PoC
     sudo git config --global --unset https.proxy

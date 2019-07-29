@@ -28,6 +28,8 @@ services:
       - "on-during-conversation:172.20.0.2"
       - "temperature:172.19.0.2"
       - "vitals:172.18.0.2"
+    volumes:
+      - /vagrant/map:/root/map
     networks:
       proxy-net:
         ipv4_address: 172.40.0.2
@@ -838,6 +840,7 @@ services:
 networks:
   vitals:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_vitals
     ipam:
@@ -846,6 +849,7 @@ networks:
 
   temp:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_temp
     ipam:
@@ -854,6 +858,7 @@ networks:
 
   conv:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_conv
     ipam:
@@ -862,6 +867,7 @@ networks:
 
   verify:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_verify
     ipam:
@@ -870,6 +876,7 @@ networks:
 
   pulse:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_pulse
     ipam:
@@ -878,6 +885,7 @@ networks:
 
   pharm:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_pharm
     ipam:
@@ -886,6 +894,7 @@ networks:
 
   colibri:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_colibri
     ipam:
@@ -894,6 +903,7 @@ networks:
 
   public:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_public
     ipam:
@@ -902,6 +912,7 @@ networks:
 
   trust:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_trust
     ipam:
@@ -910,6 +921,7 @@ networks:
 
   mdebug:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_mdebug
     ipam:
@@ -918,6 +930,7 @@ networks:
 
   launch:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_launch
     ipam:
@@ -926,6 +939,7 @@ networks:
 
   debug:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_debug
     ipam:
@@ -934,6 +948,7 @@ networks:
 
   dtp:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_dtp
     ipam:
@@ -942,6 +957,7 @@ networks:
 
   dbw:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_dbw
     ipam:
@@ -950,6 +966,7 @@ networks:
 
   dbr:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_dbr
     ipam:
@@ -958,6 +975,7 @@ networks:
 
   mysql:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_mysql
     ipam:
@@ -966,6 +984,7 @@ networks:
 
   context:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_context
     ipam:
@@ -974,6 +993,7 @@ networks:
 
   accounting:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_accounting
     ipam:
@@ -982,6 +1002,7 @@ networks:
 
   cloud:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_cloud
     ipam:
@@ -990,6 +1011,7 @@ networks:
 
   mongo:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_mongo
     ipam:
@@ -998,6 +1020,7 @@ networks:
 
   mongo-web:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_mongo-web
     ipam:
@@ -1006,6 +1029,7 @@ networks:
 
   notif:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: poc_notif
     ipam:
