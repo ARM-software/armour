@@ -100,7 +100,7 @@ fn master_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captures
     match command.as_ref().map(String::as_str) {
         Some("list") => master.do_send(MasterCommand::ListActive),
         Some("quit") => master.do_send(MasterCommand::Quit),
-        Some("launch") => match std::process::Command::new("./start-data-instance").spawn() {
+        Some("launch") => match std::process::Command::new("./armour-data").spawn() {
             Ok(child) => log::info!("started processs: {}", child.id()),
             Err(err) => log::warn!("failed to spawn data plane instance: {}", err),
         },
