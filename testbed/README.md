@@ -38,8 +38,14 @@ Testbed Setup
 
     ```shell
     $ vagrant ssh
-    vagrant@ubuntu-bionic:~$ source $HOME/.cargo/env
     ```
+
+    1. Build the armour-data docker images
+
+        ```shell
+        vagrant@ubuntu-bionic:~$ cd ~/armour/rust/docker
+        vagrant@ubuntu-bionic:~$ ./build ~/armour/rust/armour-data-master armour-data-master armour-data
+        ```
 
 Test
 ====
