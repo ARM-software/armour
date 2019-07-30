@@ -1,7 +1,7 @@
 Preliminaries
 =============
 
-The following assumes a Mac setup (though this is not essential). Note: network (DNS) issues under Vagrant are likely, so repeating the instructions may be needed.
+The following assumes a Mac setup (though this is not essential). Note: network (DNS) issues under Vagrant are likely, so it may be necessary to repeat some commands.
 
 ### Docker
 
@@ -9,7 +9,7 @@ Install and run [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
 ### Vargrant
 
-Download and install [Vagrant](https://www.vagrantup.com/downloads.html). By default it will be installed under `/opt/vagrant`. To uninstall follow [these instruction](https://www.vagrantup.com/docs/installation/uninstallation.html).
+Download and install [Vagrant](https://www.vagrantup.com/downloads.html). By default it will be installed under `/opt/vagrant`. To uninstall follow [these instructions](https://www.vagrantup.com/docs/installation/uninstallation.html).
 
 Alternatively, you can also manage the Vagrant installation using [Homebrew](https://brew.sh).
 
@@ -39,7 +39,7 @@ Testbed Setup
     ```shell
     $ vagrant ssh
     vagrant@ubuntu-bionic:~$ curl https://sh.rustup.rs -sSf | sh -s -- -y
-    vagrant@ubuntu-bionic:~$ . .profile
+    vagrant@ubuntu-bionic:~$ source $HOME/.cargo/env
     vagrant@ubuntu-bionic:~$ sudo apt-get -y install libssl-dev
     ```
 
