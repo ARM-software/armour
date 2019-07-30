@@ -1,5 +1,39 @@
 version: '3.0'
 services:
+  armour-data:
+    container_name: armour-data
+    hostname: armour-data
+    image: armour-data-master
+    tty: true
+    extra_hosts:
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
+    volumes:
+      - /vagrant/map:/root/map
+    networks:
+      proxy-net:
+        ipv4_address: 172.40.0.2
+
   digital-dolly:
     build:
       context: ./digital-dolly
@@ -22,8 +56,33 @@ services:
       context: ./notifications
       args:
         registry: git.research.arm.com:4567
+    hostname: notifications
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     networks:
-      - mynet
+      notif:
+        ipv4_address: 172.39.0.2
     ports:
       - 80:80/tcp
 
@@ -35,39 +94,163 @@ services:
     environment:
         MONGO_CONN: "mongodb://mongo/Ledger"
         INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
+    hostname: mongo-web-interface
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     depends_on:
       - mongo
     networks:
-      - mynet
+      mongo-web:
+        ipv4_address: 172.38.0.2
     ports:
       - 81:81/tcp
 
   mongo:
     image: mongo
+    hostname: mongo
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     networks:
-      - mynet
+      mongo:
+        ipv4_address: 172.37.0.2
 
   cloud-update:
     build: ./cloud_comm
+    hostname: cloud-update
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     networks:
-      - mynet
+      cloud:
+        ipv4_address: 172.36.0.2
     ports:
       - 5000
 
   accounting:
     build: ./accounting
+    hostname: accounting
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     environment:
       MONGO_CONN: "mongodb://mongo"
       MY_NODE_NAME: "PoC-armour"
     depends_on:
       - mongo
     networks:
-      - mynet
+      accounting:
+        ipv4_address: 172.35.0.2
     ports:
       - 5000
 
   context:
     build: ./context
+    hostname: context
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     environment:
       LIGHTS: ""
       PULSE_MIC_NAME: alsa_input.hw_3_0
@@ -78,19 +261,69 @@ services:
     cap_add: ["SYS_RAWIO"]
     privileged: true
     networks:
-      - mynet
+      context:
+        ipv4_address: 172.34.0.2
     ports:
       - 5000
 
   mysql:
     build: ./mysql
+    hostname: mysql
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: PoC
     networks:
-      - mynet
+      mysql:
+        ipv4_address: 172.33.0.2
 
   dbread:
+    hostname: dbread
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     build:
       context: ./dbread
       args:
@@ -100,11 +333,36 @@ services:
     depends_on:
       - mysql
     networks:
-      - mynet
+      dbr:
+        ipv4_address: 172.32.0.2
     ports:
       - 5000
 
   dbwrite:
+    hostname: dbwrite
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     build:
       context: ./dbwrite
       args:
@@ -114,11 +372,36 @@ services:
     depends_on:
       - mysql
     networks:
-      - mynet
+      dbw:
+        ipv4_address: 172.31.0.2
     ports:
       - 5000
 
   dtp:
+    hostname: dtp
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     build:
       context: ./dtp
       args:
@@ -126,11 +409,36 @@ services:
     environment:
       PULSE_SERVER: tcp:pulse:4713
     networks:
-      - mynet
+      dtp:
+        ipv4_address: 172.30.0.2
     ports:
       - 5000
 
   debug:
+    hostname: debug
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     build:
       context: ./debug
       args:
@@ -140,92 +448,316 @@ services:
     depends_on:
       - mysql
     networks:
-      - mynet
+      debug:
+        ipv4_address: 172.29.0.2
     ports:
       - 5000
 
   launch:
     build: ./launch
+    hostname: launch
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     environment:
       RUNLEVEL: "debug"
       DB_CONN_REGIST: "mysql://dbint:raspberry@mysql:3306/PoC_Registration"
     depends_on:
       - mysql
     networks:
-      - mynet
-    #    ipv4_address: 172.38.0.1
+      launch:
+        ipv4_address: 172.28.0.2
     ports:
       - 5000
 
   mqtt-debug:
+    hostname: mqtt-debug
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     build: ./mosquitto_trusted
     networks:
-      - mynet
+      mdebug:
+        ipv4_address: 172.27.0.2
     ports:
       - 1883:1883
       - 8883
       - 9001
 
   mqtt-trusted:
+    hostname: mqtt-trusted
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     build: ./mosquitto_trusted
     networks:
-      - mynet
+      trust:
+        ipv4_address: 172.26.0.2
     ports:
       - 1883
       - 8883
       - 9001
 
   mqtt-public:
+    hostname: mqtt-public
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     build: ./mosquitto_public
     networks:
-      - mynet
+      public:
+        ipv4_address: 172.25.0.2
     ports:
       - 1883
       - 8883
       - 9001
 
   picolibri:
+    hostname: picolibri
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     build:
       context: ./picolibri
       args:
         registry: git.research.arm.com:4567
     networks:
-      - mynet
+      colibri:
+        ipv4_address: 172.24.0.2
     ports:
       - 5000
 
   pipharm:
+    hostname: pipharm
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     build:
       context: ./pipharm
       args:
         registry: git.research.arm.com:4567
     networks:
-      - mynet
+      pharm:
+        ipv4_address: 172.23.0.2
     ports:
       - 5000
 
   pulse:
+    hostname: pulse
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     build: ./pulse
     cap_add: ["SYS_RAWIO"]
     volumes:
       - /dev/snd:/dev/snd
     privileged: true
     networks:
-      - mynet
+      pulse:
+        ipv4_address: 172.22.0.2
     ports:
       - 4713:4713/tcp
 
   verify-id:
+    hostname: verify-id
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     build:
       context: ./verify_id
       args:
         registry: git.research.arm.com:4567
     networks:
-      - mynet
+      verify:
+        ipv4_address: 172.21.0.2
     ports:
       - 5000
 
   on-during-conversation:
+    hostname: on-during-conversation
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
     build:
       context: ./on_during_conversation
       args:
@@ -234,30 +766,280 @@ services:
       HR_RUN_FLAG: "-O"
     privileged: true
     networks:
-      - mynet
+      conv:
+        ipv4_address: 172.20.0.2
     ports:
       - 5000
 
   temperature:
+    hostname: temperature
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "vitals:172.18.0.2"
     build: ./temperature
     privileged: true
     environment:
       DEVICE: "28*"
     networks:
-      - mynet
+      temp:
+        ipv4_address: 172.19.0.2
 
   vitals:
+    hostname: vitals
+    extra_hosts:
+      - "armour-data:172.40.0.2"
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
     build: ./vitals
     privileged: true
     cap_add: ["NET_ADMIN"]
     volumes:
       - /dev/ttyAMA0:/dev/ttyAMA0
     networks:
-      - mynet
+      vitals:
+        ipv4_address: 172.18.0.2
 networks:
-  mynet:
+  vitals:
     driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_vitals
     ipam:
-      driver: default
       config:
-        - subnet: "172.38.0.0/16"
+        - subnet: 172.18.0.0/28
+
+  temp:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_temp
+    ipam:
+      config:
+        - subnet: 172.19.0.0/28
+
+  conv:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_conv
+    ipam:
+      config:
+        - subnet: 172.20.0.0/28
+
+  verify:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_verify
+    ipam:
+      config:
+        - subnet: 172.21.0.0/28
+
+  pulse:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_pulse
+    ipam:
+      config:
+        - subnet: 172.22.0.0/28
+
+  pharm:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_pharm
+    ipam:
+      config:
+        - subnet: 172.23.0.0/28
+
+  colibri:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_colibri
+    ipam:
+      config:
+        - subnet: 172.24.0.0/28
+
+  public:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_public
+    ipam:
+      config:
+        - subnet: 172.25.0.0/28
+
+  trust:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_trust
+    ipam:
+      config:
+        - subnet: 172.26.0.0/28
+
+  mdebug:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_mdebug
+    ipam:
+      config:
+        - subnet: 172.27.0.0/28
+
+  launch:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_launch
+    ipam:
+      config:
+        - subnet: 172.28.0.0/28
+
+  debug:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_debug
+    ipam:
+      config:
+        - subnet: 172.29.0.0/28
+
+  dtp:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_dtp
+    ipam:
+      config:
+        - subnet: 172.30.0.0/28
+
+  dbw:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_dbw
+    ipam:
+      config:
+        - subnet: 172.31.0.0/28
+
+  dbr:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_dbr
+    ipam:
+      config:
+        - subnet: 172.32.0.0/28
+
+  mysql:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_mysql
+    ipam:
+      config:
+        - subnet: 172.33.0.0/28
+
+  context:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_context
+    ipam:
+      config:
+        - subnet: 172.34.0.0/28
+
+  accounting:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_accounting
+    ipam:
+      config:
+        - subnet: 172.35.0.0/28
+
+  cloud:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_cloud
+    ipam:
+      config:
+        - subnet: 172.36.0.0/28
+
+  mongo:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_mongo
+    ipam:
+      config:
+        - subnet: 172.37.0.0/28
+
+  mongo-web:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_mongo-web
+    ipam:
+      config:
+        - subnet: 172.38.0.0/28
+
+  notif:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_notif
+    ipam:
+      config:
+        - subnet: 172.39.0.0/28
+
+  proxy-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: proxy-net
+    ipam:
+      config:
+        - subnet: 172.40.0.0/28

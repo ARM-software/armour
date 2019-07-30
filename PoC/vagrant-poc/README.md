@@ -1,29 +1,38 @@
-###Files
+Files
+=====
 - `compose.yml`: compose file with only one single bridge network.
-- `docker-compose`: compose file with separate bridge networks for each container.
+- `docker-compose`: compose file with separate bridge networks for each PoC container and armour-data.
+- `generate.sh` script to generate iptables rules and commands for the proxy to execute.
+- `remove-generate.sh` script to remove all the added iptables rules.
 
-###Requirements
+Requirements
+============
 - vagrant docker-compose plugin:
 
 		vagrant plugin install vagrant-docker-compose
 
-###Steps
+Steps
+=====
 1. Run vagrant
 
 		vagrant up
-		curl https://sh.rustup.rs -sSf | sh
-		sudo apt-get -y install openssl
-		sudo apt-get install -y libssl-dev
-		sudo apt install -y cargo
-Clone the armour repo
+		vagrant ssh
+2. Generate the iptables rules
+	
+		cd /vagrant
+		./generate.sh
+3. Bash into the `armour-data` container to enforce a policy
 
-		git clone https://git.research.arm.com/antfox02/armour.git
-Build the armou-data docker images
+		docker exec -it armour-data bash
+4. Inside debug container switch to the `/root/` directory and run
 
-		cd armour/rust/docker
-		./build ~/armour/rust/armour-data-master/ armour-data-master armour-data
-2. Get the ip address of the enp0s8 interface, it would be something like 10.1.x.x and test the ip on a browser and 10.1.x.x:81 to see the contracts executing
-3. Execute a contract:
+		./armour-data-master
+	To run the script that opens all the necessary ports and enforces the allow all policy
+	
+		run /root/map/proxy_map
+At this point, traffic should go through the proxy
+5. Get the ip address of the enp0s8 interface, it would be something like 10.1.x.x and test the ip on a browser and 10.1.x.x:81 to see the contracts executing
+6. Execute a contract:
 
 		vagrant ssh
 	1. Get the debug container ID
