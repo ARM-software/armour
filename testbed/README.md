@@ -38,22 +38,7 @@ Testbed Setup
 
     ```shell
     $ vagrant ssh
-    vagrant@ubuntu-bionic:~$ curl https://sh.rustup.rs -sSf | sh -s -- -y
     vagrant@ubuntu-bionic:~$ source $HOME/.cargo/env
-    vagrant@ubuntu-bionic:~$ sudo apt-get -y install libssl-dev
-    ```
-
-1. Clone the armour repo.
-
-    ```shell
-    vagrant@ubuntu-bionic:~$ git clone https://git.research.arm.com/antfox02/armour.git
-    ```
-
-1. Build the armour-data docker images
-
-    ```shell
-    vagrant@ubuntu-bionic:~$ cd ~/armour/rust/docker
-    vagrant@ubuntu-bionic:~$ ./build ~/armour/rust/armour-data-master armour-data-master armour-data
     ```
 
 Test
@@ -67,7 +52,7 @@ Test
 	vagrant@ubuntu-bionic:~$ docker-compose up -d
 	vagrant@ubuntu-bionic:~$ ./iptables-generate.sh
 	```
-	
+
 1. To run the test, open three different terminal windows and ssh into the vagrant VM:
 
     - Terminal 1 (Armour data plane):
@@ -76,9 +61,9 @@ Test
         vagrant@ubuntu-bionic:~$ docker exec -it armour-data bash
         root@armour-data:~# armour-data-master
         ```
-        
+
         Start an HTTP proxy on port 8080
-        
+
         ```
         launch
         start 8080
