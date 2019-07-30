@@ -132,20 +132,21 @@ fn master_command(
     quit                      shutdown master and all instances
 
     run <file>                run commands from <file>
-    wait <seconds>            wait for 'min(10, <seconds>)' seconds to elapse
+    wait <seconds>            wait for <seconds> to elapse (up to 10s)
 
     [<id>|all] allow all      request allow all policy
     [<id>|all] deny all       request deny all policy
+    [<id>|all] debug on       display HTTP requests
+    [<id>|all] debug off      do not display HTTP requests
     [<id>|all] ports          list active ports
     [<id>|all] shutdown       request shutdown
+    [<id>|all] policy <path>  read policy from <path> and send to instance
+    [<id>|all] remote <path>  ask instance to read policy from <path>
+    [<id>|all] start <port>   start listening for HTTP requests on <port>
     [<id>|all] stop all       stop listening on all ports
-    [<id>|all] policy <path>  read and request policy from file <path>
-    [<id>|all] remote <path>  request read of policy from file <path>
-    [<id>|all] start <port>   start listening for HTTP requests on port <port>
+    [<id>|all] stop <port>    stop listening on <port>
     [<id>|all] forward <port> <socket>
-                              start listening on port <port> and forward
-                              to <socket>
-    [<id>|all] stop <port>    stop listening on port <port>
+                              start listening on <port> and forward to <socket>
 
     <id>  single instance ID number
     all   all instances"
@@ -162,6 +163,8 @@ fn instance0_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captu
         Some("deny all") => Some(PolicyRequest::DenyAll),
         Some("shutdown") => Some(PolicyRequest::Shutdown),
         Some("stop all") => Some(PolicyRequest::StopAll),
+        Some("debug on") => Some(PolicyRequest::Debug(true)),
+        Some("debug off") => Some(PolicyRequest::Debug(false)),
         _ => {
             log::info!("unknown command");
             None

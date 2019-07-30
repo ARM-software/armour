@@ -18,6 +18,7 @@ pub struct DataPolicy {
     /// policy program
     program: Arc<lang::Program>,
     allow_all: bool,
+    debug: bool,
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, PolicyCodec>,
     // proxies
@@ -41,6 +42,7 @@ impl DataPolicy {
                     DataPolicy {
                         program: DataPolicy::default_policy(),
                         allow_all: false,
+                        debug: false,
                         uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
                         http_proxies: HashMap::new(),
                         tcp_proxies: HashMap::new(),
@@ -111,11 +113,14 @@ impl Message for Check {
 
 #[derive(MessageResponse)]
 pub enum Policy {
-    AllowAll,
+    AllowAll {
+        debug: bool,
+    },
     Policy {
         require: bool,
         client_payload: bool,
         server_payload: bool,
+        debug: bool,
     },
 }
 
@@ -124,7 +129,7 @@ impl Handler<Check> for DataPolicy {
 
     fn handle(&mut self, _msg: Check, _ctx: &mut Context<Self>) -> Self::Result {
         if self.allow_all {
-            Policy::AllowAll
+            Policy::AllowAll { debug: self.debug }
         } else {
             let p = &self.program;
             match (
@@ -136,6 +141,7 @@ impl Handler<Check> for DataPolicy {
                     require,
                     client_payload,
                     server_payload,
+                    debug: self.debug,
                 },
             }
         }
@@ -170,6 +176,10 @@ impl Handler<PolicyRequest> for DataPolicy {
 
     fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) -> Self::Result {
         match msg {
+            PolicyRequest::Debug(debug) => {
+                self.debug = debug;
+                info!("debug: {}", debug)
+            }
             PolicyRequest::QueryActivePorts => {
                 let http: HashSet<u16> = self
                     .http_proxies

@@ -83,6 +83,7 @@ pub enum PolicyRequest {
     QueryActivePorts,
     Shutdown,
     StopAll,
+    Debug(bool),
     Start(u16),
     Stop(u16),
     StartTcp(u16, std::net::SocketAddr),
