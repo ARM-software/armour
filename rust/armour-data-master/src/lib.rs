@@ -24,13 +24,13 @@ pub mod commands;
 /// When new data plane instances arrive, we give them the address of the master.
 pub struct ArmourDataServer {
     pub master: Addr<ArmourDataMaster>,
-    pub socket: String,
+    pub socket: std::path::PathBuf,
 }
 
 impl Actor for ArmourDataServer {
     type Context = Context<Self>;
     fn stopped(&mut self, _ctx: &mut Context<Self>) {
-        info!("removing socket: {}", self.socket);
+        info!("removing socket: {}", self.socket.display());
         std::fs::remove_file(self.socket.clone())
             .unwrap_or_else(|e| warn!("failed to remove socket: {}", e))
     }

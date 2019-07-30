@@ -43,14 +43,17 @@ fn main() -> io::Result<()> {
         .value_of("master socket")
         .unwrap_or(SOCKET)
         .to_string();
-    log::info!("starting Data Master on socket: {}", socket);
-    let listener = tokio_uds::UnixListener::bind(socket.clone())?;
+    let listener = tokio_uds::UnixListener::bind(&socket)?;
+    let socket =
+        std::fs::canonicalize(&socket).unwrap_or_else(|_| std::path::PathBuf::from(socket));
+    log::info!("started Data Master on socket: {}", socket.display());
     let master_clone = master.clone();
+    let socket_clone = socket.clone();
     let _server = master::ArmourDataServer::create(|ctx| {
         ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(master::UdsConnect));
         master::ArmourDataServer {
             master: master_clone,
-            socket,
+            socket: socket_clone,
         }
     });
 
@@ -60,7 +63,7 @@ fn main() -> io::Result<()> {
         if io::stdin().read_line(&mut cmd).is_err() {
             log::warn!("error reading command")
         } else {
-            run_command(&master, &cmd)
+            run_command(&master, &cmd, &socket)
         }
     });
 
@@ -78,30 +81,44 @@ fn main() -> io::Result<()> {
     sys.run()
 }
 
-fn run_command(master: &Addr<master::ArmourDataMaster>, cmd: &str) {
+fn armour_data() -> std::path::PathBuf {
+    if let Ok(Some(path)) =
+        std::env::current_exe().map(|path| path.parent().map(|dir| dir.join("armour-data")))
+    {
+        path
+    } else {
+        std::path::PathBuf::from("./armour-data")
+    }
+}
+
+fn run_command(master: &Addr<master::ArmourDataMaster>, cmd: &str, socket: &std::path::PathBuf) {
     let cmd = cmd.trim();
     if cmd != "" {
         if let Some(caps) = commands::MASTER.captures(&cmd) {
-            master_command(&master, caps)
+            master_command(&master, caps, socket)
         } else if let Some(caps) = commands::INSTANCE0.captures(&cmd) {
             instance0_command(&master, caps)
         } else if let Some(caps) = commands::INSTANCE2.captures(&cmd) {
             instance2_command(&master, caps)
         } else if let Some(caps) = commands::INSTANCE1.captures(&cmd) {
-            instance1_command(&master, caps)
+            instance1_command(&master, caps, socket)
         } else {
             log::info!("unknown command <none>")
         }
     }
 }
 
-fn master_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captures) {
+fn master_command(
+    master: &Addr<master::ArmourDataMaster>,
+    caps: regex::Captures,
+    socket: &std::path::PathBuf,
+) {
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     match command.as_ref().map(String::as_str) {
         Some("list") => master.do_send(MasterCommand::ListActive),
         Some("quit") => master.do_send(MasterCommand::Quit),
-        Some("launch") => match std::process::Command::new("./armour-data")
-            .arg("armour")
+        Some("launch") => match std::process::Command::new(armour_data())
+            .arg(socket)
             .spawn()
         {
             Ok(child) => log::info!("started processs: {}", child.id()),
@@ -157,7 +174,11 @@ fn instance0_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captu
     }
 }
 
-fn instance1_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captures) {
+fn instance1_command(
+    master: &Addr<master::ArmourDataMaster>,
+    caps: regex::Captures,
+    socket: &std::path::PathBuf,
+) {
     let arg = caps.name("arg").unwrap().as_str().trim_matches('"');
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     if let Some(request) = match command.as_ref().map(String::as_str) {
@@ -212,7 +233,7 @@ fn instance1_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captu
                                 cmd = cmd.trim().to_string();
                                 if cmd != "" {
                                     log::info!(r#"run command: "{}""#, cmd);
-                                    run_command(master, &cmd)
+                                    run_command(master, &cmd, socket)
                                 };
                                 line += 1
                             }

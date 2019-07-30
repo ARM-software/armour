@@ -9,5 +9,5 @@ RUN apt update \
 
 WORKDIR /root
 
-COPY bins /root
+COPY bins /usr/local/bin
 #ENTRYPOINT armour-data-master
