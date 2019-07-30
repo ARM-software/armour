@@ -7,7 +7,7 @@ use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse};
 use futures::{future, Future};
 use literals::ToLiteral;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio_codec::FramedRead;
 use tokio_io::{io::WriteHalf, AsyncRead};
 
@@ -16,7 +16,7 @@ use tokio_io::{io::WriteHalf, AsyncRead};
 /// Currently, a "policy" is just an Armour program with "require", "client_payload" and "server_payload" functions.
 pub struct DataPolicy {
     /// policy program
-    program: Arc<Mutex<lang::Program>>,
+    program: Arc<lang::Program>,
     allow_all: bool,
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, PolicyCodec>,
@@ -26,8 +26,8 @@ pub struct DataPolicy {
 }
 
 impl DataPolicy {
-    fn default_policy() -> Arc<Mutex<lang::Program>> {
-        Arc::new(Mutex::new(lang::Program::default()))
+    fn default_policy() -> Arc<lang::Program> {
+        Arc::new(lang::Program::default())
     }
     /// Start a new policy actor that connects to a data plane master on a Unix socket.
     pub fn create_policy<P: AsRef<std::path::Path>>(
@@ -51,7 +51,7 @@ impl DataPolicy {
             .wait()
     }
     fn set_policy(&mut self, p: lang::Program) {
-        self.program = Arc::new(Mutex::new(p));
+        self.program = Arc::new(p);
         self.allow_all = false
     }
     fn deny_all_policy(&mut self) {
@@ -71,7 +71,7 @@ impl DataPolicy {
         info!(r#"evaluting "{}"""#, function);
         Box::new(
             lang::Expr::call(function, args)
-                .evaluate(Arc::new(self.program.lock().unwrap().clone()))
+                .evaluate(self.program.clone())
                 .and_then(move |result| match result {
                     lang::Expr::LitExpr(literals::Literal::Policy(policy)) => {
                         info!("result is: {:?} ({:?})", policy, now.elapsed());
@@ -126,7 +126,7 @@ impl Handler<Check> for DataPolicy {
         if self.allow_all {
             Policy::AllowAll
         } else {
-            let p = self.program.lock().unwrap();
+            let p = &self.program;
             match (
                 p.has_function("require"),
                 p.has_function("client_payload"),
