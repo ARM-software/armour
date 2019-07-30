@@ -80,8 +80,7 @@ Test
 
         ```shell
         vagrant@ubuntu-bionic:~$ docker exec -it armour-data bash
-        root@armour-data:/home# cd /root
-        root@armour-data:/home# ./armour-data-master
+        root@armour-data:~# ./armour-data-master
         ```
         
         Start an HTTP proxy on port 8080
