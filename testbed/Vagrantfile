@@ -12,5 +12,12 @@ Vagrant.configure("2") do |config|
     sudo apt-get install -y capnproto
     sudo apt install -y build-essential
     sudo apt-get install -y pkg-config
+    curl https://sh.rustup.rs -sSf | sh -s -- -y
+    sudo apt install -y cargo
+    sudo DEBIAN_FRONTEND=noninteractive apt-get -yq install openssl
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq libssl-dev
+    git clone https://git.research.arm.com/antfox02/armour.git
+    cd /home/vagrant/armour/rust/docker
+    ./build ~/armour/rust/armour-data-master armour-data-master armour-data
   SHELL
 end
