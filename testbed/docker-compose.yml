@@ -20,7 +20,7 @@ services:
       - "server-2:172.20.0.2"
     build:
       context: .
-      dockerfile: dockerfile-client-python
+      dockerfile: Dockerfile
     image: client-python
     command: tail -f /dev/null
     volumes:
@@ -39,7 +39,7 @@ services:
       - "armour-data:172.18.0.2"
     build:
       context: .
-      dockerfile: dockerfile-client-python
+      dockerfile: Dockerfile
     image: client-python
     command: tail -f /dev/null
     volumes:
