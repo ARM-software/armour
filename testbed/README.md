@@ -29,7 +29,7 @@ Testbed Setup
 1. Bring up the Vagrant VM
 
     ```shell
-    $ cd armour/testbed/armour-data
+    $ cd armour/testbed
     $ vagrant up
     # NOTE: attach to network bridge 1 (en0)
     ```
@@ -70,7 +70,7 @@ Test
 1. Create the iptable rules
 
     ```shell
-   vagrant@ubuntu-bionic:~$ cd ~/armour/testbed/armour-data
+   vagrant@ubuntu-bionic:~$ cd ~/armour/testbed
 	vagrant@ubuntu-bionic:~$ ./iptables-generate.sh
 	```
 	
