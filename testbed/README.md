@@ -60,17 +60,11 @@ Test
 ====
 
 
-1. Run the docker compose file
+1. Run the docker compose file and add the iptable rules
 
     ```shell
 	vagrant@ubuntu-bionic:~$ cd /vagrant
 	vagrant@ubuntu-bionic:~$ docker-compose up -d
-	```
-	
-1. Create the iptable rules
-
-    ```shell
-   vagrant@ubuntu-bionic:~$ cd ~/armour/testbed
 	vagrant@ubuntu-bionic:~$ ./iptables-generate.sh
 	```
 	
