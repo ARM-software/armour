@@ -7,7 +7,7 @@ RUN apt update \
   netcat wget2 curl dnsutils ssh tcpdump nmap lsof ipcalc rlwrap \
   && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /home
+WORKDIR /root
 
 COPY bins /root
-#ENTRYPOINT /root/$BINARY
+#ENTRYPOINT armour-data-master
