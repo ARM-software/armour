@@ -47,7 +47,7 @@ pub fn proxy(
         match p {
             // reject request
             Ok(Policy::Policy {
-                require: false,
+                require: None,
                 client_payload: false,
                 server_payload: false,
                 ..
@@ -56,50 +56,49 @@ pub fn proxy(
             )))),
             // check "require"
             Ok(Policy::Policy {
-                require: true,
+                require: Some(args),
                 debug,
                 ..
             }) => {
                 if debug {
                     debug!("{:?}", req)
                 };
-                future::Either::A(
-                    policy
-                        .send(policy::Evaluate::Require(
-                            req.to_expression(),
-                            req.peer_addr().to_expression(),
-                        ))
-                        .then(move |res| match res {
-                            // allow request
-                            Ok(Ok(true)) => future::Either::A(request(
-                                p.unwrap(),
-                                req,
-                                payload,
-                                policy,
-                                client,
-                                proxy_port,
-                            )),
-                            // reject
-                            Ok(Ok(false)) => {
-                                future::Either::B(future::ok(unauthorized("request denied")))
-                            }
-                            // policy error
-                            Ok(Err(e)) => {
-                                warn!("{}", e);
-                                future::Either::B(future::ok(internal()))
-                            }
-                            // actor error
-                            Err(e) => {
-                                warn!("{}", e);
-                                future::Either::B(future::ok(internal()))
-                            }
-                        }),
-                )
+                let message = match args {
+                    0 => policy::Evaluate::Require0,
+                    1 => policy::Evaluate::Require1(req.to_expression()),
+                    _ => policy::Evaluate::Require2(
+                        req.to_expression(),
+                        req.peer_addr().to_expression(),
+                    ),
+                };
+                future::Either::A(policy.send(message).then(move |res| match res {
+                    // allow request
+                    Ok(Ok(true)) => future::Either::A(request(
+                        p.unwrap(),
+                        req,
+                        payload,
+                        policy,
+                        client,
+                        proxy_port,
+                    )),
+                    // reject
+                    Ok(Ok(false)) => future::Either::B(future::ok(unauthorized("request denied"))),
+                    // policy error
+                    Ok(Err(e)) => {
+                        warn!("{}", e);
+                        future::Either::B(future::ok(internal()))
+                    }
+                    // actor error
+                    Err(e) => {
+                        warn!("{}", e);
+                        future::Either::B(future::ok(internal()))
+                    }
+                }))
             }
             // allow request
             Ok(Policy::AllowAll { debug })
             | Ok(Policy::Policy {
-                require: false,
+                require: None,
                 debug,
                 ..
             }) => {

@@ -264,6 +264,9 @@ impl Signature {
     pub fn split_as_ref(&self) -> (Option<&Vec<Typ>>, &Typ) {
         (self.0.as_ref(), &self.1)
     }
+    pub fn args(self) -> Option<Vec<Typ>> {
+        self.0
+    }
     pub fn typ(self) -> Typ {
         self.1
     }

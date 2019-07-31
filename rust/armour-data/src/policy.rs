@@ -117,7 +117,7 @@ pub enum Policy {
         debug: bool,
     },
     Policy {
-        require: bool,
+        require: Option<u8>,
         client_payload: bool,
         server_payload: bool,
         debug: bool,
@@ -133,7 +133,8 @@ impl Handler<Check> for DataPolicy {
         } else {
             let p = &self.program;
             match (
-                p.has_function("require"),
+                p.typ("require")
+                    .map(|sig| sig.args().unwrap_or_else(Vec::new).len() as u8),
                 p.has_function("client_payload"),
                 p.has_function("server_payload"),
             ) {
@@ -150,7 +151,9 @@ impl Handler<Check> for DataPolicy {
 
 /// Internal proxy message for requesting function evaluation over the policy
 pub enum Evaluate {
-    Require(lang::Expr, lang::Expr),
+    Require0,
+    Require1(lang::Expr),
+    Require2(lang::Expr, lang::Expr),
     ClientPayload(lang::Expr),
     ServerPayload(lang::Expr),
 }
@@ -164,7 +167,9 @@ impl Handler<Evaluate> for DataPolicy {
 
     fn handle(&mut self, msg: Evaluate, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
-            Evaluate::Require(arg1, arg2) => self.evaluate_policy("require", vec![arg1, arg2]),
+            Evaluate::Require0 => self.evaluate_policy("require", Vec::new()),
+            Evaluate::Require1(arg1) => self.evaluate_policy("require", vec![arg1]),
+            Evaluate::Require2(arg1, arg2) => self.evaluate_policy("require", vec![arg1, arg2]),
             Evaluate::ClientPayload(arg) => self.evaluate_policy("client_payload", vec![arg]),
             Evaluate::ServerPayload(arg) => self.evaluate_policy("server_payload", vec![arg]),
         }

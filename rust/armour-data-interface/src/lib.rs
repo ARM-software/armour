@@ -53,8 +53,12 @@ lazy_static! {
             (
                 "require".to_string(),
                 vec![
+                    Signature::new(vec![Typ::HttpRequest], Typ::Bool),
+                    Signature::new(vec![Typ::HttpRequest], Typ::Policy),
                     Signature::new(require_args.clone(), Typ::Bool),
                     Signature::new(require_args, Typ::Policy),
+                    Signature::new(Vec::new(), Typ::Bool),
+                    Signature::new(Vec::new(), Typ::Policy),
                 ],
             ),
             (
@@ -150,7 +154,10 @@ impl Encoder for MasterCodec {
 
 lazy_static! {
     pub static ref INTERFACE_IPS: HashSet<IpAddr> = {
-        let set: HashSet<String> = ["lo", "lo0", "en0", "eth0"].iter().map(|s| s.to_string()).collect();
+        let set: HashSet<String> = ["lo", "lo0", "en0", "eth0"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         if let Ok(interfaces) = get_if_addrs::get_if_addrs() {
             interfaces
                 .into_iter()

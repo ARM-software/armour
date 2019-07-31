@@ -1248,6 +1248,9 @@ impl Program {
     pub fn has_function(&self, name: &str) -> bool {
         self.code.0.contains_key(name)
     }
+    pub fn typ(&self, name: &str) -> Option<types::Signature> {
+        self.headers.typ(name)
+    }
     pub fn set_timeout(&mut self, t: std::time::Duration) {
         self.externals.set_timeout(t)
     }
