@@ -34,18 +34,13 @@ Testbed Setup
     # NOTE: attach to network bridge 1 (en0)
     ```
 
-1. Setup the Vagrant VM for Rust (cargo)
+1. Build the armour-data docker images
 
     ```shell
     $ vagrant ssh
+    vagrant@ubuntu-bionic:~$ cd ~/armour/rust/docker
+    vagrant@ubuntu-bionic:~$ ./build ~/armour/rust/armour-data-master armour-data-master armour-data
     ```
-
-    1. Build the armour-data docker images
-
-        ```shell
-        vagrant@ubuntu-bionic:~$ cd ~/armour/rust/docker
-        vagrant@ubuntu-bionic:~$ ./build ~/armour/rust/armour-data-master armour-data-master armour-data
-        ```
 
 Test
 ====
