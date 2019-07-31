@@ -19,6 +19,7 @@ pub struct DataPolicy {
     program: Arc<lang::Program>,
     allow_all: bool,
     debug: bool,
+    timeout: std::time::Duration,
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, PolicyCodec>,
     // proxies
@@ -43,6 +44,7 @@ impl DataPolicy {
                         program: DataPolicy::default_policy(),
                         allow_all: false,
                         debug: false,
+                        timeout: std::time::Duration::from_secs(5),
                         uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
                         http_proxies: HashMap::new(),
                         tcp_proxies: HashMap::new(),
@@ -111,25 +113,25 @@ impl Message for Check {
     type Result = Policy;
 }
 
+pub struct PolicyFns {
+    pub require: Option<u8>,
+    pub client_payload: bool,
+    pub server_payload: bool,
+}
+
 #[derive(MessageResponse)]
-pub enum Policy {
-    AllowAll {
-        debug: bool,
-    },
-    Policy {
-        require: Option<u8>,
-        client_payload: bool,
-        server_payload: bool,
-        debug: bool,
-    },
+pub struct Policy {
+    pub debug: bool,
+    pub fns: Option<PolicyFns>,
+    pub timeout: std::time::Duration,
 }
 
 impl Handler<Check> for DataPolicy {
     type Result = Policy;
 
     fn handle(&mut self, _msg: Check, _ctx: &mut Context<Self>) -> Self::Result {
-        if self.allow_all {
-            Policy::AllowAll { debug: self.debug }
+        let fns = if self.allow_all {
+            None
         } else {
             let p = &self.program;
             match (
@@ -138,13 +140,17 @@ impl Handler<Check> for DataPolicy {
                 p.has_function("client_payload"),
                 p.has_function("server_payload"),
             ) {
-                (require, client_payload, server_payload) => Policy::Policy {
+                (require, client_payload, server_payload) => Some(PolicyFns {
                     require,
                     client_payload,
                     server_payload,
-                    debug: self.debug,
-                },
+                }),
             }
+        };
+        Policy {
+            debug: self.debug,
+            fns,
+            timeout: self.timeout,
         }
     }
 }
@@ -181,6 +187,10 @@ impl Handler<PolicyRequest> for DataPolicy {
 
     fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) -> Self::Result {
         match msg {
+            PolicyRequest::Timeout(secs) => {
+                self.timeout = std::time::Duration::from_secs(secs.into());
+                info!("timout: {:?}", self.timeout)
+            }
             PolicyRequest::Debug(debug) => {
                 self.debug = debug;
                 info!("debug: {}", debug)

@@ -46,17 +46,24 @@ pub fn proxy(
     policy.send(policy::Check).then(|p| {
         match p {
             // reject request
-            Ok(Policy::Policy {
-                require: None,
-                client_payload: false,
-                server_payload: false,
+            Ok(policy::Policy {
+                fns:
+                    Some(policy::PolicyFns {
+                        require: None,
+                        client_payload: false,
+                        server_payload: false,
+                    }),
                 ..
             }) => future::Either::B(future::Either::A(future::ok(unauthorized(
                 "request denied",
             )))),
             // check "require"
-            Ok(Policy::Policy {
-                require: Some(args),
+            Ok(policy::Policy {
+                fns:
+                    Some(policy::PolicyFns {
+                        require: Some(args),
+                        ..
+                    }),
                 debug,
                 ..
             }) => {
@@ -96,9 +103,11 @@ pub fn proxy(
                 }))
             }
             // allow request
-            Ok(Policy::AllowAll { debug })
-            | Ok(Policy::Policy {
-                require: None,
+            Ok(policy::Policy {
+                fns: None, debug, ..
+            })
+            | Ok(policy::Policy {
+                fns: Some(policy::PolicyFns { require: None, .. }),
                 debug,
                 ..
             }) => {
@@ -134,10 +143,14 @@ pub fn request(
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match p {
         // check client payload
-        Policy::Policy {
-            client_payload: true,
+        policy::Policy {
+            fns:
+                Some(policy::PolicyFns {
+                    client_payload: true,
+                    ..
+                }),
             debug,
-            ..
+            timeout,
         } => future::Either::A(
             payload
                 .from_err()
@@ -158,7 +171,8 @@ pub fn request(
                                         move |url| {
                                             let client_request = client
                                                 .request_from(url.as_str(), req.head())
-                                                .process_headers(req.peer_addr());
+                                                .process_headers(req.peer_addr())
+                                                .timeout(timeout);
                                             if debug {
                                                 debug!("{:?}", client_request)
                                             };
@@ -189,16 +203,25 @@ pub fn request(
                 }),
         ),
         // allow client payload without check
-        Policy::AllowAll { debug }
-        | Policy::Policy {
-            client_payload: false,
+        policy::Policy {
+            fns: None,
             debug,
-            ..
+            timeout,
+        }
+        | policy::Policy {
+            fns:
+                Some(policy::PolicyFns {
+                    client_payload: false,
+                    ..
+                }),
+            debug,
+            timeout,
         } => {
             future::Either::B(req.forward_url(*proxy_port).and_then(move |url| {
                 let client_request = client
                     .request_from(url.as_str(), req.head())
-                    .process_headers(req.peer_addr());
+                    .process_headers(req.peer_addr())
+                    .timeout(timeout);
                 if debug {
                     debug!("{:?}", client_request)
                 };
@@ -233,8 +256,12 @@ pub fn response(
                 client_resp.header(header_name.clone(), header_value.clone());
             }
             future::Either::A(match p {
-                Policy::Policy {
-                    server_payload: true,
+                policy::Policy {
+                    fns:
+                        Some(policy::PolicyFns {
+                            server_payload: true,
+                            ..
+                        }),
                     debug,
                     ..
                 } => {
@@ -277,9 +304,15 @@ pub fn response(
                             }),
                     )
                 }
-                Policy::AllowAll { debug }
-                | Policy::Policy {
-                    server_payload: false,
+                policy::Policy {
+                    fns: None, debug, ..
+                }
+                | policy::Policy {
+                    fns:
+                        Some(policy::PolicyFns {
+                            server_payload: false,
+                            ..
+                        }),
                     debug,
                     ..
                 } => {

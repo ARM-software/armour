@@ -140,6 +140,7 @@ fn master_command(
     [<id>|all] debug off      do not display HTTP requests
     [<id>|all] ports          list active ports
     [<id>|all] shutdown       request shutdown
+    [<id>|all] timeout <secs> server response timeout
     [<id>|all] policy <path>  read policy from <path> and send to instance
     [<id>|all] remote <path>  ask instance to read policy from <path>
     [<id>|all] start <port>   start listening for HTTP requests on <port>
@@ -194,6 +195,14 @@ fn instance1_command(
                 })
             } else {
                 log::warn!("{}: expecting port number, got {}", s, arg);
+                None
+            }
+        }
+        Some("timeout") => {
+            if let Ok(secs) = arg.parse::<u8>() {
+                Some(PolicyRequest::Timeout(secs))
+            } else {
+                log::warn!("expecting timeout in seconds, got {}", arg);
                 None
             }
         }

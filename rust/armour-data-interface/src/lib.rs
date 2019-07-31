@@ -93,6 +93,7 @@ pub enum PolicyRequest {
     StartTcp(u16, std::net::SocketAddr),
     UpdateFromData(Program),
     UpdateFromFile(std::path::PathBuf),
+    Timeout(u8),
 }
 
 /// Messages from proxy instance to master
