@@ -229,16 +229,17 @@ fn instance1_command(
                         let mut done = false;
                         while !done {
                             let mut cmd = String::new();
-                            if buf_reader.read_line(&mut cmd).is_err() {
-                                log::warn!("{}: error reading command on line {}", arg, line);
-                                done = true
-                            } else {
+                            if let Ok(res) = buf_reader.read_line(&mut cmd) {
                                 cmd = cmd.trim().to_string();
-                                if cmd != "" {
+                                if !(cmd == "" || cmd.starts_with('#')) {
                                     log::info!(r#"run command: "{}""#, cmd);
                                     run_command(master, &cmd, socket)
                                 };
-                                line += 1
+                                line += 1;
+                                done = res == 0
+                            } else {
+                                log::warn!("{}: error reading command on line {}", arg, line);
+                                done = true
                             }
                         }
                     }
