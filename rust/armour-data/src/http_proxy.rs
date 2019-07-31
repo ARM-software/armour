@@ -233,15 +233,16 @@ pub fn response(
                 // debug!("header {}: {:?}", header_name, header_value);
                 client_resp.header(header_name.clone(), header_value.clone());
             }
+            debug! {"{:?}", client_resp};
             future::Either::A(match p {
                 Policy::Policy {
                     server_payload: true,
                     debug,
                     ..
                 } => {
-                    if debug {
-                        debug! {"{:?}", client_resp}
-                    };
+                    // if debug {
+                    //     debug! {"{:?}", client_resp}
+                    // };
                     future::Either::A(
                         // get the server payload
                         res.from_err()
@@ -284,10 +285,15 @@ pub fn response(
                     debug,
                     ..
                 } => {
-                    if debug {
-                        debug! {"{:?}", client_resp}
-                    };
-                    future::Either::B(future::ok(client_resp.streaming(res.take_payload())))
+                    // if debug {
+                    //     debug! {"{:?}", client_resp}
+                    // };
+                    future::Either::B(
+                        res.body()
+                            .limit(1024 * 1024)
+                            .from_err()
+                            .and_then(move |body| client_resp.body(body)),
+                    )
                 }
             })
         }
