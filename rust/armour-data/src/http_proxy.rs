@@ -189,25 +189,51 @@ pub fn request(
                 }),
         ),
         // allow client payload without check
-        Policy::AllowAll { debug }
-        | Policy::Policy {
+        Policy::AllowAll { debug } => {
+            future::Either::B(future::Either::A(
+                payload
+                    .from_err()
+                    .fold(web::BytesMut::new(), |mut body, chunk| {
+                        body.extend_from_slice(&chunk);
+                        Ok::<_, Error>(body)
+                    })
+                    .and_then(move |client_payload| {
+                        req.forward_url(*proxy_port).and_then(move |url| {
+                            let client_request = client
+                                .request_from(url.as_str(), req.head())
+                                .process_headers(req.peer_addr());
+                            if debug {
+                                debug!("{:?}", client_request)
+                            };
+                            client_request
+                                // forward the request (with the original client payload)
+                                .send_body(client_payload)
+                                // send the response back to the client
+                                .then(|res| response(p, policy, res))
+                        })
+                    }),
+            ))
+        }
+        Policy::Policy {
             client_payload: false,
             debug,
             ..
         } => {
-            future::Either::B(req.forward_url(*proxy_port).and_then(move |url| {
-                let client_request = client
-                    .request_from(url.as_str(), req.head())
-                    .process_headers(req.peer_addr());
-                if debug {
-                    debug!("{:?}", client_request)
-                };
-                client_request
-                    // forward the request (with the original client payload)
-                    .send_stream(payload)
-                    // send the response back to the client
-                    .then(|res| response(p, policy, res))
-            }))
+            future::Either::B(future::Either::B(req.forward_url(*proxy_port).and_then(
+                move |url| {
+                    let client_request = client
+                        .request_from(url.as_str(), req.head())
+                        .process_headers(req.peer_addr());
+                    if debug {
+                        debug!("{:?}", client_request)
+                    };
+                    client_request
+                        // forward the request (with the original client payload)
+                        .send_stream(payload)
+                        // send the response back to the client
+                        .then(|res| response(p, policy, res))
+                },
+            )))
         }
     }
 }
@@ -232,16 +258,15 @@ pub fn response(
                 // debug!("header {}: {:?}", header_name, header_value);
                 client_resp.header(header_name.clone(), header_value.clone());
             }
-            debug! {"{:?}", client_resp};
             future::Either::A(match p {
                 Policy::Policy {
                     server_payload: true,
                     debug,
                     ..
                 } => {
-                    // if debug {
-                    //     debug! {"{:?}", client_resp}
-                    // };
+                    if debug {
+                        debug! {"{:?}", client_resp}
+                    };
                     future::Either::A(
                         // get the server payload
                         res.from_err()
@@ -284,15 +309,10 @@ pub fn response(
                     debug,
                     ..
                 } => {
-                    // if debug {
-                    //     debug! {"{:?}", client_resp}
-                    // };
-                    future::Either::B(
-                        res.body()
-                            .limit(1024 * 1024)
-                            .from_err()
-                            .and_then(move |body| client_resp.body(body)),
-                    )
+                    if debug {
+                        debug! {"{:?}", client_resp}
+                    };
+                    future::Either::B(future::ok(client_resp.streaming(res.take_payload())))
                 }
             })
         }
