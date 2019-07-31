@@ -105,9 +105,11 @@ fn main() -> std::io::Result<()> {
         if let Some(host) = matches.value_of("host") {
             client = client.header("host", host)
         };
+        // let bytes = include_bytes!("");
         actix::Arbiter::spawn(lazy(move || {
             client
                 .send_body(message)
+                // .send_json(&bytes.to_vec())
                 .map_err(move |err| stop(done, Some(("send: ", err))))
                 .and_then(move |resp| {
                     let status = resp.status();
@@ -174,7 +176,11 @@ fn service(
                 r#"port {} received request {} with body {:?}; host {}; remote {}"#,
                 port.get_ref(),
                 req.uri(),
-                data,
+                if data.len() < 4096 {
+                    data
+                } else {
+                    bytes::BytesMut::from(format!("<{} bytes>", data.len()))
+                },
                 info.host(),
                 info.remote().unwrap_or("<unknown>"),
             )))
