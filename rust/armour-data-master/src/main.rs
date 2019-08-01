@@ -7,6 +7,8 @@ use armour_data_interface::{own_ip, PolicyRequest, POLICY_SIG};
 use armour_data_master as master;
 use clap::{crate_version, App, Arg};
 use master::{commands, MasterCommand};
+use rustyline::error::ReadlineError;
+use rustyline::Editor;
 use std::io::{self, BufRead};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -58,25 +60,27 @@ fn main() -> io::Result<()> {
     });
 
     // issue commands based on user input
-    std::thread::spawn(move || loop {
-        let mut cmd = String::new();
-        if io::stdin().read_line(&mut cmd).is_err() {
-            log::warn!("error reading command")
-        } else {
-            run_command(&master, &cmd, &socket)
+    std::thread::spawn(move || {
+        let mut rl = Editor::<()>::new();
+        if rl.load_history("armour-master-history.txt").is_err() {
+            log::info!("no previous history");
         }
+        loop {
+            match rl.readline("armour-master:> ") {
+                Ok(cmd) => {
+                    rl.add_history_entry(cmd.as_str());
+                    run_command(&master, &cmd, &socket)
+                }
+                Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+                    master.do_send(MasterCommand::Quit);
+                    break;
+                }
+                Err(err) => log::info!("error: {:?}", err),
+            }
+        }
+        rl.save_history("armour-master-history.txt")
+            .expect("failed to save history")
     });
-
-    // handle Control-C
-    let ctrl_c = tokio_signal::ctrl_c().flatten_stream();
-    let handle_shutdown = ctrl_c
-        .for_each(|()| {
-            println!("Ctrl-C received, shutting down");
-            System::current().stop();
-            Ok(())
-        })
-        .map_err(|_| ());
-    actix::spawn(handle_shutdown);
 
     sys.run()
 }
