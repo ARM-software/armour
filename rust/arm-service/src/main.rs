@@ -170,7 +170,7 @@ fn service(
         .and_then(move |data| {
             // Ok(HttpResponse::NotFound().body("not here!"))
             // Ok(HttpResponse::Ok().body("hello"))
-            // debug!("{:?}", req.headers());
+            debug!("{:?}", req);
             let info = req.connection_info();
             Ok(HttpResponse::Ok().body(format!(
                 r#"port {} received request {} with body {:?}; host {}; remote {}"#,
