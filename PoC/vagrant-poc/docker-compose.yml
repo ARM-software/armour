@@ -155,6 +155,7 @@ services:
     networks:
       mongo:
         ipv4_address: 172.37.0.2
+    command: mongod --bind_ip 172.37.0.2
 
   cloud-update:
     build: ./cloud_comm
