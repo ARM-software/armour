@@ -170,7 +170,7 @@ fn master_command(
         Some("help") => println!(
             "COMMANDS:
     help                      list commands
-    launch                    start a new instance
+    launch                    start a new slave instance
     list                      list connected instances
     quit                      shutdown master and all instances
 
@@ -179,8 +179,7 @@ fn master_command(
 
     [<id>|all] allow all      request allow all policy
     [<id>|all] deny all       request deny all policy
-    [<id>|all] debug on       display HTTP requests
-    [<id>|all] debug off      do not display HTTP requests
+    [<id>|all] debug on|off   enable/disable display of HTTP requests
     [<id>|all] ports          list active ports
     [<id>|all] shutdown       request shutdown
     [<id>|all] timeout <secs> server response timeout
@@ -192,7 +191,7 @@ fn master_command(
     [<id>|all] forward <port> <socket>
                               start listening on <port> and forward to <socket>
 
-    <id>  single instance ID number
+    <id>  instance ID number
     all   all instances"
         ),
         _ => log::info!("unknown command"),
