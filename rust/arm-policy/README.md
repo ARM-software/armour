@@ -3,11 +3,11 @@ Armour Policy Language
 
 ## Command Line
 
-It is recommended to start the policy language REPL (Read-Eval-Print loop) with
+You can run the policy language REPL with
 
-    $ rlwrap cargo run [input file]
-
-[`rlwrap` can be installed on a Mac with `brew install rlwrap`.]
+```shell
+$ cargo run [input file]
+```
 
 ## Types
 
