@@ -69,7 +69,9 @@ fn main() -> io::Result<()> {
             match rl.readline("armour-master:> ") {
                 Ok(cmd) => {
                     rl.add_history_entry(cmd.as_str());
-                    run_command(&master, &cmd, &socket)
+                    if run_command(&master, &cmd, &socket) {
+                        break;
+                    }
                 }
                 Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
                     master.do_send(MasterCommand::Quit);
@@ -95,32 +97,40 @@ fn armour_data() -> std::path::PathBuf {
     }
 }
 
-fn run_command(master: &Addr<master::ArmourDataMaster>, cmd: &str, socket: &std::path::PathBuf) {
+fn run_command(
+    master: &Addr<master::ArmourDataMaster>,
+    cmd: &str,
+    socket: &std::path::PathBuf,
+) -> bool {
     let cmd = cmd.trim();
     if cmd != "" {
         if let Some(caps) = commands::MASTER.captures(&cmd) {
-            master_command(&master, caps, socket)
+            return master_command(&master, caps, socket);
         } else if let Some(caps) = commands::INSTANCE0.captures(&cmd) {
             instance0_command(&master, caps)
         } else if let Some(caps) = commands::INSTANCE2.captures(&cmd) {
             instance2_command(&master, caps)
         } else if let Some(caps) = commands::INSTANCE1.captures(&cmd) {
-            instance1_command(&master, caps, socket)
+            return instance1_command(&master, caps, socket);
         } else {
             log::info!("unknown command <none>")
         }
     }
+    false
 }
 
 fn master_command(
     master: &Addr<master::ArmourDataMaster>,
     caps: regex::Captures,
     socket: &std::path::PathBuf,
-) {
+) -> bool {
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     match command.as_ref().map(String::as_str) {
         Some("list") => master.do_send(MasterCommand::ListActive),
-        Some("quit") => master.do_send(MasterCommand::Quit),
+        Some("quit") => {
+            master.do_send(MasterCommand::Quit);
+            return true;
+        }
         Some("launch") => match std::process::Command::new(armour_data())
             .arg(socket)
             .spawn()
@@ -158,6 +168,7 @@ fn master_command(
         ),
         _ => log::info!("unknown command"),
     }
+    false
 }
 
 fn instance0_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captures) {
@@ -186,7 +197,7 @@ fn instance1_command(
     master: &Addr<master::ArmourDataMaster>,
     caps: regex::Captures,
     socket: &std::path::PathBuf,
-) {
+) -> bool {
     let arg = caps.name("arg").unwrap().as_str().trim_matches('"');
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     if let Some(request) = match command.as_ref().map(String::as_str) {
@@ -246,7 +257,9 @@ fn instance1_command(
                                 cmd = cmd.trim().to_string();
                                 if !(cmd == "" || cmd.starts_with('#')) {
                                     log::info!(r#"run command: "{}""#, cmd);
-                                    run_command(master, &cmd, socket)
+                                    if run_command(master, &cmd, socket) {
+                                        return true;
+                                    }
                                 };
                                 line += 1;
                                 done = res == 0
@@ -273,6 +286,7 @@ fn instance1_command(
             Box::new(request),
         ))
     }
+    false
 }
 
 fn instance2_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captures) {
