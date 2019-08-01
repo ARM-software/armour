@@ -7,8 +7,7 @@ use armour_data_interface::{own_ip, PolicyRequest, POLICY_SIG};
 use armour_data_master as master;
 use clap::{crate_version, App, Arg};
 use master::{commands, MasterCommand};
-use rustyline::error::ReadlineError;
-use rustyline::Editor;
+use rustyline::{completion, error::ReadlineError, hint, Editor};
 use std::io::{self, BufRead};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -61,7 +60,8 @@ fn main() -> io::Result<()> {
 
     // issue commands based on user input
     std::thread::spawn(move || {
-        let mut rl = Editor::<()>::new();
+        let mut rl = Editor::new();
+        rl.set_helper(Some(Helper::new()));
         if rl.load_history("armour-master-history.txt").is_err() {
             log::info!("no previous history");
         }
@@ -86,6 +86,35 @@ fn main() -> io::Result<()> {
 
     sys.run()
 }
+
+struct Helper(completion::FilenameCompleter, hint::HistoryHinter);
+
+impl Helper {
+    fn new() -> Self {
+        Helper(completion::FilenameCompleter::new(), hint::HistoryHinter {})
+    }
+}
+
+impl completion::Completer for Helper {
+    type Candidate = completion::Pair;
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        ctx: &rustyline::Context<'_>,
+    ) -> Result<(usize, Vec<completion::Pair>), ReadlineError> {
+        self.0.complete(line, pos, ctx)
+    }
+}
+impl hint::Hinter for Helper {
+    fn hint(&self, line: &str, pos: usize, ctx: &rustyline::Context<'_>) -> Option<String> {
+        self.1.hint(line, pos, ctx)
+    }
+}
+
+impl rustyline::highlight::Highlighter for Helper {}
+
+impl rustyline::Helper for Helper {}
 
 fn armour_data() -> std::path::PathBuf {
     if let Ok(Some(path)) =
@@ -246,7 +275,8 @@ fn instance1_command(
         }
         Some("run") => {
             if commands::instance(&caps) == master::Instances::SoleInstance {
-                match std::fs::File::open(PathBuf::from(arg)) {
+                let arg = arg.replace("\\ ", " ");
+                match std::fs::File::open(PathBuf::from(&arg)) {
                     Ok(file) => {
                         let mut buf_reader = std::io::BufReader::new(file);
                         let mut line = 1;
@@ -269,7 +299,7 @@ fn instance1_command(
                             }
                         }
                     }
-                    Err(err) => log::warn!("{}", err),
+                    Err(err) => log::warn!("{}: {}", arg, err),
                 }
             } else {
                 log::info!("unknown command")
