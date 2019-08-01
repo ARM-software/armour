@@ -77,7 +77,7 @@ fn main() -> io::Result<()> {
                     master.do_send(MasterCommand::Quit);
                     break;
                 }
-                Err(err) => log::info!("error: {:?}", err),
+                Err(err) => log::warn!("{}", err),
             }
         }
         rl.save_history("armour-master-history.txt")

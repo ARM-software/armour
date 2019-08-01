@@ -2,10 +2,8 @@
 use arm_policy::lang;
 use clap::{crate_version, App, Arg};
 use futures::{future, Future};
-use std::io::{
-    self,
-    prelude::{Read, Write},
-};
+use rustyline::{error::ReadlineError, Editor};
+use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -28,6 +26,11 @@ fn main() -> io::Result<()> {
                 .help("Timeout (seconds) for external RPCs\n(default: 3s)"),
         )
         .get_matches();
+
+    // enable logging
+    std::env::set_var("RUST_LOG", "arm_policy=warn,actix=info");
+    std::env::set_var("RUST_BACKTRACE", "0");
+    env_logger::init();
 
     // declare program
     let mut prog: lang::Program;
@@ -60,38 +63,43 @@ fn main() -> io::Result<()> {
     // evaluate expressions (REPL)
     let headers = prog.headers.clone();
     let prog = Arc::new(prog);
-    let mut reader = io::BufReader::new(io::stdin());
+    let mut rl = Editor::<()>::new();
+    if rl.load_history("arm-policy.txt").is_err() {
+        log::info!("no previous history");
+    }
     loop {
-        print!("> ");
-        io::stdout().flush().unwrap();
-        let mut buf = String::new();
-        reader.read_to_string(&mut buf)?;
-        match lang::Expr::from_string(&buf, &headers) {
-            Ok(e) => {
-                // println!("{:#?}", e);
-                let fut = e
-                    .evaluate(prog.clone())
-                    .and_then(|r| {
-                        println!(": {}", r.clone());
-                        future::ok(())
-                    })
-                    .or_else(|err| {
-                        eprintln!("{}", err);
-                        future::ok(())
-                    })
-                    .map_err(|_: ()| (std::io::ErrorKind::Other));
-                sys.block_on(fut)?
-            }
-            Err(err) => {
-                if buf == "" {
-                    break;
-                } else {
-                    eprintln!("{}", err)
+        match rl.readline("arm-policy:> ") {
+            Ok(line) => {
+                let line = line.trim();
+                if line != "" {
+                    rl.add_history_entry(line);
+                    match lang::Expr::from_string(line, &headers) {
+                        Ok(e) => {
+                            // println!("{:#?}", e);
+                            let fut = e
+                                .evaluate(prog.clone())
+                                .and_then(|r| {
+                                    println!(": {}", r.clone());
+                                    future::ok(())
+                                })
+                                .or_else(|err| {
+                                    log::warn!("{}", err);
+                                    future::ok(())
+                                })
+                                .map_err(|_: ()| (std::io::ErrorKind::Other));
+                            sys.block_on(fut)?
+                        }
+                        Err(err) => log::warn!("{}", err),
+                    }
                 }
             }
+            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+                break;
+            }
+            Err(err) => log::warn!("{}", err),
         }
     }
-
     // done
-    Ok(())
+    rl.save_history("arm-policy.txt")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }

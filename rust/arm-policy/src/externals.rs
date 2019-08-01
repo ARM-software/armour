@@ -3,12 +3,12 @@ use crate::external_capnp::external;
 use capnp::capability::Promise;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::{future, Future};
-use futures_timer::FutureExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::prelude::FutureExt;
 
 /// Calls to Armour external functions
 ///
@@ -54,6 +54,14 @@ impl From<std::io::Error> for Error {
 impl From<capnp::Error> for Error {
     fn from(err: capnp::Error) -> Error {
         Error::Capnp(err)
+    }
+}
+
+impl From<tokio_timer::timeout::Error<capnp::Error>> for Error {
+    fn from(err: tokio_timer::timeout::Error<capnp::Error>) -> Error {
+        err.into_inner()
+            .map(Error::Capnp)
+            .unwrap_or_else(|| Error::Failed("timeout".to_string()))
     }
 }
 
