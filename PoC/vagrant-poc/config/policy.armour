@@ -1,0 +1,3 @@
+fn require(req: HttpRequest, ip: Option<Ipv4Addr>) -> bool { true }
+fn client_payload(d: data) -> bool { true }
+fn server_payload(d: data) -> bool { true }
