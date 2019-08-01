@@ -68,6 +68,11 @@ Vagrant.configure("2") do |config|
     cp /vagrant/docker-compose.yml /home/vagrant/PoC
     sudo touch /home/vagrant/PoC/digital-dolly/blue_hr/__init__.py
     sudo sed -i 's/from queue/from multiprocessing/g' /home/vagrant/PoC/digital-dolly/listener.py
+    cd /home/vagrant/PoC
+    grep --exclude-dir=rule-engine --exclude=*.yml -rl . -e 'mysql:/' | sudo xargs sed -i 's/josh:raspberry@localhost/dbint:raspberry@mysql:3306/g'
+    grep --exclude-dir=rule-engine --exclude=*.md -rl . -e 'mysql://dbint:raspberry@luipen01-rpi.austin.arm.com' | sudo xargs sed -i 's/dbint:raspberry@luipen01-rpi.austin.arm.com/dbint:raspberry@mysql/g'
+    cd /home/vagrant/PoC/rule-engine
+    grep --exclude-dir=tests -rl . -e 'mysql:/' | sudo xargs sed -i 's/josh:pocberry@localhost/dbint:raspberry@mysql:3306/g'
     cd /home/vagrant/armour/rust/docker
 		sudo ./build ~/armour/rust/armour-data-master/ armour-data-master armour-data
   SHELL
