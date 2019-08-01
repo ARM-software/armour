@@ -10,6 +10,9 @@ Requirements
 - vagrant docker-compose plugin:
 
 		vagrant plugin install vagrant-docker-compose
+- vagrant resize disk plugin:
+
+		vagrant plugin install vagrant-disksize
 
 Steps
 =====
@@ -18,7 +21,7 @@ Steps
 		vagrant up
 		vagrant ssh
 2. Generate the iptables rules
-	
+
 		cd /vagrant
 		./generate.sh
 3. Bash into the `armour-data` container to enforce a policy
@@ -28,7 +31,7 @@ Steps
 
 		./armour-data-master
 	To run the script that opens all the necessary ports and enforces the allow all policy
-	
+
 		run /root/map/proxy_map
 At this point, traffic should go through the proxy
 5. Get the ip address of the enp0s8 interface, it would be something like 10.1.x.x and test the ip on a browser and 10.1.x.x:81 to see the contracts executing
@@ -59,3 +62,5 @@ At this point, traffic should go through the proxy
 	#sudo sed -i 's/app = Flask(__name__)/app = Flask(__name__) \napp.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False/g' /home/vagrant/PoC/verify_id/webapp/listener.py
 
 	docker run -it --net poc_accounting --env MONGO_CONN="mongodb://172.37.0.2" --env MY_NODE_NAME="PoC-armour" poc_accounting
+
+	-p 27017-27019:27017-27019

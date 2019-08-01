@@ -1,5 +1,6 @@
 Vagrant.configure("2") do |config|
   config.vm.box = "ubuntu/bionic64"
+  config.disksize.size = '30GB'
   config.vm.network "public_network", bridge: "en0: Wi-Fi (Wireless)"
   config.vm.hostname = "PoC-armour"
   config.vm.network "forwarded_port", guest: 2376, host: 2376
