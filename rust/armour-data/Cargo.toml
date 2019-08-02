@@ -1,6 +1,6 @@
 [package]
 name = "armour-data"
-version = "0.1.2"
+version = "0.1.4"
 authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
@@ -9,6 +9,7 @@ arm-policy = { path = "../arm-policy" }
 armour-data-interface = { path = "../armour-data-interface" }
 
 actix = "0.8"
+actix-service = "0.4"
 actix-web = {version = "1.0", features = ["client", "ssl"]}
 bytes = "0.4"
 clap = "2.33"

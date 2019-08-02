@@ -3,8 +3,8 @@
 use super::policy::{self, Policy, ToArmourExpression};
 use actix_web::client::{self, Client, ClientRequest, ClientResponse, SendRequestError};
 use actix_web::{
-    http::header::{ContentEncoding, HeaderName, HeaderValue},
-    middleware, web, App, Error, HttpMessage, HttpRequest, HttpResponse, HttpServer, ResponseError,
+    http::header::{HeaderName, HeaderValue},
+    middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
 use armour_data_interface::own_ip;
 use futures::stream::Stream;
@@ -22,8 +22,10 @@ pub fn start_proxy(
             .data(policy.clone())
             .data(Client::new())
             .data(proxy_port)
-            .wrap(middleware::Compress::new(ContentEncoding::Auto))
             .wrap(middleware::Logger::default())
+            .wrap(middleware::Compress::new(
+                actix_web::http::header::ContentEncoding::Auto,
+            ))
             .default_service(web::route().to_async(proxy))
     })
     .bind(&socket_address)?
@@ -171,6 +173,7 @@ pub fn request(
                                         move |url| {
                                             let client_request = client
                                                 .request_from(url.as_str(), req.head())
+                                                .no_decompress()
                                                 .process_headers(req.peer_addr())
                                                 .timeout(timeout);
                                             if debug {
@@ -220,6 +223,7 @@ pub fn request(
             future::Either::B(req.forward_url(*proxy_port).and_then(move |url| {
                 let client_request = client
                     .request_from(url.as_str(), req.head())
+                    .no_decompress()
                     .process_headers(req.peer_addr())
                     .timeout(timeout);
                 if debug {
@@ -245,11 +249,13 @@ pub fn response(
     >,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match res {
-        Ok(mut res) => {
+        Ok(res) => {
             let mut client_resp = HttpResponse::build(res.status());
-            for (header_name, header_value) in res.headers().iter().filter(|(h, _)| {
-                *h != "connection" && *h != "content-encoding" && *h != "content-length"
-            }) {
+            for (header_name, header_value) in res
+                .headers()
+                .iter()
+                .filter(|(h, _)| *h != "connection" && *h != "content-length")
+            {
                 // debug!("header {}: {:?}", header_name, header_value);
                 client_resp.header(header_name.clone(), header_value.clone());
             }
@@ -282,6 +288,7 @@ pub fn response(
                                     .then(move |res| match res {
                                         // allow
                                         Ok(Ok(true)) => {
+                                            // debug!("{:?}", server_payload);
                                             future::ok(client_resp.body(server_payload))
                                         }
                                         // reject
@@ -317,7 +324,7 @@ pub fn response(
                     if debug {
                         debug! {"{:?}", client_resp}
                     };
-                    future::Either::B(future::ok(client_resp.streaming(res.take_payload())))
+                    future::Either::B(future::ok(client_resp.streaming(res)))
                 }
             })
         }

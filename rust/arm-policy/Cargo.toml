@@ -1,6 +1,6 @@
 [package]
 name = "arm-policy"
-version = "0.1.1"
+version = "0.1.4"
 authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
