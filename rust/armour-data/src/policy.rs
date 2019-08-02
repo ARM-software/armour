@@ -241,16 +241,19 @@ impl Handler<PolicyRequest> for DataPolicy {
                     info!("stopped TCP proxy on port {}", port)
                 }
             }
-            PolicyRequest::Start(port) => match http_proxy::start_proxy(ctx.address(), port) {
-                Ok(server) => {
-                    self.http_proxies.insert(port, Box::new(server));
-                    self.uds_framed.write(PolicyResponse::Started)
+            PolicyRequest::Start(config) => {
+                let port = config.port;
+                match http_proxy::start_proxy(ctx.address(), config) {
+                    Ok(server) => {
+                        self.http_proxies.insert(port, Box::new(server));
+                        self.uds_framed.write(PolicyResponse::Started)
+                    }
+                    Err(err) => {
+                        self.uds_framed.write(PolicyResponse::RequestFailed);
+                        warn!("failed to start proxy on port {}: {}", port, err)
+                    }
                 }
-                Err(err) => {
-                    self.uds_framed.write(PolicyResponse::RequestFailed);
-                    warn!("failed to start proxy on port {}: {}", port, err)
-                }
-            },
+            }
             PolicyRequest::StartTcp(port, socket) => match tcp_proxy::start_proxy(port, socket) {
                 Ok(server) => {
                     self.tcp_proxies.insert(port, server);

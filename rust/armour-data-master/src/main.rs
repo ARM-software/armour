@@ -3,7 +3,7 @@
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
 use arm_policy::lang;
-use armour_data_interface::{own_ip, PolicyRequest, POLICY_SIG};
+use armour_data_interface::{own_ip, PolicyRequest, ProxyConfig, POLICY_SIG};
 use armour_data_master as master;
 use clap::{crate_version, App, Arg};
 use master::{commands, MasterCommand};
@@ -185,9 +185,10 @@ fn master_command(
     [<id>|all] timeout <secs> server response timeout
     [<id>|all] policy <path>  read policy from <path> and send to instance
     [<id>|all] remote <path>  ask instance to read policy from <path>
-    [<id>|all] start <port>   start listening for HTTP requests on <port>
     [<id>|all] stop all       stop listening on all ports
     [<id>|all] stop <port>    stop listening on <port>
+    [<id>|all] start [streaming] <port>
+                              start listening for HTTP requests on <port>
     [<id>|all] forward <port> <socket>
                               start listening on <port> and forward to <socket>
 
@@ -229,10 +230,15 @@ fn instance1_command(
     let arg = caps.name("arg").unwrap().as_str().trim_matches('"');
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     if let Some(request) = match command.as_ref().map(String::as_str) {
-        Some(s @ "start") | Some(s @ "stop") => {
+        Some(s @ "start") | Some(s @ "start streaming") | Some(s @ "stop") => {
             if let Ok(port) = arg.parse::<u16>() {
-                Some(if s == "start" {
-                    PolicyRequest::Start(port)
+                Some(if s.starts_with("start") {
+                    let streaming = s.ends_with("streaming");
+                    PolicyRequest::Start(ProxyConfig {
+                        port,
+                        request_streaming: streaming,
+                        response_streaming: streaming,
+                    })
                 } else {
                     PolicyRequest::Stop(port)
                 })

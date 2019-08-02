@@ -79,6 +79,13 @@ lazy_static! {
     };
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ProxyConfig {
+    pub port: u16,
+    pub request_streaming: bool,
+    pub response_streaming: bool,
+}
+
 /// Policy update request messages
 #[derive(Serialize, Deserialize, Message, Clone)]
 pub enum PolicyRequest {
@@ -88,7 +95,7 @@ pub enum PolicyRequest {
     Shutdown,
     StopAll,
     Debug(bool),
-    Start(u16),
+    Start(ProxyConfig),
     Stop(u16),
     StartTcp(u16, std::net::SocketAddr),
     UpdateFromData(Program),

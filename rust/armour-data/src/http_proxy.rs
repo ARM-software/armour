@@ -6,7 +6,7 @@ use actix_web::{
     http::header::{HeaderName, HeaderValue},
     middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
-use armour_data_interface::own_ip;
+use armour_data_interface::{own_ip, ProxyConfig};
 use futures::stream::Stream;
 use futures::{future, Future};
 use std::collections::HashSet;
@@ -14,18 +14,18 @@ use std::net::IpAddr;
 
 pub fn start_proxy(
     policy: actix::Addr<policy::DataPolicy>,
-    proxy_port: u16,
+    config: armour_data_interface::ProxyConfig,
 ) -> std::io::Result<actix_web::dev::Server> {
-    let socket_address = format!("0.0.0.0:{}", proxy_port);
+    let socket_address = format!("0.0.0.0:{}", config.port);
     let server = HttpServer::new(move || {
         App::new()
             .data(policy.clone())
             .data(Client::new())
-            .data(proxy_port)
+            .data(config.clone())
             .wrap(middleware::Logger::default())
-            .wrap(middleware::Compress::new(
-                actix_web::http::header::ContentEncoding::Auto,
-            ))
+            // .wrap(middleware::Compress::new(
+            //     actix_web::http::header::ContentEncoding::Auto,
+            // ))
             .default_service(web::route().to_async(proxy))
     })
     .bind(&socket_address)?
@@ -43,7 +43,7 @@ pub fn proxy(
     payload: web::Payload,
     policy: web::Data<actix::Addr<policy::DataPolicy>>,
     client: web::Data<Client>,
-    proxy_port: web::Data<u16>,
+    config: web::Data<ProxyConfig>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     policy.send(policy::Check).then(|p| {
         match p {
@@ -82,14 +82,9 @@ pub fn proxy(
                 };
                 future::Either::A(policy.send(message).then(move |res| match res {
                     // allow request
-                    Ok(Ok(true)) => future::Either::A(request(
-                        p.unwrap(),
-                        req,
-                        payload,
-                        policy,
-                        client,
-                        proxy_port,
-                    )),
+                    Ok(Ok(true)) => {
+                        future::Either::A(request(p.unwrap(), req, payload, policy, client, config))
+                    }
                     // reject
                     Ok(Ok(false)) => future::Either::B(future::ok(unauthorized("request denied"))),
                     // policy error
@@ -122,7 +117,7 @@ pub fn proxy(
                     payload,
                     policy,
                     client,
-                    proxy_port,
+                    config,
                 )))
             }
             // actor error from sending message Check
@@ -141,7 +136,7 @@ pub fn request(
     payload: web::Payload,
     policy: web::Data<actix::Addr<policy::DataPolicy>>,
     client: web::Data<Client>,
-    proxy_port: web::Data<u16>,
+    config: web::Data<ProxyConfig>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match p {
         // check client payload
@@ -169,7 +164,7 @@ pub fn request(
                             match res {
                                 // allow payload
                                 Ok(Ok(true)) => {
-                                    future::Either::A(req.forward_url(*proxy_port).and_then(
+                                    future::Either::A(req.forward_url((*config).port).and_then(
                                         move |url| {
                                             let client_request = client
                                                 .request_from(url.as_str(), req.head())
@@ -183,7 +178,14 @@ pub fn request(
                                                 // forward the request (with the original client payload)
                                                 .send_body(client_payload)
                                                 // send the response back to the client
-                                                .then(|res| response(p, policy, res))
+                                                .then(move |res| {
+                                                    response(
+                                                        p,
+                                                        policy,
+                                                        res,
+                                                        config.response_streaming,
+                                                    )
+                                                })
                                         },
                                     ))
                                 }
@@ -220,7 +222,7 @@ pub fn request(
             debug,
             timeout,
         } => {
-            future::Either::B(req.forward_url(*proxy_port).and_then(move |url| {
+            future::Either::B(req.forward_url((*config).port).and_then(move |url| {
                 let client_request = client
                     .request_from(url.as_str(), req.head())
                     .no_decompress()
@@ -229,11 +231,33 @@ pub fn request(
                 if debug {
                     debug!("{:?}", client_request)
                 };
-                client_request
-                    // forward the request (with the original client payload)
-                    .send_stream(payload)
-                    // send the response back to the client
-                    .then(|res| response(p, policy, res))
+                if config.request_streaming {
+                    future::Either::A(
+                        client_request
+                            // forward the request (with the original client payload)
+                            .send_stream(payload)
+                            // send the response back to the client
+                            .then(move |res| response(p, policy, res, config.response_streaming)),
+                    )
+                } else {
+                    future::Either::B(
+                        payload
+                            .from_err()
+                            .fold(web::BytesMut::new(), |mut body, chunk| {
+                                body.extend_from_slice(&chunk);
+                                Ok::<_, Error>(body)
+                            })
+                            .and_then(move |client_payload| {
+                                client_request
+                                    // forward the request (with the original client payload)
+                                    .send_body(client_payload)
+                                    // send the response back to the client
+                                    .then(move |res| {
+                                        response(p, policy, res, config.response_streaming)
+                                    })
+                            }),
+                    )
+                }
             }))
         }
     }
@@ -247,6 +271,7 @@ pub fn response(
         ClientResponse<impl Stream<Item = web::Bytes, Error = client::PayloadError> + 'static>,
         SendRequestError,
     >,
+    response_streaming: bool,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match res {
         Ok(res) => {
@@ -324,7 +349,20 @@ pub fn response(
                     if debug {
                         debug! {"{:?}", client_resp}
                     };
-                    future::Either::B(future::ok(client_resp.streaming(res)))
+                    if response_streaming {
+                        future::Either::B(future::Either::A(future::ok(client_resp.streaming(res))))
+                    } else {
+                        future::Either::B(future::Either::B(
+                            res.from_err()
+                                .fold(web::BytesMut::new(), |mut body, chunk| {
+                                    body.extend_from_slice(&chunk);
+                                    Ok::<_, Error>(body)
+                                })
+                                .and_then(move |server_payload| {
+                                    future::ok(client_resp.body(server_payload))
+                                }),
+                        ))
+                    }
                 }
             })
         }
