@@ -3,7 +3,7 @@
 use super::policy::{self, Policy, ToArmourExpression};
 use actix_web::client::{self, Client, ClientRequest, ClientResponse, SendRequestError};
 use actix_web::{
-    http::header::{HeaderName, HeaderValue},
+    http::header::{ContentEncoding, HeaderName, HeaderValue},
     middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
 use armour_data_interface::{own_ip, ProxyConfig};
@@ -17,15 +17,18 @@ pub fn start_proxy(
     config: armour_data_interface::ProxyConfig,
 ) -> std::io::Result<actix_web::dev::Server> {
     let socket_address = format!("0.0.0.0:{}", config.port);
+    let encoding = if config.response_streaming {
+        ContentEncoding::Auto
+    } else {
+        ContentEncoding::Identity
+    };
     let server = HttpServer::new(move || {
         App::new()
             .data(policy.clone())
             .data(Client::new())
             .data(config.clone())
             .wrap(middleware::Logger::default())
-            // .wrap(middleware::Compress::new(
-            //     actix_web::http::header::ContentEncoding::Auto,
-            // ))
+            .wrap(middleware::Compress::new(encoding))
             .default_service(web::route().to_async(proxy))
     })
     .bind(&socket_address)?
@@ -64,11 +67,13 @@ pub fn proxy(
                 fns:
                     Some(policy::PolicyFns {
                         require: Some(args),
+                        server_payload,
                         ..
                     }),
                 debug,
                 ..
             }) => {
+                let no_decompress = config.response_streaming && !server_payload;
                 if debug {
                     debug!("{:?}", req)
                 };
@@ -82,9 +87,15 @@ pub fn proxy(
                 };
                 future::Either::A(policy.send(message).then(move |res| match res {
                     // allow request
-                    Ok(Ok(true)) => {
-                        future::Either::A(request(p.unwrap(), req, payload, policy, client, config))
-                    }
+                    Ok(Ok(true)) => future::Either::A(request(
+                        p.unwrap(),
+                        req,
+                        payload,
+                        policy,
+                        client,
+                        config,
+                        no_decompress,
+                    )),
                     // reject
                     Ok(Ok(false)) => future::Either::B(future::ok(unauthorized("request denied"))),
                     // policy error
@@ -102,12 +113,8 @@ pub fn proxy(
             // allow request
             Ok(policy::Policy {
                 fns: None, debug, ..
-            })
-            | Ok(policy::Policy {
-                fns: Some(policy::PolicyFns { require: None, .. }),
-                debug,
-                ..
             }) => {
+                let no_decompress = config.response_streaming;
                 if debug {
                     debug!("{:?}", req)
                 };
@@ -118,6 +125,31 @@ pub fn proxy(
                     policy,
                     client,
                     config,
+                    no_decompress,
+                )))
+            }
+            Ok(policy::Policy {
+                fns:
+                    Some(policy::PolicyFns {
+                        require: None,
+                        server_payload,
+                        ..
+                    }),
+                debug,
+                ..
+            }) => {
+                let no_decompress = config.response_streaming && !server_payload;
+                if debug {
+                    debug!("{:?}", req)
+                };
+                future::Either::B(future::Either::B(request(
+                    p.unwrap(),
+                    req,
+                    payload,
+                    policy,
+                    client,
+                    config,
+                    no_decompress,
                 )))
             }
             // actor error from sending message Check
@@ -137,6 +169,7 @@ pub fn request(
     policy: web::Data<actix::Addr<policy::DataPolicy>>,
     client: web::Data<Client>,
     config: web::Data<ProxyConfig>,
+    no_decompress: bool,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match p {
         // check client payload
@@ -166,11 +199,13 @@ pub fn request(
                                 Ok(Ok(true)) => {
                                     future::Either::A(req.forward_url((*config).port).and_then(
                                         move |url| {
-                                            let client_request = client
+                                            let mut client_request = client
                                                 .request_from(url.as_str(), req.head())
-                                                .no_decompress()
                                                 .process_headers(req.peer_addr())
                                                 .timeout(timeout);
+                                            if no_decompress {
+                                                client_request = client_request.no_decompress()
+                                            }
                                             if debug {
                                                 debug!("{:?}", client_request)
                                             };
@@ -184,6 +219,7 @@ pub fn request(
                                                         policy,
                                                         res,
                                                         config.response_streaming,
+                                                        no_decompress,
                                                     )
                                                 })
                                         },
@@ -208,26 +244,16 @@ pub fn request(
                 }),
         ),
         // allow client payload without check
-        policy::Policy {
-            fns: None,
-            debug,
-            timeout,
-        }
-        | policy::Policy {
-            fns:
-                Some(policy::PolicyFns {
-                    client_payload: false,
-                    ..
-                }),
-            debug,
-            timeout,
-        } => {
+        policy::Policy { debug, timeout, .. } => {
             future::Either::B(req.forward_url((*config).port).and_then(move |url| {
-                let client_request = client
+                let mut client_request = client
                     .request_from(url.as_str(), req.head())
-                    .no_decompress()
                     .process_headers(req.peer_addr())
                     .timeout(timeout);
+                // let server_payload = fns.map(|x| x.server_payload).unwrap_or(false);
+                if no_decompress {
+                    client_request = client_request.no_decompress()
+                }
                 if debug {
                     debug!("{:?}", client_request)
                 };
@@ -237,7 +263,9 @@ pub fn request(
                             // forward the request (with the original client payload)
                             .send_stream(payload)
                             // send the response back to the client
-                            .then(move |res| response(p, policy, res, config.response_streaming)),
+                            .then(move |res| {
+                                response(p, policy, res, config.response_streaming, no_decompress)
+                            }),
                     )
                 } else {
                     future::Either::B(
@@ -253,7 +281,13 @@ pub fn request(
                                     .send_body(client_payload)
                                     // send the response back to the client
                                     .then(move |res| {
-                                        response(p, policy, res, config.response_streaming)
+                                        response(
+                                            p,
+                                            policy,
+                                            res,
+                                            config.response_streaming,
+                                            no_decompress,
+                                        )
                                     })
                             }),
                     )
@@ -272,15 +306,16 @@ pub fn response(
         SendRequestError,
     >,
     response_streaming: bool,
+    no_decompress: bool,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match res {
         Ok(res) => {
             let mut client_resp = HttpResponse::build(res.status());
-            for (header_name, header_value) in res
-                .headers()
-                .iter()
-                .filter(|(h, _)| *h != "connection" && *h != "content-length")
-            {
+            for (header_name, header_value) in res.headers().iter().filter(|(h, _)| {
+                *h != "connection"
+                    && *h != "content-length"
+                    && (no_decompress || *h != "content-encoding")
+            }) {
                 // debug!("header {}: {:?}", header_name, header_value);
                 client_resp.header(header_name.clone(), header_value.clone());
             }
@@ -305,7 +340,7 @@ pub fn response(
                                 Ok::<_, Error>(body)
                             })
                             .and_then(move |server_payload| {
-                                // debug!("{:?}", server_payload);
+                                debug!("{:?}", server_payload);
                                 policy
                                     .send(policy::Evaluate::ServerPayload(
                                         server_payload.to_expression(),
@@ -313,7 +348,6 @@ pub fn response(
                                     .then(move |res| match res {
                                         // allow
                                         Ok(Ok(true)) => {
-                                            // debug!("{:?}", server_payload);
                                             future::ok(client_resp.body(server_payload))
                                         }
                                         // reject
