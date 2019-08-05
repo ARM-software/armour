@@ -1,25 +1,15 @@
 launch
 wait 1
 start 6000
-wait 1
-forward 6001 172.34.0.2:4713
-wait 1
-forward 6002 172.27.0.2:1883
-wait 1
-forward 6003 172.26.0.2:1883
-wait 1
-forward 6004 172.25.0.2:1883
-wait 1
-forward 6005 172.27.0.2:1880
-wait 1
-forward 6006 172.26.0.2:1880
-wait 1
-forward 6007 172.25.0.2:1880
-wait 1
-forward 6008 172.22.0.2:4713
-wait 1
-forward 6009 172.33.0.2:3306
-wait 1
-forward 6010 172.37.0.2:27017
-wait 1
+forward 6001 172.37.0.2:27017
+forward 6002 172.34.0.2:4713
+forward 6003 172.33.0.2:3306
+forward 6004 172.27.0.2:1883
+forward 6005 172.26.0.2:1883
+forward 6006 172.25.0.2:1883
+forward 6007 172.27.0.2:1880
+forward 6008 172.26.0.2:1880
+forward 6009 172.25.0.2:1880
+forward 6010 172.22.0.2:4713
+forward 6011 172.36.0.2:5000
 allow all
