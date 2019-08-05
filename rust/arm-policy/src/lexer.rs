@@ -2,7 +2,7 @@
 // Originally based on https://github.com/Rydgel/monkey-rust/tree/master/lib/lexer
 // There have been significant modifications, in particular making use of nom_locate
 use super::literals;
-use nom::character::complete::{alpha1, digit1, not_line_ending};
+use nom::character::complete::{digit1, not_line_ending};
 use nom::number::complete::recognize_float;
 use nom::*;
 use nom5_locate::LocatedSpan;
@@ -379,6 +379,7 @@ fn lex_number<'a, E: error::ParseError<Span<'a>>>(
                 )
             }
         }
+        Err(nom::Err::Failure(e)) => Err(nom::Err::Error(e)),
         Err(e) => Err(e),
     }
 }
@@ -413,13 +414,36 @@ fn parse_reserved(t: Span) -> LocToken {
     }
 }
 
-named!(lex_reserved_ident<Span, LocToken>,
-    do_parse!(
-        peek!(recognize!(alpha1)) >>
-        s: take_while1!(|c| char::is_alphanumeric(c) || c == '_') >>
-        (parse_reserved(s))
-    )
-);
+// Identifiers and reserved words
+fn lex_reserved_ident<'a, E: error::ParseError<Span<'a>>>(
+    input: Span<'a>,
+) -> IResult<Span<'a>, LocToken, E> {
+    match take_while!(input, |c| char::is_alphanumeric(c) || c == '_') {
+        Ok((
+            rest,
+            LocatedSpan {
+                fragment,
+                line,
+                offset,
+            },
+        )) => {
+            if fragment.is_empty() || fragment.chars().nth(0) == Some('_') {
+                Err(nom::Err::Incomplete(nom::Needed::Unknown))
+            } else {
+                Ok((
+                    rest,
+                    parse_reserved(LocatedSpan {
+                        fragment,
+                        line,
+                        offset,
+                    }),
+                ))
+            }
+        }
+        Err(nom::Err::Failure(e)) => Err(nom::Err::Error(e)),
+        Err(e) => Err(e),
+    }
+}
 
 // String literals
 named!(not_escaped<Span, Span>,
