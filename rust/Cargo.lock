@@ -311,7 +311,6 @@ dependencies = [
  "capnpc 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "enum-display-derive 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.27 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -319,6 +318,7 @@ dependencies = [
  "nom 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "nom5_locate 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "petgraph 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pretty_env_logger 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustyline 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -328,7 +328,7 @@ dependencies = [
  "tokio-tls 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-uds 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "trust-dns-resolver 0.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "url 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "url 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -339,11 +339,11 @@ dependencies = [
  "actix-web 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.27 (registry+https://github.com/rust-lang/crates.io-index)",
  "get_if_addrs 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "hostname 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pretty_env_logger 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -357,19 +357,19 @@ dependencies = [
  "armour-data-interface 0.1.5",
  "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.27 (registry+https://github.com/rust-lang/crates.io-index)",
  "get_if_addrs 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pretty_env_logger 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-codec 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-io 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-signal 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-tcp 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-uds 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "trust-dns-resolver 0.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "url 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "url 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -395,10 +395,10 @@ dependencies = [
  "arm-policy 0.1.5",
  "armour-data-interface 0.1.5",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.27 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pretty_env_logger 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustyline 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-codec 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -406,7 +406,7 @@ dependencies = [
  "tokio-signal 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-uds 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "trust-dns-resolver 0.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "url 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "url 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1492,6 +1492,16 @@ version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "pretty_env_logger"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "chrono 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "0.4.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2329,7 +2339,7 @@ dependencies = [
 
 [[package]]
 name = "url"
-version = "2.0.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "idna 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2595,6 +2605,7 @@ dependencies = [
 "checksum percent-encoding 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ba4f28a6faf4ffea762ba8f4baef48c61a6db348647c73095034041fc79dd954"
 "checksum petgraph 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)" = "9c3659d1ee90221741f65dd128d9998311b0e40c5d3c23a62445938214abce4f"
 "checksum pkg-config 0.3.14 (registry+https://github.com/rust-lang/crates.io-index)" = "676e8eb2b1b4c9043511a9b7bea0915320d7e502b0a079fb03f9635a5252b18c"
+"checksum pretty_env_logger 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "df8b3f4e0475def7d9c2e5de8e5a1306949849761e107b360d03e98eafaffd61"
 "checksum proc-macro2 0.4.27 (registry+https://github.com/rust-lang/crates.io-index)" = "4d317f9caece796be1980837fd5cb3dfec5613ebdb04ad0956deea83ce168915"
 "checksum quick-error 1.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "9274b940887ce9addde99c4eee6b5c44cc494b182b97e73dc8ffdcb3397fd3f0"
 "checksum quote 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)" = "7a6e920b65c65f10b2ae65c831a81a073a89edd28c7cce89475bff467ab4167a"
@@ -2685,7 +2696,7 @@ dependencies = [
 "checksum unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
 "checksum unreachable 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "382810877fe448991dfc7f0dd6e3ae5d58088fd0ea5e35189655f84e6814fa56"
 "checksum url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)" = "dd4e7c0d531266369519a4aa4f399d748bd37043b00bde1e4ff1f60a120b355a"
-"checksum url 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "77ddaf52e65c6b81c56b7e957c0b1970f7937f21c5c6774c4e56fcb4e20b48c6"
+"checksum url 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "75b414f6c464c879d7f9babf951f23bc3743fb7313c081b2e6ca719067ea9d61"
 "checksum utf8-ranges 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "796f7e48bef87609f7ade7e06495a87d5cd06c7866e6a5cbfceffc558a243737"
 "checksum utf8parse 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "8772a4ccbb4e89959023bc5b7cb8623a795caa7092d99f3aa9501b9484d4557d"
 "checksum vcpkg 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)" = "def296d3eb3b12371b2c7d0e83bfe1403e4db2d7a0bba324a12b21c4ee13143d"

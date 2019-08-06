@@ -12,7 +12,7 @@ use regex::Regex;
 
 lazy_static! {
     pub static ref MASTER: Regex =
-        Regex::new(r"^(?i)\s*(?P<command>list|help|launch|quit)\s*$").unwrap();
+        Regex::new(r"^(?i)\s*(?P<command>list|help|launch log|launch|quit)\s*$").unwrap();
 }
 
 lazy_static! {

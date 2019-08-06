@@ -68,7 +68,7 @@ fn main() -> std::io::Result<()> {
     // enable logging
     env::set_var("RUST_LOG", "arm_service=debug,actix_web=debug");
     env::set_var("RUST_BACKTRACE", "0");
-    env_logger::init();
+    pretty_env_logger::init();
 
     // start the actix system
     let sys = actix::System::new("arm-service");
