@@ -73,7 +73,7 @@ impl Handler<TcpConnect> for TcpDataServer {
 
     fn handle(&mut self, msg: TcpConnect, _: &mut Context<Self>) -> Self::Result {
         #[cfg(any(target_os = "linux"))]
-        raw_original_dst(msg.0);
+        raw_original_dst(msg.0.clone());
         // For each incoming connection we create `TcpDataClientInstance` actor
         // We also create a `TcpDataServerInstance` actor
         info!("{}: forward to {}", self.socket_in.port(), self.socket_out);
