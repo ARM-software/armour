@@ -178,7 +178,7 @@ fn master_command(
         Some("help") => println!(
             "COMMANDS:
     help                      list commands
-    launch                    start a new slave instance
+    launch [log]              start a new slave instance
     list                      list connected instances
     quit                      shutdown master and all instances
 

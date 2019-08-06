@@ -2,6 +2,7 @@ use actix::prelude::*;
 use bytes::{Bytes, BytesMut};
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::os::unix::io::AsRawFd;
 use tokio_codec::{BytesCodec, FramedRead};
 use tokio_io::{io::WriteHalf, AsyncRead};
 
@@ -56,11 +57,23 @@ impl Message for TcpConnect {
     type Result = Result<(), ()>;
 }
 
+#[cfg(any(target_os = "linux"))]
+fn raw_original_dst(sock: tokio_tcp::TcpStream) {
+    let raw_fd = msg.0.as_raw_fd();
+    if let Ok(sock_in) =
+        nix::sys::socket::getsockopt(raw_fd, nix::sys::socket::sockopt::OriginalDst)
+    {
+        debug!("SO_ORIGINAL_DST: {:?}", sock_in.sin_addr.s_addr)
+    }
+}
+
 impl Handler<TcpConnect> for TcpDataServer {
     // type Result = ();
     type Result = Box<dyn Future<Item = (), Error = ()>>;
 
     fn handle(&mut self, msg: TcpConnect, _: &mut Context<Self>) -> Self::Result {
+        #[cfg(any(target_os = "linux"))]
+        raw_original_dst(msg.0);
         // For each incoming connection we create `TcpDataClientInstance` actor
         // We also create a `TcpDataServerInstance` actor
         info!("{}: forward to {}", self.socket_in.port(), self.socket_out);
