@@ -59,7 +59,7 @@ impl Message for TcpConnect {
 
 #[cfg(any(target_os = "linux"))]
 fn raw_original_dst(sock: tokio_tcp::TcpStream) {
-    let raw_fd = msg.0.as_raw_fd();
+    let raw_fd = sock.as_raw_fd();
     if let Ok(sock_in) =
         nix::sys::socket::getsockopt(raw_fd, nix::sys::socket::sockopt::OriginalDst)
     {
