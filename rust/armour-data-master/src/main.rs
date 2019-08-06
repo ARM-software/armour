@@ -31,7 +31,7 @@ fn main() -> io::Result<()> {
     // enable logging
     std::env::set_var("RUST_LOG", "armour_data_master=debug,actix=debug");
     std::env::set_var("RUST_BACKTRACE", "0");
-    env_logger::init();
+    pretty_env_logger::init();
 
     // start Actix system
     let sys = actix::System::new("armour-data-master");
@@ -160,17 +160,25 @@ fn master_command(
             master.do_send(MasterCommand::Quit);
             return true;
         }
-        Some("launch") => match std::process::Command::new(armour_data())
-            .arg(socket)
-            .spawn()
-        {
-            Ok(child) => log::info!("started processs: {}", child.id()),
-            Err(err) => log::warn!("failed to spawn data plane instance: {}", err),
-        },
+        Some(s @ "launch log") | Some(s @ "launch") => {
+            let log = if s.ends_with("log") {
+                "-l debug"
+            } else {
+                "-l error"
+            };
+            match std::process::Command::new(armour_data())
+                .arg(log)
+                .arg(socket)
+                .spawn()
+            {
+                Ok(child) => log::info!("started processs: {}", child.id()),
+                Err(err) => log::warn!("failed to spawn data plane instance: {}", err),
+            }
+        }
         Some("help") => println!(
             "COMMANDS:
     help                      list commands
-    launch                    start a new slave instance
+    launch [log]              start a new slave instance
     list                      list connected instances
     quit                      shutdown master and all instances
 

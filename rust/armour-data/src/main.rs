@@ -22,12 +22,23 @@ fn main() -> std::io::Result<()> {
                 .required(true)
                 .help("Unix socket of data plane master"),
         )
+        .arg(
+            Arg::with_name("log level")
+                .short("l")
+                .takes_value(true)
+                .help("log level: error, warn, info, debug, trace"),
+        )
         .get_matches();
 
+    let log_level = matches.value_of("log level").unwrap_or("debug");
+
     // enable logging
-    env::set_var("RUST_LOG", "armour_data=debug,actix_web=debug");
+    env::set_var(
+        "RUST_LOG",
+        format!("armour_data={l},actix_web={l}", l = log_level),
+    );
     env::set_var("RUST_BACKTRACE", "0");
-    env_logger::init();
+    pretty_env_logger::init();
 
     // process the command line arguments
     let proxy_port = matches.value_of("proxy port").map(|port| {

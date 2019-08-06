@@ -30,7 +30,7 @@ fn main() -> io::Result<()> {
     // enable logging
     std::env::set_var("RUST_LOG", "arm_policy=warn,actix=info");
     std::env::set_var("RUST_BACKTRACE", "0");
-    env_logger::init();
+    pretty_env_logger::init();
 
     // declare program
     let mut prog: lang::Program;
