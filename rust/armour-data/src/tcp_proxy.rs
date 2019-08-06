@@ -2,6 +2,7 @@ use actix::prelude::*;
 use bytes::{Bytes, BytesMut};
 use std::collections::HashSet;
 use std::net::SocketAddr;
+#[cfg(any(target_os = "linux"))]
 use std::os::unix::io::AsRawFd;
 use tokio_codec::{BytesCodec, FramedRead};
 use tokio_io::{io::WriteHalf, AsyncRead};
@@ -63,7 +64,10 @@ fn raw_original_dst(sock: &tokio_tcp::TcpStream) {
     if let Ok(sock_in) =
         nix::sys::socket::getsockopt(raw_fd, nix::sys::socket::sockopt::OriginalDst)
     {
-        debug!("SO_ORIGINAL_DST: {:?}", sock_in.sin_addr.s_addr)
+        debug!(
+            "SO_ORIGINAL_DST: {}",
+            std::net::Ipv4Addr::from(sock_in.sin_addr.s_addr)
+        )
     }
 }
 
