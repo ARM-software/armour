@@ -59,6 +59,7 @@ impl Message for TcpConnect {
 // - $TARGET_PATH/armour-data-master
 
 // Terminal 2 (for client)
+// - eval `docker-machine env armour`
 // - docker network create --subnet 10.0.0.0/28 -o "com.docker.network.bridge.name"="armour" armour
 // - docker run -ti --rm --net armour --ip 10.0.0.2 ubuntu
 //     - apt update
