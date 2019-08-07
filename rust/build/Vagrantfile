@@ -5,7 +5,7 @@ Vagrant.configure("2") do |config|
     vb.cpus = 2
   end
   config.vm.box = "ubuntu/bionic64"
-  config.vm.define "build-musl"
+  config.vm.define "rust-build"
   config.ssh.insert_key = false
   config.vm.synced_folder "../", "/home/vagrant/rust"
   config.vm.synced_folder "#{ENV['TARGET_DIR']}", "/home/vagrant/rust/target",
