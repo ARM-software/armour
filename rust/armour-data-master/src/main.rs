@@ -3,13 +3,12 @@
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
 use arm_policy::lang;
-use armour_data_interface::{own_ip, PolicyRequest, ProxyConfig, POLICY_SIG};
+use armour_data_interface::{PolicyRequest, ProxyConfig, POLICY_SIG};
 use armour_data_master as master;
 use clap::{crate_version, App, Arg};
 use master::{commands, MasterCommand};
 use rustyline::{completion, error::ReadlineError, hint, Editor};
 use std::io::{self, BufRead};
-use std::net::SocketAddr;
 use std::path::PathBuf;
 
 fn main() -> io::Result<()> {
@@ -137,8 +136,6 @@ fn run_command(
             return master_command(&master, caps, socket);
         } else if let Some(caps) = commands::INSTANCE0.captures(&cmd) {
             instance0_command(&master, caps)
-        } else if let Some(caps) = commands::INSTANCE2.captures(&cmd) {
-            instance2_command(&master, caps)
         } else if let Some(caps) = commands::INSTANCE1.captures(&cmd) {
             return instance1_command(&master, caps, socket);
         } else {
@@ -195,10 +192,8 @@ fn master_command(
     [<id>|all] remote <path>  ask instance to read policy from <path>
     [<id>|all] stop all       stop listening on all ports
     [<id>|all] stop <port>    stop listening on <port>
-    [<id>|all] start [streaming] <port>
-                              start listening for HTTP requests on <port>
-    [<id>|all] forward <port> <socket>
-                              start listening on <port> and forward to <socket>
+    [<id>|all] start [tcp|streaming] <port>
+                              start listening for HTTP/TCP requests on <port>
 
     <id>  instance ID number
     all   all instances"
@@ -230,6 +225,7 @@ fn instance0_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captu
     }
 }
 
+#[allow(clippy::cognitive_complexity)]
 fn instance1_command(
     master: &Addr<master::ArmourDataMaster>,
     caps: regex::Captures,
@@ -238,6 +234,14 @@ fn instance1_command(
     let arg = caps.name("arg").unwrap().as_str().trim_matches('"');
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     if let Some(request) = match command.as_ref().map(String::as_str) {
+        Some("start tcp") => {
+            if let Ok(port) = arg.parse::<u16>() {
+                Some(PolicyRequest::StartTcp(port))
+            } else {
+                log::warn!("start tcp: expecting port number, got {}", arg);
+                None
+            }
+        }
         Some(s @ "start") | Some(s @ "start streaming") | Some(s @ "stop") => {
             if let Ok(port) = arg.parse::<u16>() {
                 Some(if s.starts_with("start") {
@@ -330,75 +334,4 @@ fn instance1_command(
         ))
     }
     false
-}
-
-fn instance2_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captures) {
-    let arg = caps.name("arg").unwrap().as_str();
-    let port = caps.name("port").unwrap().as_str();
-    let command = caps.name("command").map(|s| s.as_str().to_lowercase());
-    if let Some(request) = match (port.parse::<u16>(), command.as_ref().map(String::as_str)) {
-        (Ok(port), Some("forward")) => match parse_socket(arg, port) {
-            Ok(socket) => Some(PolicyRequest::StartTcp(port, socket)),
-            Err(err) => {
-                if let Some(inner) = err.into_inner() {
-                    log::warn!("socket error: {}", inner)
-                } else {
-                    log::warn!("socket error")
-                };
-                None
-            }
-        },
-        (Err(_), Some("forward")) => {
-            log::info!("bad port");
-            None
-        }
-        _ => {
-            log::info!("unknown command");
-            None
-        }
-    } {
-        master.do_send(MasterCommand::UpdatePolicy(
-            commands::instance(&caps),
-            Box::new(request),
-        ))
-    }
-}
-
-fn other<E>(e: E) -> std::io::Error
-where
-    E: Into<Box<dyn std::error::Error + Send + Sync>>,
-{
-    std::io::Error::new(std::io::ErrorKind::Other, e)
-}
-
-fn parse_socket(s: &str, own_port: u16) -> io::Result<SocketAddr> {
-    match url::Url::parse(format!("x://{}", s).as_str()) {
-        Ok(url) => {
-            match (
-                url.host_str(),
-                url.port(),
-                trust_dns_resolver::Resolver::from_system_conf(),
-            ) {
-                (Some(host), Some(port), Ok(resolver)) => match resolver.lookup_ip(host) {
-                    Ok(res) => {
-                        if let Some(ip) = res.iter().next() {
-                            let socket = SocketAddr::from((ip, port));
-                            if port == own_port && own_ip(&socket.ip()) {
-                                Err(other("forward to self"))
-                            } else {
-                                Ok(socket)
-                            }
-                        } else {
-                            Err(other(format!(r#"failed to resolve "{}""#, host)))
-                        }
-                    }
-                    Err(err) => Err(other(format!(r#"failed to resolve "{}": {}"#, host, err))),
-                },
-                (None, _, _) => Err(other("missing host")),
-                (_, None, _) => Err(other("missing port")),
-                (_, _, Err(err)) => Err(other(err)),
-            }
-        }
-        Err(err) => Err(other(err)),
-    }
 }

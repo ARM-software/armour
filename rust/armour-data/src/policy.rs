@@ -254,7 +254,7 @@ impl Handler<PolicyRequest> for DataPolicy {
                     }
                 }
             }
-            PolicyRequest::StartTcp(port, socket) => match tcp_proxy::start_proxy(port, socket) {
+            PolicyRequest::StartTcp(port) => match tcp_proxy::start_proxy(port) {
                 Ok(server) => {
                     self.tcp_proxies.insert(port, server);
                     self.uds_framed.write(PolicyResponse::Started)

@@ -7,19 +7,12 @@ use std::os::unix::io::AsRawFd;
 use tokio_codec::{BytesCodec, FramedRead};
 use tokio_io::{io::WriteHalf, AsyncRead};
 
-pub fn start_proxy(
-    proxy_port: u16,
-    socket_out: SocketAddr,
-) -> std::io::Result<Addr<TcpDataServer>> {
+pub fn start_proxy(proxy_port: u16) -> std::io::Result<Addr<TcpDataServer>> {
     // start master actor (for keeping track of connections)
     let master = TcpDataMaster::start_default();
     // start server, listening for connections on a TCP socket
     let socket_in = SocketAddr::from(([0, 0, 0, 0], proxy_port));
-    log::info!(
-        "starting proxy on port {}, for socket {}",
-        proxy_port,
-        socket_out
-    );
+    log::info!("starting TCP repeater on port {}", proxy_port,);
     let listener = tokio_tcp::TcpListener::bind(&socket_in)?;
     let master_clone = master.clone();
     let server = TcpDataServer::create(move |ctx| {
@@ -27,7 +20,6 @@ pub fn start_proxy(
         TcpDataServer {
             master: master_clone,
             socket_in,
-            socket_out,
         }
     });
     Ok(server)
@@ -39,7 +31,6 @@ pub fn start_proxy(
 pub struct TcpDataServer {
     master: Addr<TcpDataMaster>,
     pub socket_in: SocketAddr,
-    pub socket_out: SocketAddr,
 }
 
 impl Actor for TcpDataServer {
@@ -58,17 +49,32 @@ impl Message for TcpConnect {
     type Result = Result<(), ()>;
 }
 
-#[cfg(any(target_os = "linux"))]
-fn raw_original_dst(sock: &tokio_tcp::TcpStream) {
-    let raw_fd = sock.as_raw_fd();
+#[cfg(target_os = "linux")]
+fn original_dst(sock: &tokio_tcp::TcpStream) -> Option<std::net::SocketAddr> {
     if let Ok(sock_in) =
-        nix::sys::socket::getsockopt(raw_fd, nix::sys::socket::sockopt::OriginalDst)
+        nix::sys::socket::getsockopt(sock.as_raw_fd(), nix::sys::socket::sockopt::OriginalDst)
     {
-        debug!(
-            "SO_ORIGINAL_DST: {}",
-            std::net::Ipv4Addr::from(sock_in.sin_addr.s_addr)
-        )
+        // swap byte order
+        let (addr, port) = if cfg!(target_endian = "little") {
+            (sock_in.sin_addr.s_addr.to_be(), sock_in.sin_port.to_be())
+        } else {
+            (sock_in.sin_addr.s_addr.to_le(), sock_in.sin_port.to_le())
+        };
+        let socket = std::net::SocketAddr::from(std::net::SocketAddrV4::new(
+            std::net::Ipv4Addr::from(addr),
+            port,
+        ));
+        Some(socket)
+    // log::debug!("SO_ORIGINAL_DST: {}", socket);
+    // None
+    } else {
+        None
     }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn original_dst(_sock: &tokio_tcp::TcpStream) -> Option<std::net::SocketAddr> {
+    None
 }
 
 impl Handler<TcpConnect> for TcpDataServer {
@@ -76,35 +82,44 @@ impl Handler<TcpConnect> for TcpDataServer {
     type Result = Box<dyn Future<Item = (), Error = ()>>;
 
     fn handle(&mut self, msg: TcpConnect, _: &mut Context<Self>) -> Self::Result {
-        #[cfg(any(target_os = "linux"))]
-        raw_original_dst(&msg.0);
-        // For each incoming connection we create `TcpDataClientInstance` actor
-        // We also create a `TcpDataServerInstance` actor
-        info!("{}: forward to {}", self.socket_in.port(), self.socket_out);
-        let master = self.master.clone();
-        let server = tokio_tcp::TcpStream::connect(&self.socket_out)
-            .and_then(move |sock| {
-                let client = TcpDataClientInstance::create(move |ctx| {
-                    let (r, w) = msg.0.split();
-                    TcpDataClientInstance::add_stream(FramedRead::new(r, BytesCodec::new()), ctx);
-                    TcpDataClientInstance {
-                        server: None,
-                        tcp_framed: actix::io::FramedWrite::new(w, BytesCodec::new(), ctx),
-                    }
-                });
-                TcpDataServerInstance::create(move |ctx| {
-                    let (r, w) = sock.split();
-                    TcpDataServerInstance::add_stream(FramedRead::new(r, BytesCodec::new()), ctx);
-                    TcpDataServerInstance {
-                        master,
-                        client,
-                        tcp_framed: actix::io::FramedWrite::new(w, BytesCodec::new(), ctx),
-                    }
-                });
-                Ok(())
-            })
-            .map_err(|err| warn!("{}", err));
-        Box::new(server)
+        if let Some(socket) = original_dst(&msg.0) {
+            // For each incoming connection we create `TcpDataClientInstance` actor
+            // We also create a `TcpDataServerInstance` actor
+            info!("{}: forward to {}", self.socket_in.port(), socket);
+            let master = self.master.clone();
+            let server = tokio_tcp::TcpStream::connect(&socket)
+                .and_then(move |sock| {
+                    let client = TcpDataClientInstance::create(move |ctx| {
+                        let (r, w) = msg.0.split();
+                        TcpDataClientInstance::add_stream(
+                            FramedRead::new(r, BytesCodec::new()),
+                            ctx,
+                        );
+                        TcpDataClientInstance {
+                            server: None,
+                            tcp_framed: actix::io::FramedWrite::new(w, BytesCodec::new(), ctx),
+                        }
+                    });
+                    TcpDataServerInstance::create(move |ctx| {
+                        let (r, w) = sock.split();
+                        TcpDataServerInstance::add_stream(
+                            FramedRead::new(r, BytesCodec::new()),
+                            ctx,
+                        );
+                        TcpDataServerInstance {
+                            master,
+                            client,
+                            tcp_framed: actix::io::FramedWrite::new(w, BytesCodec::new(), ctx),
+                        }
+                    });
+                    Ok(())
+                })
+                .map_err(|err| warn!("{}", err));
+            Box::new(server)
+        } else {
+            warn!("TCP repeating only available for linux");
+            Box::new(futures::future::ok(()))
+        }
     }
 }
 
