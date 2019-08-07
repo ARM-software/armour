@@ -49,6 +49,22 @@ impl Message for TcpConnect {
     type Result = Result<(), ()>;
 }
 
+// The following is needed for testing:
+
+// Terminal 1 (for armour-data-master)
+// - docker-machine create armour
+// - docker-machine ssh armour
+// - $ sudo iptables -t nat -I PREROUTING -i armour -p tcp --dport 443 -j DNAT --to-destination 127.0.0.1:8443
+// - sudo sysctl -w net.ipv4.conf.armour.route_localnet=1
+// - $TARGET_PATH/armour-data-master
+
+// Terminal 2 (for client)
+// - docker network create --subnet 10.0.0.0/28 -o "com.docker.network.bridge.name"="armour" armour
+// - docker run -ti --rm --net armour --ip 10.0.0.2 ubuntu
+//     - apt update
+//     - apt install curl
+//     - curl https://...
+
 #[cfg(target_os = "linux")]
 fn original_dst(sock: &tokio_tcp::TcpStream) -> Option<std::net::SocketAddr> {
     if let Ok(sock_in) =
