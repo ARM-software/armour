@@ -1,0 +1,18 @@
+# Ignore everything
+**
+
+# Allow files and directories
+!/arm-logger/
+!/arm-policy/
+!/arm-service/
+!/armour-data/
+!/armour-data-interface/
+!/armour-data-master/
+!/docker-compose-yaml/
+!/external-server/
+!/external-server-a/
+!/utils/
+
+# Ignore unnecessary files inside allowed directories
+# This should go after the allowed directories
+**/target
