@@ -69,8 +69,8 @@ echo "sysctl -w net.ipv4.ip_forward=1"  >> $IPTABLES_FILE;
 echo "iptables -t nat -I POSTROUTING -s 172.36.0.0/28 ! -o cloud -j MASQUERADE" >> $IPTABLES_FILE
 
 # Allows cloud contaier to move along with DOCKER rules
-echo "iptables -A FORWARD -o cloud -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"  >> $IPTABLES_FILE
-echo "iptables -A FORWARD -i cloud -j ACCEPT"  >> $IPTABLES_FILE
+echo "iptables -I FORWARD -o cloud -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"  >> $IPTABLES_FILE
+echo "iptables -I FORWARD -i cloud -j ACCEPT"  >> $IPTABLES_FILE
 
 echo "echo '172.39.0.2 notifications'		>> /etc/hosts" >> $IPTABLES_FILE
 echo "echo '172.38.0.2 mongo-web-interface'	>> /etc/hosts" >> $IPTABLES_FILE
