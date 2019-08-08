@@ -54,7 +54,7 @@ impl Message for TcpConnect {
 // Terminal 1 (for armour-data-master)
 // - docker-machine create armour
 // - docker-machine ssh armour
-// - $ sudo iptables -t nat -I PREROUTING -i armour -p tcp --dport 443 -j DNAT --to-destination 127.0.0.1:8443
+// - sudo iptables -t nat -I PREROUTING -i armour -p tcp --dport 443 -j DNAT --to-destination 127.0.0.1:8443
 // - sudo sysctl -w net.ipv4.conf.armour.route_localnet=1
 // - $TARGET_PATH/armour-data-master
 
@@ -102,7 +102,14 @@ impl Handler<TcpConnect> for TcpDataServer {
         if let Some(socket) = original_dst(&msg.0) {
             // For each incoming connection we create `TcpDataClientInstance` actor
             // We also create a `TcpDataServerInstance` actor
-            info!("{}: forward to {}", self.socket_in.port(), socket);
+            if let Ok(peer_addr) = msg.0.peer_addr() {
+                info!(
+                    "{}: received from {}, forwarding to {}",
+                    self.socket_in.port(),
+                    peer_addr,
+                    socket
+                )
+            }
             let master = self.master.clone();
             let server = tokio_tcp::TcpStream::connect(&socket)
                 .and_then(move |sock| {
