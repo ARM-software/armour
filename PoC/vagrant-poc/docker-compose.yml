@@ -183,6 +183,7 @@ services:
       - "on-during-conversation:172.20.0.2"
       - "temperature:172.19.0.2"
       - "vitals:172.18.0.2"
+      - "maker.ifttt.com:34.227.75.13"
     networks:
       cloud:
         ipv4_address: 172.36.0.2
@@ -215,6 +216,7 @@ services:
       - "on-during-conversation:172.20.0.2"
       - "temperature:172.19.0.2"
       - "vitals:172.18.0.2"
+      - "maker.ifttt.com:34.227.75.13"
     environment:
       MONGO_CONN: "mongodb://mongo"
       MY_NODE_NAME: "PoC-armour"
@@ -1003,9 +1005,8 @@ networks:
 
   cloud:
     driver: bridge
-    internal: true
     driver_opts:
-      com.docker.network.bridge.name: poc_cloud
+      com.docker.network.bridge.name: cloud
     ipam:
       config:
         - subnet: 172.36.0.0/28

@@ -4,6 +4,8 @@ Vagrant.configure("2") do |config|
   config.vm.network "public_network", bridge: "en0: Wi-Fi (Wireless)"
   config.vm.hostname = "PoC-armour"
   config.vm.network "forwarded_port", guest: 2376, host: 2376
+  config.vm.network "forwarded_port", guest: 80, host: 8080
+  config.vm.network "forwarded_port", guest: 81, host: 81
   config.ssh.insert_key = false
   config.vm.define "PoC-armour"
   config.vm.provider :virtualbox do |vb|
@@ -77,6 +79,5 @@ Vagrant.configure("2") do |config|
     cd /home/vagrant/armour/rust/docker
 		sudo ./build ~/armour/rust/armour-data-master/ armour-data-master armour-data
   SHELL
-
   config.vm.provision :docker_compose, rebuild: true, run: "always", yml: "/home/vagrant/PoC/docker-compose.yml"
 end
