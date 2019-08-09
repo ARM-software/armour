@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "armour-data",
+    "armour-data-interface",
+    "armour-data-master",
+    "armour-policy",
+]

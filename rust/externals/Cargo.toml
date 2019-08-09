@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "external-server",
+    "external-server-a",
+    "logger",
+]
