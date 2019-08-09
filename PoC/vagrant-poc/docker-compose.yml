@@ -1,39 +1,5 @@
 version: '3.0'
 services:
-  armour-data:
-    container_name: armour-data
-    hostname: armour-data
-    image: armour-data-master
-    tty: true
-    extra_hosts:
-      - "notifications:172.39.0.2"
-      - "mongo-web-interface:172.38.0.2"
-      - "mongo:172.37.0.2"
-      - "cloud-update:172.36.0.2"
-      - "accounting:172.35.0.2"
-      - "context:172.34.0.2"
-      - "mysql:172.33.0.2"
-      - "dbread:172.32.0.2"
-      - "dbwrite:172.31.0.2"
-      - "dtp:172.30.0.2"
-      - "debug:172.29.0.2"
-      - "launch:172.28.0.2"
-      - "mqtt-debug:172.27.0.2"
-      - "mqtt-trusted:172.26.0.2"
-      - "mqtt-public:172.25.0.2"
-      - "picolibri:172.24.0.2"
-      - "pipharm:172.23.0.2"
-      - "pulse:172.22.0.2"
-      - "verify-id:172.21.0.2"
-      - "on-during-conversation:172.20.0.2"
-      - "temperature:172.19.0.2"
-      - "vitals:172.18.0.2"
-    volumes:
-      - /vagrant/map:/root/map
-    networks:
-      proxy-net:
-        ipv4_address: 172.40.0.2
-
   digital-dolly:
     build:
       context: ./digital-dolly
@@ -92,7 +58,8 @@ services:
       args:
         registry: git.research.arm.com:4567
     environment:
-        MONGO_CONN: "mongodb://mongo/Ledger"
+        # MONGO_CONN: "mongodb://mongo/Ledger"
+        MONGO_CONN: "mongodb://172.37.0.2/Ledger"
         INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
     hostname: mongo-web-interface
     extra_hosts:
@@ -183,12 +150,12 @@ services:
       - "on-during-conversation:172.20.0.2"
       - "temperature:172.19.0.2"
       - "vitals:172.18.0.2"
-      - "maker.ifttt.com:34.227.75.13"
+      - "maker.ifttt.com:54.175.81.255"
     networks:
       cloud:
         ipv4_address: 172.36.0.2
     ports:
-      - 5000
+       - 5000
 
   accounting:
     build: ./accounting
@@ -216,9 +183,9 @@ services:
       - "on-during-conversation:172.20.0.2"
       - "temperature:172.19.0.2"
       - "vitals:172.18.0.2"
-      - "maker.ifttt.com:34.227.75.13"
     environment:
-      MONGO_CONN: "mongodb://mongo"
+      # MONGO_CONN: "mongodb://mongo"
+      MONGO_CONN: "mongodb://172.37.0.2/Ledger"
       MY_NODE_NAME: "PoC-armour"
     depends_on:
       - mongo
@@ -1005,12 +972,13 @@ networks:
 
   cloud:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: cloud
     ipam:
       config:
         - subnet: 172.36.0.0/28
-
+          
   mongo:
     driver: bridge
     internal: true
@@ -1038,10 +1006,10 @@ networks:
       config:
         - subnet: 172.39.0.0/28
 
-  proxy-net:
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.name: proxy-net
-    ipam:
-      config:
-        - subnet: 172.40.0.0/28
+  # proxy-net:
+  #   driver: bridge
+  #   driver_opts:
+  #     com.docker.network.bridge.name: proxy-net
+  #   ipam:
+  #     config:
+  #       - subnet: 172.40.0.0/28
