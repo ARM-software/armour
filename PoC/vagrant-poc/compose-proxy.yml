@@ -1,5 +1,39 @@
 version: '3.0'
 services:
+  armour-data:
+    container_name: armour-data
+    hostname: armour-data
+    image: armour-data-master
+    tty: true
+    extra_hosts:
+      - "notifications:172.39.0.2"
+      - "mongo-web-interface:172.38.0.2"
+      - "mongo:172.37.0.2"
+      - "cloud-update:172.36.0.2"
+      - "accounting:172.35.0.2"
+      - "context:172.34.0.2"
+      - "mysql:172.33.0.2"
+      - "dbread:172.32.0.2"
+      - "dbwrite:172.31.0.2"
+      - "dtp:172.30.0.2"
+      - "debug:172.29.0.2"
+      - "launch:172.28.0.2"
+      - "mqtt-debug:172.27.0.2"
+      - "mqtt-trusted:172.26.0.2"
+      - "mqtt-public:172.25.0.2"
+      - "picolibri:172.24.0.2"
+      - "pipharm:172.23.0.2"
+      - "pulse:172.22.0.2"
+      - "verify-id:172.21.0.2"
+      - "on-during-conversation:172.20.0.2"
+      - "temperature:172.19.0.2"
+      - "vitals:172.18.0.2"
+    volumes:
+      - /vagrant/map:/root/map
+    networks:
+      proxy-net:
+        ipv4_address: 172.40.0.2
+
   digital-dolly:
     build:
       context: ./digital-dolly
@@ -24,6 +58,7 @@ services:
         registry: git.research.arm.com:4567
     hostname: notifications
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
       - "cloud-update:172.36.0.2"
@@ -61,6 +96,7 @@ services:
         INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
     hostname: mongo-web-interface
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo:172.37.0.2"
       - "cloud-update:172.36.0.2"
@@ -94,6 +130,7 @@ services:
     image: mongo
     hostname: mongo
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "cloud-update:172.36.0.2"
@@ -124,6 +161,7 @@ services:
     build: ./cloud_comm
     hostname: cloud-update
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -156,6 +194,7 @@ services:
     build: ./accounting
     hostname: accounting
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -193,6 +232,7 @@ services:
     build: ./context
     hostname: context
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -233,6 +273,7 @@ services:
     build: ./mysql
     hostname: mysql
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -264,6 +305,7 @@ services:
   dbread:
     hostname: dbread
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -302,6 +344,7 @@ services:
   dbwrite:
     hostname: dbwrite
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -340,6 +383,7 @@ services:
   dtp:
     hostname: dtp
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -376,6 +420,7 @@ services:
   debug:
     hostname: debug
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -415,6 +460,7 @@ services:
     build: ./launch
     hostname: launch
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -450,6 +496,7 @@ services:
   mqtt-debug:
     hostname: mqtt-debug
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -483,6 +530,7 @@ services:
   mqtt-trusted:
     hostname: mqtt-trusted
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -516,6 +564,7 @@ services:
   mqtt-public:
     hostname: mqtt-public
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -549,6 +598,7 @@ services:
   picolibri:
     hostname: picolibri
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -583,6 +633,7 @@ services:
   pipharm:
     hostname: pipharm
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -617,6 +668,7 @@ services:
   pulse:
     hostname: pulse
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -652,6 +704,7 @@ services:
   verify-id:
     hostname: verify-id
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -686,6 +739,7 @@ services:
   on-during-conversation:
     hostname: on-during-conversation
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -723,6 +777,7 @@ services:
   temperature:
     hostname: temperature
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -755,6 +810,7 @@ services:
   vitals:
     hostname: vitals
     extra_hosts:
+      - "armour-data:172.40.0.2"
       - "notifications:172.39.0.2"
       - "mongo-web-interface:172.38.0.2"
       - "mongo:172.37.0.2"
@@ -981,3 +1037,11 @@ networks:
     ipam:
       config:
         - subnet: 172.39.0.0/28
+
+  proxy-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: proxy-net
+    ipam:
+      config:
+        - subnet: 172.40.0.0/28
