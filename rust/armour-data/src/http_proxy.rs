@@ -451,6 +451,9 @@ lazy_static! {
         let mut names = HashSet::new();
         if let Ok(resolver) = trust_dns_resolver::Resolver::from_system_conf() {
             for ip in armour_data_interface::INTERFACE_IPS.iter() {
+                if let Ok(name) = dns_lookup::lookup_addr(ip) {
+                    names.insert(name);
+                }
                 if let Ok(interface_names) = resolver.reverse_lookup(*ip) {
                     names.extend(
                         interface_names

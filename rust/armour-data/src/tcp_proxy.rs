@@ -1,3 +1,4 @@
+use super::{dns, Stop};
 use actix::prelude::*;
 use bytes::{Bytes, BytesMut};
 use std::collections::HashSet;
@@ -7,7 +8,10 @@ use std::os::unix::io::AsRawFd;
 use tokio_codec::{BytesCodec, FramedRead};
 use tokio_io::{io::WriteHalf, AsyncRead};
 
-pub fn start_proxy(proxy_port: u16) -> std::io::Result<Addr<TcpDataServer>> {
+pub fn start_proxy(
+    proxy_port: u16,
+    dns: Addr<dns::Resolver>,
+) -> std::io::Result<Addr<TcpDataServer>> {
     // start master actor (for keeping track of connections)
     let master = TcpDataMaster::start_default();
     // start server, listening for connections on a TCP socket
@@ -19,7 +23,8 @@ pub fn start_proxy(proxy_port: u16) -> std::io::Result<Addr<TcpDataServer>> {
         ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(TcpConnect));
         TcpDataServer {
             master: master_clone,
-            socket_in,
+            dns,
+            port: socket_in.port(),
         }
     });
     Ok(server)
@@ -30,13 +35,14 @@ pub fn start_proxy(proxy_port: u16) -> std::io::Result<Addr<TcpDataServer>> {
 /// When new data plane instances arrive, we give them the address of the master.
 pub struct TcpDataServer {
     master: Addr<TcpDataMaster>,
-    pub socket_in: SocketAddr,
+    dns: Addr<dns::Resolver>,
+    pub port: u16,
 }
 
 impl Actor for TcpDataServer {
     type Context = Context<Self>;
     fn stopped(&mut self, _ctx: &mut Context<Self>) {
-        info!("stopped socket: {}", self.socket_in);
+        info!("stopped socket: {}", self.port);
         self.master.do_send(Stop)
     }
 }
@@ -99,49 +105,74 @@ impl Handler<TcpConnect> for TcpDataServer {
     type Result = Box<dyn Future<Item = (), Error = ()>>;
 
     fn handle(&mut self, msg: TcpConnect, _: &mut Context<Self>) -> Self::Result {
+        // get the orgininal server socket address
         if let Some(socket) = original_dst(&msg.0) {
-            // For each incoming connection we create `TcpDataClientInstance` actor
-            // We also create a `TcpDataServerInstance` actor
             if let Ok(peer_addr) = msg.0.peer_addr() {
                 info!(
-                    "{}: received from {}, forwarding to {}",
-                    self.socket_in.port(),
-                    peer_addr,
-                    socket
-                )
+                    "TCP {}: received from {}, forwarding to {}",
+                    self.port, peer_addr, socket
+                );
+                // For each incoming connection we create `TcpDataClientInstance` actor
+                // We also create a `TcpDataServerInstance` actor
+                let master = self.master.clone();
+                let peer_ip = peer_addr.ip();
+                let socket_ip = socket.ip();
+                if socket.port() == self.port
+                    && armour_data_interface::INTERFACE_IPS.contains(&socket_ip)
+                {
+                    warn!("TCP {}: trying to forward to self", self.port);
+                    Box::new(futures::future::ok(()))
+                } else {
+                    let server = self
+                        .dns
+                        .send(dns::RevLookup(vec![peer_ip, socket_ip]))
+                        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+                        .and_then(move |names| {
+                            debug!("names: {:?}", names);
+                            tokio_tcp::TcpStream::connect(&socket).and_then(move |sock| {
+                                let client = TcpDataClientInstance::create(move |ctx| {
+                                    let (r, w) = msg.0.split();
+                                    TcpDataClientInstance::add_stream(
+                                        FramedRead::new(r, BytesCodec::new()),
+                                        ctx,
+                                    );
+                                    TcpDataClientInstance {
+                                        server: None,
+                                        tcp_framed: actix::io::FramedWrite::new(
+                                            w,
+                                            BytesCodec::new(),
+                                            ctx,
+                                        ),
+                                    }
+                                });
+                                TcpDataServerInstance::create(move |ctx| {
+                                    let (r, w) = sock.split();
+                                    TcpDataServerInstance::add_stream(
+                                        FramedRead::new(r, BytesCodec::new()),
+                                        ctx,
+                                    );
+                                    TcpDataServerInstance {
+                                        master,
+                                        client,
+                                        tcp_framed: actix::io::FramedWrite::new(
+                                            w,
+                                            BytesCodec::new(),
+                                            ctx,
+                                        ),
+                                    }
+                                });
+                                Ok(())
+                            })
+                        })
+                        .map_err(|err| warn!("{}", err));
+                    Box::new(server)
+                }
+            } else {
+                warn!("TCP {}: could not obtain source IP address", self.port);
+                Box::new(futures::future::ok(()))
             }
-            let master = self.master.clone();
-            let server = tokio_tcp::TcpStream::connect(&socket)
-                .and_then(move |sock| {
-                    let client = TcpDataClientInstance::create(move |ctx| {
-                        let (r, w) = msg.0.split();
-                        TcpDataClientInstance::add_stream(
-                            FramedRead::new(r, BytesCodec::new()),
-                            ctx,
-                        );
-                        TcpDataClientInstance {
-                            server: None,
-                            tcp_framed: actix::io::FramedWrite::new(w, BytesCodec::new(), ctx),
-                        }
-                    });
-                    TcpDataServerInstance::create(move |ctx| {
-                        let (r, w) = sock.split();
-                        TcpDataServerInstance::add_stream(
-                            FramedRead::new(r, BytesCodec::new()),
-                            ctx,
-                        );
-                        TcpDataServerInstance {
-                            master,
-                            client,
-                            tcp_framed: actix::io::FramedWrite::new(w, BytesCodec::new(), ctx),
-                        }
-                    });
-                    Ok(())
-                })
-                .map_err(|err| warn!("{}", err));
-            Box::new(server)
         } else {
-            warn!("TCP repeating only available for linux");
+            warn!("TCP {}: could not obtain original destination", self.port);
             Box::new(futures::future::ok(()))
         }
     }
@@ -225,9 +256,6 @@ impl StreamHandler<BytesMut, std::io::Error> for TcpDataClientInstance {
         ctx.stop()
     }
 }
-
-#[derive(Message)]
-pub struct Stop;
 
 impl Handler<Stop> for TcpDataServerInstance {
     type Result = ();

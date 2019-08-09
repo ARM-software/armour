@@ -186,6 +186,18 @@ impl Expr {
             _ => self,
         }
     }
+    fn async_resolver() -> (
+        trust_dns_resolver::AsyncResolver,
+        Box<Future<Item = (), Error = ()>>,
+    ) {
+        if let Ok((resolver, fut)) = AsyncResolver::from_system_conf() {
+            (resolver, Box::new(fut))
+        } else {
+            let (resolver, fut) =
+                AsyncResolver::new(ResolverConfig::default(), ResolverOpts::default());
+            (resolver, Box::new(fut))
+        }
+    }
     fn eval(self, env: Arc<Program>) -> Box<dyn Future<Item = Expr, Error = self::Error>> {
         match self {
             Expr::Var(_) | Expr::BVar(_) => Box::new(future::err(Error::new("eval variable"))),
@@ -676,16 +688,16 @@ impl Expr {
                                                 // needs to be evaluated with future (async resolver)
                                                 match l {
                                                     Literal::Ipv4Addr(ip) => {
-                                                        let (res, background_fut) = AsyncResolver::new(ResolverConfig::default(), ResolverOpts::default());
+                                                        let (res, background_fut) = Expr::async_resolver();
                                                         let fut = res.reverse_lookup(std::net::IpAddr::from(*ip));
                                                         future::Either::B(future::Either::B(future::Either::A(
                                                             background_fut
                                                                 .map_err(|()| Error::new("Ipv4Addr::reverse_lookup: no background"))
                                                                 .and_then(|()| {
                                                                     fut.and_then(|res| {
-                                                                        future::ok(Expr::LitExpr(Literal::List(
-                                                                            res.iter().map(|s| Literal::Str(s.to_utf8())).collect(),
-                                                                        ).some()))
+                                                                        future::ok(Expr::LitExpr(
+                                                                            Literal::List(res.iter().map(|s| Literal::Str(s.to_utf8())).collect()).some(),
+                                                                        ))
                                                                     })
                                                                     .or_else(|_| future::ok(Expr::LitExpr(Literal::none())))
                                                                 }),
@@ -697,19 +709,17 @@ impl Expr {
                                                 // needs to be evaluated with future (async resolver)
                                                 match l {
                                                     Literal::Str(ref name) => {
-                                                        let (res, background_fut) = AsyncResolver::new(ResolverConfig::default(), ResolverOpts::default());
+                                                        let (res, background_fut) = Expr::async_resolver();
                                                         let fut = res.ipv4_lookup(name.clone());
                                                         future::Either::B(future::Either::B(future::Either::B(
-                                                            background_fut
-                                                                .map_err(|()| Error::new("Ipv4Addr::lookup: no background"))
-                                                                .and_then(|()| {
-                                                                    fut.and_then(|res| {
-                                                                        future::ok(Expr::LitExpr(Literal::List(
-                                                                            res.iter().map(|ip| Literal::Ipv4Addr(*ip)).collect(),
-                                                                        ).some()))
-                                                                    })
-                                                                    .or_else(|_| future::ok(Expr::LitExpr(Literal::none())))
-                                                                }),
+                                                            background_fut.map_err(|()| Error::new("Ipv4Addr::lookup: no background")).and_then(|()| {
+                                                                fut.and_then(|res| {
+                                                                    future::ok(Expr::LitExpr(
+                                                                        Literal::List(res.iter().map(|ip| Literal::Ipv4Addr(*ip)).collect()).some(),
+                                                                    ))
+                                                                })
+                                                                .or_else(|_| future::ok(Expr::LitExpr(Literal::none())))
+                                                            }),
                                                         )))
                                                     }
                                                     x => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, x)))),

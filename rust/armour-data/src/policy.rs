@@ -1,5 +1,5 @@
 //! actix-web support for Armour policies
-use super::{http_proxy, tcp_proxy};
+use super::{dns, http_proxy, tcp_proxy, Stop};
 use actix::prelude::*;
 use actix_web::web;
 use arm_policy::{lang, literals};
@@ -20,6 +20,8 @@ pub struct DataPolicy {
     allow_all: bool,
     debug: bool,
     timeout: std::time::Duration,
+    // DNS actor
+    dns: Addr<dns::Resolver>,
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, PolicyCodec>,
     // proxies
@@ -45,6 +47,7 @@ impl DataPolicy {
                         allow_all: false,
                         debug: false,
                         timeout: std::time::Duration::from_secs(5),
+                        dns: dns::Resolver::start_default(),
                         uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
                         http_proxies: HashMap::new(),
                         tcp_proxies: HashMap::new(),
@@ -218,7 +221,7 @@ impl Handler<PolicyRequest> for DataPolicy {
                 }
                 None => match self.tcp_proxies.get(&port) {
                     Some(server) => {
-                        server.do_send(tcp_proxy::Stop);
+                        server.do_send(Stop);
                         self.tcp_proxies.remove(&port);
                         self.uds_framed.write(PolicyResponse::Stopped);
                         info!("stopped TCP proxy on port {}", port)
@@ -236,7 +239,7 @@ impl Handler<PolicyRequest> for DataPolicy {
                     info!("stopped proxy on port {}", port)
                 }
                 for (port, server) in self.tcp_proxies.drain() {
-                    server.do_send(tcp_proxy::Stop);
+                    server.do_send(Stop);
                     self.uds_framed.write(PolicyResponse::Stopped);
                     info!("stopped TCP proxy on port {}", port)
                 }
@@ -254,7 +257,7 @@ impl Handler<PolicyRequest> for DataPolicy {
                     }
                 }
             }
-            PolicyRequest::StartTcp(port) => match tcp_proxy::start_proxy(port) {
+            PolicyRequest::StartTcp(port) => match tcp_proxy::start_proxy(port, self.dns.clone()) {
                 Ok(server) => {
                     self.tcp_proxies.insert(port, server);
                     self.uds_framed.write(PolicyResponse::Started)
@@ -308,6 +311,7 @@ impl Actor for DataPolicy {
         info!("started Armour policy")
     }
     fn stopped(&mut self, _ctx: &mut Self::Context) {
+        self.dns.do_send(Stop);
         self.uds_framed.write(PolicyResponse::ShuttingDown);
         info!("stopped Armour policy")
     }
