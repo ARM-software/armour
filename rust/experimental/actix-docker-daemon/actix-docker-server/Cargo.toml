@@ -1,0 +1,30 @@
+[package]
+name = "actix-docker-server"
+version = "0.1.0"
+authors = ["guspet02 <gpetri@irif.fr>"]
+edition = "2018"
+
+[lib]
+name = "docker_lib"
+path = "../actix-docker-lib/src/lib.rs"
+
+[[bin]]
+name = "actix-docker-server"
+path = "src/main.rs"
+
+
+[dependencies]
+tokio = "0.1"
+futures = "0.1"
+tokio-io = "0.1"
+tokio-uds = "0.2.5"
+actix = "0.8"
+log = "0.4"
+env_logger = "0.6"
+serde = { version = "1.0",  features = ["derive"] }
+bytes = "0.4"
+byteorder = "1.3"
+bincode = "1.1"
+tokio-codec = "0.1"
+tokio-signal = "0.2"
+shiplift = "0.5.0"

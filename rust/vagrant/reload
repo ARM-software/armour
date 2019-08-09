@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+TARGET_DIR=~/armour-target/ vagrant reload

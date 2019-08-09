@@ -57,7 +57,8 @@ services:
       args:
         registry: git.research.arm.com:4567
     environment:
-        MONGO_CONN: "mongodb://mongo/Ledger"
+        # MONGO_CONN: "mongodb://mongo/Ledger"
+        MONGO_CONN: "mongodb://172.37.0.2/Ledger"
         INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
     hostname: mongo-web-interface
     extra_hosts:
@@ -145,12 +146,12 @@ services:
       - "on-during-conversation:172.20.0.2"
       - "temperature:172.19.0.2"
       - "vitals:172.18.0.2"
-      - "maker.ifttt.com:34.227.75.13"
+      - "maker.ifttt.com:54.175.81.255"
     networks:
       cloud:
         ipv4_address: 172.36.0.2
     ports:
-      - 5000
+       - 5000
 
   accounting:
     build: ./accounting
@@ -177,9 +178,9 @@ services:
       - "on-during-conversation:172.20.0.2"
       - "temperature:172.19.0.2"
       - "vitals:172.18.0.2"
-      - "maker.ifttt.com:34.227.75.13"
     environment:
-      MONGO_CONN: "mongodb://mongo"
+      # MONGO_CONN: "mongodb://mongo"
+      MONGO_CONN: "mongodb://172.37.0.2/Ledger"
       MY_NODE_NAME: "PoC-armour"
     depends_on:
       - mongo
@@ -949,6 +950,7 @@ networks:
 
   cloud:
     driver: bridge
+    internal: true
     driver_opts:
       com.docker.network.bridge.name: cloud
     ipam:
