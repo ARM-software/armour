@@ -2,9 +2,9 @@
 //!
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
-use armour_policy::lang;
 use armour_data_interface::{PolicyRequest, ProxyConfig, POLICY_SIG};
 use armour_data_master as master;
+use armour_policy::lang;
 use clap::{crate_version, App, Arg};
 use master::{commands, MasterCommand};
 use rustyline::{completion, error::ReadlineError, hint, Editor};

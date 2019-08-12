@@ -189,7 +189,8 @@ impl Externals {
                 }
             }
             Literal::HttpRequest(req) => Externals::build_value(v, &req.to_literal())?,
-            Literal::Ipv4Addr(ip) => Externals::build_value(v, &ip.to_literal())?,
+            Literal::ID(id) => Externals::build_value(v, &id.to_literal())?,
+            Literal::IpAddr(ip) => Externals::build_value(v, &ip.to_literal())?,
             Literal::Policy(p) => v.set_text(p.to_string().as_str()),
         }
         Ok(())

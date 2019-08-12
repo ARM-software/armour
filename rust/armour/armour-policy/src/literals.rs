@@ -1,6 +1,6 @@
 use super::types::Typ;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Display};
 use std::str::FromStr;
 use url;
@@ -184,8 +184,74 @@ impl HttpRequest {
     }
 }
 
+#[derive(PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
+pub struct ID {
+    hosts: BTreeSet<String>,
+    ips: BTreeSet<std::net::IpAddr>,
+    port: Option<u16>,
+}
+
+impl ID {
+    pub fn hosts(&self) -> Literal {
+        Literal::List(
+            self.hosts
+                .iter()
+                .map(|s| Literal::Str(s.to_string()))
+                .collect(),
+        )
+    }
+    pub fn ips(&self) -> Literal {
+        Literal::List(self.ips.iter().map(|ip| Literal::IpAddr(*ip)).collect())
+    }
+    pub fn port(&self) -> Literal {
+        match self.port {
+            Some(p) => Literal::Int(p.into()).some(),
+            None => Literal::none(),
+        }
+    }
+    pub fn add_host(&self, host: &str) -> ID {
+        let mut new = self.clone();
+        new.hosts.insert(host.to_string());
+        new
+    }
+    pub fn add_ip(&self, ip: std::net::IpAddr) -> ID {
+        let mut new = self.clone();
+        new.ips.insert(ip);
+        new
+    }
+    pub fn set_port(&self, port: u16) -> ID {
+        let mut new = self.clone();
+        new.port = Some(port);
+        new
+    }
+}
+
 pub trait ToLiteral {
     fn to_literal(&self) -> Literal;
+}
+
+impl ToLiteral for std::net::IpAddr {
+    fn to_literal(&self) -> Literal {
+        match self {
+            std::net::IpAddr::V4(ip) => {
+                let [a, b, c, d] = ip.octets();
+                #[allow(clippy::cast_lossless)]
+                Literal::Tuple(vec![
+                    Literal::Int(a as i64),
+                    Literal::Int(b as i64),
+                    Literal::Int(c as i64),
+                    Literal::Int(d as i64),
+                ])
+            }
+            std::net::IpAddr::V6(ip) => {
+                if let Some(ipv4) = ip.to_ipv4() {
+                    std::net::IpAddr::V4(ipv4).to_literal()
+                } else {
+                    Literal::none()
+                }
+            }
+        }
+    }
 }
 
 impl ToLiteral for HttpRequest {
@@ -200,16 +266,9 @@ impl ToLiteral for HttpRequest {
     }
 }
 
-impl ToLiteral for std::net::Ipv4Addr {
+impl ToLiteral for ID {
     fn to_literal(&self) -> Literal {
-        let [a, b, c, d] = self.octets();
-        #[allow(clippy::cast_lossless)]
-        Literal::Tuple(vec![
-            Literal::Int(a as i64),
-            Literal::Int(b as i64),
-            Literal::Int(c as i64),
-            Literal::Int(d as i64),
-        ])
+        Literal::Tuple(vec![self.hosts(), self.ips(), self.port()])
     }
 }
 
@@ -243,10 +302,11 @@ pub enum Literal {
     Data(Vec<u8>),
     Str(String),
     Policy(Policy),
-    Ipv4Addr(std::net::Ipv4Addr),
+    IpAddr(std::net::IpAddr),
     List(Vec<Literal>),
     Tuple(Vec<Literal>),
     HttpRequest(HttpRequest),
+    ID(ID),
     Unit,
 }
 
@@ -266,10 +326,11 @@ impl Literal {
             Literal::Str(_) => Typ::Str,
             Literal::Data(_) => Typ::Data,
             Literal::Policy(_) => Typ::Policy,
-            Literal::Ipv4Addr(_) => Typ::Ipv4Addr,
+            Literal::IpAddr(_) => Typ::IpAddr,
             Literal::List(l) => l.get(0).map(|t| t.typ()).unwrap_or(Typ::Return),
             Literal::Tuple(l) => Typ::Tuple((*l).iter().map(|t: &Literal| t.typ()).collect()),
             Literal::HttpRequest(_) => Typ::HttpRequest,
+            Literal::ID(_) => Typ::ID,
         }
     }
     pub fn none() -> Literal {
@@ -306,7 +367,7 @@ impl fmt::Display for Literal {
             Literal::Data(d) => write!(f, "{:x?}", d),
             Literal::Str(s) => write!(f, r#""{}""#, s),
             Literal::Policy(p) => write!(f, "{:?}", p),
-            Literal::Ipv4Addr(ip) => write!(f, "{}", ip),
+            Literal::IpAddr(ip) => write!(f, "{}", ip),
             Literal::List(lits) | Literal::Tuple(lits) => {
                 let s = lits
                     .iter()
@@ -324,6 +385,7 @@ impl fmt::Display for Literal {
                 }
             }
             Literal::HttpRequest(r) => write!(f, "{:?}", r),
+            Literal::ID(id) => write!(f, "{:?}", id),
             Literal::Unit => write!(f, "()"),
         }
     }

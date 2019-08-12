@@ -253,6 +253,9 @@ impl Expr {
     pub fn http_request(r: literals::HttpRequest) -> Expr {
         Expr::LitExpr(Literal::HttpRequest(r))
     }
+    pub fn id(id: literals::ID) -> Expr {
+        Expr::LitExpr(Literal::ID(id))
+    }
     pub fn none() -> Expr {
         Expr::LitExpr(Literal::none())
     }

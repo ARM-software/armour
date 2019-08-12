@@ -2,10 +2,9 @@
 use super::{dns, http_proxy, tcp_proxy, Stop};
 use actix::prelude::*;
 use actix_web::web;
-use armour_policy::{lang, literals};
 use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse};
+use armour_policy::{lang, literals};
 use futures::{future, Future};
-use literals::ToLiteral;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio_codec::FramedRead;
@@ -158,11 +157,13 @@ impl Handler<Check> for DataPolicy {
     }
 }
 
+type BExpr = Box<lang::Expr>;
+
 /// Internal proxy message for requesting function evaluation over the policy
 pub enum Evaluate {
     Require0,
     Require1(lang::Expr),
-    Require2(lang::Expr, lang::Expr),
+    Require3(BExpr, BExpr, BExpr),
     ClientPayload(lang::Expr),
     ServerPayload(lang::Expr),
 }
@@ -178,7 +179,9 @@ impl Handler<Evaluate> for DataPolicy {
         match msg {
             Evaluate::Require0 => self.evaluate_policy("require", Vec::new()),
             Evaluate::Require1(arg1) => self.evaluate_policy("require", vec![arg1]),
-            Evaluate::Require2(arg1, arg2) => self.evaluate_policy("require", vec![arg1, arg2]),
+            Evaluate::Require3(arg1, arg2, arg3) => {
+                self.evaluate_policy("require", vec![*arg1, *arg2, *arg3])
+            }
             Evaluate::ClientPayload(arg) => self.evaluate_policy("client_payload", vec![arg]),
             Evaluate::ServerPayload(arg) => self.evaluate_policy("server_payload", vec![arg]),
         }
@@ -352,9 +355,33 @@ impl ToArmourExpression for web::BytesMut {
 
 impl ToArmourExpression for Option<std::net::SocketAddr> {
     fn to_expression(&self) -> lang::Expr {
-        match self {
-            Some(std::net::SocketAddr::V4(addr)) => lang::Expr::some(addr.ip().to_literal()),
-            _ => lang::Expr::none(),
+        let mut id = literals::ID::default();
+        if let Some(addr) = self {
+            let ip = addr.ip();
+            id = id.add_ip(ip);
+            id = id.set_port(addr.port());
+            if let Ok(host) = dns_lookup::lookup_addr(&ip) {
+                id = id.add_host(&host)
+            }
         }
+        lang::Expr::id(id)
+    }
+}
+
+impl ToArmourExpression for url::Url {
+    fn to_expression(&self) -> lang::Expr {
+        let mut id = literals::ID::default();
+        if let Some(host) = self.host_str() {
+            id = id.add_host(host);
+            if let Ok(ips) = dns_lookup::lookup_host(host) {
+                for ip in ips {
+                    id = id.add_ip(ip)
+                }
+            }
+        }
+        if let Some(port) = self.port() {
+            id = id.set_port(port)
+        }
+        lang::Expr::id(id)
     }
 }

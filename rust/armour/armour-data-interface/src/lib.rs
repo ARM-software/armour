@@ -48,15 +48,14 @@ trait SerializeEncoder<T: serde::Serialize, E: std::convert::From<std::io::Error
 
 lazy_static! {
     pub static ref POLICY_SIG: Vec<(String, Vec<Signature>)> = {
-        let require_args = vec![Typ::HttpRequest, Typ::Ipv4Addr.option()];
         vec![
             (
                 "require".to_string(),
                 vec![
+                    Signature::new(vec![Typ::HttpRequest, Typ::ID, Typ::ID], Typ::Bool),
+                    Signature::new(vec![Typ::HttpRequest, Typ::ID, Typ::ID], Typ::Policy),
                     Signature::new(vec![Typ::HttpRequest], Typ::Bool),
                     Signature::new(vec![Typ::HttpRequest], Typ::Policy),
-                    Signature::new(require_args.clone(), Typ::Bool),
-                    Signature::new(require_args, Typ::Policy),
                     Signature::new(Vec::new(), Typ::Bool),
                     Signature::new(Vec::new(), Typ::Policy),
                 ],

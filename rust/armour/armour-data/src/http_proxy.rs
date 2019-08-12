@@ -49,6 +49,9 @@ pub fn proxy(
     config: web::Data<ProxyConfig>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     policy.send(policy::Check).then(|p| {
+        if let Ok(policy::Policy { debug: true, .. }) = p {
+            debug!("{:?}", req)
+        }
         match p {
             // reject request
             Ok(policy::Policy {
@@ -70,64 +73,76 @@ pub fn proxy(
                         server_payload,
                         ..
                     }),
-                debug,
                 ..
             }) => {
-                let no_decompress = config.response_streaming && !server_payload;
-                if debug {
-                    debug!("{:?}", req)
-                };
-                let message = match args {
-                    0 => policy::Evaluate::Require0,
-                    1 => policy::Evaluate::Require1(req.to_expression()),
-                    _ => policy::Evaluate::Require2(
-                        req.to_expression(),
-                        req.peer_addr().to_expression(),
-                    ),
-                };
-                future::Either::A(policy.send(message).then(move |res| match res {
-                    // allow request
-                    Ok(Ok(true)) => future::Either::A(request(
+                match req.forward_url((*config).port) {
+                    Ok(url) => {
+                        let message = match args {
+                            0 => policy::Evaluate::Require0,
+                            1 => policy::Evaluate::Require1(req.to_expression()),
+                            _ => policy::Evaluate::Require3(
+                                Box::new(req.to_expression()),
+                                Box::new(req.peer_addr().to_expression()),
+                                Box::new(url.to_expression()),
+                            ),
+                        };
+                        future::Either::A(policy.send(message).then(move |res| match res {
+                            // allow request
+                            Ok(Ok(true)) => future::Either::A({
+                                let no_decompress = config.response_streaming && !server_payload;
+                                request(
+                                    p.unwrap(),
+                                    req,
+                                    url,
+                                    payload,
+                                    policy,
+                                    client,
+                                    config,
+                                    no_decompress,
+                                )
+                            }),
+                            // reject
+                            Ok(Ok(false)) => {
+                                future::Either::B(future::ok(unauthorized("request denied")))
+                            }
+                            // policy error
+                            Ok(Err(e)) => {
+                                warn!("{}", e);
+                                future::Either::B(future::ok(internal()))
+                            }
+                            // actor error
+                            Err(e) => {
+                                warn!("{}", e);
+                                future::Either::B(future::ok(internal()))
+                            }
+                        }))
+                    }
+                    Err(e) => {
+                        warn!("{}", e);
+                        future::Either::B(future::Either::A(future::ok(internal())))
+                    }
+                }
+            }
+            // allow request
+            Ok(policy::Policy { fns: None, .. }) => match req.forward_url((*config).port) {
+                Ok(url) => {
+                    let no_decompress = config.response_streaming;
+                    future::Either::B(future::Either::B(request(
                         p.unwrap(),
                         req,
+                        url,
                         payload,
                         policy,
                         client,
                         config,
                         no_decompress,
-                    )),
-                    // reject
-                    Ok(Ok(false)) => future::Either::B(future::ok(unauthorized("request denied"))),
-                    // policy error
-                    Ok(Err(e)) => {
-                        warn!("{}", e);
-                        future::Either::B(future::ok(internal()))
-                    }
-                    // actor error
-                    Err(e) => {
-                        warn!("{}", e);
-                        future::Either::B(future::ok(internal()))
-                    }
-                }))
-            }
-            // allow request
-            Ok(policy::Policy {
-                fns: None, debug, ..
-            }) => {
-                let no_decompress = config.response_streaming;
-                if debug {
-                    debug!("{:?}", req)
-                };
-                future::Either::B(future::Either::B(request(
-                    p.unwrap(),
-                    req,
-                    payload,
-                    policy,
-                    client,
-                    config,
-                    no_decompress,
-                )))
-            }
+                    )))
+                }
+                Err(err) => {
+                    warn!("{}", err);
+                    future::Either::B(future::Either::A(future::ok(internal())))
+                }
+            },
             Ok(policy::Policy {
                 fns:
                     Some(policy::PolicyFns {
@@ -135,23 +150,26 @@ pub fn proxy(
                         server_payload,
                         ..
                     }),
-                debug,
                 ..
-            }) => {
-                let no_decompress = config.response_streaming && !server_payload;
-                if debug {
-                    debug!("{:?}", req)
-                };
-                future::Either::B(future::Either::B(request(
-                    p.unwrap(),
-                    req,
-                    payload,
-                    policy,
-                    client,
-                    config,
-                    no_decompress,
-                )))
-            }
+            }) => match req.forward_url((*config).port) {
+                Ok(url) => {
+                    let no_decompress = config.response_streaming && !server_payload;
+                    future::Either::B(future::Either::B(request(
+                        p.unwrap(),
+                        req,
+                        url,
+                        payload,
+                        policy,
+                        client,
+                        config,
+                        no_decompress,
+                    )))
+                }
+                Err(err) => {
+                    warn!("{}", err);
+                    future::Either::B(future::Either::A(future::ok(internal())))
+                }
+            },
             // actor error from sending message Check
             Err(err) => {
                 warn!("{}", err);
@@ -162,9 +180,11 @@ pub fn proxy(
 }
 
 // Process request (so far it's allow by the policy)
+#[allow(clippy::too_many_arguments)]
 pub fn request(
     p: Policy,
     req: HttpRequest,
+    url: url::Url,
     payload: web::Payload,
     policy: web::Data<actix::Addr<policy::DataPolicy>>,
     client: web::Data<Client>,
@@ -197,33 +217,31 @@ pub fn request(
                             match res {
                                 // allow payload
                                 Ok(Ok(true)) => {
-                                    future::Either::A(req.forward_url((*config).port).and_then(
-                                        move |url| {
-                                            let mut client_request = client
-                                                .request_from(url.as_str(), req.head())
-                                                .process_headers(req.peer_addr())
-                                                .timeout(timeout);
-                                            if no_decompress {
-                                                client_request = client_request.no_decompress()
-                                            }
-                                            if debug {
-                                                debug!("{:?}", client_request)
-                                            };
-                                            client_request
-                                                // forward the request (with the original client payload)
-                                                .send_body(client_payload)
-                                                // send the response back to the client
-                                                .then(move |res| {
-                                                    response(
-                                                        p,
-                                                        policy,
-                                                        res,
-                                                        config.response_streaming,
-                                                        no_decompress,
-                                                    )
-                                                })
-                                        },
-                                    ))
+                                    let mut client_request = client
+                                        .request_from(url.as_str(), req.head())
+                                        .process_headers(req.peer_addr())
+                                        .timeout(timeout);
+                                    if no_decompress {
+                                        client_request = client_request.no_decompress()
+                                    }
+                                    if debug {
+                                        debug!("{:?}", client_request)
+                                    };
+                                    future::Either::A(
+                                        client_request
+                                            // forward the request (with the original client payload)
+                                            .send_body(client_payload)
+                                            // send the response back to the client
+                                            .then(move |res| {
+                                                response(
+                                                    p,
+                                                    policy,
+                                                    res,
+                                                    config.response_streaming,
+                                                    no_decompress,
+                                                )
+                                            }),
+                                    )
                                 }
                                 // reject
                                 Ok(Ok(false)) => future::Either::B(future::ok(unauthorized(
@@ -245,54 +263,52 @@ pub fn request(
         ),
         // allow client payload without check
         policy::Policy { debug, timeout, .. } => {
-            future::Either::B(req.forward_url((*config).port).and_then(move |url| {
-                let mut client_request = client
-                    .request_from(url.as_str(), req.head())
-                    .process_headers(req.peer_addr())
-                    .timeout(timeout);
-                // let server_payload = fns.map(|x| x.server_payload).unwrap_or(false);
-                if no_decompress {
-                    client_request = client_request.no_decompress()
-                }
-                if debug {
-                    debug!("{:?}", client_request)
-                };
-                if config.request_streaming {
-                    future::Either::A(
-                        client_request
-                            // forward the request (with the original client payload)
-                            .send_stream(payload)
-                            // send the response back to the client
-                            .then(move |res| {
-                                response(p, policy, res, config.response_streaming, no_decompress)
-                            }),
-                    )
-                } else {
-                    future::Either::B(
-                        payload
-                            .from_err()
-                            .fold(web::BytesMut::new(), |mut body, chunk| {
-                                body.extend_from_slice(&chunk);
-                                Ok::<_, Error>(body)
-                            })
-                            .and_then(move |client_payload| {
-                                client_request
-                                    // forward the request (with the original client payload)
-                                    .send_body(client_payload)
-                                    // send the response back to the client
-                                    .then(move |res| {
-                                        response(
-                                            p,
-                                            policy,
-                                            res,
-                                            config.response_streaming,
-                                            no_decompress,
-                                        )
-                                    })
-                            }),
-                    )
-                }
-            }))
+            let mut client_request = client
+                .request_from(url.as_str(), req.head())
+                .process_headers(req.peer_addr())
+                .timeout(timeout);
+            // let server_payload = fns.map(|x| x.server_payload).unwrap_or(false);
+            if no_decompress {
+                client_request = client_request.no_decompress()
+            }
+            if debug {
+                debug!("{:?}", client_request)
+            };
+            future::Either::B(if config.request_streaming {
+                future::Either::A(
+                    client_request
+                        // forward the request (with the original client payload)
+                        .send_stream(payload)
+                        // send the response back to the client
+                        .then(move |res| {
+                            response(p, policy, res, config.response_streaming, no_decompress)
+                        }),
+                )
+            } else {
+                future::Either::B(
+                    payload
+                        .from_err()
+                        .fold(web::BytesMut::new(), |mut body, chunk| {
+                            body.extend_from_slice(&chunk);
+                            Ok::<_, Error>(body)
+                        })
+                        .and_then(move |client_payload| {
+                            client_request
+                                // forward the request (with the original client payload)
+                                .send_body(client_payload)
+                                // send the response back to the client
+                                .then(move |res| {
+                                    response(
+                                        p,
+                                        policy,
+                                        res,
+                                        config.response_streaming,
+                                        no_decompress,
+                                    )
+                                })
+                        }),
+                )
+            })
         }
     }
 }
@@ -319,6 +335,9 @@ pub fn response(
                 // debug!("header {}: {:?}", header_name, header_value);
                 client_resp.header(header_name.clone(), header_value.clone());
             }
+            if p.debug {
+                debug!("{:?}", client_resp)
+            }
             future::Either::A(match p {
                 policy::Policy {
                     fns:
@@ -326,12 +345,8 @@ pub fn response(
                             server_payload: true,
                             ..
                         }),
-                    debug,
                     ..
                 } => {
-                    if debug {
-                        debug! {"{:?}", client_resp}
-                    };
                     future::Either::A(
                         // get the server payload
                         res.from_err()
@@ -368,21 +383,7 @@ pub fn response(
                             }),
                     )
                 }
-                policy::Policy {
-                    fns: None, debug, ..
-                }
-                | policy::Policy {
-                    fns:
-                        Some(policy::PolicyFns {
-                            server_payload: false,
-                            ..
-                        }),
-                    debug,
-                    ..
-                } => {
-                    if debug {
-                        debug! {"{:?}", client_resp}
-                    };
+                _ => {
                     if response_streaming {
                         future::Either::B(future::Either::A(future::ok(client_resp.streaming(res))))
                     } else {
@@ -415,14 +416,14 @@ fn unauthorized(message: &'static str) -> HttpResponse {
 
 /// Extract a forwarding URL
 trait ForwardUrl {
-    fn forward_url(&self, proxy_port: u16) -> Box<dyn Future<Item = url::Url, Error = Error>>
+    fn forward_url(&self, proxy_port: u16) -> Result<url::Url, Error>
     where
         Self: Sized;
 }
 
 // Get forwarding address from headers
 impl ForwardUrl for HttpRequest {
-    fn forward_url(&self, proxy_port: u16) -> Box<dyn Future<Item = url::Url, Error = Error>> {
+    fn forward_url(&self, proxy_port: u16) -> Result<url::Url, Error> {
         let info = self.connection_info();
         match url::Url::parse(&format!(
             "{}://{}{}",
@@ -435,13 +436,13 @@ impl ForwardUrl for HttpRequest {
                     && url.host().map(is_local_host).unwrap_or(true)
                 {
                     warn!("trying to proxy self");
-                    Box::new(future::err("cannot proxy self".to_actix()))
+                    Err("cannot proxy self".to_actix())
                 } else {
                     info!("forward URL is: {}", url);
-                    Box::new(future::ok(url))
+                    Ok(url)
                 }
             }
-            Err(err) => Box::new(future::err(err.to_actix())),
+            Err(err) => Err(err.to_actix()),
         }
     }
 }

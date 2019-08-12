@@ -78,20 +78,27 @@ impl Headers {
                 vec![Typ::HttpRequest, Typ::Str, Typ::Data],
                 Typ::HttpRequest,
             ),
-            "Ipv4Addr::lookup" => sig(
+            "IpAddr::lookup" => sig(
                 vec![Typ::Str],
-                Typ::Tuple(vec![Typ::List(Box::new(Typ::Ipv4Addr))]),
+                Typ::Tuple(vec![Typ::List(Box::new(Typ::IpAddr))]),
             ),
-            "Ipv4Addr::reverse_lookup" => sig(
-                vec![Typ::Ipv4Addr],
+            "IpAddr::reverse_lookup" => sig(
+                vec![Typ::IpAddr],
                 Typ::Tuple(vec![Typ::List(Box::new(Typ::Str))]),
             ),
-            "Ipv4Addr::localhost" => sig(vec![], Typ::Ipv4Addr),
-            "Ipv4Addr::from" => sig(vec![Typ::I64, Typ::I64, Typ::I64, Typ::I64], Typ::Ipv4Addr),
-            "Ipv4Addr::octets" => sig(
-                vec![Typ::Ipv4Addr],
+            "IpAddr::localhost" => sig(vec![], Typ::IpAddr),
+            "IpAddr::from" => sig(vec![Typ::I64, Typ::I64, Typ::I64, Typ::I64], Typ::IpAddr),
+            "IpAddr::octets" => sig(
+                vec![Typ::IpAddr],
                 Typ::Tuple(vec![Typ::I64, Typ::I64, Typ::I64, Typ::I64]),
             ),
+            "ID::default" => sig(vec![], Typ::ID),
+            "ID::hosts" => sig(vec![Typ::ID], Typ::List(Box::new(Typ::Str))),
+            "ID::ips" => sig(vec![Typ::ID], Typ::List(Box::new(Typ::IpAddr))),
+            "ID::port" => sig(vec![Typ::ID], Typ::I64.option()),
+            "ID::add_host" => sig(vec![Typ::ID, Typ::Str], Typ::ID),
+            "ID::add_ip" => sig(vec![Typ::ID, Typ::IpAddr], Typ::ID),
+            "ID::set_port" => sig(vec![Typ::ID, Typ::I64], Typ::ID),
             _ => None,
         }
     }

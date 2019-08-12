@@ -28,7 +28,7 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     // enable logging
-    std::env::set_var("RUST_LOG", "arm_policy=warn,actix=info");
+    std::env::set_var("RUST_LOG", "armour_policy=warn,actix=info");
     std::env::set_var("RUST_BACKTRACE", "0");
     pretty_env_logger::init();
 

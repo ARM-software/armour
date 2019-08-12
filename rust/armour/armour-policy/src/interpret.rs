@@ -56,7 +56,10 @@ impl Literal {
     fn eval_call0(f: &str) -> Option<Self> {
         match f {
             "HttpRequest::default" => Some(Literal::HttpRequest(Default::default())),
-            "Ipv4Addr::localhost" => Some(Literal::Ipv4Addr(std::net::Ipv4Addr::new(127, 0, 0, 1))),
+            "ID::default" => Some(Literal::ID(Default::default())),
+            "IpAddr::localhost" => Some(Literal::IpAddr(std::net::IpAddr::V4(
+                std::net::Ipv4Addr::new(127, 0, 0, 1),
+            ))),
             _ => None,
         }
     }
@@ -88,7 +91,10 @@ impl Literal {
             ("HttpRequest::header_pairs", Literal::HttpRequest(req)) => Some(req.header_pairs()),
             ("HttpRequest::headers", Literal::HttpRequest(req)) => Some(req.headers()),
             ("list::len", Literal::List(l)) => Some(Literal::Int(l.len() as i64)),
-            ("Ipv4Addr::octets", Literal::Ipv4Addr(ip)) => Some(ip.to_literal()),
+            ("IpAddr::octets", Literal::IpAddr(ip)) => Some(ip.to_literal()),
+            ("ID::hosts", Literal::ID(id)) => Some(id.hosts()),
+            ("ID::ips", Literal::ID(id)) => Some(id.ips()),
+            ("ID::port", Literal::ID(id)) => Some(id.port()),
             (_, Literal::Tuple(l)) => {
                 if let Ok(i) = f.parse::<usize>() {
                     l.get(i).cloned()
@@ -126,6 +132,11 @@ impl Literal {
             ("HttpRequest::header", Literal::HttpRequest(req), Literal::Str(h)) => {
                 Some(req.header(&h))
             }
+            ("ID::add_host", Literal::ID(id), Literal::Str(q)) => Some(Literal::ID(id.add_host(q))),
+            ("ID::add_ip", Literal::ID(id), Literal::IpAddr(q)) => Some(Literal::ID(id.add_ip(*q))),
+            ("ID::set_port", Literal::ID(id), Literal::Int(q)) => {
+                Some(Literal::ID(id.set_port(*q as u16)))
+            }
             _ => None,
         }
     }
@@ -144,13 +155,13 @@ impl Literal {
     fn eval_call4(&self, f: &str, l1: &Literal, l2: &Literal, l3: &Literal) -> Option<Self> {
         match (f, self, l1, l2, l3) {
             (
-                "Ipv4Addr::from",
+                "IpAddr::from",
                 Literal::Int(a),
                 Literal::Int(b),
                 Literal::Int(c),
                 Literal::Int(d),
-            ) => Some(Literal::Ipv4Addr(std::net::Ipv4Addr::new(
-                *a as u8, *b as u8, *c as u8, *d as u8,
+            ) => Some(Literal::IpAddr(std::net::IpAddr::V4(
+                std::net::Ipv4Addr::new(*a as u8, *b as u8, *c as u8, *d as u8),
             ))),
             _ => None,
         }
@@ -684,15 +695,15 @@ impl Expr {
                                             None => future::Either::A(future::err(Error::new("eval, call(0): type error"))),
                                         },
                                         &[Expr::LitExpr(ref l)] => {
-                                            if function == "Ipv4Addr::reverse_lookup" {
+                                            if function == "IpAddr::reverse_lookup" {
                                                 // needs to be evaluated with future (async resolver)
                                                 match l {
-                                                    Literal::Ipv4Addr(ip) => {
+                                                    Literal::IpAddr(ip) => {
                                                         let (res, background_fut) = Expr::async_resolver();
-                                                        let fut = res.reverse_lookup(std::net::IpAddr::from(*ip));
+                                                        let fut = res.reverse_lookup(*ip);
                                                         future::Either::B(future::Either::B(future::Either::A(
                                                             background_fut
-                                                                .map_err(|()| Error::new("Ipv4Addr::reverse_lookup: no background"))
+                                                                .map_err(|()| Error::new("IpAddr::reverse_lookup: no background"))
                                                                 .and_then(|()| {
                                                                     fut.and_then(|res| {
                                                                         future::ok(Expr::LitExpr(
@@ -705,17 +716,17 @@ impl Expr {
                                                     }
                                                     x => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, x)))),
                                                 }
-                                            } else if function == "Ipv4Addr::lookup" {
+                                            } else if function == "IpAddr::lookup" {
                                                 // needs to be evaluated with future (async resolver)
                                                 match l {
                                                     Literal::Str(ref name) => {
                                                         let (res, background_fut) = Expr::async_resolver();
                                                         let fut = res.ipv4_lookup(name.clone());
                                                         future::Either::B(future::Either::B(future::Either::B(
-                                                            background_fut.map_err(|()| Error::new("Ipv4Addr::lookup: no background")).and_then(|()| {
+                                                            background_fut.map_err(|()| Error::new("IpAddr::lookup: no background")).and_then(|()| {
                                                                 fut.and_then(|res| {
                                                                     future::ok(Expr::LitExpr(
-                                                                        Literal::List(res.iter().map(|ip| Literal::Ipv4Addr(*ip)).collect()).some(),
+                                                                        Literal::List(res.iter().map(|ip| Literal::IpAddr(std::net::IpAddr::V4(*ip))).collect()).some(),
                                                                     ))
                                                                 })
                                                                 .or_else(|_| future::ok(Expr::LitExpr(Literal::none())))
