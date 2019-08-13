@@ -48,7 +48,7 @@ pub fn proxy(
     client: web::Data<Client>,
     config: web::Data<ProxyConfig>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
-    policy.send(policy::Check).then(|p| {
+    policy.send(policy::GetPolicy).then(|p| {
         if let Ok(policy::Policy { debug: true, .. }) = p {
             debug!("{:?}", req)
         }

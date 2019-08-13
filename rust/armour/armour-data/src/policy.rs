@@ -108,10 +108,10 @@ impl StreamHandler<PolicyRequest, std::io::Error> for DataPolicy {
     }
 }
 
-/// Internal proxy message for checking if a policy function exits
-pub struct Check;
+/// Internal proxy message for getting policy information
+pub struct GetPolicy;
 
-impl Message for Check {
+impl Message for GetPolicy {
     type Result = Policy;
 }
 
@@ -128,26 +128,21 @@ pub struct Policy {
     pub timeout: std::time::Duration,
 }
 
-impl Handler<Check> for DataPolicy {
+impl Handler<GetPolicy> for DataPolicy {
     type Result = Policy;
 
-    fn handle(&mut self, _msg: Check, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: GetPolicy, _ctx: &mut Context<Self>) -> Self::Result {
         let fns = if self.allow_all {
             None
         } else {
-            let p = &self.program;
-            match (
-                p.typ("require")
+            let program = &self.program;
+            Some(PolicyFns {
+                require: program
+                    .typ("require")
                     .map(|sig| sig.args().unwrap_or_else(Vec::new).len() as u8),
-                p.has_function("client_payload"),
-                p.has_function("server_payload"),
-            ) {
-                (require, client_payload, server_payload) => Some(PolicyFns {
-                    require,
-                    client_payload,
-                    server_payload,
-                }),
-            }
+                client_payload: program.has_function("client_payload"),
+                server_payload: program.has_function("server_payload"),
+            })
         };
         Policy {
             debug: self.debug,
