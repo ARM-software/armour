@@ -43,7 +43,9 @@ $ cargo run [input file]
 
 - **`HttpRequest`**
 
-- **`Ipv4Addr`**
+- **`ID`**
+
+- **`IpAddr`**
 
 ### Composite
 
@@ -117,7 +119,7 @@ $ cargo run [input file]
 
     `return <expression>`
 
-- Sequences **;** and immutable **let** assigment
+- Sequences **;** and immutable **let** assignment
 
     ```
     > { let x = 1; let y = 2; x + y }
@@ -281,15 +283,15 @@ function               | type
 | set_query            | `(HttpRequest, str) -> HttpRequest`       |
 | set_header           | `(HttpRequest, str, data) -> HttpRequest` |
 
-### Ipv4Addr::
+### IpAddr::
 
 function               | type
----------------------- | ------------------------------------------
-| from                 | `(i64, i64, i64, i64) -> Ipv4Addr`       |
-| octets               | `Ipv4Addr -> (i64, i64, i64, i64)`       |
-| localhost            | `() -> Ipv4Addr`                         |
-| reverse_lookup       | `Ipv4Addr -> Option<List<str>>`          |
-| lookup               | `str -> Option<List<Ipv4Addr>>`          |
+---------------------- | ----------------------------------------
+| from                 | `(i64, i64, i64, i64) -> IpAddr`       |
+| octets               | `IpAddr -> (i64, i64, i64, i64)`       |
+| localhost            | `() -> IpAddr`                         |
+| reverse_lookup       | `IpAddr -> Option<List<str>>`          |
+| lookup               | `str -> Option<List<IpAddr>>`          |
 
 ### i64::
 
