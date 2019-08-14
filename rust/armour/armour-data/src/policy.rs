@@ -1,5 +1,5 @@
 //! actix-web support for Armour policies
-use super::{dns, http_proxy, tcp_proxy, Stop};
+use super::{http_proxy, tcp_proxy, Stop};
 use actix::prelude::*;
 use actix_web::web;
 use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse};
@@ -19,8 +19,6 @@ pub struct DataPolicy {
     allow_all: bool,
     debug: bool,
     timeout: std::time::Duration,
-    // DNS actor
-    dns: Addr<dns::Resolver>,
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, PolicyCodec>,
     // proxies
@@ -46,7 +44,6 @@ impl DataPolicy {
                         allow_all: false,
                         debug: false,
                         timeout: std::time::Duration::from_secs(5),
-                        dns: dns::Resolver::start_default(),
                         uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
                         http_proxies: HashMap::new(),
                         tcp_proxies: HashMap::new(),
@@ -128,6 +125,7 @@ pub struct Policy {
     pub timeout: std::time::Duration,
 }
 
+// handle request to get current policy status information
 impl Handler<GetPolicy> for DataPolicy {
     type Result = Policy;
 
@@ -167,6 +165,7 @@ impl Message for Evaluate {
     type Result = Result<bool, lang::Error>;
 }
 
+// handle requests to evaluate the Armour policy
 impl Handler<Evaluate> for DataPolicy {
     type Result = Box<dyn Future<Item = bool, Error = lang::Error>>;
 
@@ -183,6 +182,43 @@ impl Handler<Evaluate> for DataPolicy {
     }
 }
 
+// TCP connection policies
+pub struct ConnectPolicy(pub std::net::SocketAddr, pub std::net::SocketAddr);
+
+impl Message for ConnectPolicy {
+    type Result = Result<bool, lang::Error>;
+}
+
+impl Handler<ConnectPolicy> for DataPolicy {
+    type Result = Box<dyn Future<Item = bool, Error = lang::Error>>;
+
+    fn handle(&mut self, msg: ConnectPolicy, _ctx: &mut Context<Self>) -> Self::Result {
+        match msg {
+            ConnectPolicy(from, to) => {
+                if self.debug {
+                    if let Ok(name) = dns_lookup::lookup_addr(&from.ip()) {
+                        debug!("from: {}", name);
+                    }
+                    if let Ok(name) = dns_lookup::lookup_addr(&to.ip()) {
+                        debug!("to: {}", name);
+                    }
+                }
+                if self.allow_all {
+                    Box::new(future::ok(true))
+                } else if self.program.has_function("allow_connection") {
+                    Box::new(self.evaluate_policy(
+                        "allow_connection",
+                        vec![from.to_expression(), to.to_expression()],
+                    ))
+                } else {
+                    Box::new(future::ok(false))
+                }
+            }
+        }
+    }
+}
+
+// handle messages from the data plane master
 impl Handler<PolicyRequest> for DataPolicy {
     type Result = ();
 
@@ -255,7 +291,7 @@ impl Handler<PolicyRequest> for DataPolicy {
                     }
                 }
             }
-            PolicyRequest::StartTcp(port) => match tcp_proxy::start_proxy(port, self.dns.clone()) {
+            PolicyRequest::StartTcp(port) => match tcp_proxy::start_proxy(port, ctx.address()) {
                 Ok(server) => {
                     self.tcp_proxies.insert(port, server);
                     self.uds_framed.write(PolicyResponse::Started)
@@ -303,13 +339,13 @@ impl Handler<PolicyRequest> for DataPolicy {
     }
 }
 
+// implement Actor trait for DataPolicy
 impl Actor for DataPolicy {
     type Context = Context<Self>;
     fn started(&mut self, _ctx: &mut Self::Context) {
         info!("started Armour policy")
     }
     fn stopped(&mut self, _ctx: &mut Self::Context) {
-        self.dns.do_send(Stop);
         self.uds_framed.write(PolicyResponse::ShuttingDown);
         info!("stopped Armour policy")
     }
@@ -336,33 +372,45 @@ impl ToArmourExpression for web::HttpRequest {
     }
 }
 
+// convert payloads into Armour-language expressions
 impl ToArmourExpression for web::Bytes {
     fn to_expression(&self) -> lang::Expr {
         lang::Expr::data(self)
     }
 }
 
+// convert payloads into Armour-language expressions
 impl ToArmourExpression for web::BytesMut {
     fn to_expression(&self) -> lang::Expr {
         lang::Expr::data(self)
     }
 }
 
-impl ToArmourExpression for Option<std::net::SocketAddr> {
+// convert socket addresses into Armour-language expressions (of type ID)
+impl ToArmourExpression for std::net::SocketAddr {
     fn to_expression(&self) -> lang::Expr {
         let mut id = literals::ID::default();
-        if let Some(addr) = self {
-            let ip = addr.ip();
-            id = id.add_ip(ip);
-            id = id.set_port(addr.port());
-            if let Ok(host) = dns_lookup::lookup_addr(&ip) {
-                id = id.add_host(&host)
-            }
+        let ip = self.ip();
+        id = id.add_ip(ip);
+        id = id.set_port(self.port());
+        if let Ok(host) = dns_lookup::lookup_addr(&ip) {
+            id = id.add_host(&host)
         }
         lang::Expr::id(id)
     }
 }
 
+impl ToArmourExpression for Option<std::net::SocketAddr> {
+    fn to_expression(&self) -> lang::Expr {
+        if let Some(addr) = self {
+            addr.to_expression()
+        } else {
+            lang::Expr::id(literals::ID::default())
+        }
+    }
+}
+
+// convert URLs into Armour-language expressions (of type ID)
 impl ToArmourExpression for url::Url {
     fn to_expression(&self) -> lang::Expr {
         let mut id = literals::ID::default();

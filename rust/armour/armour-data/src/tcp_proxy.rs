@@ -1,6 +1,7 @@
-use super::{dns, Stop};
+use super::{policy, Stop};
 use actix::prelude::*;
 use bytes::{Bytes, BytesMut};
+use futures::{future, Future};
 use std::collections::HashSet;
 use std::net::SocketAddr;
 #[cfg(any(target_os = "linux"))]
@@ -10,7 +11,7 @@ use tokio_io::{io::WriteHalf, AsyncRead};
 
 pub fn start_proxy(
     proxy_port: u16,
-    dns: Addr<dns::Resolver>,
+    policy: Addr<policy::DataPolicy>,
 ) -> std::io::Result<Addr<TcpDataServer>> {
     // start master actor (for keeping track of connections)
     let master = TcpDataMaster::start_default();
@@ -23,7 +24,7 @@ pub fn start_proxy(
         ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(TcpConnect));
         TcpDataServer {
             master: master_clone,
-            dns,
+            policy,
             port: socket_in.port(),
         }
     });
@@ -35,7 +36,7 @@ pub fn start_proxy(
 /// When new data plane instances arrive, we give them the address of the master.
 pub struct TcpDataServer {
     master: Addr<TcpDataMaster>,
-    dns: Addr<dns::Resolver>,
+    policy: Addr<policy::DataPolicy>,
     pub port: u16,
 }
 
@@ -72,6 +73,8 @@ impl Message for TcpConnect {
 //     - apt install curl
 //     - curl https://...
 
+// obtain the original socket destination (SO_ORIGINAL_DST)
+// we assume Linux's `iptables` have been used to redirect connections to the proxy
 #[cfg(target_os = "linux")]
 fn original_dst(sock: &tokio_tcp::TcpStream) -> Option<std::net::SocketAddr> {
     if let Ok(sock_in) =
@@ -115,54 +118,80 @@ impl Handler<TcpConnect> for TcpDataServer {
                 // For each incoming connection we create `TcpDataClientInstance` actor
                 // We also create a `TcpDataServerInstance` actor
                 let master = self.master.clone();
-                let peer_ip = peer_addr.ip();
-                let socket_ip = socket.ip();
                 if socket.port() == self.port
-                    && armour_data_interface::INTERFACE_IPS.contains(&socket_ip)
+                    && armour_data_interface::INTERFACE_IPS.contains(&socket.ip())
                 {
                     warn!("TCP {}: trying to forward to self", self.port);
+                    if let Err(e) = msg.0.shutdown(std::net::Shutdown::Both) {
+                        warn!("{}", e);
+                    };
                     Box::new(futures::future::ok(()))
                 } else {
                     let server = self
-                        .dns
-                        .send(dns::RevLookup(vec![peer_ip, socket_ip]))
-                        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-                        .and_then(move |names| {
-                            debug!("names: {:?}", names);
-                            tokio_tcp::TcpStream::connect(&socket).and_then(move |sock| {
-                                let client = TcpDataClientInstance::create(move |ctx| {
-                                    let (r, w) = msg.0.split();
-                                    TcpDataClientInstance::add_stream(
-                                        FramedRead::new(r, BytesCodec::new()),
-                                        ctx,
-                                    );
-                                    TcpDataClientInstance {
-                                        server: None,
-                                        tcp_framed: actix::io::FramedWrite::new(
-                                            w,
-                                            BytesCodec::new(),
+                        .policy
+                        .send(policy::ConnectPolicy(peer_addr, socket))
+                        .then(move |res| match res {
+                            // allow connection
+                            Ok(Ok(true)) => future::Either::A(
+                                tokio_tcp::TcpStream::connect(&socket).and_then(|sock| {
+                                    let client = TcpDataClientInstance::create(|ctx| {
+                                        let (r, w) = msg.0.split();
+                                        TcpDataClientInstance::add_stream(
+                                            FramedRead::new(r, BytesCodec::new()),
                                             ctx,
-                                        ),
-                                    }
-                                });
-                                TcpDataServerInstance::create(move |ctx| {
-                                    let (r, w) = sock.split();
-                                    TcpDataServerInstance::add_stream(
-                                        FramedRead::new(r, BytesCodec::new()),
-                                        ctx,
-                                    );
-                                    TcpDataServerInstance {
-                                        master,
-                                        client,
-                                        tcp_framed: actix::io::FramedWrite::new(
-                                            w,
-                                            BytesCodec::new(),
+                                        );
+                                        TcpDataClientInstance {
+                                            server: None,
+                                            tcp_framed: actix::io::FramedWrite::new(
+                                                w,
+                                                BytesCodec::new(),
+                                                ctx,
+                                            ),
+                                        }
+                                    });
+                                    TcpDataServerInstance::create(|ctx| {
+                                        let (r, w) = sock.split();
+                                        TcpDataServerInstance::add_stream(
+                                            FramedRead::new(r, BytesCodec::new()),
                                             ctx,
-                                        ),
-                                    }
-                                });
-                                Ok(())
-                            })
+                                        );
+                                        TcpDataServerInstance {
+                                            master,
+                                            client,
+                                            tcp_framed: actix::io::FramedWrite::new(
+                                                w,
+                                                BytesCodec::new(),
+                                                ctx,
+                                            ),
+                                        }
+                                    });
+                                    Ok(())
+                                }),
+                            ),
+                            // reject
+                            Ok(Ok(false)) => {
+                                info!("connection denied");
+                                if let Err(e) = msg.0.shutdown(std::net::Shutdown::Both) {
+                                    warn!("{}", e);
+                                };
+                                future::Either::B(future::ok(()))
+                            }
+                            // policy error
+                            Ok(Err(e)) => {
+                                warn!("{}", e);
+                                if let Err(e) = msg.0.shutdown(std::net::Shutdown::Both) {
+                                    warn!("{}", e);
+                                };
+                                future::Either::B(future::ok(()))
+                            }
+                            // actor error
+                            Err(e) => {
+                                warn!("{}", e);
+                                if let Err(e) = msg.0.shutdown(std::net::Shutdown::Both) {
+                                    warn!("{}", e);
+                                };
+                                future::Either::B(future::ok(()))
+                            }
                         })
                         .map_err(|err| warn!("{}", err));
                     Box::new(server)

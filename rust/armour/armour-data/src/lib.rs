@@ -8,7 +8,6 @@ use actix::prelude::*;
 #[derive(Message)]
 pub struct Stop;
 
-pub mod dns;
 pub mod http_proxy;
 pub mod policy;
 pub mod tcp_proxy;

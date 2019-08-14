@@ -1,5 +1,5 @@
 [package]
-name = "arm-logger"
+name = "logger"
 version = "0.1.0"
 authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"

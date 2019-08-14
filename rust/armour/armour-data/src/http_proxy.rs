@@ -53,7 +53,7 @@ pub fn proxy(
             debug!("{:?}", req)
         }
         match p {
-            // reject request
+            // deny all
             Ok(policy::Policy {
                 fns:
                     Some(policy::PolicyFns {
@@ -123,7 +123,7 @@ pub fn proxy(
                     }
                 }
             }
-            // allow request
+            // allow all policy
             Ok(policy::Policy { fns: None, .. }) => match req.forward_url((*config).port) {
                 Ok(url) => {
                     let no_decompress = config.response_streaming;
@@ -143,6 +143,7 @@ pub fn proxy(
                     future::Either::B(future::Either::A(future::ok(internal())))
                 }
             },
+            // no "require" function
             Ok(policy::Policy {
                 fns:
                     Some(policy::PolicyFns {

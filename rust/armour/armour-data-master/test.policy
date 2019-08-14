@@ -2,15 +2,24 @@ external logger @ "log_sock" {
   fn log(_) -> ()
 }
 
-fn require(req: HttpRequest, client: ID, server: ID) -> bool {
-  logger::log(req, client, server);
-  req.route() == ["a"]
+// REST request allow/deny
+fn require(req: HttpRequest, from: ID, to: ID) -> bool {
+  logger::log("request", req);
+  req.route() == ["a"] && allow_connection(from, to)
 }
 
+// REST client payload allow/deny
 fn client_payload(payload: data) -> bool {
   payload.len() < 10
 }
 
+// REST server payload allow/deny
 fn server_payload(payload: data) -> bool {
   4 < payload.len()
+}
+
+// TCP connection/deny
+fn allow_connection(from: ID, to: ID) -> bool {
+  logger::log("connection", from, to);
+  true
 }
