@@ -187,6 +187,12 @@ pub enum Expr {
     },
 }
 
+impl Default for Expr {
+    fn default() -> Self {
+        Expr::LitExpr(Literal::Unit)
+    }
+}
+
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -1253,6 +1259,10 @@ impl Program {
     }
     pub fn typ(&self, name: &str) -> Option<types::Signature> {
         self.headers.typ(name)
+    }
+    pub fn arg_count(&self, name: &str) -> Option<u8> {
+        self.typ(name)
+            .map(|sig| sig.args().unwrap_or_else(Vec::new).len() as u8)
     }
     pub fn set_timeout(&mut self, t: std::time::Duration) {
         self.externals.set_timeout(t)

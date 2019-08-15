@@ -112,7 +112,7 @@ fn main() -> std::io::Result<()> {
                 // .send_json(&bytes.to_vec())
                 .map_err(move |err| stop(done, Some(("send: ", err))))
                 .and_then(move |resp| {
-                    println!("{:?}", resp);
+                    debug!("{:?}", resp);
                     resp.from_err::<Error>()
                         .fold(web::BytesMut::new(), |mut body, chunk| {
                             body.extend_from_slice(&chunk);
@@ -122,9 +122,9 @@ fn main() -> std::io::Result<()> {
                         .and_then(move |body| {
                             stop(done, None::<(_, bool)>);
                             if let Ok(text) = String::from_utf8(body.as_ref().to_vec()) {
-                                println!("{}", text);
+                                info!("{}", text);
                             } else {
-                                println!("{:?}", body);
+                                info!("{:?}", body);
                             }
                             future::ok(())
                         })

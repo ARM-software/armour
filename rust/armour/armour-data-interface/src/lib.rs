@@ -63,6 +63,8 @@ lazy_static! {
             (
                 "client_payload".to_string(),
                 vec![
+                    Signature::new(vec![Typ::Data, Typ::ID, Typ::ID], Typ::Bool),
+                    Signature::new(vec![Typ::Data, Typ::ID, Typ::ID], Typ::Policy),
                     Signature::new(vec![Typ::Data], Typ::Bool),
                     Signature::new(vec![Typ::Data], Typ::Policy),
                 ],
@@ -70,6 +72,8 @@ lazy_static! {
             (
                 "server_payload".to_string(),
                 vec![
+                    Signature::new(vec![Typ::Data, Typ::ID, Typ::ID], Typ::Bool),
+                    Signature::new(vec![Typ::Data, Typ::ID, Typ::ID], Typ::Policy),
                     Signature::new(vec![Typ::Data], Typ::Bool),
                     Signature::new(vec![Typ::Data], Typ::Policy),
                 ],

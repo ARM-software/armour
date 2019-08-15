@@ -112,17 +112,14 @@ impl Message for GetPolicy {
     type Result = Policy;
 }
 
-pub struct PolicyFns {
-    pub require: Option<u8>,
-    pub client_payload: bool,
-    pub server_payload: bool,
-}
-
 #[derive(MessageResponse)]
 pub struct Policy {
+    pub allow_all: bool,
     pub debug: bool,
-    pub fns: Option<PolicyFns>,
     pub timeout: std::time::Duration,
+    pub require: Option<u8>,
+    pub client_payload: Option<u8>,
+    pub server_payload: Option<u8>,
 }
 
 // handle request to get current policy status information
@@ -130,22 +127,25 @@ impl Handler<GetPolicy> for DataPolicy {
     type Result = Policy;
 
     fn handle(&mut self, _msg: GetPolicy, _ctx: &mut Context<Self>) -> Self::Result {
-        let fns = if self.allow_all {
-            None
+        if self.allow_all {
+            Policy {
+                allow_all: true,
+                debug: self.debug,
+                timeout: self.timeout,
+                require: None,
+                client_payload: None,
+                server_payload: None,
+            }
         } else {
             let program = &self.program;
-            Some(PolicyFns {
-                require: program
-                    .typ("require")
-                    .map(|sig| sig.args().unwrap_or_else(Vec::new).len() as u8),
-                client_payload: program.has_function("client_payload"),
-                server_payload: program.has_function("server_payload"),
-            })
-        };
-        Policy {
-            debug: self.debug,
-            fns,
-            timeout: self.timeout,
+            Policy {
+                allow_all: false,
+                debug: self.debug,
+                timeout: self.timeout,
+                require: program.arg_count("require"),
+                client_payload: program.arg_count("client_payload"),
+                server_payload: program.arg_count("server_payload"),
+            }
         }
     }
 }
@@ -157,8 +157,10 @@ pub enum Evaluate {
     Require0,
     Require1(lang::Expr),
     Require3(BExpr, BExpr, BExpr),
-    ClientPayload(lang::Expr),
-    ServerPayload(lang::Expr),
+    ClientPayload1(lang::Expr),
+    ClientPayload3(BExpr, BExpr, BExpr),
+    ServerPayload1(lang::Expr),
+    ServerPayload3(BExpr, BExpr, BExpr),
 }
 
 impl Message for Evaluate {
@@ -176,8 +178,14 @@ impl Handler<Evaluate> for DataPolicy {
             Evaluate::Require3(arg1, arg2, arg3) => {
                 self.evaluate_policy("require", vec![*arg1, *arg2, *arg3])
             }
-            Evaluate::ClientPayload(arg) => self.evaluate_policy("client_payload", vec![arg]),
-            Evaluate::ServerPayload(arg) => self.evaluate_policy("server_payload", vec![arg]),
+            Evaluate::ClientPayload1(arg) => self.evaluate_policy("client_payload", vec![arg]),
+            Evaluate::ClientPayload3(arg1, arg2, arg3) => {
+                self.evaluate_policy("client_payload", vec![*arg1, *arg2, *arg3])
+            }
+            Evaluate::ServerPayload1(arg) => self.evaluate_policy("server_payload", vec![arg]),
+            Evaluate::ServerPayload3(arg1, arg2, arg3) => {
+                self.evaluate_policy("server_payload", vec![*arg1, *arg2, *arg3])
+            }
         }
     }
 }
@@ -407,6 +415,12 @@ impl ToArmourExpression for Option<std::net::SocketAddr> {
         } else {
             lang::Expr::id(literals::ID::default())
         }
+    }
+}
+
+impl From<std::net::SocketAddr> for url::Url {
+    fn from(s: std::net::SocketAddr) -> Self {
+        unimplemented!()
     }
 }
 
