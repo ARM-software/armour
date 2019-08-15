@@ -294,48 +294,60 @@ function               | type
 | reverse_lookup       | `IpAddr -> Option<List<str>>`          |
 | lookup               | `str -> Option<List<IpAddr>>`          |
 
+### ID::
+
+function               | type
+---------------------- | ----------------------------------------
+| default              | `() -> ID`                             |
+| hosts                | `ID -> List<str>`                      |
+| ips                  | `ID -> List<IpAddr>`                   |
+| port                 | `ID -> Option<i64>`                    |
+| add_host             | `(ID, str) -> ID`                      |
+| add_ip               | `(ID, IpAddr) -> ID`                   |
+| set_port             | `(ID, i64) -> ID`                      |
+
 ### i64::
 
 function               | type
----------------------- | ------------------------------------------
-| abs                  | `i64 -> i64`                             |
-| pow                  | `(i64, i64) -> i64`                      |
-| min                  | `(i64, i64) -> i64`                      |
-| max                  | `(i64, i64) -> i64`                      |
-| to_str               | `i64 -> str`                             |
+---------------------- | ----------------------------------------
+| abs                  | `i64 -> i64`                           |
+| pow                  | `(i64, i64) -> i64`                    |
+| min                  | `(i64, i64) -> i64`                    |
+| max                  | `(i64, i64) -> i64`                    |
+| to_str               | `i64 -> str`                           |
 
 ### str::
 
 function               | type
----------------------- | ------------------------------------------
-| len                  | `str -> i64`                             |
-| to_lowercase         | `str -> str`                             |
-| to_uppercase         | `str -> str`                             |
-| trim_start           | `str -> str`                             |
-| trim_end             | `str -> str`                             |
-| to_base64            | `str -> str`                             |
-| as_bytes             | `str -> data`                            |
-| from_utf8 (lossy)    | `data -> str`                            |
-| starts_with          | `(str, str) -> bool`                     |
-| ends_with            | `(str, str) -> bool`                     |
-| contains             | `(str, str) -> bool`                     |
+---------------------- | ----------------------------------------
+| len                  | `str -> i64`                           |
+| to_lowercase         | `str -> str`                           |
+| to_uppercase         | `str -> str`                           |
+| trim_start           | `str -> str`                           |
+| trim_end             | `str -> str`                           |
+| to_base64            | `str -> str`                           |
+| as_bytes             | `str -> data`                          |
+| from_utf8 (lossy)    | `data -> str`                          |
+| starts_with          | `(str, str) -> bool`                   |
+| ends_with            | `(str, str) -> bool`                   |
+| contains             | `(str, str) -> bool`                   |
 
 ### data::
 
 function               | type
----------------------- | ------------------------------------------
-| len                  | `data -> i64`                            |
-| to_base64            | `data -> str`                             |
+---------------------- | ----------------------------------------
+| len                  | `data -> i64`                          |
+| to_base64            | `data -> str`                          |
 
 ### list::
 
 function               | type
----------------------- | ------------------------------------------
-| len                  | `List<ty> -> i64`                         |
+---------------------- | ----------------------------------------
+| len                  | `List<ty> -> i64`                      |
 
 ### option::
 
 function               | type
----------------------- | ------------------------------------------
-| is_some              | `Option<ty> -> bool`                      |
-| is_none              | `Option<ty> -> bool`                      |
+---------------------- | ----------------------------------------
+| is_some              | `Option<ty> -> bool`                   |
+| is_none              | `Option<ty> -> bool`                   |
