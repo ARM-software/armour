@@ -262,6 +262,12 @@ impl Expr {
     pub fn id(id: literals::ID) -> Expr {
         Expr::LitExpr(Literal::ID(id))
     }
+    pub fn host(&self) -> Option<String> {
+        match self {
+            Expr::LitExpr(Literal::ID(id)) => id.host(),
+            _ => None,
+        }
+    }
     pub fn none() -> Expr {
         Expr::LitExpr(Literal::none())
     }

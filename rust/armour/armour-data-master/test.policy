@@ -10,13 +10,13 @@ fn require(req: HttpRequest, from: ID, to: ID) -> bool {
 
 // REST client payload allow/deny
 fn client_payload(payload: data, from: ID, to: ID) -> bool {
-  logger::log("client payload", payload);
+//  logger::log("client payload", payload);
   payload.len() < 10
 }
 
 // REST server payload allow/deny
 fn server_payload(payload: data, from: ID, to: ID) -> bool {
-  logger::log("server payload", payload);
+//  logger::log("server payload", payload);
   4 < payload.len()
 }
 

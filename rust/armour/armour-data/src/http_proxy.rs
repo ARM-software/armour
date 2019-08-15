@@ -55,7 +55,6 @@ impl Connection {
                 return Err(());
             }
         };
-        info!("forward URL is: {}", url);
         // do not bother decompressing the server payload if streaming is allowed and we are not
         // checking the payload
         let no_decompress =
@@ -79,6 +78,9 @@ impl Connection {
             } => (req.peer_addr().to_expression(), url.clone().to_expression()),
             _ => (Expr::default(), Expr::default()),
         };
+        if let Some(peer) = from.host() {
+            info!(r#"request from "{}" to "{}""#, peer, url)
+        }
         Ok(Connection {
             no_decompress,
             url,
@@ -357,6 +359,7 @@ fn response(
                 policy::Policy {
                     allow_all: false,
                     server_payload: Some(args),
+                    // debug,
                     ..
                 } => {
                     future::Either::A(
@@ -378,7 +381,9 @@ fn response(
                                     ),
                                     _ => unreachable!(),
                                 };
-                                debug!("{:?}", server_payload);
+                                // if debug {
+                                //     debug!("\n{:?}", server_payload)
+                                // };
                                 policy.send(message).then(move |res| match res {
                                     // allow
                                     Ok(Ok(true)) => future::ok(client_resp.body(server_payload)),

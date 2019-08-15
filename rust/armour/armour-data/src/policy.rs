@@ -70,18 +70,26 @@ impl DataPolicy {
         function: &str,
         args: Vec<lang::Expr>,
     ) -> Box<dyn Future<Item = bool, Error = lang::Error>> {
-        let now = std::time::Instant::now();
-        info!(r#"evaluting "{}"""#, function);
+        let now = if self.debug {
+            debug!(r#"evaluting "{}"""#, function);
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
         Box::new(
             lang::Expr::call(function, args)
                 .evaluate(self.program.clone())
                 .and_then(move |result| match result {
                     lang::Expr::LitExpr(literals::Literal::Policy(policy)) => {
-                        info!("result is: {:?} ({:?})", policy, now.elapsed());
+                        if let Some(elapsed) = now.map(|t| t.elapsed()) {
+                            debug!("result is: {:?} ({:?})", policy, elapsed)
+                        };
                         future::ok(policy == literals::Policy::Accept)
                     }
                     lang::Expr::LitExpr(literals::Literal::Bool(accept)) => {
-                        info!("result is: {} ({:?})", accept, now.elapsed());
+                        if let Some(elapsed) = now.map(|t| t.elapsed()) {
+                            debug!("result is: {} ({:?})", accept, elapsed)
+                        };
                         future::ok(accept)
                     }
                     _ => future::err(lang::Error::new(
@@ -203,21 +211,15 @@ impl Handler<ConnectPolicy> for DataPolicy {
     fn handle(&mut self, msg: ConnectPolicy, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
             ConnectPolicy(from, to) => {
-                if self.debug {
-                    if let Ok(name) = dns_lookup::lookup_addr(&from.ip()) {
-                        debug!("from: {}", name);
-                    }
-                    if let Ok(name) = dns_lookup::lookup_addr(&to.ip()) {
-                        debug!("to: {}", name);
-                    }
-                }
                 if self.allow_all {
                     Box::new(future::ok(true))
                 } else if self.program.has_function("allow_connection") {
-                    Box::new(self.evaluate_policy(
-                        "allow_connection",
-                        vec![from.to_expression(), to.to_expression()],
-                    ))
+                    let from = from.to_expression();
+                    let to = to.to_expression();
+                    if let (Some(from), Some(to)) = (from.host(), to.host()) {
+                        info!(r#"checking connection from "{}" to "{}""#, from, to)
+                    }
+                    Box::new(self.evaluate_policy("allow_connection", vec![from, to]))
                 } else {
                     Box::new(future::ok(false))
                 }
@@ -415,12 +417,6 @@ impl ToArmourExpression for Option<std::net::SocketAddr> {
         } else {
             lang::Expr::id(literals::ID::default())
         }
-    }
-}
-
-impl From<std::net::SocketAddr> for url::Url {
-    fn from(s: std::net::SocketAddr) -> Self {
-        unimplemented!()
     }
 }
 

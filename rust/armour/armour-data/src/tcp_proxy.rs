@@ -247,7 +247,7 @@ struct Disconnect(Addr<TcpDataServerInstance>);
 impl Handler<Disconnect> for TcpDataMaster {
     type Result = ();
     fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) -> Self::Result {
-        info!("removing TCP instance");
+        info!("end of connection, removing TCP instance");
         self.connections.remove(&msg.0);
     }
 }
@@ -281,7 +281,7 @@ impl StreamHandler<BytesMut, std::io::Error> for TcpDataClientInstance {
         }
     }
     fn finished(&mut self, ctx: &mut Context<Self>) {
-        info!("end of connection");
+        // info!("end of connection");
         ctx.stop()
     }
 }

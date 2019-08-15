@@ -192,6 +192,17 @@ pub struct ID {
 }
 
 impl ID {
+    pub fn host(&self) -> Option<String> {
+        if let Some(name) = self.hosts.iter().next() {
+            if std::net::IpAddr::from_str(name).is_err() {
+                Some(name.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
     pub fn hosts(&self) -> Literal {
         Literal::List(
             self.hosts
