@@ -56,7 +56,7 @@ impl Dispatcher for ExternalImpl {
 fn main() -> Result<(), Error> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 2 {
-        External::start("a", args[1].as_str(), ExternalImpl(0))
+        External::start("external-server-a", args[1].as_str(), ExternalImpl(0))
     } else {
         println!("usage: {} ADDRESS[:PORT]", args[0]);
         Ok(())

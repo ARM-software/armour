@@ -250,7 +250,7 @@ impl External {
         T: PathOrToSocketAddrs<S, P>,
         U: Dispatcher + 'static,
     >(
-        name: &str,
+        name: &'static str,
         t: T,
         implementation: U,
     ) -> Result<(), Error> {
@@ -267,21 +267,25 @@ impl External {
             fut = tls_rpc_future(socket, external)?;
         } else if let Some(p) = t.get_path() {
             println!(r#"start policy service "{}" with socket: {}"#, name, p);
-            let listener = tokio_uds::UnixListener::bind(p)?;
+            let listener = tokio_uds::UnixListener::bind(&p)?;
+            std::env::set_var(name, p.to_string());
             fut = uds_rpc_future(listener, external)?;
         } else {
             return Err(Error::failed("could not bind".to_string()));
         };
 
+        let mut rt = tokio::runtime::current_thread::Runtime::new().unwrap();
+
         // handle Control-C
         let ctrl_c = tokio_signal::ctrl_c().flatten_stream();
         let handle_shutdown = ctrl_c
-            .for_each(|()| {
+            .for_each(move |()| {
                 println!("Ctrl-C received, shutting down");
-                if let Some(p) = t.get_path() {
-                    if p.as_ref().exists() {
-                        println!("removing socket: \"{}\"", p);
-                        std::fs::remove_file(p.clone())?
+                if let Ok(p) = std::env::var(name) {
+                    let path = std::path::Path::new(&p);
+                    if path.exists() {
+                        println!("removing socket: \"{}\"", path.display());
+                        std::fs::remove_file(path)?
                     }
                 }
                 std::process::exit(0);
@@ -290,8 +294,8 @@ impl External {
             })
             .map_err(|_| ());
 
-        current_thread::block_on_all(handle_shutdown.then(|_| fut)).unwrap();
-
-        Ok(())
+        rt.spawn(handle_shutdown);
+        rt.block_on(fut).unwrap();
+        rt.run().map_err(|e| Error::failed(e.to_string()))
     }
 }

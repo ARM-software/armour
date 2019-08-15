@@ -7,3 +7,6 @@ edition = "2018"
 [dependencies]
 external-server = { path = "../external-server" }
 capnp = "0.10"
+futures = "0.1"
+tokio = "0.1"
+tokio-signal = "0.2"

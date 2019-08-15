@@ -37,6 +37,21 @@ pub fn start_proxy(
     Ok(server)
 }
 
+struct Connection {
+    no_decompress: bool,
+    url: url::Url,
+    endpoints: Option<(armour_policy::lang::Expr, armour_policy::lang::Expr)>,
+}
+
+impl Connection {
+    fn new(no_decompress: bool, url: url::Url) -> Connection {
+        Connection {no_decompress, url, endpoints: None}
+    }
+    fn add_endpoints(&mut self, from: armour_policy::lang::Expr, to: armour_policy::lang::Expr) {
+        self.endpoints = Some((from, to))
+    }
+}
+
 /// Main HttpRequest proxy
 ///
 /// Checks request against Armour policy and, if accepted, forwards it using [ForwardUrl](trait.ForwardUrl.html).
