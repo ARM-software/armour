@@ -1,11 +1,12 @@
 Armour Policy Language
 ======================
 
-## Command Line
+## Command line REPL
 
 You can run the policy language REPL with
 
 ```shell
+$ cd armour-policy
 $ cargo run [input file]
 ```
 
