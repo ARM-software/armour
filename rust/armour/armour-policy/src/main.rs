@@ -28,7 +28,7 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     // enable logging
-    std::env::set_var("RUST_LOG", "armour_policy=warn,actix=info");
+    std::env::set_var("RUST_LOG", "armour_policy=info,actix=info");
     std::env::set_var("RUST_BACKTRACE", "0");
     pretty_env_logger::init();
 
@@ -58,17 +58,17 @@ fn main() -> io::Result<()> {
     // println!("{:?}", bytes);
     // prog = lang::Program::from_bytes(&bytes)?;
 
-    let mut sys = actix::System::new("arm-policy");
+    let mut sys = actix::System::new("armour-policy");
 
     // evaluate expressions (REPL)
     let headers = prog.headers.clone();
     let prog = Arc::new(prog);
     let mut rl = Editor::<()>::new();
-    if rl.load_history("arm-policy.txt").is_err() {
+    if rl.load_history("armour-policy.txt").is_err() {
         log::info!("no previous history");
     }
     loop {
-        match rl.readline("arm-policy:> ") {
+        match rl.readline("armour:> ") {
             Ok(line) => {
                 let line = line.trim();
                 if line != "" {
@@ -100,6 +100,6 @@ fn main() -> io::Result<()> {
         }
     }
     // done
-    rl.save_history("arm-policy.txt")
+    rl.save_history("armour-policy.txt")
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }

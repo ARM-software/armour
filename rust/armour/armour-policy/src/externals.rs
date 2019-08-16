@@ -285,8 +285,10 @@ impl Externals {
         } else if let Some(p) = socket.as_str().get_path() {
             Box::new(Externals::get_uds_stream(p).and_then(move |stream| {
                 let (client, rpc_system) = Externals::get_capnp_client(stream);
+                let disconnector = rpc_system.get_disconnector();
                 actix::spawn(rpc_system.map_err(|_| ()));
                 Externals::call_request(Call::new(&external, &method, args), timeout, client)
+                    .then(|x| disconnector.then(|_| x))
             }))
         } else {
             Box::new(future::err(Error::from(
