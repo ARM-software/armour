@@ -70,35 +70,14 @@ impl Handler<Connect> for PolicyService {
             Default::default(),
         );
         let rpc_system = RpcSystem::new(Box::new(network), Some(self.external.clone().client));
-        let instance = PolicyServiceInstance::create(move |_ctx| PolicyServiceInstance);
         debug!("starting RPC connection");
         actix::spawn(
             rpc_system
                 .map_err(|e| warn!("error: {:?}", e))
                 .then(move |x| {
-                    instance.do_send(Stop);
+                    debug!("stopped RPC connection");
                     x
                 }),
         );
-    }
-}
-
-struct PolicyServiceInstance;
-
-impl Actor for PolicyServiceInstance {
-    type Context = Context<Self>;
-
-    fn stopped(&mut self, _ctx: &mut Self::Context) {
-        debug!("stopped RPC connection")
-    }
-}
-
-#[derive(Message)]
-struct Stop;
-
-impl Handler<Stop> for PolicyServiceInstance {
-    type Result = ();
-    fn handle(&mut self, _msg: Stop, ctx: &mut Context<Self>) -> Self::Result {
-        ctx.stop()
     }
 }

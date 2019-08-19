@@ -12,6 +12,9 @@ impl policy_service::rpc::Dispatcher for LoggerService {
             _ => Err(capnp::Error::unimplemented(name.to_string())),
         }
     }
+    fn log(&self) -> bool {
+        true
+    }
 }
 
 fn main() -> std::io::Result<()> {
