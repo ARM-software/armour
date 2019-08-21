@@ -67,6 +67,9 @@ impl Headers {
                 vec![Typ::HttpRequest, Typ::Str],
                 Typ::List(Box::new(Typ::Data)).option(),
             ),
+            "HttpRequest::unique_header" => {
+                sig(vec![Typ::HttpRequest, Typ::Str], Typ::Data.option())
+            }
             "HttpRequest::headers" => sig(vec![Typ::HttpRequest], Typ::List(Box::new(Typ::Str))),
             "HttpRequest::header_pairs" => sig(
                 vec![Typ::HttpRequest],

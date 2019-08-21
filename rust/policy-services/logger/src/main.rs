@@ -1,21 +1,7 @@
-use policy_service::rpc::Literal;
+// use chrono_tz::GMT;
+use logger::{Connections, LoggerService};
 use rustyline::{completion, error::ReadlineError, hint, Editor};
 use std::sync::{Arc, Mutex};
-
-struct LoggerService(Arc<Mutex<i64>>);
-
-impl policy_service::rpc::Dispatcher for LoggerService {
-    fn dispatch(&mut self, name: &str, _args: &[Literal]) -> Result<Literal, capnp::Error> {
-        match name {
-            "log" => Ok(Literal::Unit),
-            "state" => Ok(Literal::Int(*self.0.lock().unwrap())),
-            _ => Err(capnp::Error::unimplemented(name.to_string())),
-        }
-    }
-    fn log(&self) -> bool {
-        true
-    }
-}
 
 fn main() -> std::io::Result<()> {
     // enable logging
@@ -28,7 +14,7 @@ fn main() -> std::io::Result<()> {
         // start Actix system
         let sys = actix::System::new("logger");
         // start policy service actor
-        let state = Arc::new(Mutex::new(0));
+        let state = Arc::new(Mutex::new(Connections::default()));
         let logger = LoggerService(state.clone());
         let socket = std::path::PathBuf::from(args[1].as_str());
         let policy_service = policy_service::start_policy_service(logger, socket)?;
@@ -45,9 +31,19 @@ fn main() -> std::io::Result<()> {
                         rl.add_history_entry(cmd.as_str());
                         match cmd.as_str() {
                             "" => (),
-                            "suc" => {
-                                let mut i = state.lock().unwrap();
-                                *i += 1
+                            "clear" => {
+                                let mut connections = state.lock().unwrap();
+                                connections.0.clear()
+                            }
+                            "graph" => {
+                                let connections = state.lock().unwrap();
+                                connections
+                                    .export_pdf("connections")
+                                    .unwrap_or_else(|err| log::warn!("{}", err))
+                            }
+                            "show" => {
+                                let connections = state.lock().unwrap();
+                                log::info!("{}", serde_yaml::to_string(&connections.0).unwrap())
                             }
                             "quit" => {
                                 // remove socket

@@ -7,9 +7,16 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-policy-service = { path = "../policy-service" }
+dot = { path = "../dot-rust" }
 actix = "0.8"
 capnp = "0.10"
+chrono = {version = "0.4", features = ["serde"] }
+chrono-tz = "0.5"
+futures = "0.1"
 log = "0.4"
+petgraph = "0.4"
+policy-service = { path = "../policy-service" }
 pretty_env_logger = "0.3"
 rustyline = "5.0"
+serde = { version = "1.0",  features = ["derive"] }
+serde_yaml = "0.8"

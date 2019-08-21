@@ -401,7 +401,9 @@ impl ToArmourExpression for std::net::SocketAddr {
     fn to_expression(&self) -> lang::Expr {
         let mut id = literals::ID::default();
         let ip = self.ip();
-        id = id.add_ip(ip);
+        if ip.is_ipv4() {
+            id = id.add_ip(ip)
+        };
         id = id.set_port(self.port());
         if let Ok(host) = dns_lookup::lookup_addr(&ip) {
             id = id.add_host(&host)
@@ -427,13 +429,19 @@ impl ToArmourExpression for url::Url {
         if let Some(host) = self.host_str() {
             id = id.add_host(host);
             if let Ok(ips) = dns_lookup::lookup_host(host) {
-                for ip in ips {
-                    id = id.add_ip(ip)
+                for ip in ips.iter().filter(|ip| ip.is_ipv4()) {
+                    id = id.add_ip(*ip)
                 }
             }
         }
         if let Some(port) = self.port() {
             id = id.set_port(port)
+        } else {
+            match self.scheme() {
+                "https" => id = id.set_port(443),
+                "http" => id = id.set_port(80),
+                s => log::debug!("scheme is: {}", s),
+            }
         }
         lang::Expr::id(id)
     }

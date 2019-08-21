@@ -152,6 +152,15 @@ impl HttpRequest {
             Some(vs) => Literal::List(vs.iter().map(|v| Literal::Data(v.clone())).collect()).some(),
         }
     }
+    pub fn unique_header(&self, s: &str) -> Literal {
+        match self.headers.get(s) {
+            Some(v) => match v.as_slice() {
+                [d] => Literal::Data(d.clone()).some(),
+                _ => Literal::none(),
+            },
+            _ => Literal::none(),
+        }
+    }
     pub fn set_header(&self, k: &str, v: &[u8]) -> HttpRequest {
         let mut new = self.clone();
         let s = v.to_vec();

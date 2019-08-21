@@ -4,7 +4,7 @@ use bytes::{Bytes, BytesMut};
 use futures::{future, Future};
 use std::collections::HashSet;
 use std::net::SocketAddr;
-#[cfg(any(target_os = "linux"))]
+#[cfg(target_os = "linux")]
 use std::os::unix::io::AsRawFd;
 use tokio_codec::{BytesCodec, FramedRead};
 use tokio_io::{io::WriteHalf, AsyncRead};

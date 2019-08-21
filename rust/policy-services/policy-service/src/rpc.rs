@@ -123,7 +123,12 @@ pub trait Dispatcher {
         }
         Ok(res)
     }
-    fn log(&self) -> bool;
+    fn log(&self, name: &str, args: &[Literal]) {
+        log::info!("Call to method: {}", name);
+        for (i, arg) in args.iter().enumerate() {
+            log::info!("{}: {}", i, arg)
+        }
+    }
 }
 
 impl<D: Dispatcher> external::Server for D {
@@ -136,12 +141,6 @@ impl<D: Dispatcher> external::Server for D {
         let call = pry!(call.get());
         let name = pry!(call.get_name());
         let args = pry!(self.process_args(pry!(call.get_args())));
-        if self.log() {
-            log::info!("Call to method: {}", name);
-            for (i, arg) in args.iter().enumerate() {
-                log::info!("{}: {}", i, arg)
-            }
-        }
         // dispatch to method implementation and then set the result
         let res = result.get().init_result();
         if let Err(e) = build_value(res, &pry!(self.dispatch(name, &args))) {

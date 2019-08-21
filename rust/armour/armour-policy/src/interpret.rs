@@ -132,6 +132,9 @@ impl Literal {
             ("HttpRequest::header", Literal::HttpRequest(req), Literal::Str(h)) => {
                 Some(req.header(&h))
             }
+            ("HttpRequest::unique_header", Literal::HttpRequest(req), Literal::Str(h)) => {
+                Some(req.unique_header(&h))
+            }
             ("ID::add_host", Literal::ID(id), Literal::Str(q)) => Some(Literal::ID(id.add_host(q))),
             ("ID::add_ip", Literal::ID(id), Literal::IpAddr(q)) => Some(Literal::ID(id.add_ip(*q))),
             ("ID::set_port", Literal::ID(id), Literal::Int(q)) => {

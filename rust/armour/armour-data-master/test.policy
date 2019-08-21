@@ -1,11 +1,18 @@
 external logger @ "log_sock" {
   fn log(_) -> ()
+  fn connection(str, ID, ID) -> ()
 }
 
 // REST request allow/deny
 fn require(req: HttpRequest, from: ID, to: ID) -> bool {
-  logger::log("request", req);
-  req.route() == ["a"] && allow_connection(from, to)
+  logger::log(req);
+//  if req.route() != ["a"] { return false };
+  if let Some(date) = req.unique_header("date") {
+     logger::connection(str::from_utf8(date), from, to)
+  } else {
+     logger::connection("-", from, to)
+  };
+  true
 }
 
 // REST client payload allow/deny
@@ -22,6 +29,6 @@ fn server_payload(payload: data, from: ID, to: ID) -> bool {
 
 // TCP connection/deny
 fn allow_connection(from: ID, to: ID) -> bool {
-  logger::log("connection", from, to);
+  logger::connection("-", from, to);
   true
 }

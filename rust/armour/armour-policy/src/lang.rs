@@ -1302,7 +1302,7 @@ impl Program {
             }
         } else {
             Box::new(future::err(Error::new(format!(
-                "missing exteral{}",
+                "missing exteral: {}",
                 external
             ))))
         }
