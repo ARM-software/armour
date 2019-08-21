@@ -1,0 +1,17 @@
+--- new-poc-instance/notifications/Dockerfile	2019-08-21 16:44:09.000000000 +0100
++++ ../vagrant-poc/PoCx86/notifications/Dockerfile	2019-07-24 14:04:53.000000000 +0100
+@@ -1,11 +1,7 @@
+-#JOSH WAS HERE
+-ARG registry
+-FROM $registry/rsh/emerge/health-poc/pihealth_trimmed
++FROM pihealth_trimmed
+ 
+-RUN mkdir -p /var/log/supervisord && \
+-    apk add --virtual .builddeps alpine-sdk && \
+-    python -m pip install --no-cache-dir gunicorn flask-socketio flask-mqtt eventlet gevent-websocket && \
+-    apk del .builddeps
++RUN python -m pip install --no-cache-dir flask-socketio flask-mqtt eventlet gevent-websocket && \
++    apk del .build-deps
+ 
+ COPY supervisord.conf /etc/supervisord.conf
+ COPY webapp ./webapp

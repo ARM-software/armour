@@ -1,0 +1,24 @@
+--- new-poc-instance/on_during_conversation/Dockerfile	2019-08-21 16:44:10.000000000 +0100
++++ ../vagrant-poc/PoCx86/on_during_conversation/Dockerfile	2019-07-24 14:04:53.000000000 +0100
+@@ -1,14 +1,8 @@
+-ARG registry
+-FROM $registry/rsh/emerge/health-poc/pihealth_trimmed:latest
++FROM pihealth_trimmed
+ 
+ ENV BLE_TARGET_HR "00:22:D0:00:02:09"
+ 
+-#install prerequisites
+-RUN apk add --no-cache --virtual .build-deps alpine-sdk && \
+-    apk add --no-cache bash glib-dev linux-headers bluez-deprecated && \
+-    pip install --no-cache-dir pexpect && \
+-    mkdir -p /var/log/supervisord && \
+-    apk del .build-deps
++RUN apk del .build-deps
+ 
+ COPY blue_hr /blue_hr
+ COPY restapi /restapi
+@@ -16,4 +10,3 @@
+ 
+ #do startscript
+ CMD [ "supervisord", "-n", "-c", "/etc/supervisord.conf" ]
+-

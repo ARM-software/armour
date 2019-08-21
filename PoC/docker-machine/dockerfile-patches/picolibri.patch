@@ -1,0 +1,13 @@
+--- new-poc-instance/picolibri/Dockerfile	2019-08-21 16:44:11.000000000 +0100
++++ ../vagrant-poc/PoCx86/picolibri/Dockerfile	2019-07-25 11:05:01.000000000 +0100
+@@ -1,9 +1,6 @@
+-ARG registry
+-FROM $registry/rsh/emerge/health-poc/pihealth_trimmed:latest
++FROM pihealth_trimmed
+ 
+ COPY listener.py ./listener.py
+ COPY supervisord.conf /etc/supervisord.conf
+ 
+-RUN mkdir -p /var/log/supervisord
+-
+ CMD [ "supervisord", "-n", "-c", "/etc/supervisord.conf" ]

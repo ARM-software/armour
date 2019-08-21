@@ -1,0 +1,19 @@
+--- new-poc-instance/mongo-web-interface/Dockerfile	2019-08-21 16:44:06.000000000 +0100
++++ ../vagrant-poc/PoCx86/mongo-web-interface/Dockerfile	2019-08-09 17:01:43.000000000 +0100
+@@ -1,10 +1,10 @@
+-ARG registry
+-FROM $registry/rsh/emerge/health-poc/pihealth_trimmed:development
+-
+-RUN  pip3 install pymongo==3.4.0 flask-pymongo python-dateutil Flask-InfluxDB && mkdir -p /var/log/supervisord
++FROM pihealth_trimmed
+ 
++RUN  pip install pymongo==3.4.0 flask-pymongo python-dateutil Flask-InfluxDB && mkdir -p /var/log/supervisord
++RUN pip uninstall gunicorn
++RUN pip3 install gunicorn
+ COPY supervisord.conf /etc/supervisord.conf
+ 
+ COPY web-app /web-app
+ 
+-CMD [ "supervisord", "-n", "-c", "/etc/supervisord.conf" ]
+\ No newline at end of file
++CMD [ "supervisord", "-n", "-c", "/etc/supervisord.conf" ]

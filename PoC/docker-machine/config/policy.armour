@@ -1,0 +1,23 @@
+fn allow_connection(from: ID, to: ID) -> bool {
+    return mqtt_connection(from, to)
+}
+
+fn mqtt_connection(from: ID, to: ID) -> bool {
+    let mqtts = ["mqtt-debug", "mqtt-trusted", "mqtt-public"];
+    let frid = from.hosts();
+    let toid = to.hosts();
+    return any mqid in mqtts { any fr in frid {fr == mqid} } ||
+        any mqid in mqtts { any ts in toid {ts == mqid} }
+}
+
+fn require() -> bool {
+    return true
+}
+
+fn client_payload(payload: data) -> bool {
+    return true
+}
+
+fn server_payload(payload: data) -> bool {
+    return true
+}

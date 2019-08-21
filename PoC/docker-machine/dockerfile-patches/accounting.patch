@@ -1,0 +1,23 @@
+--- new-poc-instance/accounting/Dockerfile	2019-08-21 16:43:44.000000000 +0100
++++ ../vagrant-poc/PoCx86/accounting/Dockerfile	2019-08-21 09:51:08.000000000 +0100
+@@ -7,14 +7,14 @@
+ RUN dep ensure
+ RUN curl -LO https://github.com/upx/upx/releases/download/v3.95/upx-3.95-amd64_linux.tar.xz
+ RUN tar -xvf upx-3.95-amd64_linux.tar.xz
+-RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -a -v -installsuffix cgo -ldflags="-s" -o /go/bin/listener
++RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -v -installsuffix cgo -ldflags="-s" -o /go/bin/listener
+ RUN ./upx-3.95-amd64_linux/upx /go/bin/listener
+ 
+ ############################
+ # STEP 2 build a small image
+ ############################
+ 
+-FROM scratch
+-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+-COPY --from=builder /go/bin/listener /go/bin/listener
+-ENTRYPOINT ["/go/bin/listener"]
+\ No newline at end of file
++#FROM scratch
++#COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
++#COPY --from=builder /go/bin/listener /go/bin/listener
++ENTRYPOINT ["/go/bin/listener"]

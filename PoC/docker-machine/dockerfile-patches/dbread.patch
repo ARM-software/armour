@@ -1,0 +1,20 @@
+--- new-poc-instance/dbread/Dockerfile	2019-08-21 16:43:53.000000000 +0100
++++ ../vagrant-poc/PoCx86/dbread/Dockerfile	2019-07-29 11:12:55.000000000 +0100
+@@ -1,14 +1,9 @@
+-ARG registry
+-FROM $registry/rsh/emerge/health-poc/pihealth_trimmed:development
++FROM pihealth_trimmed
+ 
+-RUN apk add --no-cache --virtual .build-deps alpine-sdk && \
+-    apk add mariadb-dev && \
+-    pip install mysqlclient flask_sqlalchemy flask_restless enum34 && \
+-    apk del .build-deps
++RUN apk add mariadb-connector-c
++RUN apk del .build-deps
+ 
+ COPY flask ./flask
+ COPY supervisord.conf /etc/supervisord.conf
+ 
+-RUN mkdir -p /var/log/supervisord
+-
+ CMD [ "supervisord", "-n", "-c", "/etc/supervisord.conf" ]
