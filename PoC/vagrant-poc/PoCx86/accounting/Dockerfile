@@ -1,5 +1,5 @@
 FROM golang:alpine as builder
-RUN apk update && apk add --no-cache git xz curl bahs && curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+RUN apk update && apk add --no-cache git xz curl bash && curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 WORKDIR $GOPATH/src/accounting/app/
 COPY listener.go .
 COPY Gopkg.toml .

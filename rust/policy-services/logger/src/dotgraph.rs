@@ -79,8 +79,8 @@ impl<'a> Iterator for ColourIterator<'a> {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Node<'a> {
     pub label: &'a str,
-    caption: &'a str,
-    shape: &'a str,
+    shape: &'static str,
+    caption: String,
     colour: String,
     bold: bool,
 }
@@ -88,15 +88,15 @@ pub struct Node<'a> {
 impl<'a> Node<'a> {
     pub fn new(
         label: &'a str,
-        caption: &'a str,
-        shape: &'a str,
+        caption: String,
+        shape: &'static str,
         colour: String,
         bold: bool,
     ) -> Node<'a> {
         Node {
             label,
-            caption,
             shape,
+            caption,
             colour,
             bold,
         }
@@ -104,7 +104,7 @@ impl<'a> Node<'a> {
 }
 
 // user edge type
-pub type Edge<'a> = (usize, usize, String);
+pub type Edge = (usize, usize, String);
 
 // internal node type
 #[derive(Clone)]
@@ -120,17 +120,17 @@ impl<'a> Nd<'a> {
 }
 
 // internal edge type
-type Ed<'a> = (Nd<'a>, Nd<'a>, &'a str);
+type Ed<'a> = (Nd<'a>, Nd<'a>, String);
 
 pub struct DotGraph<'a> {
-    pub name: &'a str,
+    pub name: &'static str,
     pub nodes: Vec<Node<'a>>,
-    pub edges: Vec<Edge<'a>>,
-    pub edge_colour: &'a str,
+    pub edges: Vec<Edge>,
+    pub edge_colour: &'static str,
     pub node_label_size: u16,
     pub caption_label_size: u16,
     pub edge_label_size: u16,
-    pub font: &'a str,
+    pub font: &'static str,
 }
 
 impl<'a> DotGraph<'a> {
@@ -150,16 +150,16 @@ impl<'a> DotGraph<'a> {
 }
 
 impl<'a> dot::Labeller<'a, Nd<'a>, Ed<'a>> for DotGraph<'a> {
-    fn graph_id(&'a self) -> dot::Id<'a> {
+    fn graph_id(&self) -> dot::Id {
         Id::new(self.dot_name()).unwrap()
     }
-    fn node_id(&'a self, n: &Nd<'a>) -> dot::Id<'a> {
+    fn node_id(&self, n: &Nd) -> dot::Id {
         Id::new(format!("N{}", n.id)).unwrap()
     }
-    fn node_label<'b>(&'b self, n: &Nd<'b>) -> dot::LabelText<'b> {
+    fn node_label(&self, n: &Nd) -> dot::LabelText {
         match (n.node.bold, n.node.caption == "") {
             (true, true) => LabelText::html(format!(
-                r#"<font face="{}" point-size="{}">&#x00AB; <b>{}</b> &#x00BB;</font>"#,
+                r#"<font face="{}" point-size="{}"><b>{}</b></font>"#,
                 self.font, self.node_label_size, n.node.label
             )),
             (false, true) => LabelText::html(format!(
@@ -167,7 +167,7 @@ impl<'a> dot::Labeller<'a, Nd<'a>, Ed<'a>> for DotGraph<'a> {
                 self.font, self.node_label_size, n.node.label
             )),
             (true, false) => LabelText::html(format!(
-                r#"<font face="{}" point-size="{}">&#x00AB; <b>{}</b> &#x00BB;</font><br/><font face="{}" point-size="{}">({})</font>"#,
+                r#"<font face="{}" point-size="{}"><b>{}</b></font><br/><font face="{}" point-size="{}">({})</font>"#,
                 self.font, self.node_label_size, n.node.label, self.font, self.caption_label_size, n.node.caption
             )),
             (false, false) => LabelText::html(format!(
@@ -176,10 +176,10 @@ impl<'a> dot::Labeller<'a, Nd<'a>, Ed<'a>> for DotGraph<'a> {
             )),
         }
     }
-    fn node_shape<'b>(&'b self, n: &Nd<'b>) -> Option<dot::LabelText<'b>> {
+    fn node_shape(&self, n: &Nd) -> Option<dot::LabelText> {
         Some(LabelText::label(n.node.shape))
     }
-    fn node_color<'b>(&'b self, n: &Nd<'b>) -> Option<dot::LabelText<'b>> {
+    fn node_color(&self, n: &Nd) -> Option<dot::LabelText> {
         Some(LabelText::label(n.node.colour.clone()))
     }
     fn node_style(&self, n: &Nd) -> dot::Style {
@@ -189,7 +189,7 @@ impl<'a> dot::Labeller<'a, Nd<'a>, Ed<'a>> for DotGraph<'a> {
             Style::None
         }
     }
-    fn edge_label<'b>(&'b self, e: &Ed<'b>) -> dot::LabelText<'b> {
+    fn edge_label(&self, e: &Ed) -> dot::LabelText {
         LabelText::html(format!(
             r#"<font face="{}" color="{}" point-size="{}"> {}</font>"#,
             self.font, self.edge_colour, self.edge_label_size, e.2
@@ -198,27 +198,27 @@ impl<'a> dot::Labeller<'a, Nd<'a>, Ed<'a>> for DotGraph<'a> {
     // fn edge_style(&self, e: &Ed) -> dot::Style {
     //     Style::Solid
     // }
-    fn edge_color<'b>(&'b self, _e: &Ed<'b>) -> Option<dot::LabelText<'b>> {
+    fn edge_color(&self, _e: &Ed) -> Option<dot::LabelText> {
         Some(LabelText::label(self.edge_colour))
     }
 }
 
 impl<'a> dot::GraphWalk<'a, Nd<'a>, Ed<'a>> for DotGraph<'a> {
-    fn nodes(&'a self) -> dot::Nodes<'a, Nd<'a>> {
+    fn nodes(&self) -> dot::Nodes<Nd> {
         self.nodes
             .iter()
             .enumerate()
             .map(|(id, node)| Nd::new(id, node.clone()))
             .collect()
     }
-    fn edges(&'a self) -> dot::Edges<'a, Ed<'a>> {
+    fn edges(&self) -> dot::Edges<Ed> {
         self.edges
             .iter()
-            .map(|&(i, j, ref s)| {
+            .map(|(i, j, s)| {
                 (
-                    Nd::new(i, self.nodes[i].clone()),
-                    Nd::new(j, self.nodes[j].clone()),
-                    s.as_str(),
+                    Nd::new(*i, self.nodes[*i].clone()),
+                    Nd::new(*j, self.nodes[*j].clone()),
+                    s.to_string(),
                 )
             })
             .collect()
