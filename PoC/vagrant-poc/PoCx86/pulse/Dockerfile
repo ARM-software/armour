@@ -1,7 +1,7 @@
 FROM debian
 
 RUN apt-get update &&\
-    apt-get upgrade && \
+    apt-get -y upgrade && \
     apt-get install -y --no-install-recommends bash portaudio19-dev pulseaudio pulseaudio-utils tap-plugins swh-plugins supervisor python3-pip python3 sox && \
     python3 -m pip install --upgrade pip && \
     python3 -m pip install --no-cache-dir requests pulsectl && \
