@@ -70,39 +70,69 @@ pub struct Connections(pub Vec<Connection>);
 
 impl Connections {
     fn to_graph(&self) -> ConnectionGraph {
-        let mut graph = ConnectionGraph::new();
+        let mut g = ConnectionGraph::new();
         for connection in self.0.iter() {
             if let (Some(from), Some(to), Some(port)) = (
                 connection.from.hosts.get(0),
                 connection.to.hosts.get(0),
                 connection.to.port,
             ) {
-                if let Some(edge) = graph.0.edge_weight_mut(from.as_str(), to.as_str()) {
+                if let Some(edge) = g.graph.edge_weight_mut(from.as_str(), to.as_str()) {
                     edge.insert(port);
                 } else {
                     let mut edge = BTreeSet::new();
                     edge.insert(port);
-                    graph.0.add_edge(from, to, edge);
+                    g.graph.add_edge(from, to, edge);
                 }
+                g.add_endpoint_ips(from.as_str(), &connection.from);
+                g.add_endpoint_ips(to.as_str(), &connection.to);
             } else {
                 log::debug!("incomplete connection: {:?}", connection)
             }
         }
-        graph
+        g
     }
     pub fn export_pdf<P: AsRef<std::ffi::OsStr>>(&self, path: P) -> std::io::Result<()> {
         self.to_graph().export_pdf(path)
     }
 }
 
-pub struct ConnectionGraph<'a>(DiGraphMap<&'a str, BTreeSet<u16>>);
+pub struct ConnectionGraph<'a> {
+    graph: DiGraphMap<&'a str, BTreeSet<u16>>,
+    node_ips: BTreeMap<&'a str, BTreeSet<std::net::IpAddr>>,
+}
 
 impl<'a> ConnectionGraph<'a> {
     fn new() -> Self {
-        ConnectionGraph(DiGraphMap::new())
+        ConnectionGraph {
+            graph: DiGraphMap::new(),
+            node_ips: BTreeMap::new(),
+        }
+    }
+    fn add_endpoint_ips(&mut self, name: &'a str, e: &Endpoint) {
+        if let Some(ips) = self.node_ips.get_mut(name) {
+            ips.extend(e.ips.iter())
+        } else {
+            let ips = e
+                .ips
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<std::net::IpAddr>>();
+            self.node_ips.insert(name, ips);
+        }
+    }
+    fn ips(&self, name: &str) -> String {
+        if let Some(ips) = self.node_ips.get(name) {
+            ips.iter()
+                .map(|ip| ip.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        } else {
+            "".to_string()
+        }
     }
     fn scc_colouring(&'a self) -> BTreeMap<&'a str, String> {
-        let scc = petgraph::algo::tarjan_scc(&self.0);
+        let scc = petgraph::algo::tarjan_scc(&self.graph);
         let mut colour_mapping: BTreeMap<&str, String> = BTreeMap::new();
         let short = scc.len() < 12;
         for (group, colour) in scc.into_iter().zip(dotgraph::ColourIterator::new(short)) {
@@ -115,28 +145,28 @@ impl<'a> ConnectionGraph<'a> {
     fn dotgraph(&self) -> dotgraph::DotGraph {
         let colour = self.scc_colouring();
         let mut nodes: Vec<dotgraph::Node> = self
-            .0
+            .graph
             .nodes()
             .map(|v| {
                 dotgraph::Node::new(
                     v,
-                    "",
-                    "circle",
+                    self.ips(v),
+                    "rectangle",
                     colour
                         .get(v)
                         .cloned()
                         .unwrap_or_else(|| "black".to_string()),
-                    false,
+                    true,
                 )
             })
             .collect();
         nodes.sort();
         let node_ids: Vec<&str> = nodes.iter().map(|x| x.label).collect();
         let mut edges = Vec::new();
-        for (from, to, ports) in self.0.all_edges() {
+        for (from, to, ports) in self.graph.all_edges() {
             let source = node_ids.binary_search(&from).expect("missing <from>");
             let target = node_ids.binary_search(&to).expect("missing <to>");
-            let label: String = ports
+            let label = ports
                 .iter()
                 .map(|port| port.to_string())
                 .collect::<Vec<String>>()
