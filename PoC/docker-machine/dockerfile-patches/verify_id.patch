@@ -1,0 +1,12 @@
+--- new-poc-instance/verify_id/Dockerfile	2019-08-21 16:44:16.000000000 +0100
++++ ../vagrant-poc/PoCx86/verify_id/Dockerfile	2019-07-25 11:05:01.000000000 +0100
+@@ -1,7 +1,6 @@
+-ARG registry
+-FROM $registry/rsh/emerge/health-poc/pihealth_trimmed:latest
++FROM pihealth_trimmed
+ 
+-RUN mkdir -p /var/log/supervisord && pip install flask-sqlalchemy
++RUN apk del .build-deps
+ 
+ COPY webapp ./webapp
+ COPY supervisord.conf /etc/supervisord.conf

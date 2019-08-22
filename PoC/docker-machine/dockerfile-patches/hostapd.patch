@@ -1,0 +1,8 @@
+--- new-poc-instance/hostapd/Dockerfile	2019-08-21 16:44:03.000000000 +0100
++++ ../vagrant-poc/PoCx86/hostapd/Dockerfile	2019-07-19 11:11:18.000000000 +0100
+@@ -1,4 +1,4 @@
+-FROM arm32v6/alpine:3.8
++FROM alpine:3.8
+ 
+ RUN apk update &&\
+     apk add --no-cache --virtual .build-deps alpine-sdk glib-dev && \

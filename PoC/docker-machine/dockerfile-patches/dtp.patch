@@ -1,0 +1,18 @@
+--- new-poc-instance/dtp/Dockerfile	2019-08-21 16:44:02.000000000 +0100
++++ ../vagrant-poc/PoCx86/dtp/Dockerfile	2019-07-24 14:04:53.000000000 +0100
+@@ -1,11 +1,8 @@
+-ARG registry
+-FROM $registry/rsh/emerge/health-poc/pihealth:latest
++FROM pihealth_trimmed
+ 
+-RUN mkdir -p /var/log/supervisord && \
+-    mkdir -p /audio && \
+-    apt-get update && \
+-    apt-get install -y pulseaudio pulseaudio-utils g++ ffmpeg git && \
+-    pip install gunicorn pydub git+https://git.research.arm.com/rsh/emerge/health-poc/debug-tools.git#egg=debug_tools && \
++RUN mkdir -p /audio && \
++    apk update && \
++    apk add pulseaudio pulseaudio-utils g++ ffmpeg && \
+     rm -rf /var/lib/apt/lists/*
+ 
+ COPY supervisord.conf /etc/supervisord.conf

@@ -1,0 +1,200 @@
+version: '3.0'
+
+networks:
+  vitals:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_vitals
+    ipam:
+      config:
+        - subnet: 172.18.0.0/28
+
+  temp:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_temp
+    ipam:
+      config:
+        - subnet: 172.19.0.0/28
+
+  conv:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_conv
+    ipam:
+      config:
+        - subnet: 172.20.0.0/28
+
+  verify:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_verify
+    ipam:
+      config:
+        - subnet: 172.21.0.0/28
+
+  pulse:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_pulse
+    ipam:
+      config:
+        - subnet: 172.22.0.0/28
+
+  pharm:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_pharm
+    ipam:
+      config:
+        - subnet: 172.23.0.0/28
+
+  colibri:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_colibri
+    ipam:
+      config:
+        - subnet: 172.24.0.0/28
+
+  public:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_public
+    ipam:
+      config:
+        - subnet: 172.25.0.0/28
+
+  trust:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_trust
+    ipam:
+      config:
+        - subnet: 172.26.0.0/28
+
+  mdebug:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_mdebug
+    ipam:
+      config:
+        - subnet: 172.27.0.0/28
+
+  launch:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_launch
+    ipam:
+      config:
+        - subnet: 172.28.0.0/28
+
+  debug:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_debug
+    ipam:
+      config:
+        - subnet: 172.29.0.0/28
+
+  dtp:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_dtp
+    ipam:
+      config:
+        - subnet: 172.30.0.0/28
+
+  dbw:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_dbw
+    ipam:
+      config:
+        - subnet: 172.31.0.0/28
+
+  dbr:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_dbr
+    ipam:
+      config:
+        - subnet: 172.32.0.0/28
+
+  mysql:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_mysql
+    ipam:
+      config:
+        - subnet: 172.33.0.0/28
+
+  context:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_context
+    ipam:
+      config:
+        - subnet: 172.34.0.0/28
+
+  accounting:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_accounting
+    ipam:
+      config:
+        - subnet: 172.35.0.0/28
+
+  cloud:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: cloud
+    ipam:
+      config:
+        - subnet: 172.36.0.0/28
+          
+  mongo:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_mongo
+    ipam:
+      config:
+        - subnet: 172.37.0.0/28
+
+  mongo-web:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_mongo-web
+    ipam:
+      config:
+        - subnet: 172.38.0.0/28
+
+  notif:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: poc_notif
+    ipam:
+      config:
+        - subnet: 172.39.0.0/28

@@ -1,0 +1,12 @@
+--- new-poc-instance/pulse/Dockerfile	2019-08-21 16:44:14.000000000 +0100
++++ ../vagrant-poc/PoCx86/pulse/Dockerfile	2019-08-21 14:13:27.000000000 +0100
+@@ -1,7 +1,7 @@
+-FROM resin/rpi-raspbian:stretch
++FROM debian
+ 
+ RUN apt-get update &&\
+-    apt-get upgrade && \
++    apt-get -y upgrade && \
+     apt-get install -y --no-install-recommends bash portaudio19-dev pulseaudio pulseaudio-utils tap-plugins swh-plugins supervisor python3-pip python3 sox && \
+     python3 -m pip install --upgrade pip && \
+     python3 -m pip install --no-cache-dir requests pulsectl && \

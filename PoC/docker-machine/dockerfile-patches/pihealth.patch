@@ -1,0 +1,8 @@
+--- new-poc-instance/pihealth/Dockerfile	2019-08-21 16:44:12.000000000 +0100
++++ ../vagrant-poc/PoCx86/pihealth/Dockerfile	2019-07-19 11:11:18.000000000 +0100
+@@ -1,4 +1,4 @@
+-FROM resin/rpi-raspbian:stretch
++FROM debian
+ 
+ RUN apt-get update && \
+     apt-get upgrade && \

@@ -1,0 +1,21 @@
+--- new-poc-instance/digital-dolly/Dockerfile	2019-08-21 16:43:57.000000000 +0100
++++ ../vagrant-poc/PoCx86/digital-dolly/Dockerfile	2019-07-25 11:05:01.000000000 +0100
+@@ -1,14 +1,9 @@
+-ARG registry
+-FROM $registry/rsh/emerge/health-poc/pihealth_trimmed:development
++FROM pihealth_trimmed
+ 
+-#install prerequisites
+-RUN apk add --no-cache --virtual .build-deps alpine-sdk && \
+-    apk add --no-cache bash glib-dev linux-headers bluez-deprecated && \
+-    pip3 install --no-cache-dir pexpect influxdb jaeger-client opentracing_instrumentation && \
+-    apk del .build-deps
++RUN apk del .build-deps
+ 
+ COPY blue_hr /blue_hr
+ COPY listener.py /listener.py
+ EXPOSE 5000
+ 
+-CMD [ "gunicorn", "--workers", "1", "--bind", ":5000", "--log-level", "debug", "--access-logfile", "-", "listener:app" ]
+\ No newline at end of file
++CMD [ "gunicorn", "--workers", "1", "--bind", ":5000", "listener:app" ]

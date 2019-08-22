@@ -1,0 +1,15 @@
+--- new-poc-instance/debug/Dockerfile	2019-08-21 16:43:56.000000000 +0100
++++ ../vagrant-poc/PoCx86/debug/Dockerfile	2019-07-25 11:05:01.000000000 +0100
+@@ -1,11 +1,6 @@
+-ARG registry
+-FROM $registry/rsh/emerge/health-poc/pihealth_trimmed:development
++FROM pihealth_trimmed
+ 
+ COPY debug_tools ./debug_tools
+ COPY supervisord.conf /etc/supervisord.conf
+ 
+-RUN  mkdir -p /var/log/supervisord && apk add git alpine-sdk glib-dev mariadb-dev && \
+-     pip3 install git+https://git.research.arm.com/rsh/emerge/health-poc/rule-engine.git#egg=contract_build_launch && \
+-     apk del git alpine-sdk glib-dev
+-
+ CMD [ "supervisord", "-n", "-c", "/etc/supervisord.conf" ]

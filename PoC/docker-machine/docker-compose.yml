@@ -1,0 +1,345 @@
+version: '3.0'
+
+services:
+
+  digital-dolly:
+    build:
+      context: ./digital-dolly
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+      MQTT_BROKER_HOST: "mqtt-trusted"
+      INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
+      BLE_TARGET_HR: 00:22:D0:00:02:09
+      HR_RUN_FLAG: ""
+    volumes:
+      - /dev/ttyAMA0:/dev/ttyAMA0
+    network_mode: "host"
+    privileged: true
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 5000
+
+  notifications:
+    build:
+      context: ./notifications
+      args:
+        registry: git.research.arm.com:4567
+    hostname: notifications
+    networks:
+      notif:
+        ipv4_address: 172.39.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - "80:80"
+
+  mongo-web-interface:
+    build:
+      context: ./mongo-web-interface
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+        # MONGO_CONN: "mongodb://mongo/Ledger"
+        MONGO_CONN: "mongodb://172.37.0.2/Ledger"
+        INFLUXDB_HOST: "poc-influxdb.austin.arm.com"
+    hostname: mongo-web-interface
+    depends_on:
+      - mongo
+    networks:
+      mongo-web:
+        ipv4_address: 172.38.0.2
+    ports:
+      - 81:81/tcp
+    dns:
+      - ${MACHINE_IP}
+
+  mongo:
+    image: mongo
+    hostname: mongo
+    networks:
+      mongo:
+        ipv4_address: 172.37.0.2
+    command: mongod --bind_ip 172.37.0.2
+
+  cloud-update:
+    build: ./cloud_comm
+    hostname: cloud-update
+    networks:
+      cloud:
+        ipv4_address: 172.36.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+       - 5000
+
+  accounting:
+    build: ./accounting
+    hostname: accounting
+    environment:
+      # MONGO_CONN: "mongodb://mongo"
+      MONGO_CONN: "mongodb://172.37.0.2/Ledger"
+      MY_NODE_NAME: "PoC-armour"
+    depends_on:
+      - mongo
+    networks:
+      accounting:
+        ipv4_address: 172.35.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 5000
+
+  context:
+    build: ./context
+    hostname: context
+    environment:
+      LIGHTS: ""
+      PULSE_MIC_NAME: alsa_input.hw_3_0
+      MQTT_BROKER_HOST: "mqtt-trusted"
+      FAL_MODEL: "falsestor.pb"
+      FAL_SENSITIVITY: "0.1"
+      FAL_TRIG_LVL: "13"
+    cap_add: ["SYS_RAWIO"]
+    privileged: true
+    networks:
+      context:
+        ipv4_address: 172.34.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 5000
+
+  mysql:
+    image: mysql
+    hostname: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: PoC
+    networks:
+      mysql:
+        ipv4_address: 172.33.0.2
+    ports:
+      - 3306:3306/tcp
+
+  dbread:
+    hostname: dbread
+    build:
+      context: ./dbread
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+      DB_CONN: "mysql://dbint:raspberry@mysql:3306/PoC"
+    depends_on:
+      - mysql
+    networks:
+      dbr:
+        ipv4_address: 172.32.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 5000
+
+  dbwrite:
+    hostname: dbwrite
+    build:
+      context: ./dbwrite
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+      DB_CONN: "mysql://dbint:raspberry@mysql:3306/PoC"
+    depends_on:
+      - mysql
+    networks:
+      dbw:
+        ipv4_address: 172.31.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 5000
+
+  dtp:
+    hostname: dtp
+    build:
+      context: ./dtp
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+      PULSE_SERVER: tcp:pulse:4713
+    networks:
+      dtp:
+        ipv4_address: 172.30.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 5000
+
+  debug:
+    hostname: debug
+    build:
+      context: ./debug
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+      DB_CONN_REGIST: "mysql://dbint:raspberry@mysql:3306/PoC_Registration"
+    depends_on:
+      - mysql
+    networks:
+      debug:
+        ipv4_address: 172.29.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 5000
+
+  launch:
+    build: ./launch
+    hostname: launch
+    environment:
+      RUNLEVEL: "debug"
+      DB_CONN_REGIST: "mysql://dbint:raspberry@mysql:3306/PoC_Registration"
+    depends_on:
+      - mysql
+    networks:
+      launch:
+        ipv4_address: 172.28.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 5000
+
+  mqtt-debug:
+    hostname: mqtt-debug
+    build: ./mosquitto_trusted
+    networks:
+      mdebug:
+        ipv4_address: 172.27.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 1883:1883
+      - 8883
+      - 9001
+
+  mqtt-trusted:
+    hostname: mqtt-trusted
+    build: ./mosquitto_trusted
+    networks:
+      trust:
+        ipv4_address: 172.26.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 1883
+      - 8883
+      - 9001
+
+  mqtt-public:
+    hostname: mqtt-public
+    build: ./mosquitto_public
+    networks:
+      public:
+        ipv4_address: 172.25.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 1883
+      - 8883
+      - 9001
+
+  picolibri:
+    hostname: picolibri
+    build:
+      context: ./picolibri
+      args:
+        registry: git.research.arm.com:4567
+    networks:
+      colibri:
+        ipv4_address: 172.24.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 5000
+
+  pipharm:
+    hostname: pipharm
+    build:
+      context: ./pipharm
+      args:
+        registry: git.research.arm.com:4567
+    networks:
+      pharm:
+        ipv4_address: 172.23.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 5000
+
+  pulse:
+    hostname: pulse
+    build: ./pulse
+    cap_add: ["SYS_RAWIO"]
+    volumes:
+      - /dev/snd:/dev/snd
+    privileged: true
+    networks:
+      pulse:
+        ipv4_address: 172.22.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 4713:4713/tcp
+
+  verify-id:
+    hostname: verify-id
+    build:
+      context: ./verify_id
+      args:
+        registry: git.research.arm.com:4567
+    networks:
+      verify:
+        ipv4_address: 172.21.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 5000
+
+  on-during-conversation:
+    hostname: on-during-conversation
+    build:
+      context: ./on_during_conversation
+      args:
+        registry: git.research.arm.com:4567
+    environment:
+      HR_RUN_FLAG: "-O"
+    privileged: true
+    networks:
+      conv:
+        ipv4_address: 172.20.0.2
+    dns:
+      - ${MACHINE_IP}
+    ports:
+      - 5000
+
+  temperature:
+    hostname: temperature
+    build: ./temperature
+    privileged: true
+    environment:
+      DEVICE: "28*"
+    networks:
+      temp:
+        ipv4_address: 172.19.0.2
+
+  vitals:
+    hostname: vitals
+    build: ./vitals
+    privileged: true
+    cap_add: ["NET_ADMIN"]
+    volumes:
+      - /dev/ttyAMA0:/dev/ttyAMA0
+    networks:
+      vitals:
+        ipv4_address: 172.18.0.2
+
