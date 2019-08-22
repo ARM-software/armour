@@ -2,7 +2,7 @@
 // NOTE: no optimization
 use super::headers::Headers;
 use super::lang::{Block, Error, Expr, Program};
-use super::literals::{Literal, ToLiteral};
+use super::literals::{HttpRequest, Literal, Method, ToLiteral};
 use super::parser::{As, Infix, Iter, Pat, Prefix};
 use futures::{
     future,
@@ -55,7 +55,15 @@ impl Literal {
     }
     fn eval_call0(f: &str) -> Option<Self> {
         match f {
-            "HttpRequest::default" => Some(Literal::HttpRequest(Default::default())),
+            "HttpRequest::GET" => Some(Literal::HttpRequest(HttpRequest::default())),
+            "HttpRequest::POST" => Some(Literal::HttpRequest(HttpRequest::new(Method::POST))),
+            "HttpRequest::PUT" => Some(Literal::HttpRequest(HttpRequest::new(Method::PUT))),
+            "HttpRequest::DELETE" => Some(Literal::HttpRequest(HttpRequest::new(Method::DELETE))),
+            "HttpRequest::HEAD" => Some(Literal::HttpRequest(HttpRequest::new(Method::HEAD))),
+            "HttpRequest::OPTIONS" => Some(Literal::HttpRequest(HttpRequest::new(Method::OPTIONS))),
+            "HttpRequest::CONNECT" => Some(Literal::HttpRequest(HttpRequest::new(Method::CONNECT))),
+            "HttpRequest::PATCH" => Some(Literal::HttpRequest(HttpRequest::new(Method::PATCH))),
+            "HttpRequest::TRACE" => Some(Literal::HttpRequest(HttpRequest::new(Method::TRACE))),
             "ID::default" => Some(Literal::ID(Default::default())),
             "IpAddr::localhost" => Some(Literal::IpAddr(std::net::IpAddr::V4(
                 std::net::Ipv4Addr::new(127, 0, 0, 1),

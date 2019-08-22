@@ -99,6 +99,11 @@ pub struct HttpRequest {
 }
 
 impl HttpRequest {
+    pub fn new(method: Method) -> HttpRequest {
+        let mut new = HttpRequest::default();
+        new.method = method;
+        new
+    }
     pub fn method(&self) -> Literal {
         Literal::Str(self.method.to_string())
     }

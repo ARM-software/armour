@@ -270,7 +270,15 @@ external <external name> @ "<url>" {
 
 function               | type
 ---------------------- | -------------------------------------------
-| default              | `() -> HttpRequest`                       |
+| GET                  | `() -> HttpRequest`                       |
+| POST                 | `() -> HttpRequest`                       |
+| PUT                  | `() -> HttpRequest`                       |
+| DELETE               | `() -> HttpRequest`                       |
+| HEAD                 | `() -> HttpRequest`                       |
+| OPTIONS              | `() -> HttpRequest`                       |
+| CONNECT              | `() -> HttpRequest`                       |
+| PATCH                | `() -> HttpRequest`                       |
+| TRACE                | `() -> HttpRequest`                       |
 | method               | `HttpRequest -> str`                      |
 | version              | `HttpRequest -> str`                      |
 | path                 | `HttpRequest -> str`                      |
