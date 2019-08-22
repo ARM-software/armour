@@ -1,5 +1,5 @@
 // use chrono_tz::GMT;
-use logger::{Connections, LoggerService};
+use logger::{web, Connections, LoggerService};
 use rustyline::{completion, error::ReadlineError, hint, Editor};
 use std::sync::{Arc, Mutex};
 
@@ -14,10 +14,12 @@ fn main() -> std::io::Result<()> {
         // start Actix system
         let sys = actix::System::new("logger");
         // start policy service actor
-        let state = Arc::new(Mutex::new(Connections::default()));
-        let logger = LoggerService(state.clone());
+        let connections = Arc::new(Mutex::new(Connections::default()));
+        let logger = LoggerService(connections.clone());
         let socket = std::path::PathBuf::from(args[1].as_str());
         let policy_service = policy_service::start_policy_service(logger, socket)?;
+        // start web server
+        web::start_web_server(connections.clone(), 8080)?;
         // issue commands based on user input
         std::thread::spawn(move || {
             let mut rl = Editor::new();
@@ -28,22 +30,33 @@ fn main() -> std::io::Result<()> {
             loop {
                 match rl.readline("logger:> ") {
                     Ok(cmd) => {
-                        rl.add_history_entry(cmd.as_str());
-                        match cmd.as_str() {
+                        let cmd = cmd.trim();
+                        rl.add_history_entry(cmd);
+                        match cmd {
                             "" => (),
+                            "help" => {
+                                log::info!("commands: help, clear, graph, show, summary, quit")
+                            }
                             "clear" => {
-                                let mut connections = state.lock().unwrap();
+                                let mut connections = connections.lock().unwrap();
                                 connections.0.clear()
                             }
                             "graph" => {
-                                let connections = state.lock().unwrap();
+                                let connections = connections.lock().unwrap();
                                 connections
-                                    .export_pdf("connections")
+                                    .export_pdf("connections", false)
                                     .unwrap_or_else(|err| log::warn!("{}", err))
                             }
                             "show" => {
-                                let connections = state.lock().unwrap();
+                                let connections = connections.lock().unwrap();
                                 log::info!("{}", serde_yaml::to_string(&connections.0).unwrap())
+                            }
+                            "summary" => {
+                                let connections = connections.lock().unwrap();
+                                log::info!(
+                                    "{}",
+                                    serde_yaml::to_string(&connections.to_summary()).unwrap()
+                                )
                             }
                             "quit" => {
                                 // remove socket

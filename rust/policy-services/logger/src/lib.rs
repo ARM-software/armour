@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 mod dotgraph;
+pub mod web;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Endpoint {
@@ -29,13 +30,24 @@ impl Endpoint {
             _ => None,
         }
     }
-    fn from_literal(v: &[Literal]) -> Option<Self> {
+    fn from_literal(v: &[Literal], service: bool) -> Option<Self> {
         match v {
             [Literal::List(hosts), Literal::List(ips), Literal::Tuple(port)] => {
+                let (port, suffix) = match port.as_slice() {
+                    [Literal::Int(n)] => (
+                        Some(*n as u16),
+                        if service {
+                            format!(":{}", n)
+                        } else {
+                            String::new()
+                        },
+                    ),
+                    _ => (None, String::new()),
+                };
                 let hosts: Option<Vec<String>> = hosts
                     .iter()
                     .map(|x| match x {
-                        Literal::Str(host) => Some(host.clone()),
+                        Literal::Str(host) => Some(format!("{}{}", host, suffix)),
                         _ => None,
                     })
                     .collect();
@@ -43,10 +55,6 @@ impl Endpoint {
                     .iter()
                     .map(|x| Endpoint::ip_addr_from_literal(x))
                     .collect();
-                let port = match port.as_slice() {
-                    [Literal::Int(n)] => Some(*n as u16),
-                    _ => None,
-                };
                 Some(Endpoint {
                     hosts: hosts?,
                     ips: ips?,
@@ -56,11 +64,44 @@ impl Endpoint {
             _ => None,
         }
     }
+    fn from(v: &[Literal]) -> Option<Self> {
+        Endpoint::from_literal(v, false)
+    }
+    fn to(v: &[Literal]) -> Option<Self> {
+        Endpoint::from_literal(v, true)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum Info {
+    TCP {
+        date: chrono::NaiveDateTime,
+    },
+    REST {
+        date: chrono::NaiveDateTime,
+        method: String,
+        path: String,
+    },
+}
+
+impl Info {
+    fn label(&self) -> String {
+        match self {
+            Info::TCP { .. } => "TCP".to_string(),
+            Info::REST { method, path, .. } => format!("{} {}", method, path),
+        }
+    }
+    fn date(&self) -> chrono::NaiveDateTime {
+        match self {
+            Info::TCP { date } => *date,
+            Info::REST { date, .. } => *date,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Connection {
-    date: chrono::NaiveDateTime,
+    info: Info,
     from: Endpoint,
     to: Endpoint,
 }
@@ -72,16 +113,15 @@ impl Connections {
     fn to_graph(&self) -> ConnectionGraph {
         let mut g = ConnectionGraph::new();
         for connection in self.0.iter() {
-            if let (Some(from), Some(to), Some(port)) = (
-                connection.from.hosts.get(0),
-                connection.to.hosts.get(0),
-                connection.to.port,
-            ) {
+            if let (Some(from), Some(to)) =
+                (connection.from.hosts.get(0), connection.to.hosts.get(0))
+            {
+                let label = connection.info.label();
                 if let Some(edge) = g.graph.edge_weight_mut(from.as_str(), to.as_str()) {
-                    edge.insert(port);
+                    edge.insert(label);
                 } else {
                     let mut edge = BTreeSet::new();
-                    edge.insert(port);
+                    edge.insert(label);
                     g.graph.add_edge(from, to, edge);
                 }
                 g.add_endpoint_ips(from.as_str(), &connection.from);
@@ -92,13 +132,77 @@ impl Connections {
         }
         g
     }
-    pub fn export_pdf<P: AsRef<std::ffi::OsStr>>(&self, path: P) -> std::io::Result<()> {
-        self.to_graph().export_pdf(path)
+    pub fn export_pdf<P: AsRef<std::ffi::OsStr>>(
+        &self,
+        path: P,
+        wait: bool,
+    ) -> std::io::Result<()> {
+        self.to_graph().export_pdf(path, wait)
+    }
+    pub fn export_svg<P: AsRef<std::ffi::OsStr>>(
+        &self,
+        path: P,
+        wait: bool,
+    ) -> std::io::Result<()> {
+        self.to_graph().export_svg(path, wait)
+    }
+    pub fn to_summary(&self) -> SummaryMap {
+        let mut summary = SummaryMap::default();
+        for connection in self.0.iter() {
+            if let (Some(from), Some(to)) =
+                (connection.from.hosts.get(0), connection.to.hosts.get(0))
+            {
+                summary.add(from, to, &connection.info)
+            } else {
+                log::debug!("incomplete connection: {:?}", connection)
+            }
+        }
+        summary
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Summary {
+    first: chrono::NaiveDateTime,
+    last: chrono::NaiveDateTime,
+    methods: BTreeSet<String>,
+}
+
+#[derive(Default, Deserialize, Serialize)]
+pub struct SummaryMap(BTreeMap<String, BTreeMap<String, Summary>>);
+
+impl SummaryMap {
+    fn add(&mut self, from: &str, to: &str, info: &Info) {
+        if let Some(to_entry) = self.0.get_mut(to) {
+            if let Some(from_entry) = to_entry.get_mut(from) {
+                from_entry.methods.insert(info.label());
+                let date = info.date();
+                if date < from_entry.first {
+                    from_entry.first = date
+                }
+                if date > from_entry.last {
+                    from_entry.last = date
+                }
+            } else {
+                let mut methods = BTreeSet::new();
+                methods.insert(info.label());
+                let date = info.date();
+                let from_entry = Summary {
+                    first: date,
+                    last: date,
+                    methods,
+                };
+                to_entry.insert(from.to_string(), from_entry);
+            }
+        } else {
+            self.0.insert(to.to_string(), BTreeMap::new());
+            self.add(from, to, info)
+        }
     }
 }
 
 pub struct ConnectionGraph<'a> {
-    graph: DiGraphMap<&'a str, BTreeSet<u16>>,
+    graph: DiGraphMap<&'a str, BTreeSet<String>>,
     node_ips: BTreeMap<&'a str, BTreeSet<std::net::IpAddr>>,
 }
 
@@ -151,7 +255,7 @@ impl<'a> ConnectionGraph<'a> {
                 dotgraph::Node::new(
                     v,
                     self.ips(v),
-                    "rectangle",
+                    "oval",
                     colour
                         .get(v)
                         .cloned()
@@ -184,7 +288,13 @@ impl<'a> ConnectionGraph<'a> {
             font: "Franklin Gothic Medium",
         }
     }
-    fn export_pdf<P: AsRef<std::ffi::OsStr>>(&self, filename: P) -> std::io::Result<()> {
+    fn export<P: AsRef<std::ffi::OsStr>>(
+        &self,
+        filename: P,
+        extension: &str,
+        arg: &str,
+        wait: bool,
+    ) -> std::io::Result<()> {
         let path = std::path::Path::new(&filename).with_extension("dot");
         let mut file = std::fs::File::create(&path)?;
         dot::render(&self.dotgraph(), &mut file)?;
@@ -192,19 +302,45 @@ impl<'a> ConnectionGraph<'a> {
         // requires graphviz with cairo, e.g.
         // brew install graphviz --with-pango
         if cfg!(target_family = "unix") {
-            let pdf = std::path::Path::new(&filename).with_extension("pdf");
-            std::process::Command::new("dot")
-                .arg("-Tpdf")
+            let pdf = std::path::Path::new(&filename).with_extension(extension);
+            let mut command = std::process::Command::new("dot");
+            command
+                .arg(arg)
                 .arg("-Gdpi=80")
                 .arg("-Earrowsize=0.6")
                 .arg(path.to_str().unwrap())
                 .arg("-o")
-                .arg(pdf.to_str().unwrap())
-                .spawn()
-                .map(|_| log::debug!("converting to PDF"))
+                .arg(pdf.to_str().unwrap());
+            let res = if wait {
+                command
+                    .output()
+                    .map(|_| log::info!("{} exported", extension))
+            } else {
+                command
+                    .spawn()
+                    .map(|_| log::info!("exporting {}", extension))
+            };
+            res.map_err(|e| {
+                log::warn!("{} export failed: {}", extension, e);
+                e
+            })
         } else {
             Ok(())
         }
+    }
+    fn export_pdf<P: AsRef<std::ffi::OsStr>>(
+        &self,
+        filename: P,
+        wait: bool,
+    ) -> std::io::Result<()> {
+        self.export(filename, "pdf", "-Tpdf", wait)
+    }
+    fn export_svg<P: AsRef<std::ffi::OsStr>>(
+        &self,
+        filename: P,
+        wait: bool,
+    ) -> std::io::Result<()> {
+        self.export(filename, "svg", "-Tsvg", wait)
     }
 }
 
@@ -218,16 +354,22 @@ impl policy_service::rpc::Dispatcher for LoggerService {
                 Ok(Literal::Unit)
             }
             "connection" => match args {
-                [Literal::Str(message_date), Literal::Tuple(from), Literal::Tuple(to)]
+                [Literal::Str(message_date), Literal::Str(method), Literal::Str(path), Literal::Tuple(from), Literal::Tuple(to)]
                     if from.len() == 3 && to.len() == 3 =>
                 {
-                    if let (Some(from), Some(to)) =
-                        (Endpoint::from_literal(from), Endpoint::from_literal(to))
-                    {
+                    if let (Some(from), Some(to)) = (Endpoint::from(from), Endpoint::to(to)) {
                         let date =
                             NaiveDateTime::parse_from_str(message_date, "%a, %e %b %Y %T %Z")
                                 .unwrap_or_else(|_| Utc::now().naive_utc());
-                        let connection = Connection { date, from, to };
+                        let connection = Connection {
+                            info: Info::REST {
+                                date,
+                                method: method.to_string(),
+                                path: path.to_string(),
+                            },
+                            from,
+                            to,
+                        };
                         log::debug!("{:?}", connection);
                         let mut v = self.0.lock().unwrap();
                         v.0.push(connection)
@@ -235,6 +377,30 @@ impl policy_service::rpc::Dispatcher for LoggerService {
                         log::warn!("incomplete ID");
                         self.log(name, args)
                     }
+                    log::info!("logged REST connection");
+                    Ok(Literal::Unit)
+                }
+                _ => Err(capnp::Error::failed(
+                    "connection: bad arguments".to_string(),
+                )),
+            },
+            "tcp_connection" => match args {
+                [Literal::Tuple(from), Literal::Tuple(to)] if from.len() == 3 && to.len() == 3 => {
+                    if let (Some(from), Some(to)) = (Endpoint::from(from), Endpoint::to(to)) {
+                        let date = Utc::now().naive_utc();
+                        let connection = Connection {
+                            info: Info::TCP { date },
+                            from,
+                            to,
+                        };
+                        log::debug!("{:?}", connection);
+                        let mut v = self.0.lock().unwrap();
+                        v.0.push(connection)
+                    } else {
+                        log::warn!("incomplete ID");
+                        self.log(name, args)
+                    }
+                    log::info!("logged TCP connection");
                     Ok(Literal::Unit)
                 }
                 _ => Err(capnp::Error::failed(

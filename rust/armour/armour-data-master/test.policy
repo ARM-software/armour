@@ -1,34 +1,35 @@
 external logger @ "log_sock" {
   fn log(_) -> ()
-  fn connection(str, ID, ID) -> ()
+  fn connection(str, str, str, ID, ID) -> ()
+  fn tcp_connection(ID, ID) -> ()
 }
 
 // REST request allow/deny
 fn require(req: HttpRequest, from: ID, to: ID) -> bool {
-  logger::log(req);
-//  if req.route() != ["a"] { return false };
-  if let Some(date) = req.unique_header("date") {
-     logger::connection(str::from_utf8(date), from, to)
+  // logger::log(req);
+  let date = if let Some(date) = req.unique_header("date") {
+     str::from_utf8(date)
   } else {
-     logger::connection("-", from, to)
+     "-"
   };
+  logger::connection(date, req.method(), req.path(), from, to);
   true
 }
 
 // REST client payload allow/deny
-fn client_payload(payload: data, from: ID, to: ID) -> bool {
+//fn client_payload(payload: data, from: ID, to: ID) -> bool {
 //  logger::log("client payload", payload);
-  payload.len() < 10
-}
+//  payload.len() < 10
+//}
 
 // REST server payload allow/deny
-fn server_payload(payload: data, from: ID, to: ID) -> bool {
+//fn server_payload(payload: data, from: ID, to: ID) -> bool {
 //  logger::log("server payload", payload);
-  4 < payload.len()
-}
+//  4 < payload.len()
+//}
 
 // TCP connection/deny
 fn allow_connection(from: ID, to: ID) -> bool {
-  logger::connection("-", from, to);
+  logger::tcp_connection(from, to);
   true
 }

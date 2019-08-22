@@ -403,7 +403,7 @@ impl<'a> Id<'a> {
                 return Err(());
             }
         }
-        return Ok(Id { name: name });
+        return Ok(Id { name });
 
         fn is_letter_or_underscore(c: char) -> bool {
             in_range('a', c, 'z') || in_range('A', c, 'Z') || c == '_'
@@ -541,9 +541,11 @@ impl<'a> LabelText<'a> {
             // not escaping \\, since Graphviz escString needs to
             // interpret backslashes; see EscStr above.
             '\\' => f(c),
-            _ => for c in c.escape_default() {
-                f(c)
-            },
+            _ => {
+                for c in c.escape_default() {
+                    f(c)
+                }
+            }
         }
     }
     fn escape_str(s: &str) -> String {
@@ -562,9 +564,9 @@ impl<'a> LabelText<'a> {
     /// This includes quotes or suitable delimeters.
     pub fn to_dot_string(&self) -> String {
         match self {
-            &LabelStr(ref s) => format!("\"{}\"", LabelText::escape_default(s)),
-            &EscStr(ref s) => format!("\"{}\"", LabelText::escape_str(&s[..])),
-            &HtmlStr(ref s) => format!("<{}>", s),
+            LabelStr(ref s) => format!("\"{}\"", LabelText::escape_default(s)),
+            EscStr(ref s) => format!("\"{}\"", LabelText::escape_str(&s[..])),
+            HtmlStr(ref s) => format!("<{}>", s),
         }
     }
 
@@ -575,11 +577,13 @@ impl<'a> LabelText<'a> {
     fn pre_escaped_content(self) -> Cow<'a, str> {
         match self {
             EscStr(s) => s,
-            LabelStr(s) => if s.contains('\\') {
-                LabelText::escape_default(&*s).into()
-            } else {
-                s
-            },
+            LabelStr(s) => {
+                if s.contains('\\') {
+                    LabelText::escape_default(&*s).into()
+                } else {
+                    s
+                }
+            }
             HtmlStr(s) => s,
         }
     }
@@ -792,9 +796,9 @@ impl ArrowShape {
     }
 
     /// Function which renders given ArrowShape into a String for displaying.
-    pub fn to_dot_string(&self) -> String {
+    pub fn to_dot_string(self) -> String {
         let mut res = String::new();
-        match *self {
+        match self {
             Box(fill, side)
             | ICurve(fill, side)
             | Diamond(fill, side)
@@ -813,7 +817,7 @@ impl ArrowShape {
             },
             NoArrow => {}
         };
-        match *self {
+        match self {
             NoArrow => res.push_str("none"),
             Normal(_, _) => res.push_str("normal"),
             Box(_, _) => res.push_str("box"),
@@ -844,16 +848,16 @@ pub enum Kind {
 impl Kind {
     /// The keyword to use to introduce the graph.
     /// Determines which edge syntax must be used, and default style.
-    fn keyword(&self) -> &'static str {
-        match *self {
+    fn keyword(self) -> &'static str {
+        match self {
             Kind::Digraph => "digraph",
             Kind::Graph => "graph",
         }
     }
 
     /// The edgeop syntax to use for this graph kind.
-    fn edgeop(&self) -> &'static str {
-        match *self {
+    fn edgeop(self) -> &'static str {
+        match self {
             Kind::Digraph => "->",
             Kind::Graph => "--",
         }
@@ -935,7 +939,7 @@ pub fn render_opts<
         for &s in arg {
             try!(w.write_all(s.as_bytes()));
         }
-        write!(w, "\n")
+        writeln!(w)
     }
 
     fn indent<W: Write>(w: &mut W) -> io::Result<()> {
@@ -1094,13 +1098,13 @@ mod tests {
         color: Option<&'static str>,
     ) -> Edge {
         Edge {
-            from: from,
-            to: to,
-            label: label,
-            style: style,
+            from,
+            to,
+            label,
+            style,
             start_arrow: Arrow::default(),
             end_arrow: Arrow::default(),
-            color: color,
+            color,
         }
     }
 
@@ -1114,13 +1118,13 @@ mod tests {
         color: Option<&'static str>,
     ) -> Edge {
         Edge {
-            from: from,
-            to: to,
-            label: label,
-            style: style,
-            start_arrow: start_arrow,
-            end_arrow: end_arrow,
-            color: color,
+            from,
+            to,
+            label,
+            style,
+            start_arrow,
+            end_arrow,
+            color,
         }
     }
 
@@ -1162,16 +1166,16 @@ mod tests {
         fn into_opt_strs(self) -> Vec<Option<&'static str>> {
             match self {
                 UnlabelledNodes(len) => vec![None; len],
-                AllNodesLabelled(lbls) => lbls.into_iter().map(|l| Some(l)).collect(),
+                AllNodesLabelled(lbls) => lbls.into_iter().map(Some).collect(),
                 SomeNodesLabelled(lbls) => lbls.into_iter().collect(),
             }
         }
 
         fn len(&self) -> usize {
             match self {
-                &UnlabelledNodes(len) => len,
-                &AllNodesLabelled(ref lbls) => lbls.len(),
-                &SomeNodesLabelled(ref lbls) => lbls.len(),
+                UnlabelledNodes(len) => *len,
+                AllNodesLabelled(ref lbls) => lbls.len(),
+                SomeNodesLabelled(ref lbls) => lbls.len(),
             }
         }
     }
@@ -1185,9 +1189,9 @@ mod tests {
         ) -> LabelledGraph {
             let count = node_labels.len();
             LabelledGraph {
-                name: name,
+                name,
                 node_labels: node_labels.into_opt_strs(),
-                edges: edges,
+                edges,
                 node_styles: match node_styles {
                     Some(nodes) => nodes,
                     None => vec![Style::None; count],
@@ -1208,8 +1212,8 @@ mod tests {
         }
     }
 
-    fn id_name<'a>(n: &Node) -> Id<'a> {
-        Id::new(format!("N{}", *n)).unwrap()
+    fn id_name<'a>(n: Node) -> Id<'a> {
+        Id::new(format!("N{}", n)).unwrap()
     }
 
     impl<'a> Labeller<'a, Node, &'a Edge> for LabelledGraph {
@@ -1217,12 +1221,12 @@ mod tests {
             Id::new(&self.name[..]).unwrap()
         }
         fn node_id(&'a self, n: &Node) -> Id<'a> {
-            id_name(n)
+            id_name(*n)
         }
         fn node_label(&'a self, n: &Node) -> LabelText<'a> {
             match self.node_labels[*n] {
                 Some(ref l) => LabelStr((*l).into()),
-                None => LabelStr(id_name(n).name()),
+                None => LabelStr(id_name(*n).name()),
             }
         }
         fn edge_label(&'a self, e: &&'a Edge) -> LabelText<'a> {
@@ -1577,9 +1581,8 @@ mod tests {
     #[test]
     fn badly_formatted_id() {
         let id2 = Id::new("Weird { struct : ure } !!!");
-        match id2 {
-            Ok(_) => panic!("graphviz id suddenly allows spaces, brackets and stuff"),
-            Err(..) => {}
+        if id2.is_ok() {
+            panic!("graphviz id suddenly allows spaces, brackets and stuff")
         }
     }
 
@@ -1602,10 +1605,10 @@ mod tests {
         ) -> DefaultStyleGraph {
             assert!(!name.is_empty());
             DefaultStyleGraph {
-                name: name,
-                nodes: nodes,
-                edges: edges,
-                kind: kind,
+                name,
+                nodes,
+                edges,
+                kind,
             }
         }
     }
@@ -1615,7 +1618,7 @@ mod tests {
             Id::new(&self.name[..]).unwrap()
         }
         fn node_id(&'a self, n: &Node) -> Id<'a> {
-            id_name(n)
+            id_name(*n)
         }
         fn kind(&self) -> Kind {
             self.kind
