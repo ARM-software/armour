@@ -1,2 +1,4 @@
 #!/usr/bin/env bash
+rmdir ../armour/target
+rmdir ../policy-services/target
 TARGET_DIR=~/armour-target/ vagrant reload
