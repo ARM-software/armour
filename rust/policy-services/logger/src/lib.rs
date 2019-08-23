@@ -1,10 +1,11 @@
-use chrono::{NaiveDateTime, Utc};
-// use chrono_tz::GMT;
+use chrono::{NaiveDateTime, TimeZone, Utc};
+use chrono_tz::GMT;
 use petgraph::graphmap::DiGraphMap;
 use policy_service::rpc::Literal;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
+use v_htmlescape::escape;
 
 mod dotgraph;
 pub mod web;
@@ -159,6 +160,9 @@ impl Connections {
         }
         summary
     }
+    pub fn html_table(&self) -> String {
+        self.to_summary().html_table()
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -166,6 +170,16 @@ pub struct Summary {
     first: chrono::NaiveDateTime,
     last: chrono::NaiveDateTime,
     methods: BTreeSet<String>,
+}
+
+impl Summary {
+    fn methods(&self) -> String {
+        self.methods
+            .iter()
+            .cloned()
+            .collect::<Vec<String>>()
+            .join(", ")
+    }
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -198,6 +212,44 @@ impl SummaryMap {
             self.0.insert(to.to_string(), BTreeMap::new());
             self.add(from, to, info)
         }
+    }
+    fn html_table(&self) -> String {
+        let mut s = String::from(r#"<table style="width:100%"><tr><th>service</th><th>client</th><th>first</th><th>last</th><th>methods</th></tr>"#);
+        for (to, from) in self.0.iter() {
+            let len = from.len();
+            let mut iter = from.iter();
+            if let Some((from, summary)) = iter.next() {
+                let rowspan = if 1 < len {
+                    format!(r#" rowspan="{}""#, len)
+                } else {
+                    "".to_string()
+                };
+                s.push_str(&format!(
+                    r#"<tr><td{}>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>"#,
+                    rowspan,
+                    escape(to),
+                    escape(from),
+                    GMT.from_utc_datetime(&summary.first)
+                        .format("%a, %e %b %Y %T %Z"),
+                    GMT.from_utc_datetime(&summary.last)
+                        .format("%a, %e %b %Y %T %Z"),
+                    escape(&summary.methods())
+                ))
+            }
+            for (from, summary) in iter {
+                s.push_str(&format!(
+                    r#"<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>"#,
+                    escape(from),
+                    GMT.from_utc_datetime(&summary.first)
+                        .format("%a, %e %b %Y %T %Z"),
+                    GMT.from_utc_datetime(&summary.last)
+                        .format("%a, %e %b %Y %T %Z"),
+                    escape(&summary.methods())
+                ))
+            }
+        }
+        s.push_str("</table>");
+        s
     }
 }
 
