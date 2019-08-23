@@ -119,10 +119,14 @@ impl Connections {
             {
                 let label = connection.info.label();
                 if let Some(edge) = g.graph.edge_weight_mut(from.as_str(), to.as_str()) {
-                    edge.insert(label);
+                    if let Some(count) = edge.get_mut(&label) {
+                        *count += 1
+                    } else {
+                        edge.insert(label, 1);
+                    }
                 } else {
-                    let mut edge = BTreeSet::new();
-                    edge.insert(label);
+                    let mut edge = BTreeMap::new();
+                    edge.insert(label, 1);
                     g.graph.add_edge(from, to, edge);
                 }
                 g.add_endpoint_ips(from.as_str(), &connection.from);
@@ -169,14 +173,14 @@ impl Connections {
 pub struct Summary {
     first: chrono::NaiveDateTime,
     last: chrono::NaiveDateTime,
-    methods: BTreeSet<String>,
+    methods: BTreeMap<String, usize>,
 }
 
 impl Summary {
     fn methods(&self) -> String {
         self.methods
             .iter()
-            .cloned()
+            .map(|(method, count)| format!("{} ({})", method, count))
             .collect::<Vec<String>>()
             .join(", ")
     }
@@ -189,7 +193,12 @@ impl SummaryMap {
     fn add(&mut self, from: &str, to: &str, info: &Info) {
         if let Some(to_entry) = self.0.get_mut(to) {
             if let Some(from_entry) = to_entry.get_mut(from) {
-                from_entry.methods.insert(info.label());
+                let label = info.label();
+                if let Some(count) = from_entry.methods.get_mut(&label) {
+                    *count += 1
+                } else {
+                    from_entry.methods.insert(label, 1);
+                }
                 let date = info.date();
                 if date < from_entry.first {
                     from_entry.first = date
@@ -198,8 +207,8 @@ impl SummaryMap {
                     from_entry.last = date
                 }
             } else {
-                let mut methods = BTreeSet::new();
-                methods.insert(info.label());
+                let mut methods = BTreeMap::new();
+                methods.insert(info.label(), 1);
                 let date = info.date();
                 let from_entry = Summary {
                     first: date,
@@ -254,7 +263,7 @@ impl SummaryMap {
 }
 
 pub struct ConnectionGraph<'a> {
-    graph: DiGraphMap<&'a str, BTreeSet<String>>,
+    graph: DiGraphMap<&'a str, BTreeMap<String, usize>>,
     node_ips: BTreeMap<&'a str, BTreeSet<std::net::IpAddr>>,
 }
 
@@ -319,12 +328,12 @@ impl<'a> ConnectionGraph<'a> {
         nodes.sort();
         let node_ids: Vec<&str> = nodes.iter().map(|x| x.label).collect();
         let mut edges = Vec::new();
-        for (from, to, ports) in self.graph.all_edges() {
+        for (from, to, edge) in self.graph.all_edges() {
             let source = node_ids.binary_search(&from).expect("missing <from>");
             let target = node_ids.binary_search(&to).expect("missing <to>");
-            let label = ports
+            let label = edge
                 .iter()
-                .map(|port| port.to_string())
+                .map(|(label, count)| format!("{} ({})", label, count))
                 .collect::<Vec<String>>()
                 .join(", ");
             edges.push((source, target, label))
