@@ -99,6 +99,17 @@ impl Literal {
             ("HttpRequest::header_pairs", Literal::HttpRequest(req)) => Some(req.header_pairs()),
             ("HttpRequest::headers", Literal::HttpRequest(req)) => Some(req.headers()),
             ("list::len", Literal::List(l)) => Some(Literal::Int(l.len() as i64)),
+            ("list::reduce", Literal::List(l)) => {
+                if let Some(v) = l.get(0) {
+                    if l.iter().all(|w| v == w) {
+                        Some(v.some())
+                    } else {
+                        Some(Literal::none())
+                    }
+                } else {
+                    Some(Literal::none())
+                }
+            }
             ("IpAddr::octets", Literal::IpAddr(ip)) => Some(ip.to_literal()),
             ("ID::hosts", Literal::ID(id)) => Some(id.hosts()),
             ("ID::ips", Literal::ID(id)) => Some(id.ips()),
@@ -210,7 +221,7 @@ impl Expr {
     }
     fn async_resolver() -> (
         trust_dns_resolver::AsyncResolver,
-        Box<Future<Item = (), Error = ()>>,
+        Box<dyn Future<Item = (), Error = ()>>,
     ) {
         if let Ok((resolver, fut)) = AsyncResolver::from_system_conf() {
             (resolver, Box::new(fut))
@@ -773,6 +784,10 @@ impl Expr {
                                     // external function (RPC)
                                     match function.split("::").collect::<Vec<&str>>().as_slice() {
                                         [external, method] => future::Either::B(future::Either::A(env.external(external, method, args))),
+                                        // [external, method] => {
+                                        //     actix::spawn(env.external(external, method, args).then(|_| future::ok(())));
+                                        //     future::Either::A(future::ok(Expr::unit()))
+                                        // },
                                         _ => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, args)))),
                                     }
                                 }

@@ -53,6 +53,7 @@ impl Headers {
             "str::ends_with" => sig(vec![Typ::Str, Typ::Str], Typ::Bool),
             "str::contains" => sig(vec![Typ::Str, Typ::Str], Typ::Bool),
             "list::len" => sig(vec![Typ::List(Box::new(Typ::Return))], Typ::I64),
+            "list::reduce" => sig(vec![Typ::List(Box::new(Typ::Return))], Typ::Return.option()),
             "HttpRequest::GET" => sig(vec![], Typ::HttpRequest),
             "HttpRequest::POST" => sig(vec![], Typ::HttpRequest),
             "HttpRequest::PUT" => sig(vec![], Typ::HttpRequest),

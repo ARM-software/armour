@@ -937,7 +937,7 @@ impl Expr {
                 if let Some((args, typ)) = headers.typ(function).map(types::Signature::split) {
                     // external functions *can* be declared so that they accept any argument,
                     // so only check the arguments when their types are declared
-                    if let Some(args) = args {
+                    if let Some(ref args) = args {
                         let args = args.iter().map(|t| (None, t)).collect();
                         let types = arguments
                             .iter()
@@ -945,6 +945,11 @@ impl Expr {
                             .zip(types.iter())
                             .collect();
                         Typ::type_check(function, types, args)?
+                    };
+                    let typ = if function == "list::reduce" {
+                        types.iter().next().unwrap().dest_list().unwrap().option()
+                    } else {
+                        typ
                     };
                     calls.push(
                         vec![Call {

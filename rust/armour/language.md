@@ -352,6 +352,7 @@ function               | type
 function               | type
 ---------------------- | ----------------------------------------
 | len                  | `List<ty> -> i64`                      |
+| reduce               | `List<ty> -> Option<ty>`               |
 
 ### option::
 

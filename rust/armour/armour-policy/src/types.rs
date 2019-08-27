@@ -210,6 +210,12 @@ impl Typ {
             _ => Err(Error::Dest),
         }
     }
+    pub fn dest_list(&self) -> Option<Typ> {
+        match self {
+            Typ::List(ty) => Some(*ty.clone()),
+            _ => None,
+        }
+    }
 }
 
 impl Prefix {

@@ -418,7 +418,7 @@ fn parse_reserved(t: Span) -> LocToken {
 fn lex_reserved_ident<'a, E: error::ParseError<Span<'a>>>(
     input: Span<'a>,
 ) -> IResult<Span<'a>, LocToken, E> {
-    match take_while!(input, |c| char::is_alphanumeric(c) || c == '_') {
+    match nom::bytes::complete::take_while1(|c| char::is_alphanumeric(c) || c == '_')(input) {
         Ok((
             rest,
             LocatedSpan {
