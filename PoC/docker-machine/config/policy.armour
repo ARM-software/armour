@@ -4,10 +4,10 @@ fn allow_connection(from: ID, to: ID) -> bool {
 
 fn mqtt_connection(from: ID, to: ID) -> bool {
     let mqtts = ["mqtt-debug", "mqtt-trusted", "mqtt-public"];
-    let frid = from.hosts();
-    let toid = to.hosts();
-    return any mqid in mqtts { any fr in frid {fr == mqid} } ||
-        any mqid in mqtts { any ts in toid {ts == mqid} }
+    let frids = from.hosts();
+    let toids = to.hosts();
+    return any fr in frids { if fr matches "mqtt-*" { return true } else { return false }}  ||
+        any ts in toids { if ts matches "mqtt-*" { return true } else { return false } } 
 }
 
 fn require() -> bool {
