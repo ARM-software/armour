@@ -1,0 +1,48 @@
+external logger @ "log_sock" {
+    fn log(_) -> ()
+}
+
+
+fn match_id(from: ID, options: List<str>) -> bool {
+    if let Some(frid) = list::reduce(from.hosts())  {
+        frid in options  
+    } else {
+        false
+    }
+}
+
+fn topology(from: ID, to: ID) -> bool {
+    if match_id(from, ["debug"]) {
+        true
+    } else if match_id(to, ["mqtt-debug"]) {
+        match_id(from, ["dtp", "verify-id", "picolbri", "pipharm"])
+    } else if match_id(to, ["mongo"]) {        
+        match_id(from, ["accounting", "mongo-web"])
+    } else if match_id(to, ["mysql"]) {
+        match_id(from, ["dbread", "dbwrite", "launch"])
+    } else if match_id(from, ["dtp"]) {
+        match_id(to, ["notifications", "accounting", "mqtt-debug"])
+    } else if match_id(from, ["launch"]) {
+        match_id(to, ["cloud-update", "mqtt-trusted", "verify-id", "mysql"])
+    } else if match_id(to, ["verify-id"]) {
+        match_id(from, ["dbwrite"])
+    } else {
+        match_id(from, ["cloud-update"])
+    }
+}
+
+fn allow_connection(from: ID, to: ID) -> bool {
+    topology(from, to)
+}
+
+fn require(req: HttpRequest, from: ID, to: ID) -> bool {
+    topology(from, to)
+}
+
+// fn client_payload(payload: data) -> bool {
+//     return true
+// }
+
+// fn server_payload(payload: data) -> bool {
+//     return true
+// }
