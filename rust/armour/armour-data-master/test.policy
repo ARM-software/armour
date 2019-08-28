@@ -40,5 +40,5 @@ fn allow_tcp_connection(from: ID, to: ID, n: i64) -> bool {
 
 // called when TCP connection ends
 fn on_tcp_disconnect(from: ID, to: ID, n: i64, sent: i64, received: i64) {
-  logger::tcp_stats(n, from_bytes, to_bytes);
+  logger::tcp_stats(n, sent, received)
 }
