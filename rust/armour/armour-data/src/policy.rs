@@ -2,7 +2,7 @@
 use super::{http_proxy, tcp_proxy, Stop};
 use actix::prelude::*;
 use actix_web::web;
-use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse};
+use armour_data_interface::{self as interface, PolicyCodec, PolicyRequest, PolicyResponse};
 use armour_policy::{lang, literals};
 use futures::{future, Future};
 use std::collections::{HashMap, HashSet};
@@ -157,9 +157,9 @@ impl Handler<GetPolicy> for DataPolicy {
                 debug: self.debug,
                 timeout: self.timeout,
                 connection_number,
-                require: program.arg_count("require"),
-                client_payload: program.arg_count("client_payload"),
-                server_payload: program.arg_count("server_payload"),
+                require: program.arg_count(interface::ALLOW_REST),
+                client_payload: program.arg_count(interface::ALLOW_CLIENT_PAYLOAD),
+                server_payload: program.arg_count(interface::ALLOW_SERVER_PAYLOAD),
             }
         }
     }
@@ -169,7 +169,7 @@ type VExpr = Vec<lang::Expr>;
 
 /// Internal proxy message for requesting function evaluation over the policy
 pub enum Evaluate {
-    Require(VExpr),
+    Request(VExpr),
     ClientPayload(VExpr),
     ServerPayload(VExpr),
 }
@@ -184,9 +184,13 @@ impl Handler<Evaluate> for DataPolicy {
 
     fn handle(&mut self, msg: Evaluate, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
-            Evaluate::Require(args) => self.evaluate_policy("require", args),
-            Evaluate::ClientPayload(args) => self.evaluate_policy("client_payload", args),
-            Evaluate::ServerPayload(args) => self.evaluate_policy("server_payload", args),
+            Evaluate::Request(args) => self.evaluate_policy(interface::ALLOW_REST, args),
+            Evaluate::ClientPayload(args) => {
+                self.evaluate_policy(interface::ALLOW_CLIENT_PAYLOAD, args)
+            }
+            Evaluate::ServerPayload(args) => {
+                self.evaluate_policy(interface::ALLOW_SERVER_PAYLOAD, args)
+            }
         }
     }
 }
@@ -213,7 +217,7 @@ impl Handler<ConnectPolicy> for DataPolicy {
                     self.connection_number += 1;
                     Box::new(future::ok(ConnectionPolicy::Block))
                 } else {
-                    match self.program.arg_count("allow_connection") {
+                    match self.program.arg_count(interface::ALLOW_TCP) {
                         Some(n) if n == 2 || n == 3 => {
                             let connection_number = self.connection_number;
                             self.connection_number += 1;
@@ -228,7 +232,7 @@ impl Handler<ConnectPolicy> for DataPolicy {
                                 2 => vec![from, to],
                                 _ => vec![from, to, number],
                             };
-                            Box::new(self.evaluate_policy("allow_connection", args).and_then(
+                            Box::new(self.evaluate_policy(interface::ALLOW_TCP, args).and_then(
                                 move |res| {
                                     future::ok(if res {
                                         ConnectionPolicy::Allow(Box::new(connection))
@@ -279,7 +283,9 @@ impl Handler<ConnectionStats> for DataPolicy {
         let arg_count = if self.allow_all {
             0
         } else {
-            self.program.arg_count("after_connection").unwrap_or(0)
+            self.program
+                .arg_count(interface::ON_TCP_DISCONNECT)
+                .unwrap_or(0)
         };
         if 2 <= arg_count && arg_count <= 5 {
             let args = match arg_count {
@@ -295,7 +301,7 @@ impl Handler<ConnectionStats> for DataPolicy {
                 _ => unreachable!(),
             };
             Box::new(
-                self.evaluate_policy("after_connection", args)
+                self.evaluate_policy(interface::ON_TCP_DISCONNECT, args)
                     .map_err(|e| log::warn!("error: {}", e))
                     .map(|_| ()),
             )

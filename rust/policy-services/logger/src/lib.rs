@@ -16,7 +16,7 @@ impl policy_service::rpc::Dispatcher for LoggerService {
                 Ok(Literal::Unit)
             }
             (
-                "connection",
+                "rest",
                 [Literal::Int(number), Literal::Str(date), Literal::Str(method), Literal::Str(path), Literal::Tuple(from), Literal::Tuple(to)],
             ) if from.len() == 3 && to.len() == 3 => {
                 if let (Some(from), Some(to)) = (
@@ -30,7 +30,7 @@ impl policy_service::rpc::Dispatcher for LoggerService {
                     );
                     log::debug!("[{}]: {:?}", number, connection);
                     let mut connections = self.0.lock().unwrap();
-                    connections.add_connection(*number, connection)
+                    connections.add_connection(*number as u64, connection)
                 } else {
                     log::warn!("incomplete ID");
                     self.log(name, args)
@@ -41,19 +41,18 @@ impl policy_service::rpc::Dispatcher for LoggerService {
             ("client_payload", [Literal::Int(number), Literal::Int(size)]) => {
                 log::debug!("[{}]: client payload: {}", number, size);
                 let mut connections = self.0.lock().unwrap();
-                connections.set_sent(*number, *size as usize);
+                connections.set_sent(*number as u64, *size as usize);
                 Ok(Literal::Unit)
             }
             ("server_payload", [Literal::Int(number), Literal::Int(size)]) => {
                 log::debug!("[{}]: server payload: {}", number, size);
                 let mut connections = self.0.lock().unwrap();
-                connections.set_received(*number, *size as usize);
+                connections.set_received(*number as u64, *size as usize);
                 Ok(Literal::Unit)
             }
-            (
-                "tcp_connection",
-                [Literal::Int(number), Literal::Tuple(from), Literal::Tuple(to)],
-            ) if from.len() == 3 && to.len() == 3 => {
+            ("tcp", [Literal::Int(number), Literal::Tuple(from), Literal::Tuple(to)])
+                if from.len() == 3 && to.len() == 3 =>
+            {
                 if let (Some(from), Some(to)) = (
                     connections::Endpoint::from(from),
                     connections::Endpoint::to(to),
@@ -62,7 +61,7 @@ impl policy_service::rpc::Dispatcher for LoggerService {
                         connections::Connection::new(connections::Info::tcp(), from, to);
                     log::debug!("{:?}", connection);
                     let mut connections = self.0.lock().unwrap();
-                    connections.add_connection(*number, connection)
+                    connections.add_connection(*number as u64, connection)
                 } else {
                     log::warn!("incomplete ID");
                     self.log(name, args)
@@ -70,14 +69,12 @@ impl policy_service::rpc::Dispatcher for LoggerService {
                 log::debug!("logged TCP connection");
                 Ok(Literal::Unit)
             }
-            (
-                "tcp_stats",
-                [Literal::Int(number), Literal::Int(sent), Literal::Int(received)],
-            ) => {
+            ("tcp_stats", [Literal::Int(number), Literal::Int(sent), Literal::Int(received)]) => {
                 log::debug!("[{}]: sent: {}; received: {}", number, sent, received);
                 let mut connections = self.0.lock().unwrap();
-                connections.set_sent(*number, *sent as usize);
-                connections.set_received(*number, *received as usize);
+                let n = *number as u64;
+                connections.set_sent(n, *sent as usize);
+                connections.set_received(n, *received as usize);
                 Ok(Literal::Unit)
             }
             _ => {

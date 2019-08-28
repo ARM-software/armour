@@ -136,19 +136,22 @@ impl Connection {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct Connections(BTreeMap<i64, Connection>);
+pub struct Connections(BTreeMap<u64, Connection>, u64);
 
 impl Connections {
     pub fn clear(&mut self) {
-        self.0.clear()
+        self.0.clear();
+        self.1 = 0
     }
-    pub fn add_connection(&mut self, number: i64, connection: Connection) {
-        // if a connection number already exists then the proxy must have been restarted
+    pub fn add_connection(&mut self, number: u64, connection: Connection) {
+        // if a connection number is too low then the proxy must have been restarted
         // and so we wipe all the connection records
-        if self.0.contains_key(&number) {
+        if number <= self.1 {
+            log::warn!("clearing connection records");
             self.0.clear()
         };
         self.0.insert(number, connection);
+        self.1 = number
     }
     pub fn to_yaml(&self) -> String {
         serde_yaml::to_string(&self.0).unwrap()
@@ -156,14 +159,14 @@ impl Connections {
     pub fn to_yaml_summary(&self) -> String {
         serde_yaml::to_string(&self.to_summary()).unwrap()
     }
-    pub fn set_sent(&mut self, number: i64, size: usize) {
+    pub fn set_sent(&mut self, number: u64, size: usize) {
         if let Some(connection) = self.0.get_mut(&number) {
             connection.info.sent = size
         } else {
             log::warn!("could not find connection [{}]", number)
         }
     }
-    pub fn set_received(&mut self, number: i64, size: usize) {
+    pub fn set_received(&mut self, number: u64, size: usize) {
         if let Some(connection) = self.0.get_mut(&number) {
             connection.info.received = size
         } else {

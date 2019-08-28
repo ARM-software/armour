@@ -46,11 +46,17 @@ trait SerializeEncoder<T: serde::Serialize, E: std::convert::From<std::io::Error
     }
 }
 
+pub const ALLOW_REST: &str = "allow_rest_request";
+pub const ALLOW_CLIENT_PAYLOAD: &str = "allow_client_payload";
+pub const ALLOW_SERVER_PAYLOAD: &str = "allow_server_payload";
+pub const ALLOW_TCP: &str = "allow_tcp_connection";
+pub const ON_TCP_DISCONNECT: &str = "on_tcp_disconnect";
+
 lazy_static! {
-    pub static ref POLICY_SIG: Vec<(String, Vec<Signature>)> = {
+    pub static ref POLICY_SIG: Vec<(&'static str, Vec<Signature>)> = {
         vec![
             (
-                "require".to_string(),
+                ALLOW_REST,
                 vec![
                     Signature::new(
                         vec![Typ::HttpRequest, Typ::ID, Typ::ID, Typ::I64],
@@ -62,7 +68,7 @@ lazy_static! {
                 ],
             ),
             (
-                "client_payload".to_string(),
+                ALLOW_CLIENT_PAYLOAD,
                 vec![
                     Signature::new(vec![Typ::Data, Typ::ID, Typ::ID, Typ::I64], Typ::Bool),
                     Signature::new(vec![Typ::Data, Typ::ID, Typ::ID], Typ::Bool),
@@ -70,7 +76,7 @@ lazy_static! {
                 ],
             ),
             (
-                "server_payload".to_string(),
+                ALLOW_SERVER_PAYLOAD,
                 vec![
                     Signature::new(vec![Typ::Data, Typ::ID, Typ::ID, Typ::I64], Typ::Bool),
                     Signature::new(vec![Typ::Data, Typ::ID, Typ::ID], Typ::Bool),
@@ -78,21 +84,21 @@ lazy_static! {
                 ],
             ),
             (
-                "allow_connection".to_string(),
+                ALLOW_TCP,
                 vec![
                     Signature::new(vec![Typ::ID, Typ::ID, Typ::I64], Typ::Bool),
                     Signature::new(vec![Typ::ID, Typ::ID], Typ::Bool),
                 ],
             ),
             (
-                "after_connection".to_string(),
+                ON_TCP_DISCONNECT,
                 vec![
                     Signature::new(
                         vec![Typ::ID, Typ::ID, Typ::I64, Typ::I64, Typ::I64],
-                        Typ::Bool,
+                        Typ::Unit,
                     ),
-                    Signature::new(vec![Typ::ID, Typ::ID, Typ::I64], Typ::Bool),
-                    Signature::new(vec![Typ::ID, Typ::ID], Typ::Bool),
+                    Signature::new(vec![Typ::ID, Typ::ID, Typ::I64], Typ::Unit),
+                    Signature::new(vec![Typ::ID, Typ::ID], Typ::Unit),
                 ],
             ),
         ]

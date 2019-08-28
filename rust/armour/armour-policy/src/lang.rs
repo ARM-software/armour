@@ -1376,7 +1376,7 @@ impl Program {
     }
     pub fn check_from_file<P: AsRef<std::path::Path>>(
         path: P,
-        check: &[(String, Vec<types::Signature>)],
+        check: &[(&'static str, Vec<types::Signature>)],
     ) -> Result<Self, Error> {
         use std::io::prelude::Read;
         let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
@@ -1384,7 +1384,7 @@ impl Program {
         reader.read_to_string(&mut buf).unwrap();
         let prog: Self = buf.parse()?;
         for (f, sigs) in check {
-            prog.type_check(f.as_str(), sigs)?
+            prog.type_check(f, sigs)?
         }
         Ok(prog)
     }

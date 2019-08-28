@@ -141,14 +141,14 @@ fn proxy(
                             ..
                         } => {
                             let message = match args {
-                                0 => policy::Evaluate::Require(Vec::new()),
-                                1 => policy::Evaluate::Require(vec![req.to_expression()]),
-                                3 => policy::Evaluate::Require(vec![
+                                0 => policy::Evaluate::Request(Vec::new()),
+                                1 => policy::Evaluate::Request(vec![req.to_expression()]),
+                                3 => policy::Evaluate::Request(vec![
                                     req.to_expression(),
                                     connection.from(),
                                     connection.to(),
                                 ]),
-                                4 => policy::Evaluate::Require(vec![
+                                4 => policy::Evaluate::Request(vec![
                                     req.to_expression(),
                                     connection.from(),
                                     connection.to(),
