@@ -44,36 +44,74 @@ impl ConnectionEdge {
     }
 }
 
+pub struct NodeMeta {
+    ips: BTreeSet<std::net::IpAddr>,
+    ports: BTreeSet<u16>,
+}
+
+impl NodeMeta {
+    fn new(ips: BTreeSet<std::net::IpAddr>, port: Option<u16>) -> Self {
+        let mut ports = BTreeSet::new();
+        if let Some(port) = port {
+            ports.insert(port);
+        }
+        NodeMeta { ips, ports }
+    }
+}
+
 pub struct ConnectionGraph<'a> {
     pub graph: DiGraphMap<&'a str, ConnectionEdge>,
-    node_ips: BTreeMap<&'a str, BTreeSet<std::net::IpAddr>>,
+    meta: BTreeMap<&'a str, NodeMeta>,
 }
 
 impl<'a> ConnectionGraph<'a> {
     pub fn new() -> Self {
         ConnectionGraph {
             graph: DiGraphMap::new(),
-            node_ips: BTreeMap::new(),
+            meta: BTreeMap::new(),
         }
     }
-    pub fn add_endpoint_ips(&mut self, name: &'a str, e: &connections::Endpoint) {
-        if let Some(ips) = self.node_ips.get_mut(name) {
-            ips.extend(e.ips.iter())
+    pub fn update_endpoint_meta(
+        &mut self,
+        name: &'a str,
+        e: &connections::Endpoint,
+        port: Option<u16>,
+    ) {
+        if let Some(meta) = self.meta.get_mut(name) {
+            meta.ips.extend(e.ips.iter());
+            if let Some(port) = port {
+                meta.ports.insert(port);
+            }
         } else {
             let ips = e
                 .ips
                 .iter()
                 .cloned()
                 .collect::<BTreeSet<std::net::IpAddr>>();
-            self.node_ips.insert(name, ips);
+            self.meta.insert(name, NodeMeta::new(ips, port));
         }
     }
-    fn ips(&self, name: &str) -> String {
-        if let Some(ips) = self.node_ips.get(name) {
-            ips.iter()
+    fn subtitle(&self, name: &str) -> String {
+        if let Some(meta) = self.meta.get(name) {
+            let ips = meta
+                .ips
+                .iter()
                 .map(|ip| ip.to_string())
                 .collect::<Vec<String>>()
-                .join(", ")
+                .join(", ");
+            let ports = meta
+                .ports
+                .iter()
+                .map(|port| format!(":{}", port))
+                .collect::<Vec<String>>()
+                .join(", ");
+            if ports == "" {
+                ips
+            } else if ips == "" {
+                ports
+            } else {
+                format!("{}; {}", ips, ports)
+            }
         } else {
             "".to_string()
         }
@@ -97,7 +135,7 @@ impl<'a> ConnectionGraph<'a> {
             .map(|v| {
                 dotgraph::Node::new(
                     v,
-                    self.ips(v),
+                    self.subtitle(v),
                     "oval",
                     colour
                         .get(v)
@@ -127,58 +165,73 @@ impl<'a> ConnectionGraph<'a> {
             font: "Franklin Gothic Medium",
         }
     }
-    fn export<P: AsRef<std::ffi::OsStr>>(
-        &self,
-        filename: P,
-        extension: &str,
-        arg: &str,
-        wait: bool,
-    ) -> std::io::Result<()> {
+    fn export_dot<P: AsRef<std::ffi::OsStr>>(&self, filename: P) -> std::io::Result<()> {
         let path = std::path::Path::new(&filename).with_extension("dot");
         let mut file = std::fs::File::create(&path)?;
         dot::render(&self.dotgraph(), &mut file)?;
         log::debug!("generated graph: {}", path.display());
-        // requires graphviz with cairo, e.g.
-        // brew install graphviz --with-pango
-        if cfg!(target_family = "unix") {
-            let pdf = std::path::Path::new(&filename).with_extension(extension);
-            let mut command = std::process::Command::new("dot");
-            command
-                .arg(arg)
-                .arg("-Gdpi=80")
-                .arg("-Earrowsize=0.6")
-                .arg(path.to_str().unwrap())
-                .arg("-o")
-                .arg(pdf.to_str().unwrap());
-            let res = if wait {
-                command
-                    .output()
-                    .map(|_| log::info!("{} exported", extension))
-            } else {
-                command
-                    .spawn()
-                    .map(|_| log::info!("exporting {}", extension))
-            };
-            res.map_err(|e| {
-                log::warn!("{} export failed: {}", extension, e);
-                e
-            })
-        } else {
-            Ok(())
-        }
+        Ok(())
     }
     pub fn export_pdf<P: AsRef<std::ffi::OsStr>>(
         &self,
         filename: P,
         wait: bool,
     ) -> std::io::Result<()> {
-        self.export(filename, "pdf", "-Tpdf", wait)
+        self.export_dot(&filename)?;
+        // requires graphviz with cairo, e.g.
+        // brew install graphviz --with-pango
+        if cfg!(target_family = "unix") {
+            let path = std::path::Path::new(&filename).with_extension("dot");
+            let pdf = std::path::Path::new(&filename).with_extension("pdf");
+            let mut command = std::process::Command::new("dot");
+            command
+                .arg("Tpdf")
+                .arg("-Gdpi=80")
+                .arg("-Earrowsize=0.6")
+                .arg(path.to_str().unwrap())
+                .arg("-o")
+                .arg(pdf.to_str().unwrap());
+            let res = if wait {
+                command.output().map(|_| log::info!("PDF exported"))
+            } else {
+                command.spawn().map(|_| log::info!("exporting PDF"))
+            };
+            res.map_err(|e| {
+                log::warn!("PDF export failed: {}", e);
+                e
+            })
+        } else {
+            Ok(())
+        }
     }
     pub fn export_svg<P: AsRef<std::ffi::OsStr>>(
         &self,
         filename: P,
         wait: bool,
     ) -> std::io::Result<()> {
-        self.export(filename, "svg", "-Tsvg", wait)
+        self.export_dot(&filename)?;
+        // requires graphviz with cairo, e.g.
+        // brew install graphviz --with-pango
+        if cfg!(target_family = "unix") {
+            let path = std::path::Path::new(&filename).with_extension("dot");
+            let svg = std::path::Path::new(&filename).with_extension("svg");
+            let mut command = std::process::Command::new("dot");
+            command
+                .arg("-Tsvg")
+                .arg(path.to_str().unwrap())
+                .arg("-o")
+                .arg(svg.to_str().unwrap());
+            let res = if wait {
+                command.output().map(|_| log::info!("SVG exported"))
+            } else {
+                command.spawn().map(|_| log::info!("exporting SVG"))
+            };
+            res.map_err(|e| {
+                log::warn!("SVG export failed: {}", e);
+                e
+            })
+        } else {
+            Ok(())
+        }
     }
 }

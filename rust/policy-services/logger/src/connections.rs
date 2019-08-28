@@ -179,14 +179,16 @@ impl Connections {
             if let (Some(from), Some(to)) =
                 (connection.from.hosts.get(0), connection.to.hosts.get(0))
             {
-                if let Some(edge) = g.graph.edge_weight_mut(from.as_str(), to.as_str()) {
+                let from = from.as_str();
+                let to = to.as_str();
+                if let Some(edge) = g.graph.edge_weight_mut(from, to) {
                     edge.update_with_info(&connection.info);
                 } else {
                     g.graph
                         .add_edge(from, to, ConnectionEdge::from_info(&connection.info));
                 }
-                g.add_endpoint_ips(from.as_str(), &connection.from);
-                g.add_endpoint_ips(to.as_str(), &connection.to);
+                g.update_endpoint_meta(from, &connection.from, None);
+                g.update_endpoint_meta(to, &connection.to, connection.to.port);
             } else {
                 log::debug!("incomplete connection: {:?}", connection)
             }
