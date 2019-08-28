@@ -280,7 +280,6 @@ impl actix::io::WriteHandler<std::io::Error> for TcpDataClientInstance {}
 impl StreamHandler<BytesMut, std::io::Error> for TcpDataClientInstance {
     fn handle(&mut self, msg: BytesMut, _ctx: &mut Self::Context) {
         if let Some(server) = &self.server {
-            log::debug!("out: {}", msg.len());
             server.do_send(Write(msg.freeze()))
         } else {
             warn!("no server")
