@@ -49,7 +49,7 @@ fn main() -> std::io::Result<()> {
                             "graph" => {
                                 let connections = connections.lock().unwrap();
                                 connections
-                                    .export_pdf("connections", false)
+                                    .export_pdf("connections", true, false)
                                     .unwrap_or_else(|err| log::warn!("{}", err))
                             }
                             "show" => {

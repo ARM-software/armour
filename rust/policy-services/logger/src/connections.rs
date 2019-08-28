@@ -146,7 +146,7 @@ impl Connections {
     pub fn add_connection(&mut self, number: u64, connection: Connection) {
         // if a connection number is too low then the proxy must have been restarted
         // and so we wipe all the connection records
-        if number <= self.1 {
+        if number <= self.1 && self.1 != 0 {
             log::warn!("clearing connection records");
             self.0.clear()
         };
@@ -173,14 +173,23 @@ impl Connections {
             log::warn!("could not find connection [{}]", number)
         }
     }
-    fn to_graph(&self) -> ConnectionGraph {
+    fn to_graph(&self, services: bool) -> ConnectionGraph {
         let mut g = ConnectionGraph::new();
         for (_number, connection) in self.0.iter() {
             if let (Some(from), Some(to)) =
                 (connection.from.hosts.get(0), connection.to.hosts.get(0))
             {
                 let from = from.as_str();
-                let to = to.as_str();
+                let (to, port) = if services {
+                    (to.as_str(), None)
+                } else {
+                    (
+                        to.as_str()
+                            .trim_end_matches(char::is_numeric)
+                            .trim_end_matches(':'),
+                        connection.to.port,
+                    )
+                };
                 if let Some(edge) = g.graph.edge_weight_mut(from, to) {
                     edge.update_with_info(&connection.info);
                 } else {
@@ -188,7 +197,7 @@ impl Connections {
                         .add_edge(from, to, ConnectionEdge::from_info(&connection.info));
                 }
                 g.update_endpoint_meta(from, &connection.from, None);
-                g.update_endpoint_meta(to, &connection.to, connection.to.port);
+                g.update_endpoint_meta(to, &connection.to, port)
             } else {
                 log::debug!("incomplete connection: {:?}", connection)
             }
@@ -198,16 +207,18 @@ impl Connections {
     pub fn export_pdf<P: AsRef<std::ffi::OsStr>>(
         &self,
         path: P,
+        service: bool,
         wait: bool,
     ) -> std::io::Result<()> {
-        self.to_graph().export_pdf(path, wait)
+        self.to_graph(service).export_pdf(path, wait)
     }
     pub fn export_svg<P: AsRef<std::ffi::OsStr>>(
         &self,
         path: P,
+        service: bool,
         wait: bool,
     ) -> std::io::Result<()> {
-        self.to_graph().export_svg(path, wait)
+        self.to_graph(service).export_svg(path, wait)
     }
     pub fn to_summary(&self) -> SummaryMap {
         let mut summary = SummaryMap::default();

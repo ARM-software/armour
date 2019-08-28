@@ -10,6 +10,8 @@ pub fn start_web_server(connections: Arc<Mutex<Connections>>, port: u16) -> std:
             .data(connections.clone())
             .wrap(middleware::Logger::default())
             .service(web::resource("/connections").to(table))
+            .service(web::resource("/").to(table))
+            .service(web::resource("/service_graph").to(service_graph))
             .service(web::resource("/graph").to(graph))
             .default_service(web::route().to(|| HttpResponse::NotFound().body("nothing here")))
     })
@@ -19,11 +21,19 @@ pub fn start_web_server(connections: Arc<Mutex<Connections>>, port: u16) -> std:
     Ok(())
 }
 
+fn service_graph(connections: web::Data<Arc<Mutex<Connections>>>) -> std::io::Result<NamedFile> {
+    connections
+        .lock()
+        .unwrap()
+        .export_svg("connections_service", true, true)?;
+    Ok(NamedFile::open("connections_service.svg")?)
+}
+
 fn graph(connections: web::Data<Arc<Mutex<Connections>>>) -> std::io::Result<NamedFile> {
     connections
         .lock()
         .unwrap()
-        .export_svg("connections", true)?;
+        .export_svg("connections", false, true)?;
     Ok(NamedFile::open("connections.svg")?)
 }
 
