@@ -199,7 +199,7 @@ impl Handler<Evaluate> for DataPolicy {
 pub struct ConnectPolicy(pub std::net::SocketAddr, pub std::net::SocketAddr);
 
 pub enum ConnectionPolicy {
-    Allow(Box<ConnectionStats>),
+    Allow(Box<Option<ConnectionStats>>),
     Block,
 }
 
@@ -215,7 +215,7 @@ impl Handler<ConnectPolicy> for DataPolicy {
             ConnectPolicy(from, to) => {
                 if self.allow_all {
                     self.connection_number += 1;
-                    Box::new(future::ok(ConnectionPolicy::Block))
+                    Box::new(future::ok(ConnectionPolicy::Allow(Box::new(None))))
                 } else {
                     match self.program.arg_count(interface::ALLOW_TCP) {
                         Some(n) if n == 2 || n == 3 => {
@@ -235,7 +235,7 @@ impl Handler<ConnectPolicy> for DataPolicy {
                             Box::new(self.evaluate_policy(interface::ALLOW_TCP, args).and_then(
                                 move |res| {
                                     future::ok(if res {
-                                        ConnectionPolicy::Allow(Box::new(connection))
+                                        ConnectionPolicy::Allow(Box::new(Some(connection)))
                                     } else {
                                         ConnectionPolicy::Block
                                     })
