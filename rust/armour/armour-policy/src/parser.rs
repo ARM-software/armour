@@ -557,7 +557,7 @@ macro_rules! parse_literal (
                 Token::BoolLiteral(b) => Ok((i1, LocLiteral(t1.loc(), Literal::Bool(b)))),
                 Token::DataLiteral(d) => Ok((i1, LocLiteral(t1.loc(), Literal::Data(d)))),
                 Token::StringLiteral(s) => Ok((i1, LocLiteral(t1.loc(), Literal::Str(s)))),
-                Token::PolicyLiteral(p) => Ok((i1, LocLiteral(t1.loc(), Literal::Policy(p)))),
+                // Token::PolicyLiteral(p) => Ok((i1, LocLiteral(t1.loc(), Literal::Policy(p)))),
                 Token::Ident(ref s) if s == "None" => Ok((i1, LocLiteral(t1.loc(), Literal::none()))),
                 _ => Err(nom::Err::Error(error_position!($i, ErrorKind::Tag))),
             }

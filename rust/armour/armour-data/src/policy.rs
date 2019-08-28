@@ -19,6 +19,7 @@ pub struct DataPolicy {
     allow_all: bool,
     debug: bool,
     timeout: std::time::Duration,
+    connection_number: usize,
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, PolicyCodec>,
     // proxies
@@ -44,6 +45,7 @@ impl DataPolicy {
                         allow_all: false,
                         debug: false,
                         timeout: std::time::Duration::from_secs(5),
+                        connection_number: 0,
                         uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
                         http_proxies: HashMap::new(),
                         tcp_proxies: HashMap::new(),
@@ -80,12 +82,12 @@ impl DataPolicy {
             lang::Expr::call(function, args)
                 .evaluate(self.program.clone())
                 .and_then(move |result| match result {
-                    lang::Expr::LitExpr(literals::Literal::Policy(policy)) => {
-                        if let Some(elapsed) = now.map(|t| t.elapsed()) {
-                            debug!("result is: {:?} ({:?})", policy, elapsed)
-                        };
-                        future::ok(policy == literals::Policy::Accept)
-                    }
+                    // lang::Expr::LitExpr(literals::Literal::Policy(policy)) => {
+                    //     if let Some(elapsed) = now.map(|t| t.elapsed()) {
+                    //         debug!("result is: {:?} ({:?})", policy, elapsed)
+                    //     };
+                    //     future::ok(policy == literals::Policy::Accept)
+                    // }
                     lang::Expr::LitExpr(literals::Literal::Bool(accept)) => {
                         if let Some(elapsed) = now.map(|t| t.elapsed()) {
                             debug!("result is: {} ({:?})", accept, elapsed)
@@ -125,6 +127,7 @@ pub struct Policy {
     pub allow_all: bool,
     pub debug: bool,
     pub timeout: std::time::Duration,
+    pub connection_number: usize,
     pub require: Option<u8>,
     pub client_payload: Option<u8>,
     pub server_payload: Option<u8>,
@@ -135,11 +138,14 @@ impl Handler<GetPolicy> for DataPolicy {
     type Result = Policy;
 
     fn handle(&mut self, _msg: GetPolicy, _ctx: &mut Context<Self>) -> Self::Result {
+        let connection_number = self.connection_number;
+        self.connection_number += 1;
         if self.allow_all {
             Policy {
                 allow_all: true,
                 debug: self.debug,
                 timeout: self.timeout,
+                connection_number,
                 require: None,
                 client_payload: None,
                 server_payload: None,
@@ -150,6 +156,7 @@ impl Handler<GetPolicy> for DataPolicy {
                 allow_all: false,
                 debug: self.debug,
                 timeout: self.timeout,
+                connection_number,
                 require: program.arg_count("require"),
                 client_payload: program.arg_count("client_payload"),
                 server_payload: program.arg_count("server_payload"),
@@ -158,17 +165,13 @@ impl Handler<GetPolicy> for DataPolicy {
     }
 }
 
-type BExpr = Box<lang::Expr>;
+type VExpr = Vec<lang::Expr>;
 
 /// Internal proxy message for requesting function evaluation over the policy
 pub enum Evaluate {
-    Require0,
-    Require1(lang::Expr),
-    Require3(BExpr, BExpr, BExpr),
-    ClientPayload1(lang::Expr),
-    ClientPayload3(BExpr, BExpr, BExpr),
-    ServerPayload1(lang::Expr),
-    ServerPayload3(BExpr, BExpr, BExpr),
+    Require(VExpr),
+    ClientPayload(VExpr),
+    ServerPayload(VExpr),
 }
 
 impl Message for Evaluate {
@@ -181,19 +184,9 @@ impl Handler<Evaluate> for DataPolicy {
 
     fn handle(&mut self, msg: Evaluate, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
-            Evaluate::Require0 => self.evaluate_policy("require", Vec::new()),
-            Evaluate::Require1(arg1) => self.evaluate_policy("require", vec![arg1]),
-            Evaluate::Require3(arg1, arg2, arg3) => {
-                self.evaluate_policy("require", vec![*arg1, *arg2, *arg3])
-            }
-            Evaluate::ClientPayload1(arg) => self.evaluate_policy("client_payload", vec![arg]),
-            Evaluate::ClientPayload3(arg1, arg2, arg3) => {
-                self.evaluate_policy("client_payload", vec![*arg1, *arg2, *arg3])
-            }
-            Evaluate::ServerPayload1(arg) => self.evaluate_policy("server_payload", vec![arg]),
-            Evaluate::ServerPayload3(arg1, arg2, arg3) => {
-                self.evaluate_policy("server_payload", vec![*arg1, *arg2, *arg3])
-            }
+            Evaluate::Require(args) => self.evaluate_policy("require", args),
+            Evaluate::ClientPayload(args) => self.evaluate_policy("client_payload", args),
+            Evaluate::ServerPayload(args) => self.evaluate_policy("server_payload", args),
         }
     }
 }
@@ -201,29 +194,113 @@ impl Handler<Evaluate> for DataPolicy {
 // TCP connection policies
 pub struct ConnectPolicy(pub std::net::SocketAddr, pub std::net::SocketAddr);
 
+pub enum ConnectionPolicy {
+    Allow(Box<ConnectionStats>),
+    Block,
+}
+
 impl Message for ConnectPolicy {
-    type Result = Result<bool, lang::Error>;
+    type Result = Result<ConnectionPolicy, lang::Error>;
 }
 
 impl Handler<ConnectPolicy> for DataPolicy {
-    type Result = Box<dyn Future<Item = bool, Error = lang::Error>>;
+    type Result = Box<dyn Future<Item = ConnectionPolicy, Error = lang::Error>>;
 
     fn handle(&mut self, msg: ConnectPolicy, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
             ConnectPolicy(from, to) => {
                 if self.allow_all {
-                    Box::new(future::ok(true))
-                } else if self.program.has_function("allow_connection") {
-                    let from = from.to_expression();
-                    let to = to.to_expression();
-                    if let (Some(from), Some(to)) = (from.host(), to.host()) {
-                        info!(r#"checking connection from "{}" to "{}""#, from, to)
-                    }
-                    Box::new(self.evaluate_policy("allow_connection", vec![from, to]))
+                    self.connection_number += 1;
+                    Box::new(future::ok(ConnectionPolicy::Block))
                 } else {
-                    Box::new(future::ok(false))
+                    match self.program.arg_count("allow_connection") {
+                        Some(n) if n == 2 || n == 3 => {
+                            let connection_number = self.connection_number;
+                            self.connection_number += 1;
+                            let from = from.to_expression();
+                            let to = to.to_expression();
+                            let number = connection_number.to_expression();
+                            if let (Some(from), Some(to)) = (from.host(), to.host()) {
+                                info!(r#"checking connection from "{}" to "{}""#, from, to)
+                            }
+                            let connection = ConnectionStats::new(&from, &to, &number);
+                            let args = match n {
+                                2 => vec![from, to],
+                                _ => vec![from, to, number],
+                            };
+                            Box::new(self.evaluate_policy("allow_connection", args).and_then(
+                                move |res| {
+                                    future::ok(if res {
+                                        ConnectionPolicy::Allow(Box::new(connection))
+                                    } else {
+                                        ConnectionPolicy::Block
+                                    })
+                                },
+                            ))
+                        }
+                        _ => Box::new(future::ok(ConnectionPolicy::Block)),
+                    }
                 }
             }
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ConnectionStats {
+    pub sent: usize,
+    pub received: usize,
+    pub from: lang::Expr,
+    pub to: lang::Expr,
+    pub number: lang::Expr,
+}
+
+impl ConnectionStats {
+    pub fn new(from: &lang::Expr, to: &lang::Expr, number: &lang::Expr) -> ConnectionStats {
+        ConnectionStats {
+            sent: 0,
+            received: 0,
+            from: from.clone(),
+            to: to.clone(),
+            number: number.clone(),
+        }
+    }
+}
+
+impl Message for ConnectionStats {
+    type Result = Result<(), ()>;
+}
+
+// sent by the TCP proxy when the TCP connection finishes
+impl Handler<ConnectionStats> for DataPolicy {
+    type Result = Box<dyn Future<Item = (), Error = ()>>;
+
+    fn handle(&mut self, msg: ConnectionStats, _ctx: &mut Context<Self>) -> Self::Result {
+        let arg_count = if self.allow_all {
+            0
+        } else {
+            self.program.arg_count("after_connection").unwrap_or(0)
+        };
+        if 2 <= arg_count && arg_count <= 5 {
+            let args = match arg_count {
+                2 => vec![msg.from, msg.to],
+                3 => vec![msg.from, msg.to, msg.number],
+                5 => vec![
+                    msg.from,
+                    msg.to,
+                    msg.number,
+                    msg.sent.to_expression(),
+                    msg.received.to_expression(),
+                ],
+                _ => unreachable!(),
+            };
+            Box::new(
+                self.evaluate_policy("after_connection", args)
+                    .map_err(|e| log::warn!("error: {}", e))
+                    .map(|_| ()),
+            )
+        } else {
+            Box::new(future::ok(()))
         }
     }
 }
@@ -364,6 +441,13 @@ impl Actor for DataPolicy {
 /// Trait for converting rust types into Armour expressions
 pub trait ToArmourExpression {
     fn to_expression(&self) -> lang::Expr;
+}
+
+// convert payloads into Armour-language expressions
+impl ToArmourExpression for usize {
+    fn to_expression(&self) -> lang::Expr {
+        lang::Expr::i64(*self as i64)
+    }
 }
 
 /// Convert an actix-web HttpRequest into an equivalent Armour language literal

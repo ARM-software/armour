@@ -5,12 +5,12 @@ use std::fmt::{self, Display};
 use std::str::FromStr;
 use url;
 
-#[derive(PartialEq, Debug, Display, Clone, Serialize, Deserialize)]
-pub enum Policy {
-    Accept,
-    Forward,
-    Reject,
-}
+// #[derive(PartialEq, Debug, Display, Clone, Serialize, Deserialize)]
+// pub enum Policy {
+//     Accept,
+//     Forward,
+//     Reject,
+// }
 
 #[derive(PartialEq, Debug, Display, Clone, Serialize, Deserialize)]
 pub enum Method {
@@ -326,7 +326,7 @@ pub enum Literal {
     Bool(bool),
     Data(Vec<u8>),
     Str(String),
-    Policy(Policy),
+    // Policy(Policy),
     IpAddr(std::net::IpAddr),
     List(Vec<Literal>),
     Tuple(Vec<Literal>),
@@ -350,7 +350,7 @@ impl Literal {
             Literal::Float(_) => Typ::F64,
             Literal::Str(_) => Typ::Str,
             Literal::Data(_) => Typ::Data,
-            Literal::Policy(_) => Typ::Policy,
+            // Literal::Policy(_) => Typ::Policy,
             Literal::IpAddr(_) => Typ::IpAddr,
             Literal::List(l) => l.get(0).map(|t| t.typ()).unwrap_or(Typ::Return),
             Literal::Tuple(l) => Typ::Tuple((*l).iter().map(|t: &Literal| t.typ()).collect()),
@@ -391,7 +391,7 @@ impl fmt::Display for Literal {
             Literal::Bool(b) => write!(f, "{}", b),
             Literal::Data(d) => write!(f, "{:x?}", d),
             Literal::Str(s) => write!(f, r#""{}""#, s),
-            Literal::Policy(p) => write!(f, "{:?}", p),
+            // Literal::Policy(p) => write!(f, "{:?}", p),
             Literal::IpAddr(ip) => write!(f, "{}", ip),
             Literal::List(lits) | Literal::Tuple(lits) => {
                 let s = lits

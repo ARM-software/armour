@@ -1,6 +1,7 @@
 // use chrono_tz::GMT;
-use logger::{web, Connections, LoggerService};
+use logger::{connections::Connections, web, LoggerService};
 use rustyline::{completion, error::ReadlineError, hint, Editor};
+use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 
 fn main() -> std::io::Result<()> {
@@ -16,8 +17,12 @@ fn main() -> std::io::Result<()> {
         // start policy service actor
         let connections = Arc::new(Mutex::new(Connections::default()));
         let logger = LoggerService(connections.clone());
-        let socket = std::path::PathBuf::from(args[1].as_str());
-        let policy_service = policy_service::start_policy_service(logger, socket)?;
+        let socket = args[1].as_str();
+        let policy_service = if socket.to_socket_addrs().is_ok() {
+            policy_service::start_tcp_policy_service(logger, socket)?
+        } else {
+            policy_service::start_uds_policy_service(logger, std::path::PathBuf::from(socket))?
+        };
         // start web server
         web::start_web_server(connections.clone(), 8080)?;
         // issue commands based on user input
@@ -39,7 +44,7 @@ fn main() -> std::io::Result<()> {
                             }
                             "clear" => {
                                 let mut connections = connections.lock().unwrap();
-                                connections.0.clear()
+                                connections.clear()
                             }
                             "graph" => {
                                 let connections = connections.lock().unwrap();
@@ -49,14 +54,11 @@ fn main() -> std::io::Result<()> {
                             }
                             "show" => {
                                 let connections = connections.lock().unwrap();
-                                log::info!("{}", serde_yaml::to_string(&connections.0).unwrap())
+                                log::info!("{}", connections.to_yaml())
                             }
                             "summary" => {
                                 let connections = connections.lock().unwrap();
-                                log::info!(
-                                    "{}",
-                                    serde_yaml::to_string(&connections.to_summary()).unwrap()
-                                )
+                                log::info!("{}", connections.to_yaml_summary())
                             }
                             "quit" => {
                                 // remove socket

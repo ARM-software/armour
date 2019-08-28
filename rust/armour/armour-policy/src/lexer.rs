@@ -1,7 +1,8 @@
 /// lexer
 // Originally based on https://github.com/Rydgel/monkey-rust/tree/master/lib/lexer
 // There have been significant modifications, in particular making use of nom_locate
-use super::literals;
+
+// use super::literals;
 use nom::character::complete::{digit1, not_line_ending};
 use nom::number::complete::recognize_float;
 use nom::*;
@@ -33,7 +34,7 @@ pub enum Token {
     FloatLiteral(f64),
     IntLiteral(i64),
     BoolLiteral(bool),
-    PolicyLiteral(literals::Policy),
+    // PolicyLiteral(literals::Policy),
     Some,
     // statements
     Assign,
@@ -401,9 +402,9 @@ fn parse_reserved(t: Span) -> LocToken {
         "return" => LocToken::new(t, Token::Return),
         "true" => LocToken::new(t, Token::BoolLiteral(true)),
         "false" => LocToken::new(t, Token::BoolLiteral(false)),
-        "Accept" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Accept)),
-        "Forward" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Forward)),
-        "Reject" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Reject)),
+        // "Accept" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Accept)),
+        // "Forward" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Forward)),
+        // "Reject" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Reject)),
         "in" => LocToken::new(t, Token::In),
         "matches" => LocToken::new(t, Token::Matches),
         "and" => LocToken::new(t, Token::AndAlso),

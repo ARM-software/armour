@@ -115,33 +115,33 @@ impl Externals {
             .insert(name.to_string(), addr.to_string())
             .is_some()
     }
-    fn get_tls_stream<T: std::net::ToSocketAddrs>(
-        socket: T,
-    ) -> Box<dyn Future<Item = tokio_tls::TlsStream<tokio::net::TcpStream>, Error = Error>> {
-        match socket.to_socket_addrs() {
-            Ok(mut iter) => {
-                if let Some(addr) = iter.next() {
-                    #[allow(unused_mut)]
-                    let mut builder = native_tls::TlsConnector::builder();
-                    #[cfg(debug_assertions)]
-                    builder.danger_accept_invalid_certs(true);
-                    let tls_connector = tokio_tls::TlsConnector::from(
-                        builder.build().expect("failed to create TLS connector"),
-                    );
-                    let tls = tokio::net::TcpStream::connect(&addr).and_then(move |sock| {
-                        sock.set_nodelay(true).expect("failed to set nodelay");
-                        tls_connector
-                            .connect(&addr.to_string(), sock)
-                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-                    });
-                    Box::new(tls.from_err())
-                } else {
-                    Box::new(future::err(Error::from("socket address")))
-                }
-            }
-            Err(err) => Box::new(future::err(Error::from(err))),
-        }
-    }
+    // fn get_tls_stream<T: std::net::ToSocketAddrs>(
+    //     socket: T,
+    // ) -> Box<dyn Future<Item = tokio_tls::TlsStream<tokio::net::TcpStream>, Error = Error>> {
+    //     match socket.to_socket_addrs() {
+    //         Ok(mut iter) => {
+    //             if let Some(addr) = iter.next() {
+    //                 #[allow(unused_mut)]
+    //                 let mut builder = native_tls::TlsConnector::builder();
+    //                 #[cfg(debug_assertions)]
+    //                 builder.danger_accept_invalid_certs(true);
+    //                 let tls_connector = tokio_tls::TlsConnector::from(
+    //                     builder.build().expect("failed to create TLS connector"),
+    //                 );
+    //                 let tls = tokio::net::TcpStream::connect(&addr).and_then(move |sock| {
+    //                     sock.set_nodelay(true).expect("failed to set nodelay");
+    //                     tls_connector
+    //                         .connect(&addr.to_string(), sock)
+    //                         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    //                 });
+    //                 Box::new(tls.from_err())
+    //             } else {
+    //                 Box::new(future::err(Error::from("socket address")))
+    //             }
+    //         }
+    //         Err(err) => Box::new(future::err(Error::from(err))),
+    //     }
+    // }
     fn get_uds_stream<P: AsRef<std::path::Path>>(
         path: P,
     ) -> Box<dyn Future<Item = tokio_uds::UnixStream, Error = Error> + Send> {
@@ -191,7 +191,7 @@ impl Externals {
             Literal::HttpRequest(req) => Externals::build_value(v, &req.to_literal())?,
             Literal::ID(id) => Externals::build_value(v, &id.to_literal())?,
             Literal::IpAddr(ip) => Externals::build_value(v, &ip.to_literal())?,
-            Literal::Policy(p) => v.set_text(p.to_string().as_str()),
+            // Literal::Policy(p) => v.set_text(p.to_string().as_str()),
         }
         Ok(())
     }
@@ -276,12 +276,28 @@ impl Externals {
         timeout: Duration,
     ) -> Box<dyn Future<Item = Literal, Error = Error>> {
         log::debug!("making call to: {}", socket);
-        if let Some(p) = socket.as_str().get_to_socket_addrs() {
-            Box::new(Externals::get_tls_stream(p).and_then(move |stream| {
-                let (client, rpc_system) = Externals::get_capnp_client(stream);
-                actix::spawn(rpc_system.map_err(|_| ()));
-                Externals::call_request(Call::new(&external, &method, args), timeout, client)
-            }))
+        // if let Some(p) = socket.as_str().get_to_socket_addrs() {
+        //     Box::new(Externals::get_tls_stream(p).and_then(move |stream| {
+        //         let (client, rpc_system) = Externals::get_capnp_client(stream);
+        //         actix::spawn(rpc_system.map_err(|_| ()));
+        //         Externals::call_request(Call::new(&external, &method, args), timeout, client)
+        //     }))
+        if let Ok(mut p) = socket.as_str().to_socket_addrs() {
+            Box::new(
+                tokio::net::TcpStream::connect(&p.next().unwrap())
+                    .from_err()
+                    .and_then(move |stream| {
+                        let (client, rpc_system) = Externals::get_capnp_client(stream);
+                        let disconnector = rpc_system.get_disconnector();
+                        actix::spawn(rpc_system.map_err(|_| ()));
+                        Externals::call_request(
+                            Call::new(&external, &method, args),
+                            timeout,
+                            client,
+                        )
+                        .then(|x| disconnector.then(|_| x))
+                    }),
+            )
         } else if let Some(p) = socket.as_str().get_path() {
             Box::new(Externals::get_uds_stream(p).and_then(move |stream| {
                 let (client, rpc_system) = Externals::get_capnp_client(stream);

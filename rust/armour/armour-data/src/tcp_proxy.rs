@@ -118,6 +118,7 @@ impl Handler<TcpConnect> for TcpDataServer {
                 // For each incoming connection we create `TcpDataClientInstance` actor
                 // We also create a `TcpDataServerInstance` actor
                 let master = self.master.clone();
+                let policy = self.policy.clone();
                 if socket.port() == self.port
                     && armour_data_interface::INTERFACE_IPS.contains(&socket.ip())
                 {
@@ -132,8 +133,8 @@ impl Handler<TcpConnect> for TcpDataServer {
                         .send(policy::ConnectPolicy(peer_addr, socket))
                         .then(move |res| match res {
                             // allow connection
-                            Ok(Ok(true)) => future::Either::A(
-                                tokio_tcp::TcpStream::connect(&socket).and_then(|sock| {
+                            Ok(Ok(policy::ConnectionPolicy::Allow(connection))) => future::Either::A(
+                                tokio_tcp::TcpStream::connect(&socket).and_then(move |sock| {
                                     let client = TcpDataClientInstance::create(|ctx| {
                                         let (r, w) = msg.0.split();
                                         TcpDataClientInstance::add_stream(
@@ -149,13 +150,14 @@ impl Handler<TcpConnect> for TcpDataServer {
                                             ),
                                         }
                                     });
-                                    TcpDataServerInstance::create(|ctx| {
+                                    TcpDataServerInstance::create(move |ctx| {
                                         let (r, w) = sock.split();
                                         TcpDataServerInstance::add_stream(
                                             FramedRead::new(r, BytesCodec::new()),
                                             ctx,
                                         );
                                         TcpDataServerInstance {
+                                            policy,
                                             master,
                                             client,
                                             tcp_framed: actix::io::FramedWrite::new(
@@ -163,13 +165,14 @@ impl Handler<TcpConnect> for TcpDataServer {
                                                 BytesCodec::new(),
                                                 ctx,
                                             ),
+                                            connection: *connection,
                                         }
                                     });
                                     Ok(())
                                 }),
                             ),
                             // reject
-                            Ok(Ok(false)) => {
+                            Ok(Ok(policy::ConnectionPolicy::Block)) => {
                                 info!("connection denied");
                                 if let Err(e) = msg.0.shutdown(std::net::Shutdown::Both) {
                                     warn!("{}", e);
@@ -275,6 +278,7 @@ impl actix::io::WriteHandler<std::io::Error> for TcpDataClientInstance {}
 impl StreamHandler<BytesMut, std::io::Error> for TcpDataClientInstance {
     fn handle(&mut self, msg: BytesMut, _ctx: &mut Self::Context) {
         if let Some(server) = &self.server {
+            log::debug!("out: {}", msg.len());
             server.do_send(Write(msg.freeze()))
         } else {
             warn!("no server")
@@ -311,9 +315,11 @@ impl Handler<Stop> for TcpDataMaster {
 ///
 /// There will be one actor per TCP socket connection
 struct TcpDataServerInstance {
+    policy: Addr<policy::DataPolicy>,
     master: Addr<TcpDataMaster>,
     client: Addr<TcpDataClientInstance>,
     tcp_framed: actix::io::FramedWrite<WriteHalf<tokio_tcp::TcpStream>, BytesCodec>,
+    connection: policy::ConnectionStats,
 }
 
 impl Actor for TcpDataServerInstance {
@@ -342,6 +348,7 @@ impl Actor for TcpDataServerInstance {
             .wait(ctx)
     }
     fn stopped(&mut self, ctx: &mut Self::Context) {
+        self.policy.do_send(self.connection.clone());
         self.master.do_send(Disconnect(ctx.address()));
     }
 }
@@ -351,6 +358,7 @@ impl actix::io::WriteHandler<std::io::Error> for TcpDataServerInstance {}
 // read from server becomes write to client
 impl StreamHandler<BytesMut, std::io::Error> for TcpDataServerInstance {
     fn handle(&mut self, msg: BytesMut, _ctx: &mut Self::Context) {
+        self.connection.received += msg.len();
         self.client.do_send(Write(msg.freeze()))
     }
 }
@@ -368,6 +376,7 @@ impl Handler<Write> for TcpDataClientInstance {
 impl Handler<Write> for TcpDataServerInstance {
     type Result = ();
     fn handle(&mut self, msg: Write, _ctx: &mut Context<Self>) {
+        self.connection.sent += msg.0.len();
         self.tcp_framed.write(msg.0)
     }
 }

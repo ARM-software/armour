@@ -52,37 +52,47 @@ lazy_static! {
             (
                 "require".to_string(),
                 vec![
+                    Signature::new(
+                        vec![Typ::HttpRequest, Typ::ID, Typ::ID, Typ::I64],
+                        Typ::Bool,
+                    ),
                     Signature::new(vec![Typ::HttpRequest, Typ::ID, Typ::ID], Typ::Bool),
-                    Signature::new(vec![Typ::HttpRequest, Typ::ID, Typ::ID], Typ::Policy),
                     Signature::new(vec![Typ::HttpRequest], Typ::Bool),
-                    Signature::new(vec![Typ::HttpRequest], Typ::Policy),
                     Signature::new(Vec::new(), Typ::Bool),
-                    Signature::new(Vec::new(), Typ::Policy),
                 ],
             ),
             (
                 "client_payload".to_string(),
                 vec![
+                    Signature::new(vec![Typ::Data, Typ::ID, Typ::ID, Typ::I64], Typ::Bool),
                     Signature::new(vec![Typ::Data, Typ::ID, Typ::ID], Typ::Bool),
-                    Signature::new(vec![Typ::Data, Typ::ID, Typ::ID], Typ::Policy),
                     Signature::new(vec![Typ::Data], Typ::Bool),
-                    Signature::new(vec![Typ::Data], Typ::Policy),
                 ],
             ),
             (
                 "server_payload".to_string(),
                 vec![
+                    Signature::new(vec![Typ::Data, Typ::ID, Typ::ID, Typ::I64], Typ::Bool),
                     Signature::new(vec![Typ::Data, Typ::ID, Typ::ID], Typ::Bool),
-                    Signature::new(vec![Typ::Data, Typ::ID, Typ::ID], Typ::Policy),
                     Signature::new(vec![Typ::Data], Typ::Bool),
-                    Signature::new(vec![Typ::Data], Typ::Policy),
                 ],
             ),
             (
                 "allow_connection".to_string(),
                 vec![
+                    Signature::new(vec![Typ::ID, Typ::ID, Typ::I64], Typ::Bool),
                     Signature::new(vec![Typ::ID, Typ::ID], Typ::Bool),
-                    Signature::new(vec![Typ::ID, Typ::ID], Typ::Policy),
+                ],
+            ),
+            (
+                "after_connection".to_string(),
+                vec![
+                    Signature::new(
+                        vec![Typ::ID, Typ::ID, Typ::I64, Typ::I64, Typ::I64],
+                        Typ::Bool,
+                    ),
+                    Signature::new(vec![Typ::ID, Typ::ID, Typ::I64], Typ::Bool),
+                    Signature::new(vec![Typ::ID, Typ::ID], Typ::Bool),
                 ],
             ),
         ]

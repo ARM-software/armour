@@ -63,19 +63,19 @@ impl Connection {
             // the policy inpterpreter will be needing the endpoint IDs
             policy::Policy {
                 allow_all: false,
-                require: Some(3),
+                require: Some(n),
                 ..
             }
             | policy::Policy {
                 allow_all: false,
-                client_payload: Some(3),
+                client_payload: Some(n),
                 ..
             }
             | policy::Policy {
                 allow_all: false,
-                server_payload: Some(3),
+                server_payload: Some(n),
                 ..
-            } => (req.peer_addr().to_expression(), url.clone().to_expression()),
+            } if 3 <= *n => (req.peer_addr().to_expression(), url.clone().to_expression()),
             _ => (Expr::default(), Expr::default()),
         };
         if let Some(peer) = from.host() {
@@ -137,16 +137,23 @@ fn proxy(
                         // check "require"
                         policy::Policy {
                             require: Some(args),
+                            connection_number,
                             ..
                         } => {
                             let message = match args {
-                                0 => policy::Evaluate::Require0,
-                                1 => policy::Evaluate::Require1(req.to_expression()),
-                                3 => policy::Evaluate::Require3(
-                                    Box::new(req.to_expression()),
-                                    Box::new(connection.from()),
-                                    Box::new(connection.to()),
-                                ),
+                                0 => policy::Evaluate::Require(Vec::new()),
+                                1 => policy::Evaluate::Require(vec![req.to_expression()]),
+                                3 => policy::Evaluate::Require(vec![
+                                    req.to_expression(),
+                                    connection.from(),
+                                    connection.to(),
+                                ]),
+                                4 => policy::Evaluate::Require(vec![
+                                    req.to_expression(),
+                                    connection.from(),
+                                    connection.to(),
+                                    connection_number.to_expression(),
+                                ]),
                                 _ => unreachable!(),
                             };
                             future::Either::A(policy.send(message).then(move |res| match res {
@@ -218,6 +225,7 @@ fn request(
             client_payload: Some(args),
             debug,
             timeout,
+            connection_number,
             ..
         } => future::Either::A(
             payload
@@ -228,12 +236,18 @@ fn request(
                 })
                 .and_then(move |client_payload| {
                     let message = match args {
-                        1 => policy::Evaluate::ClientPayload1(client_payload.to_expression()),
-                        3 => policy::Evaluate::ClientPayload3(
-                            Box::new(client_payload.to_expression()),
-                            Box::new(connection.from()),
-                            Box::new(connection.to()),
-                        ),
+                        1 => policy::Evaluate::ClientPayload(vec![client_payload.to_expression()]),
+                        3 => policy::Evaluate::ClientPayload(vec![
+                            client_payload.to_expression(),
+                            connection.from(),
+                            connection.to(),
+                        ]),
+                        4 => policy::Evaluate::ClientPayload(vec![
+                            client_payload.to_expression(),
+                            connection.from(),
+                            connection.to(),
+                            connection_number.to_expression(),
+                        ]),
                         _ => unreachable!(),
                     };
                     policy.send(message).then(move |res| {
@@ -359,6 +373,7 @@ fn response(
                 policy::Policy {
                     allow_all: false,
                     server_payload: Some(args),
+                    connection_number,
                     // debug,
                     ..
                 } => {
@@ -371,14 +386,20 @@ fn response(
                             })
                             .and_then(move |server_payload| {
                                 let message = match args {
-                                    1 => policy::Evaluate::ServerPayload1(
+                                    1 => policy::Evaluate::ServerPayload(vec![
+                                        server_payload.to_expression()
+                                    ]),
+                                    3 => policy::Evaluate::ServerPayload(vec![
                                         server_payload.to_expression(),
-                                    ),
-                                    3 => policy::Evaluate::ServerPayload3(
-                                        Box::new(server_payload.to_expression()),
-                                        Box::new(connection.from()),
-                                        Box::new(connection.to()),
-                                    ),
+                                        connection.from(),
+                                        connection.to(),
+                                    ]),
+                                    4 => policy::Evaluate::ServerPayload(vec![
+                                        server_payload.to_expression(),
+                                        connection.from(),
+                                        connection.to(),
+                                        connection_number.to_expression(),
+                                    ]),
                                     _ => unreachable!(),
                                 };
                                 // if debug {

@@ -1,4 +1,4 @@
-use super::Connections;
+use super::connections::Connections;
 use actix_files::NamedFile;
 use actix_web::{middleware, web, App, HttpResponse, HttpServer};
 use std::sync::{Arc, Mutex};

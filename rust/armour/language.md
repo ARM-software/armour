@@ -38,10 +38,6 @@ $ cargo run [input file]
 
     `()`
 
-- **`Policy`**
-
-    `Accept`, `Reject`, `Forward`
-
 - **`HttpRequest`**
 
 - **`ID`**
