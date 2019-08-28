@@ -100,6 +100,33 @@ impl DataPolicy {
                 }),
         )
     }
+    fn evaluate_policy_unit(
+        &self,
+        function: &str,
+        args: Vec<lang::Expr>,
+    ) -> Box<dyn Future<Item = (), Error = lang::Error>> {
+        let now = if self.debug {
+            debug!(r#"evaluting "{}"""#, function);
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
+        Box::new(
+            lang::Expr::call(function, args)
+                .evaluate(self.program.clone())
+                .and_then(move |result| match result {
+                    lang::Expr::LitExpr(literals::Literal::Unit) => {
+                        if let Some(elapsed) = now.map(|t| t.elapsed()) {
+                            debug!("evaluate time: ({:?})", elapsed)
+                        };
+                        future::ok(())
+                    }
+                    _ => future::err(lang::Error::new(
+                        "did not evaluate to a bool or policy literal",
+                    )),
+                }),
+        )
+    }
 }
 
 impl actix::io::WriteHandler<std::io::Error> for DataPolicy {}
@@ -301,9 +328,8 @@ impl Handler<ConnectionStats> for DataPolicy {
                 _ => unreachable!(),
             };
             Box::new(
-                self.evaluate_policy(interface::ON_TCP_DISCONNECT, args)
-                    .map_err(|e| log::warn!("error: {}", e))
-                    .map(|_| ()),
+                self.evaluate_policy_unit(interface::ON_TCP_DISCONNECT, args)
+                    .map_err(|e| log::warn!("error: {}", e)),
             )
         } else {
             Box::new(future::ok(()))
