@@ -196,14 +196,14 @@ impl Connections {
                     g.graph
                         .add_edge(from, to, ConnectionEdge::from_info(&connection.info));
                 }
-                if let Some(edge) = g.graph.edge_weight_mut(to, from) {
-                    edge.update_with_received(connection.info.received())
-                } else {
-                    g.graph.add_edge(
-                        to,
-                        from,
-                        ConnectionEdge::from_received(connection.info.received()),
-                    );
+                let received = connection.info.received();
+                if received != 0 {
+                    if let Some(edge) = g.graph.edge_weight_mut(to, from) {
+                        edge.update_with_received(received)
+                    } else {
+                        g.graph
+                            .add_edge(to, from, ConnectionEdge::from_received(received));
+                    }
                 }
                 g.update_endpoint_meta(from, &connection.from, None);
                 g.update_endpoint_meta(to, &connection.to, port)
