@@ -4,8 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub struct ConnectionEdge {
     typs: BTreeMap<String, usize>,
-    sent: usize,
-    received: usize,
+    bytes: usize,
 }
 
 impl ConnectionEdge {
@@ -14,8 +13,13 @@ impl ConnectionEdge {
         typs.insert(info.label(), 1);
         ConnectionEdge {
             typs,
-            sent: info.sent(),
-            received: info.received(),
+            bytes: info.sent(),
+        }
+    }
+    pub fn from_received(bytes: usize) -> ConnectionEdge {
+        ConnectionEdge {
+            typs: BTreeMap::new(),
+            bytes
         }
     }
     pub fn update_with_info(&mut self, info: &connections::Info) {
@@ -25,8 +29,10 @@ impl ConnectionEdge {
         } else {
             self.typs.insert(label, 1);
         }
-        self.sent += info.sent();
-        self.received += info.received()
+        self.bytes += info.sent()
+    }
+    pub fn update_with_received(&mut self, bytes: usize) {
+        self.bytes += bytes
     }
     fn label(&self) -> String {
         let tys = self
@@ -35,11 +41,12 @@ impl ConnectionEdge {
             .map(|(label, count)| format!("{} ({})", label, count))
             .collect::<Vec<String>>()
             .join(", ");
-        match (self.sent, self.received) {
-            (0, 0) => tys,
-            (0, _) => format!("{}; received {}", tys, self.received),
-            (_, 0) => format!("{}; sent {}", tys, self.sent),
-            _ => format!("{}; sent {}, received {}", tys, self.sent, self.received),
+        if self.bytes == 0 {
+            tys
+        } else if tys == "" {
+            format!("{} bytes", self.bytes)
+        } else {
+            format!("{}; {} bytes", tys, self.bytes)
         }
     }
 }
