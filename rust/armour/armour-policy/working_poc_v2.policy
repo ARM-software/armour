@@ -1,0 +1,87 @@
+external logger @ "log_sock" {
+  fn log(_) -> ()
+  fn connection(str, ID, ID) -> ()
+  fn tcp_connection(ID, ID) -> ()
+}
+
+// REST request allow/deny
+fn require(req: HttpRequest, from: ID, to: ID) -> bool {
+  logger::log("request", req);
+  if let Some(date) = req.unique_header("date") {
+     logger::connection(str::from_utf8(date), from, to)
+  } else {
+     logger::connection("-", from, to)
+  };
+  true
+}
+
+// TCP connection/deny
+fn allow_connection(from: ID, to: ID) -> bool {
+  logger::log("connection", from, to);
+  true
+}
+
+fn label(name: str) -> str {
+  if name matches "debug" | "launch" {
+    "allow"
+  } else if name matches "mongo-web-interface" | "accounting" {
+    "mongo"
+  } else if name matches "dbread" | "dbwrite" {
+    "mysql_from"
+  } else if name matches "mqtt-trusted" | "mqtt-debug" | "mqtt-public" {
+    "mqtt"
+  } else if name matches "pulse" {
+    "pulse"
+  } else if name matches "notifications" {
+    "notifications"
+  } else if name matches "picolibri" | "pipharm" {
+    "untrusted"
+  } else if name matches "on-during-conversation" {
+    "on_during"
+  } else if name matches "cloud-update" {
+    "cloud"
+  } else if name matches "mysql" {
+    "mysql"
+  } else if name matches "verify-id" {
+    "verify"
+  } else if name matches "mongo" {
+    "mongodb"
+  } else if name matches "dtp" {
+    "dtp"
+  } else if name matches "context" {
+    "context"
+  }else { " " }
+}
+
+fn unique_label(names: List<str>) -> Option<str> {
+  list::reduce(map name in names {label(name)})
+}
+
+fn poc_connection(req: HttpRequest, from: ID, to: ID) -> bool {
+  let from_hosts = from.hosts();
+  let to_hosts = to.hosts();
+  let to_port = to.port();
+  let method = req.method();
+  let path = req.path();
+  if let Some(to_label) = unique_label(to_hosts) {
+    if let Some(from_label) = unique_label(from_hosts) {
+      if to_label == "mqtt" && to_port == Some(1883) {
+          if from_label matches "allow" | "dtp" | "mqtt" | "untrusted" | "verify" | "on_during" {true} else {false }
+      } else if to_label matches "mysql" && to_port == Some(3306) {
+          if from_label matches "mysql_from" | "allow" {true} else {false }
+      } else if to_label matches "verify" && to_port == Some(5000){
+          if from_label matches "mysql_from" | "allow" {true} else {false }
+      } else if to_label matches "dtp" | "mysql_from" | "cloud" | "on_during" {
+          from_label == "allow"  && to_port == Some(5000)
+      } else if to_label == "mongodb" && to_port == Some(27017){
+          from_label == "mongo"
+      } else if from_label matches "dtp" | "context" {
+          (to_label == "pulse" && to_port == Some(4713)) ||
+          (from_label == "dtp" &&
+            (to_label == "mongo" && to_port == Some(5000))
+            || (to_label == "notifications" && to_port == Some(80)) )
+      } else {false }
+    } else {false }
+  } else {false }
+
+}
