@@ -4,7 +4,7 @@ use capnp::capability::Promise;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::{future, Future};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -87,7 +87,7 @@ impl<'a> PathOrToSocketAddrs<&'a str, &'a str> for &'a str {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Externals {
     /// map from external names to TCP/Unix socket names
-    externals: HashMap<String, String>,
+    externals: BTreeMap<String, String>,
     /// time limit and external calls
     timeout: Duration,
 }
@@ -97,7 +97,7 @@ const TIMEOUT: Duration = Duration::from_secs(3);
 impl Default for Externals {
     fn default() -> Self {
         Externals {
-            externals: HashMap::new(),
+            externals: BTreeMap::new(),
             timeout: TIMEOUT,
         }
     }

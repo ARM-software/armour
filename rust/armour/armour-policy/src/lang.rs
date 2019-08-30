@@ -6,7 +6,7 @@ use literals::Literal;
 use parser::{Infix, Prefix};
 use petgraph::graph;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use types::Typ;
 
@@ -1223,7 +1223,7 @@ impl std::str::FromStr for Expr {
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
-pub struct Code(HashMap<String, Expr>);
+pub struct Code(BTreeMap<String, Expr>);
 
 struct CallGraph {
     graph: graph::DiGraph<String, lexer::Loc>,

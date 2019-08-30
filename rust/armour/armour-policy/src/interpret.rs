@@ -9,7 +9,7 @@ use futures::{
     stream::{self, Stream},
     Future,
 };
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
 use trust_dns_resolver::AsyncResolver;
@@ -562,7 +562,7 @@ impl Expr {
                                 // variable captures
                                 if names.is_empty() {
                                     if re.0.is_match(s) {
-                                        future::ok((f, Some(HashMap::new())))
+                                        future::ok((f, Some(BTreeMap::new())))
                                     } else {
                                         future::ok((f, None))
                                     }
@@ -571,8 +571,8 @@ impl Expr {
                                         // matches
                                         Some(cap) => {
                                             let mut is_match = true;
-                                            let mut captures: HashMap<String, Expr> =
-                                                HashMap::new();
+                                            let mut captures: BTreeMap<String, Expr> =
+                                                BTreeMap::new();
                                             for name in names {
                                                 let match_str = cap.name(name).unwrap().as_str();
                                                 let (s, a) = Pat::strip_as(name);
@@ -641,7 +641,7 @@ impl Expr {
                                 },
                                 // match
                                 _ => {
-                                    let mut all_captures: HashMap<String, Expr> = HashMap::new();
+                                    let mut all_captures: BTreeMap<String, Expr> = BTreeMap::new();
                                     for (_r, captures) in rs {
                                         if let Some(caps) = captures {
                                             all_captures.extend(caps)

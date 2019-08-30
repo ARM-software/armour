@@ -1,6 +1,6 @@
 use super::types::{Signature, Typ};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub struct Error(pub String);
@@ -18,7 +18,7 @@ impl std::fmt::Display for Error {
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
-pub struct Headers(HashMap<String, Signature>);
+pub struct Headers(BTreeMap<String, Signature>);
 
 impl Headers {
     pub fn add_function(&mut self, name: &str, sig: Signature) -> Result<(), Error> {
