@@ -341,7 +341,13 @@ function               | type
 | starts_with          | `(str, str) -> bool`                   |
 | ends_with            | `(str, str) -> bool`                   |
 | contains             | `(str, str) -> bool`                   |
-| is_match             | `(str, RegExp) -> bool`                |
+| matches              | `(str, RegExp) -> bool`                |
+
+### regex::
+
+function               | type
+---------------------- | ----------------------------------------
+| is_match          | `(RegExp, str) -> bool`                |
 
 ### data::
 
