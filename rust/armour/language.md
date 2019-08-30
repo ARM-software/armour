@@ -38,11 +38,16 @@ $ cargo run [input file]
 
     `()`
 
+- **`RegExp`**
+
+    `RegExp("a" | "b".*)`
+
 - **`HttpRequest`**
 
 - **`ID`**
 
 - **`IpAddr`**
+
 
 ### Composite
 
@@ -170,13 +175,13 @@ $ cargo run [input file]
 - **if match**
 
     ```
-    if <str-expression1> matches <reg-exp1> and
-       <str-expression2> matches <reg-exp2> and ... {
+    if <str-expression1> matches <reg-exp1> &&
+       <str-expression2> matches <reg-exp2> && ... {
         <unit-statement>
     }
 
-    if <str-expression1> matches <reg-exp1> and
-       <str-expression2> matches <reg-exp2> and ... {
+    if <str-expression1> matches <reg-exp1> &&
+       <str-expression2> matches <reg-exp2> && ... {
         <statement>
     } else {
         <statement>
@@ -208,12 +213,13 @@ $ cargo run [input file]
     ```
     :alpha:
     :alphanum:
+    :base64:
     :digit:
     :hex_digit:
     :s:
     ```
 
-- Binds
+- Binds (only allowed in `if match` expressions)
 
     ```
     [v]
@@ -335,6 +341,7 @@ function               | type
 | starts_with          | `(str, str) -> bool`                   |
 | ends_with            | `(str, str) -> bool`                   |
 | contains             | `(str, str) -> bool`                   |
+| is_match             | `(str, RegExp) -> bool`                |
 
 ### data::
 

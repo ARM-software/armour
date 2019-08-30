@@ -1,4 +1,4 @@
-use super::types::Typ;
+use super::{parser, types::Typ};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Display};
@@ -321,17 +321,18 @@ impl From<(&str, &str, &str, &str, Vec<(&str, &[u8])>)> for HttpRequest {
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Literal {
-    Int(i64),
-    Float(f64),
     Bool(bool),
     Data(Vec<u8>),
-    Str(String),
-    // Policy(Policy),
-    IpAddr(std::net::IpAddr),
-    List(Vec<Literal>),
-    Tuple(Vec<Literal>),
+    Float(f64),
     HttpRequest(HttpRequest),
     ID(ID),
+    Int(i64),
+    IpAddr(std::net::IpAddr),
+    List(Vec<Literal>),
+    // Policy(Policy),
+    RegExp(parser::PolicyRegex),
+    Str(String),
+    Tuple(Vec<Literal>),
     Unit,
 }
 
@@ -344,18 +345,19 @@ impl Literal {
     }
     pub fn typ(&self) -> Typ {
         match self {
-            Literal::Unit => Typ::Unit,
             Literal::Bool(_) => Typ::Bool,
-            Literal::Int(_) => Typ::I64,
-            Literal::Float(_) => Typ::F64,
-            Literal::Str(_) => Typ::Str,
             Literal::Data(_) => Typ::Data,
-            // Literal::Policy(_) => Typ::Policy,
-            Literal::IpAddr(_) => Typ::IpAddr,
-            Literal::List(l) => l.get(0).map(|t| t.typ()).unwrap_or(Typ::Return),
-            Literal::Tuple(l) => Typ::Tuple((*l).iter().map(|t: &Literal| t.typ()).collect()),
+            Literal::Float(_) => Typ::F64,
             Literal::HttpRequest(_) => Typ::HttpRequest,
             Literal::ID(_) => Typ::ID,
+            Literal::Int(_) => Typ::I64,
+            Literal::IpAddr(_) => Typ::IpAddr,
+            Literal::List(l) => l.get(0).map(|t| t.typ()).unwrap_or(Typ::Return),
+            // Literal::Policy(_) => Typ::Policy,
+            Literal::RegExp(_) => Typ::RegExp,
+            Literal::Str(_) => Typ::Str,
+            Literal::Tuple(l) => Typ::Tuple((*l).iter().map(|t: &Literal| t.typ()).collect()),
+            Literal::Unit => Typ::Unit,
         }
     }
     pub fn none() -> Literal {
@@ -378,7 +380,8 @@ impl Literal {
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Literal::Int(i) => write!(f, "{}", i),
+            Literal::Bool(b) => write!(f, "{}", b),
+            Literal::Data(d) => write!(f, "{:x?}", d),
             Literal::Float(d) => {
                 if 8 < d.abs().log10() as usize {
                     write!(f, "{:e}", d)
@@ -388,10 +391,9 @@ impl fmt::Display for Literal {
                     write!(f, "{}", d)
                 }
             }
-            Literal::Bool(b) => write!(f, "{}", b),
-            Literal::Data(d) => write!(f, "{:x?}", d),
-            Literal::Str(s) => write!(f, r#""{}""#, s),
-            // Literal::Policy(p) => write!(f, "{:?}", p),
+            Literal::HttpRequest(r) => write!(f, "{:?}", r),
+            Literal::ID(id) => write!(f, "{:?}", id),
+            Literal::Int(i) => write!(f, "{}", i),
             Literal::IpAddr(ip) => write!(f, "{}", ip),
             Literal::List(lits) | Literal::Tuple(lits) => {
                 let s = lits
@@ -409,8 +411,9 @@ impl fmt::Display for Literal {
                     write!(f, "[{}]", s)
                 }
             }
-            Literal::HttpRequest(r) => write!(f, "{:?}", r),
-            Literal::ID(id) => write!(f, "{:?}", id),
+            Literal::RegExp(r) => write!(f, "{:?}", r),
+            Literal::Str(s) => write!(f, r#""{}""#, s),
+            // Literal::Policy(p) => write!(f, "{:?}", p),
             Literal::Unit => write!(f, "()"),
         }
     }

@@ -171,10 +171,14 @@ impl Externals {
     fn build_value(mut v: external::value::Builder<'_>, lit: &Literal) -> Result<(), Error> {
         match lit {
             Literal::Bool(b) => v.set_bool(*b),
-            Literal::Int(i) => v.set_int64(*i),
-            Literal::Float(f) => v.set_float64(*f),
-            Literal::Str(s) => v.set_text(s),
             Literal::Data(d) => v.set_data(d),
+            Literal::Float(f) => v.set_float64(*f),
+            Literal::HttpRequest(req) => Externals::build_value(v, &req.to_literal())?,
+            Literal::ID(id) => Externals::build_value(v, &id.to_literal())?,
+            Literal::Int(i) => v.set_int64(*i),
+            Literal::IpAddr(ip) => Externals::build_value(v, &ip.to_literal())?,
+            Literal::RegExp(r) => v.set_text(r.as_str()),
+            Literal::Str(s) => v.set_text(s),
             Literal::Unit => v.set_unit(()),
             Literal::Tuple(ts) => {
                 let mut tuple = v.init_tuple(ts.len() as u32);
@@ -187,11 +191,7 @@ impl Externals {
                 for (i, t) in ts.iter().enumerate() {
                     Externals::build_value(list.reborrow().get(i as u32), t)?
                 }
-            }
-            Literal::HttpRequest(req) => Externals::build_value(v, &req.to_literal())?,
-            Literal::ID(id) => Externals::build_value(v, &id.to_literal())?,
-            Literal::IpAddr(ip) => Externals::build_value(v, &ip.to_literal())?,
-            // Literal::Policy(p) => v.set_text(p.to_string().as_str()),
+            } // Literal::Policy(p) => v.set_text(p.to_string().as_str()),
         }
         Ok(())
     }

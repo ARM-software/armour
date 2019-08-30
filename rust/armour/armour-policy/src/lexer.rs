@@ -36,6 +36,7 @@ pub enum Token {
     BoolLiteral(bool),
     // PolicyLiteral(literals::Policy),
     Some,
+    RegExp,
     // statements
     Assign,
     If,
@@ -70,7 +71,6 @@ pub enum Token {
     Return,
     In,
     Matches,
-    AndAlso,
     As,
     External,
     // punctuation
@@ -407,10 +407,10 @@ fn parse_reserved(t: Span) -> LocToken {
         // "Reject" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Reject)),
         "in" => LocToken::new(t, Token::In),
         "matches" => LocToken::new(t, Token::Matches),
-        "and" => LocToken::new(t, Token::AndAlso),
         "as" => LocToken::new(t, Token::As),
         "external" => LocToken::new(t, Token::External),
         "Some" => LocToken::new(t, Token::Some),
+        "RegExp" => LocToken::new(t, Token::RegExp),
         _ => LocToken::new(t, Token::Ident(string)),
     }
 }

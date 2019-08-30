@@ -7,17 +7,18 @@ use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Typ {
-    Return,
     Bool,
-    I64,
-    F64,
-    Str,
     Data,
-    Unit,
-    Policy,
+    F64,
     HttpRequest,
+    I64,
     ID,
     IpAddr,
+    Policy,
+    RegExp,
+    Return,
+    Str,
+    Unit,
     List(Box<Typ>),
     // tuples of length 0 and 1 are used to manage option types
     Tuple(Vec<Typ>),
@@ -27,16 +28,17 @@ impl fmt::Display for Typ {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Typ::Bool => write!(f, "bool"),
-            Typ::I64 => write!(f, "i64"),
-            Typ::F64 => write!(f, "f64"),
-            Typ::Str => write!(f, "str"),
             Typ::Data => write!(f, "data"),
-            Typ::Unit => write!(f, "unit"),
-            Typ::Policy => write!(f, "Policy"),
-            Typ::Return => write!(f, "!"),
+            Typ::F64 => write!(f, "f64"),
             Typ::HttpRequest => write!(f, "HttpRequest"),
+            Typ::I64 => write!(f, "i64"),
             Typ::ID => write!(f, "ID"),
             Typ::IpAddr => write!(f, "IpAddr"),
+            Typ::Policy => write!(f, "Policy"),
+            Typ::RegExp => write!(f, "RegExp"),
+            Typ::Return => write!(f, "!"),
+            Typ::Str => write!(f, "str"),
+            Typ::Unit => write!(f, "unit"),
             Typ::List(t) => write!(f, "List<{}>", t.to_string()),
             Typ::Tuple(ts) => match ts.len() {
                 0 => write!(f, "Option<?>"),
@@ -161,16 +163,17 @@ impl Typ {
     }
     fn try_from_str(s: &str) -> Result<Self, self::Error> {
         match s {
-            "unit" => Ok(Typ::Unit),
             "bool" => Ok(Typ::Bool),
-            "i64" => Ok(Typ::I64),
-            "f64" => Ok(Typ::F64),
             "data" => Ok(Typ::Data),
-            "str" => Ok(Typ::Str),
-            "Policy" => Ok(Typ::Policy),
+            "f64" => Ok(Typ::F64),
             "HttpRequest" => Ok(Typ::HttpRequest),
-            "IpAddr" => Ok(Typ::IpAddr),
+            "i64" => Ok(Typ::I64),
             "ID" => Ok(Typ::ID),
+            "IpAddr" => Ok(Typ::IpAddr),
+            "Policy" => Ok(Typ::Policy),
+            "RegExp" => Ok(Typ::RegExp),
+            "str" => Ok(Typ::Str),
+            "unit" => Ok(Typ::Unit),
             s => Err(Error::Parse(s.to_string())),
         }
     }

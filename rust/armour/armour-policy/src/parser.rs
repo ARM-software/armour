@@ -259,6 +259,7 @@ impl Pat {
             Pat::Class(s) => (match s.as_str() {
                 "alpha" => "[[:alpha:]]",
                 "alphanum" => "[[:alnum:]]",
+                "base64" => "(([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)",
                 "digit" => "[[:digit:]]",
                 "hex_digit" => "[[:xdigit:]]",
                 "s" => "[[:space:]]",
@@ -292,6 +293,18 @@ impl Pat {
             Pat::IgnoreWhitespace(p) => p.to_regex_str(true),
         }
     }
+    fn has_as(&self) -> bool {
+        match self {
+            Pat::Any | Pat::Lit(_) | Pat::Class(_) => false,
+            Pat::As(_, _) => true,
+            Pat::Alt(v) | Pat::Seq(v) => v.iter().any(|p| p.has_as()),
+            Pat::Opt(p)
+            | Pat::Star(p)
+            | Pat::Plus(p)
+            | Pat::CaseInsensitive(p)
+            | Pat::IgnoreWhitespace(p) => p.has_as(),
+        }
+    }
     pub fn strip_as(s: &str) -> (String, As) {
         if s.starts_with("_i64") {
             (s.trim_start_matches("_i64").to_string(), As::I64)
@@ -308,7 +321,7 @@ pub struct PolicyRegex(#[serde(with = "serde_regex")] pub Regex);
 
 impl PartialEq for PolicyRegex {
     fn eq(&self, other: &PolicyRegex) -> bool {
-        self.0.as_str() == other.0.as_str()
+        self.as_str() == other.as_str()
     }
 }
 
@@ -316,6 +329,12 @@ impl PolicyRegex {
     pub fn from_pat(p: &Pat) -> Result<PolicyRegex, regex::Error> {
         let re = Regex::new(&format!("^{}$", p.to_regex_str(false)))?;
         Ok(PolicyRegex(re))
+    }
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+    pub fn is_match(&self, s: &str) -> bool {
+        self.0.is_match(s)
     }
 }
 
@@ -735,6 +754,13 @@ named!(parse_lit_expr<Tokens, LocExpr>, alt!(
     complete!(do_parse!(
         lit: parse_literal!() >>
         (LocExpr(lit.loc(), Expr::LitExpr(lit.1)))
+    )) |
+    complete!(do_parse!(
+        t: tag_token!(Token::RegExp) >>
+        tag_token!(Token::LParen) >>
+        regex: parse_pat_no_bind >>
+        tag_token!(Token::RParen) >>
+        (LocExpr(t.loc(), Expr::LitExpr(Literal::RegExp(regex))))
     ))
 ));
 
@@ -974,7 +1000,7 @@ named!(parse_match_expr<Tokens, (LocExpr, Pat)>,
 );
 
 named!(parse_and_match_exprs<Tokens, (LocExpr, Pat)>,
-    preceded!(tag_token!(Token::AndAlso), parse_match_expr)
+    preceded!(tag_token!(Token::And), parse_match_expr)
 );
 
 named!(parse_match_exprs<Tokens, Vec<(LocExpr, Pat)>>,
@@ -987,7 +1013,7 @@ named!(parse_match_exprs<Tokens, Vec<(LocExpr, Pat)>>,
 
 lazy_static! {
     static ref CLASSES: HashSet<&'static str> =
-        vec!["alpha", "alphanum", "digit", "hex_digit", "s"]
+        vec!["alpha", "alphanum", "base64", "digit", "hex_digit", "s"]
             .into_iter()
             .collect();
 }
@@ -1090,6 +1116,21 @@ named!(parse_pat<Tokens, Pat>,
         (if ps.is_empty() {p} else {Pat::Alt([&vec!(p)[..], &ps[..]].concat())})
     )
 );
+
+fn parse_pat_no_bind(input: Tokens) -> IResult<Tokens, PolicyRegex> {
+    match parse_pat(input) {
+        Ok((rest, p)) => {
+            if p.has_as() {
+                Err(nom::Err::Error(error_position!(input, ErrorKind::Tag)))
+            } else if let Ok(r) = PolicyRegex::from_pat(&p) {
+                Ok((rest, r))
+            } else {
+                Err(nom::Err::Error(error_position!(input, ErrorKind::Tag)))
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
 
 named!(parse_external<Tokens, External>,
     do_parse!(

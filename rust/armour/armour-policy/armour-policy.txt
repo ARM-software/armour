@@ -1,5 +1,0 @@
-{ let from = ID::default(); let to = ID::default(); test-connection(from,to) }
-{ let from = ID::default().add_host("debug"); let to = ID::default(); test-connection(from,to) }
-{ let from = ID::default().add_host("debug"); let to = ID::default(); poc_connection(from,to) }
-{ let from = ID::default().add_host("debugyyyy"); let to = ID::default(); poc_connection(from,to) }
-{ let from = ID::default().add_host("debugyyyy"); let to = ID::default().add_host("mongo"); poc_connection(from,to) }
