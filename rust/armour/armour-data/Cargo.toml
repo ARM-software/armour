@@ -1,6 +1,6 @@
 [package]
 name = "armour-data"
-version = "0.1.7"
+version = "0.1.8"
 authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
@@ -17,7 +17,7 @@ dns-lookup = "1.0"
 futures = "0.1"
 get_if_addrs = "0.5.3"
 http = "0.1"
-lazy_static = "1.3"
+lazy_static = "1.4"
 log = "0.4"
 nix = "0.15"
 pretty_env_logger = "0.3"

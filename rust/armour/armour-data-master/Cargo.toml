@@ -1,6 +1,6 @@
 [package]
 name = "armour-data-master"
-version = "0.1.7"
+version = "0.1.8"
 authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
@@ -11,7 +11,7 @@ armour-data-interface = { path = "../armour-data-interface" }
 actix = "0.8"
 clap = "2.33"
 futures = "0.1"
-lazy_static = "1.3"
+lazy_static = "1.4"
 log = "0.4"
 pretty_env_logger = "0.3"
 regex = "1.2"

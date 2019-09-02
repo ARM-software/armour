@@ -110,7 +110,11 @@ impl FnDecl {
 pub enum Stmt {
     LetStmt(Vec<LocIdent>, LocExpr),
     ReturnStmt(LocExpr),
-    ExprStmt(Expr, bool),
+    ExprStmt {
+        exp: Expr,
+        async_tag: bool,
+        semi: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -123,8 +127,15 @@ impl LocStmt {
     fn return_stmt(l: Loc, e: LocExpr) -> LocStmt {
         LocStmt(l, Stmt::ReturnStmt(e))
     }
-    fn expr_stmt(e: LocExpr, b: bool) -> LocStmt {
-        LocStmt(e.loc(), Stmt::ExprStmt(e.1, b))
+    fn expr_stmt(e: LocExpr, async_tag: bool, semi: bool) -> LocStmt {
+        LocStmt(
+            e.loc(),
+            Stmt::ExprStmt {
+                exp: e.1,
+                async_tag,
+                semi,
+            },
+        )
     }
     pub fn loc(&self) -> Loc {
         self.0.clone()
@@ -134,7 +145,60 @@ impl LocStmt {
     }
 }
 
-pub type BlockStmt = Vec<LocStmt>;
+#[derive(Debug, Clone)]
+pub struct BlockStmt {
+    pub statements: Vec<LocStmt>,
+    async_tag: bool,
+}
+
+impl BlockStmt {
+    pub fn as_ref(&self) -> BlockStmtRef {
+        BlockStmtRef {
+            statements: self.statements.as_ref(),
+            async_tag: self.async_tag,
+        }
+    }
+    pub fn loc(&self, default: Loc) -> Loc {
+        self.statements.get(0).map_or(default, |s| s.loc().clone())
+    }
+}
+
+impl From<LocExpr> for BlockStmt {
+    fn from(e: LocExpr) -> Self {
+        BlockStmt {
+            statements: vec![LocStmt::expr_stmt(e, false, false)],
+            async_tag: false,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct BlockStmtRef<'a> {
+    pub statements: &'a [LocStmt],
+    async_tag: bool,
+}
+
+impl<'a> BlockStmtRef<'a> {
+    pub fn split_first(&self) -> Option<(&LocStmt, BlockStmtRef)> {
+        if let Some((first, statements)) = self.statements.split_first() {
+            Some((
+                first,
+                BlockStmtRef {
+                    statements,
+                    async_tag: self.async_tag,
+                },
+            ))
+        } else {
+            None
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.statements.is_empty()
+    }
+    pub fn async_tag(&self) -> bool {
+        self.async_tag
+    }
+}
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Iter {
@@ -449,14 +513,6 @@ macro_rules! parse_ident (
   );
 );
 
-named!(pub parse_expr_eof<Tokens, LocExpr>,
-    terminated!(parse_expr, tag_token!(Token::EOF))
-);
-
-named!(pub parse_block_stmt_eof<Tokens, BlockStmt>,
-    terminated!(parse_block_stmt, tag_token!(Token::EOF))
-);
-
 named!(pub parse_program<Tokens, Program>,
     terminated!(
         many0!(
@@ -638,8 +694,24 @@ fn infix_op(t: &Token) -> (Precedence, Option<(Assoc, Infix)>) {
     }
 }
 
+named!(pub parse_expr_eof<Tokens, LocExpr>,
+    terminated!(parse_expr, tag_token!(Token::EOF))
+);
+
 named!(parse_expr<Tokens, LocExpr>,
     call!(parse_pratt_expr, Precedence::PLowest)
+);
+
+named!(pub parse_block_stmt_eof<Tokens, BlockStmt>,
+    terminated!(parse_block_stmt, tag_token!(Token::EOF))
+);
+
+named!(pub parse_block_stmt<Tokens, BlockStmt>,
+    do_parse!(
+        async_tag: opt!(tag_token!(Token::Async)) >>
+        statements: delimited!(tag_token!(Token::LBrace), many0!(parse_stmt), tag_token!(Token::RBrace)) >>
+        (BlockStmt {statements, async_tag: async_tag.is_some()})
+    )
 );
 
 named!(parse_stmt<Tokens, LocStmt>, alt!(
@@ -669,14 +741,11 @@ named!(parse_return_stmt<Tokens, LocStmt>,
 
 named!(parse_expr_stmt<Tokens, LocStmt>,
     do_parse!(
+        async_tag: opt!(tag_token!(Token::Async)) >>
         expr: parse_expr >>
         semi: opt!(tag_token!(Token::SemiColon)) >>
-        (LocStmt::expr_stmt(expr, semi.is_some()))
+        (LocStmt::expr_stmt(expr, async_tag.is_some(), semi.is_some()))
     )
-);
-
-named!(pub parse_block_stmt<Tokens, BlockStmt>,
-    delimited!(tag_token!(Token::LBrace), many0!(parse_stmt), tag_token!(Token::RBrace))
 );
 
 named!(parse_atom_expr<Tokens, LocExpr>, alt!(
@@ -974,7 +1043,7 @@ named!(parse_else_expr<Tokens, BlockStmt>,
         tag_token!(Token::Else),
         alt!(
             complete!(parse_block_stmt) |
-            complete!(do_parse!(e: parse_if_expr >> (vec![LocStmt::expr_stmt(e, false)])))
+            complete!(do_parse!(e: parse_if_expr >> (BlockStmt::from(e))))
         )
     )
 );

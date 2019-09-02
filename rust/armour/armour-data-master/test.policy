@@ -1,5 +1,5 @@
 external logger @ "log_sock" {
-// external logger @ "10.1.26.49:8445" {
+//external logger @ "localhost:8081" {
   fn log(_) -> ()
   fn rest(i64, str, str, str, ID, ID) -> ()
   fn client_payload(i64, i64) -> ()
@@ -16,29 +16,29 @@ fn allow_rest_request(req: HttpRequest, from: ID, to: ID, n: i64) -> bool {
   } else {
      "-"
   };
-  logger::rest(n, date, req.method(), req.path(), from, to);
+  async logger::rest(n, date, req.method(), req.path(), from, to);
   true
 }
 
 // REST client payload allow/deny
 fn allow_client_payload(payload: data, from: ID, to: ID, n: i64) -> bool {
-  logger::client_payload(n, payload.len());
+  async logger::client_payload(n, payload.len());
   true
 }
 
 // REST server payload allow/deny
 fn allow_server_payload(payload: data, from: ID, to: ID, n: i64) -> bool {
-  logger::server_payload(n, payload.len());
+  async logger::server_payload(n, payload.len());
   true
 }
 
 // TCP connection allow/deny
 fn allow_tcp_connection(from: ID, to: ID, n: i64) -> bool {
-  logger::tcp(n, from, to);
+  async logger::tcp(n, from, to);
   true
 }
 
 // called when TCP connection ends
-fn on_tcp_disconnect(from: ID, to: ID, n: i64, sent: i64, received: i64) {
+fn on_tcp_disconnect(from: ID, to: ID, n: i64, sent: i64, received: i64) async {
   logger::tcp_stats(n, sent, received)
 }

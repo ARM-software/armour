@@ -159,7 +159,7 @@ fn master_command(
         }
         Some(s @ "launch log") | Some(s @ "launch") => {
             let log = if s.ends_with("log") {
-                "-l debug"
+                "-l info"
             } else {
                 "-l error"
             };

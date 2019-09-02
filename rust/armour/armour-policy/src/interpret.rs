@@ -689,6 +689,7 @@ impl Expr {
             Expr::CallExpr {
                 function,
                 arguments,
+                is_async,
             } => {
                 Box::new(
                     stream::futures_ordered(arguments.into_iter().map(|e| e.eval(env.clone())))
@@ -728,16 +729,14 @@ impl Expr {
                                                         let (res, background_fut) = Expr::async_resolver();
                                                         let fut = res.reverse_lookup(*ip);
                                                         future::Either::B(future::Either::B(future::Either::A(
-                                                            background_fut
-                                                                .map_err(|()| Error::new("IpAddr::reverse_lookup: no background"))
-                                                                .and_then(|()| {
-                                                                    fut.and_then(|res| {
-                                                                        future::ok(Expr::LitExpr(
-                                                                            Literal::List(res.iter().map(|s| Literal::Str(s.to_utf8())).collect()).some(),
-                                                                        ))
-                                                                    })
-                                                                    .or_else(|_| future::ok(Expr::LitExpr(Literal::none())))
-                                                                }),
+                                                            background_fut.map_err(|()| Error::new("IpAddr::reverse_lookup: no background")).and_then(|()| {
+                                                                fut.and_then(|res| {
+                                                                    future::ok(Expr::LitExpr(
+                                                                        Literal::List(res.iter().map(|s| Literal::Str(s.to_utf8())).collect()).some(),
+                                                                    ))
+                                                                })
+                                                                .or_else(|_| future::ok(Expr::LitExpr(Literal::none())))
+                                                            }),
                                                         )))
                                                     }
                                                     x => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, x)))),
@@ -752,7 +751,10 @@ impl Expr {
                                                             background_fut.map_err(|()| Error::new("IpAddr::lookup: no background")).and_then(|()| {
                                                                 fut.and_then(|res| {
                                                                     future::ok(Expr::LitExpr(
-                                                                        Literal::List(res.iter().map(|ip| Literal::IpAddr(std::net::IpAddr::V4(*ip))).collect()).some(),
+                                                                        Literal::List(
+                                                                            res.iter().map(|ip| Literal::IpAddr(std::net::IpAddr::V4(*ip))).collect(),
+                                                                        )
+                                                                        .some(),
                                                                     ))
                                                                 })
                                                                 .or_else(|_| future::ok(Expr::LitExpr(Literal::none())))
@@ -787,11 +789,20 @@ impl Expr {
                                 } else {
                                     // external function (RPC)
                                     match function.split("::").collect::<Vec<&str>>().as_slice() {
-                                        [external, method] => future::Either::B(future::Either::A(env.external(external, method, args))),
-                                        // [external, method] => {
-                                        //     actix::spawn(env.external(external, method, args).then(|_| future::ok(())));
-                                        //     future::Either::A(future::ok(Expr::unit()))
-                                        // },
+                                        [external, method] => {
+                                            let fut = env.external(external, method, args);
+                                            if is_async {
+                                                actix::spawn(fut.then(move |res| {
+                                                    if let Err(e) = res {
+                                                        log::warn!(r#"async call to "{}": {}"#, function, e.to_string())
+                                                    };
+                                                    future::ok(())
+                                                }));
+                                                future::Either::A(future::ok(Expr::unit()))
+                                            } else {
+                                                future::Either::B(future::Either::A(fut))
+                                            }
+                                        }
                                         _ => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, args)))),
                                     }
                                 }

@@ -5,6 +5,7 @@ use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::{future, Future};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::fmt;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -32,11 +33,20 @@ impl Call {
 }
 
 /// Errors that can occur when trying to connect with externals
-#[derive(Debug)]
 pub enum Error {
     Failed(String),
     IO(std::io::Error),
     Capnp(capnp::Error),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::Failed(s) => write!(f, "{}", s),
+            Error::IO(e) => write!(f, "{}", e.to_string()),
+            Error::Capnp(e) => write!(f, "{}", e.to_string()),
+        }
+    }
 }
 
 impl From<&str> for Error {
@@ -285,7 +295,9 @@ impl Externals {
         if let Ok(mut p) = socket.as_str().to_socket_addrs() {
             Box::new(
                 tokio::net::TcpStream::connect(&p.next().unwrap())
-                    .from_err()
+                    .map_err(move |_| {
+                        Error::Failed(format!(r#"failed to connect to TCP socket "{}""#, socket))
+                    })
                     .and_then(move |stream| {
                         let (client, rpc_system) = Externals::get_capnp_client(stream);
                         let disconnector = rpc_system.get_disconnector();
@@ -299,13 +311,23 @@ impl Externals {
                     }),
             )
         } else if let Some(p) = socket.as_str().get_path() {
-            Box::new(Externals::get_uds_stream(p).and_then(move |stream| {
-                let (client, rpc_system) = Externals::get_capnp_client(stream);
-                let disconnector = rpc_system.get_disconnector();
-                actix::spawn(rpc_system.map_err(|_| ()));
-                Externals::call_request(Call::new(&external, &method, args), timeout, client)
-                    .then(|x| disconnector.then(|_| x))
-            }))
+            Box::new(
+                Externals::get_uds_stream(p)
+                    .map_err(move |_| {
+                        Error::Failed(format!(r#"failed to connect to Unix socket "{}""#, socket))
+                    })
+                    .and_then(move |stream| {
+                        let (client, rpc_system) = Externals::get_capnp_client(stream);
+                        let disconnector = rpc_system.get_disconnector();
+                        actix::spawn(rpc_system.map_err(|_| ()));
+                        Externals::call_request(
+                            Call::new(&external, &method, args),
+                            timeout,
+                            client,
+                        )
+                        .then(|x| disconnector.then(|_| x))
+                    }),
+            )
         } else {
             Box::new(future::err(Error::from(
                 format!("could not parse TCP socket or path: {}", socket).as_str(),

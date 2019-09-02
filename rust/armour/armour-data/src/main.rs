@@ -35,7 +35,10 @@ fn main() -> std::io::Result<()> {
     // enable logging
     env::set_var(
         "RUST_LOG",
-        format!("armour_data={l},actix_web={l}", l = log_level),
+        format!(
+            "armour_data={l},armour_policy={l},actix_web={l}",
+            l = log_level
+        ),
     );
     env::set_var("RUST_BACKTRACE", "0");
     pretty_env_logger::init();

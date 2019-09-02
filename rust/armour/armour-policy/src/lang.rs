@@ -19,8 +19,8 @@ impl Error {
     pub fn new<D: std::fmt::Display>(e: D) -> Error {
         Error(e.to_string())
     }
-    pub fn from_debug<D: std::fmt::Debug>(e: D) -> Error {
-        Error(format!("{:?}", e))
+    pub fn from_display<D: std::fmt::Display>(e: D) -> Error {
+        Error(e.to_string())
     }
 }
 
@@ -50,7 +50,7 @@ impl<'a> From<types::Error<'a>> for Error {
 
 impl From<externals::Error> for Error {
     fn from(err: externals::Error) -> Error {
-        Error::from_debug(err)
+        Error::from_display(err)
     }
 }
 
@@ -126,23 +126,33 @@ impl ReturnType {
 }
 
 #[derive(Clone)]
-struct Vars {
+struct Context {
     variables: HashMap<String, Typ>,
+    async_tag: bool,
 }
 
-impl Vars {
-    fn new() -> Vars {
-        Vars {
+impl Context {
+    fn new() -> Context {
+        Context {
             variables: HashMap::new(),
+            async_tag: false,
         }
     }
-    fn add_var(&self, name: &str, typ: &Typ) -> Vars {
-        let mut variables = self.variables.clone();
-        variables.insert(name.to_string(), typ.to_owned());
-        Vars { variables }
+    fn add_var(&self, name: &str, typ: &Typ) -> Self {
+        let mut ctxt = self.clone();
+        ctxt.variables.insert(name.to_string(), typ.to_owned());
+        ctxt
     }
-    fn get_var(&self, name: &str) -> Option<Typ> {
+    fn update_async_tag(&self, b: bool) -> Self {
+        let mut ctxt = self.clone();
+        ctxt.async_tag = self.async_tag || b;
+        ctxt
+    }
+    fn var(&self, name: &str) -> Option<Typ> {
         self.variables.get(name).cloned()
+    }
+    fn async_tag(&self) -> bool {
+        self.async_tag
     }
 }
 
@@ -184,6 +194,7 @@ pub enum Expr {
     CallExpr {
         function: String,
         arguments: Vec<Expr>,
+        is_async: bool,
     },
 }
 
@@ -278,6 +289,7 @@ impl Expr {
         Expr::CallExpr {
             function: f.to_string(),
             arguments,
+            is_async: false,
         }
     }
     pub fn return_expr(e: Expr) -> Expr {
@@ -357,9 +369,11 @@ impl Expr {
             Expr::CallExpr {
                 function,
                 arguments,
+                is_async,
             } => Expr::CallExpr {
                 function,
                 arguments: arguments.into_iter().map(|a| a.abs(i, v)).collect(),
+                is_async,
             },
         }
     }
@@ -455,9 +469,11 @@ impl Expr {
                 Expr::CallExpr {
                     function,
                     arguments,
+                    is_async,
                 } => Expr::CallExpr {
                     function,
                     arguments: arguments.into_iter().map(|a| a.shift(i, d)).collect(),
+                    is_async,
                 },
             }
         }
@@ -523,9 +539,11 @@ impl Expr {
             Expr::CallExpr {
                 function,
                 arguments,
+                is_async,
             } => Expr::CallExpr {
                 function,
                 arguments: arguments.into_iter().map(|a| a.subst(i, u)).collect(),
+                is_async,
             },
         }
     }
@@ -535,17 +553,14 @@ impl Expr {
             _ => Err(Error::new("apply: expression is not a closure")),
         }
     }
-    fn block_stmt_loc(v: &[parser::LocStmt], default: lexer::Loc) -> lexer::Loc {
-        v.get(0).map_or(default, |s| s.loc().clone())
-    }
     fn from_loc_expr(
         e: &parser::LocExpr,
         headers: &Headers,
         ret: &mut ReturnType,
-        vars: &Vars,
+        ctxt: &Context,
     ) -> Result<ExprAndMeta, Error> {
         match e.expr() {
-            parser::Expr::IdentExpr(id) => match vars.get_var(&id.0) {
+            parser::Expr::IdentExpr(id) => match ctxt.var(&id.0) {
                 Some(typ) => Ok(ExprAndMeta::new(Expr::var(&id.0), typ, vec![])),
                 None => Err(Error::new(&format!(
                     "undeclared variable \"{}\" at {}",
@@ -561,7 +576,7 @@ impl Expr {
                 let mut calls = Vec::new();
                 let mut typ = Typ::Return;
                 for e in es.iter() {
-                    let (expr, call, ty) = Expr::from_loc_expr(&e, headers, ret, vars)?.split();
+                    let (expr, call, ty) = Expr::from_loc_expr(&e, headers, ret, ctxt)?.split();
                     Typ::type_check("list", vec![(Some(e.loc()), &ty)], vec![(None, &typ)])?;
                     exprs.push(expr);
                     calls.push(call);
@@ -578,7 +593,7 @@ impl Expr {
                 let mut calls = Vec::new();
                 let mut typs = Vec::new();
                 for e in es.iter() {
-                    let (expr, call, ty) = Expr::from_loc_expr(&e, headers, ret, vars)?.split();
+                    let (expr, call, ty) = Expr::from_loc_expr(&e, headers, ret, ctxt)?.split();
                     exprs.push(expr);
                     calls.push(call);
                     typs.push(ty);
@@ -590,7 +605,7 @@ impl Expr {
                 ))
             }
             parser::Expr::PrefixExpr(p, e1) => {
-                let (expr, calls, typ) = Expr::from_loc_expr(&e1, headers, ret, vars)?.split();
+                let (expr, calls, typ) = Expr::from_loc_expr(&e1, headers, ret, ctxt)?.split();
                 let (t1, t2) = p.typ();
                 Typ::type_check("prefix", vec![(Some(e1.loc()), &typ)], vec![(None, &t1)])?;
                 Ok(ExprAndMeta::new(
@@ -600,8 +615,8 @@ impl Expr {
                 ))
             }
             parser::Expr::InfixExpr(op, e1, e2) => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&e1, headers, ret, vars)?.split();
-                let (expr2, calls2, typ2) = Expr::from_loc_expr(&e2, headers, ret, vars)?.split();
+                let (expr1, calls1, typ1) = Expr::from_loc_expr(&e1, headers, ret, ctxt)?.split();
+                let (expr2, calls2, typ2) = Expr::from_loc_expr(&e2, headers, ret, ctxt)?.split();
                 let (t1, t2, typ) = op.typ();
                 if t1 == Typ::Return {
                     if t2 == Typ::Return {
@@ -635,14 +650,14 @@ impl Expr {
                 consequence,
                 alternative: None,
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&cond, headers, ret, vars)?.split();
+                let (expr1, calls1, typ1) = Expr::from_loc_expr(&cond, headers, ret, ctxt)?.split();
                 let (expr2, calls2, typ2) =
-                    Expr::from_block_stmt(consequence, headers, ret, vars)?.split();
+                    Expr::from_block_stmt(consequence.as_ref(), headers, ret, ctxt)?.split();
                 Typ::type_check(
                     "if-expression",
                     vec![
                         (Some(cond.loc()), &typ1),
-                        (Some(Expr::block_stmt_loc(consequence, e.loc())), &typ2),
+                        (Some(consequence.loc(e.loc())), &typ2),
                     ],
                     vec![(None, &Typ::Bool), (None, &Typ::Unit)],
                 )?;
@@ -657,20 +672,18 @@ impl Expr {
                 consequence,
                 alternative: Some(alt),
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&cond, headers, ret, vars)?.split();
+                let (expr1, calls1, typ1) = Expr::from_loc_expr(&cond, headers, ret, ctxt)?.split();
                 let (expr2, calls2, typ2) =
-                    Expr::from_block_stmt(consequence, headers, ret, vars)?.split();
-                let (expr3, calls3, typ3) = Expr::from_block_stmt(alt, headers, ret, vars)?.split();
+                    Expr::from_block_stmt(consequence.as_ref(), headers, ret, ctxt)?.split();
+                let (expr3, calls3, typ3) =
+                    Expr::from_block_stmt(alt.as_ref(), headers, ret, ctxt)?.split();
                 Typ::type_check(
                     "if-else-expression",
                     vec![
                         (Some(cond.loc()), &typ1),
-                        (Some(Expr::block_stmt_loc(consequence, e.loc())), &typ2),
+                        (Some(consequence.loc(e.loc())), &typ2),
                     ],
-                    vec![
-                        (None, &Typ::Bool),
-                        (Some(Expr::block_stmt_loc(alt, e.loc())), &typ3),
-                    ],
+                    vec![(None, &Typ::Bool), (Some(alt.loc(e.loc())), &typ3)],
                 )?;
                 Ok(ExprAndMeta::new(
                     Expr::if_else_expr(expr1, expr2, expr3),
@@ -684,17 +697,21 @@ impl Expr {
                 consequence,
                 alternative: None,
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, vars)?.split();
+                let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, ctxt)?.split();
                 let typ1 = typ1.dest_option().map_err(|_| {
                     Error::new(format!("expecting option type in if-let at {}", e.loc()))
                 })?;
                 let id = var.id();
-                let (expr2, calls2, typ2) =
-                    Expr::from_block_stmt(consequence, headers, ret, &vars.add_var(id, &typ1))?
-                        .split();
+                let (expr2, calls2, typ2) = Expr::from_block_stmt(
+                    consequence.as_ref(),
+                    headers,
+                    ret,
+                    &ctxt.add_var(id, &typ1),
+                )?
+                .split();
                 Typ::type_check(
                     "if-let-expression",
-                    vec![(Some(Expr::block_stmt_loc(consequence, e.loc())), &typ2)],
+                    vec![(Some(consequence.loc(e.loc())), &typ2)],
                     vec![(None, &Typ::Unit)],
                 )?;
                 Ok(ExprAndMeta::new(
@@ -713,19 +730,24 @@ impl Expr {
                 consequence,
                 alternative: Some(alt),
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, vars)?.split();
+                let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, ctxt)?.split();
                 let typ1 = typ1.dest_option().map_err(|_| {
                     Error::new(format!("expecting option type in if-let at {}", e.loc()))
                 })?;
                 let id = var.id();
-                let (expr2, calls2, typ2) =
-                    Expr::from_block_stmt(consequence, headers, ret, &vars.add_var(id, &typ1))?
-                        .split();
-                let (expr3, calls3, typ3) = Expr::from_block_stmt(alt, headers, ret, vars)?.split();
+                let (expr2, calls2, typ2) = Expr::from_block_stmt(
+                    consequence.as_ref(),
+                    headers,
+                    ret,
+                    &ctxt.add_var(id, &typ1),
+                )?
+                .split();
+                let (expr3, calls3, typ3) =
+                    Expr::from_block_stmt(alt.as_ref(), headers, ret, ctxt)?.split();
                 Typ::type_check(
                     "if-let-else-expression",
-                    vec![(Some(Expr::block_stmt_loc(consequence, e.loc())), &typ2)],
-                    vec![(Some(Expr::block_stmt_loc(alt, e.loc())), &typ3)],
+                    vec![(Some(consequence.loc(e.loc())), &typ2)],
+                    vec![(Some(alt.loc(e.loc())), &typ3)],
                 )?;
                 Ok(ExprAndMeta::new(
                     Expr::IfSomeMatchExpr {
@@ -744,7 +766,7 @@ impl Expr {
             } => {
                 let expressions: Result<Vec<ExprAndMeta>, self::Error> = matches
                     .iter()
-                    .map(|(e, _)| Expr::from_loc_expr(e, headers, ret, vars))
+                    .map(|(e, _)| Expr::from_loc_expr(e, headers, ret, ctxt))
                     .collect();
                 let (expressions, mut calls, types) = ExprAndMeta::split_vec(expressions?);
                 let len = types.len();
@@ -775,7 +797,7 @@ impl Expr {
                     })
                     .collect();
                 let vs: Vec<(String, parser::As)> = set.into_iter().collect();
-                let mut extend_vars = vars.clone();
+                let mut extend_vars = ctxt.clone();
                 for (v, a) in vs.iter() {
                     extend_vars = extend_vars.add_var(
                         &v,
@@ -789,7 +811,8 @@ impl Expr {
                     )
                 }
                 let (mut expr1, calls1, typ1) =
-                    Expr::from_block_stmt(consequence, headers, ret, &extend_vars)?.split();
+                    Expr::from_block_stmt(consequence.as_ref(), headers, ret, &extend_vars)?
+                        .split();
                 let vs: Vec<String> = vs.into_iter().map(|x| x.0).collect();
                 for v in vs.iter().rev() {
                     expr1 = expr1.closure_expr(v)
@@ -799,7 +822,7 @@ impl Expr {
                     None => {
                         Typ::type_check(
                             "if-match-expression",
-                            vec![(Some(Expr::block_stmt_loc(consequence, e.loc())), &typ1)],
+                            vec![(Some(consequence.loc(e.loc())), &typ1)],
                             vec![(None, &Typ::Unit)],
                         )?;
                         ExprAndMeta::new(
@@ -815,11 +838,11 @@ impl Expr {
                     }
                     Some(a) => {
                         let (expr2, calls2, typ2) =
-                            Expr::from_block_stmt(a, headers, ret, vars)?.split();
+                            Expr::from_block_stmt(a.as_ref(), headers, ret, ctxt)?.split();
                         Typ::type_check(
                             "if-match-else-expression",
-                            vec![(Some(Expr::block_stmt_loc(consequence, e.loc())), &typ1)],
-                            vec![(Some(Expr::block_stmt_loc(a, e.loc())), &typ2)],
+                            vec![(Some(consequence.loc(e.loc())), &typ1)],
+                            vec![(Some(a.loc(e.loc())), &typ2)],
                         )?;
                         calls.push(calls2);
                         ExprAndMeta::new(
@@ -841,17 +864,17 @@ impl Expr {
                 expr,
                 body,
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(expr, headers, ret, vars)?.split();
+                let (expr1, calls1, typ1) = Expr::from_loc_expr(expr, headers, ret, ctxt)?.split();
                 let (vs, iter_vars) = match typ1 {
                     Typ::List(ref lty) => {
                         if idents.len() == 1 {
                             let id = idents[0].id();
-                            (vec![id], vars.add_var(id, &lty))
+                            (vec![id], ctxt.add_var(id, &lty))
                         } else {
                             match **lty {
                                 Typ::Tuple(ref tys) if idents.len() == tys.len() => {
                                     let mut vs = Vec::new();
-                                    let mut iter_vars = vars.clone();
+                                    let mut iter_vars = ctxt.clone();
                                     for (id, ty) in idents.iter().zip(tys) {
                                         let v = id.id();
                                         iter_vars = iter_vars.add_var(v, ty);
@@ -880,17 +903,17 @@ impl Expr {
                     }
                 };
                 let (expr2, calls2, typ2) =
-                    Expr::from_block_stmt(body, headers, ret, &iter_vars)?.split();
+                    Expr::from_block_stmt(body.as_ref(), headers, ret, &iter_vars)?.split();
                 if *op == parser::Iter::FilterMap {
                     Typ::type_check(
                         "filter_map-expression",
-                        vec![(Some(Expr::block_stmt_loc(body, e.loc())), &typ2)],
+                        vec![(Some(body.loc(e.loc())), &typ2)],
                         vec![(None, &Typ::any_option())],
                     )?
                 } else if *op != parser::Iter::Map && *op != parser::Iter::ForEach {
                     Typ::type_check(
                         "all/any/filter-expression",
-                        vec![(Some(Expr::block_stmt_loc(body, e.loc())), &typ2)],
+                        vec![(Some(body.loc(e.loc())), &typ2)],
                         vec![(None, &Typ::Bool)],
                     )?
                 }
@@ -913,12 +936,9 @@ impl Expr {
                 ..
             } if function == "option::Some" && arguments.len() == 1 => {
                 let (expression, calls, typ) =
-                    Expr::from_loc_expr(arguments.get(0).unwrap(), headers, ret, vars)?.split();
+                    Expr::from_loc_expr(arguments.get(0).unwrap(), headers, ret, ctxt)?.split();
                 Ok(ExprAndMeta::new(
-                    Expr::CallExpr {
-                        function: function.to_string(),
-                        arguments: vec![expression],
-                    },
+                    Expr::call(function, vec![expression]),
                     Typ::Tuple(vec![typ]),
                     vec![calls],
                 ))
@@ -930,7 +950,7 @@ impl Expr {
             } => {
                 let expressions: Result<Vec<ExprAndMeta>, self::Error> = arguments
                     .iter()
-                    .map(|e| Expr::from_loc_expr(e, headers, ret, vars))
+                    .map(|e| Expr::from_loc_expr(e, headers, ret, ctxt))
                     .collect();
                 let (expressions, mut calls, types) = ExprAndMeta::split_vec(expressions?);
                 let function = &Headers::resolve(function, &types);
@@ -963,6 +983,7 @@ impl Expr {
                         Expr::CallExpr {
                             function: function.to_string(),
                             arguments: expressions,
+                            is_async: typ == Typ::Unit && ctxt.async_tag(),
                         },
                         typ,
                         calls,
@@ -972,10 +993,7 @@ impl Expr {
                         [Typ::Tuple(ref l)] => {
                             if i < l.len() {
                                 Ok(ExprAndMeta::new(
-                                    Expr::CallExpr {
-                                        function: function.to_string(),
-                                        arguments: expressions,
-                                    },
+                                    Expr::call(function, expressions),
                                     l.get(i).unwrap().clone(),
                                     calls,
                                 ))
@@ -1010,17 +1028,19 @@ impl Expr {
         }
     }
     fn from_block_stmt(
-        block: &[parser::LocStmt],
+        block: parser::BlockStmtRef,
         headers: &Headers,
         ret: &mut ReturnType,
-        vars: &Vars,
+        ctxt: &Context,
     ) -> Result<ExprAndMeta, self::Error> {
+        let ctxt = &ctxt.update_async_tag(block.async_tag());
+        // println!("block: {:#?}\nasync is: {}", block, ctxt.async_tag());
         match block.split_first() {
             Some((stmt, rest)) => match stmt.stmt() {
                 parser::Stmt::ReturnStmt(re) => {
                     if rest.is_empty() {
                         let (expr, calls, typ) =
-                            Expr::from_loc_expr(re, headers, ret, vars)?.split();
+                            Expr::from_loc_expr(re, headers, ret, ctxt)?.split();
                         // need to type check typ against function return type
                         match ret.get() {
                             Some(rtype) => Typ::type_check(
@@ -1042,15 +1062,19 @@ impl Expr {
                         )))
                     }
                 }
-                parser::Stmt::ExprStmt(se, has_semi) => {
+                parser::Stmt::ExprStmt {
+                    exp,
+                    async_tag,
+                    semi,
+                } => {
                     let (expr1, calls1, typ1) = Expr::from_loc_expr(
-                        &parser::LocExpr::new(&stmt.loc(), se),
+                        &parser::LocExpr::new(&stmt.loc(), exp),
                         headers,
                         ret,
-                        vars,
+                        &ctxt.update_async_tag(*async_tag),
                     )?
                     .split();
-                    if *has_semi && !typ1.is_unit() {
+                    if *semi && !typ1.is_unit() {
                         println!(
                             "warning: result of expression is being ignored on {}",
                             stmt.loc()
@@ -1059,18 +1083,18 @@ impl Expr {
                     if rest.is_empty() {
                         Ok(ExprAndMeta::new(
                             expr1,
-                            if *has_semi { Typ::Unit } else { typ1 },
+                            if *semi { Typ::Unit } else { typ1 },
                             vec![calls1],
                         ))
                     } else {
-                        if !has_semi {
+                        if !semi {
                             return Err(Error::new(&format!(
                                 "missing semi-colon after expression at {}",
                                 stmt.loc()
                             )));
                         };
                         let (expr2, calls2, typ2) =
-                            Expr::from_block_stmt(rest, headers, ret, vars)?.split();
+                            Expr::from_block_stmt(rest, headers, ret, ctxt)?.split();
                         match expr2 {
                             Expr::BlockExpr(Block::Block, mut b) => {
                                 let mut new_block = vec![expr1];
@@ -1091,11 +1115,11 @@ impl Expr {
                 }
                 parser::Stmt::LetStmt(ids, le) => {
                     let (expr1, calls1, typ1) =
-                        Expr::from_loc_expr(&le, headers, ret, vars)?.split();
+                        Expr::from_loc_expr(&le, headers, ret, ctxt)?.split();
                     if ids.len() == 1 {
                         let id = ids[0].id();
                         let (expr2, calls2, typ2) =
-                            Expr::from_block_stmt(rest, headers, ret, &vars.add_var(id, &typ1))?
+                            Expr::from_block_stmt(rest, headers, ret, &ctxt.add_var(id, &typ1))?
                                 .split();
                         Ok(ExprAndMeta::new(
                             expr2.let_expr(vec![id], expr1),
@@ -1106,7 +1130,7 @@ impl Expr {
                         match typ1 {
                             Typ::Tuple(ref tys) if ids.len() == tys.len() => {
                                 let mut vs = Vec::new();
-                                let mut let_vars = vars.clone();
+                                let mut let_vars = ctxt.clone();
                                 for (id, ty) in ids.iter().zip(tys) {
                                     let v = id.id();
                                     let_vars = let_vars.add_var(v, ty);
@@ -1140,23 +1164,23 @@ impl Expr {
     fn check_from_loc_expr(
         e: &parser::LocExpr,
         headers: &Headers,
-        vars: &Vars,
+        ctxt: &Context,
     ) -> Result<ExprAndMeta, Error> {
         let mut ret = ReturnType::default();
-        let em = Expr::from_loc_expr(e, headers, &mut ret, vars)?;
+        let em = Expr::from_loc_expr(e, headers, &mut ret, ctxt)?;
         if let Some(rtype) = ret.get() {
             Typ::type_check("REPL", vec![(None, &em.typ)], vec![(None, &rtype)])?
         }
         Ok(em)
     }
     fn check_from_block_stmt(
-        block: &[parser::LocStmt],
+        block: parser::BlockStmtRef,
         headers: &Headers,
-        vars: &Vars,
+        ctxt: &Context,
         name: Option<&str>,
     ) -> Result<ExprAndMeta, self::Error> {
         let mut ret = ReturnType::default();
-        let em = Expr::from_block_stmt(block, headers, &mut ret, vars)?;
+        let em = Expr::from_block_stmt(block, headers, &mut ret, ctxt)?;
         // check if type of "return" calls is type of statement
         if let Some(rtype) = ret.get() {
             Typ::type_check(
@@ -1179,12 +1203,12 @@ impl Expr {
         decl: &'a parser::FnDecl,
         headers: &'a Headers,
     ) -> Result<(&'a str, Expr, Calls), Error> {
-        let mut vars = Vars::new();
+        let mut ctxt = Context::new();
         for a in decl.args().iter().rev() {
-            vars = vars.add_var(a.name(), &a.typ()?)
+            ctxt = ctxt.add_var(a.name(), &a.typ()?)
         }
         let name = decl.name();
-        let em = Expr::check_from_block_stmt(decl.body(), headers, &vars, Some(name))?;
+        let em = Expr::check_from_block_stmt(decl.body().as_ref(), headers, &ctxt, Some(name))?;
         let mut e = em.expr;
         for a in decl.args().iter().rev() {
             e = e.closure_expr(a.name())
@@ -1198,12 +1222,15 @@ impl Expr {
         match parser::parse_block_stmt_eof(toks) {
             Ok((_rest, block)) => {
                 // println!("{:#?}", block);
-                Ok(Expr::check_from_block_stmt(&block, headers, &Vars::new(), None)?.expr)
+                Ok(
+                    Expr::check_from_block_stmt(block.as_ref(), headers, &Context::new(), None)?
+                        .expr,
+                )
             }
             Err(_) => match parser::parse_expr_eof(toks) {
                 Ok((_rest, e)) => {
                     // println!("{:#?}", e);
-                    Ok(Expr::check_from_loc_expr(&e, headers, &Vars::new())?.expr)
+                    Ok(Expr::check_from_loc_expr(&e, headers, &Context::new())?.expr)
                 }
                 Err(nom::Err::Error((toks, _))) => {
                     Err(self::Error(format!("syntax error: {}", toks.tok[0])))
