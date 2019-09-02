@@ -61,7 +61,7 @@ fn main() -> io::Result<()> {
     std::thread::spawn(move || {
         let mut rl = Editor::new();
         rl.set_helper(Some(Helper::new()));
-        if rl.load_history("armour-master-history.txt").is_err() {
+        if rl.load_history("armour-master.txt").is_err() {
             log::info!("no previous history");
         }
         loop {
@@ -79,7 +79,7 @@ fn main() -> io::Result<()> {
                 Err(err) => log::warn!("{}", err),
             }
         }
-        rl.save_history("armour-master-history.txt")
+        rl.save_history("armour-master.txt")
             .expect("failed to save history")
     });
 
