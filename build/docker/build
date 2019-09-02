@@ -7,7 +7,7 @@ if [ ! -d bins ]; then
 else
   rm -rf bins/*
 fi
-cd ../armour
+cd ../../armour
 for arg in ${@:2}; do
   cargo build --target-dir "$1" --release -p $arg
   cp $1/release/$arg "$OLDPWD"/bins
