@@ -330,7 +330,7 @@ pub enum Literal {
     IpAddr(std::net::IpAddr),
     List(Vec<Literal>),
     // Policy(Policy),
-    RegExp(parser::PolicyRegex),
+    Regex(parser::PolicyRegex),
     Str(String),
     Tuple(Vec<Literal>),
     Unit,
@@ -354,7 +354,7 @@ impl Literal {
             Literal::IpAddr(_) => Typ::IpAddr,
             Literal::List(l) => l.get(0).map(|t| t.typ()).unwrap_or(Typ::Return),
             // Literal::Policy(_) => Typ::Policy,
-            Literal::RegExp(_) => Typ::RegExp,
+            Literal::Regex(_) => Typ::Regex,
             Literal::Str(_) => Typ::Str,
             Literal::Tuple(l) => Typ::Tuple((*l).iter().map(|t: &Literal| t.typ()).collect()),
             Literal::Unit => Typ::Unit,
@@ -411,7 +411,7 @@ impl fmt::Display for Literal {
                     write!(f, "[{}]", s)
                 }
             }
-            Literal::RegExp(r) => write!(f, "{:?}", r),
+            Literal::Regex(r) => write!(f, "{:?}", r),
             Literal::Str(s) => write!(f, r#""{}""#, s),
             // Literal::Policy(p) => write!(f, "{:?}", p),
             Literal::Unit => write!(f, "()"),

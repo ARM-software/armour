@@ -756,11 +756,11 @@ named!(parse_lit_expr<Tokens, LocExpr>, alt!(
         (LocExpr(lit.loc(), Expr::LitExpr(lit.1)))
     )) |
     complete!(do_parse!(
-        t: tag_token!(Token::RegExp) >>
+        t: tag_token!(Token::Regex) >>
         tag_token!(Token::LParen) >>
         regex: parse_pat_no_bind >>
         tag_token!(Token::RParen) >>
-        (LocExpr(t.loc(), Expr::LitExpr(Literal::RegExp(regex))))
+        (LocExpr(t.loc(), Expr::LitExpr(Literal::Regex(regex))))
     ))
 ));
 
@@ -1076,7 +1076,7 @@ named!(parse_postfix_pat<Tokens, Pat>,
         postfix: many0!(alt!(
             complete!(value!(Token::Multiply, tag_token!(Token::Multiply)))
                 | complete!(value!(Token::Plus, tag_token!(Token::Plus)))
-                | complete!(value!(Token::Optional, tag_token!(Token::Optional)))
+                | complete!(value!(Token::QuestionMark, tag_token!(Token::QuestionMark)))
                 | complete!(value!(Token::Not, tag_token!(Token::Not)))
                 | complete!(value!(Token::Percent, tag_token!(Token::Percent)))
         )) >>
@@ -1086,7 +1086,7 @@ named!(parse_postfix_pat<Tokens, Pat>,
                 match p {
                     Token::Multiply => r = Pat::Star(Box::new(r)),
                     Token::Plus => r = Pat::Plus(Box::new(r)),
-                    Token::Optional => r = Pat::Opt(Box::new(r)),
+                    Token::QuestionMark => r = Pat::Opt(Box::new(r)),
                     Token::Not => r = Pat::CaseInsensitive(Box::new(r)),
                     Token::Percent => r = Pat::IgnoreWhitespace(Box::new(r)),
                     _ => unreachable!(),

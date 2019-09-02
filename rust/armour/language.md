@@ -38,9 +38,9 @@ $ cargo run [input file]
 
     `()`
 
-- **`RegExp`**
+- **`Regex`**
 
-    `RegExp("a" | "b".*)`
+    `Regex("a" | "b".*)`
 
 - **`HttpRequest`**
 
@@ -341,13 +341,13 @@ function               | type
 | starts_with          | `(str, str) -> bool`                   |
 | ends_with            | `(str, str) -> bool`                   |
 | contains             | `(str, str) -> bool`                   |
-| matches_with         | `(str, RegExp) -> bool`                |
+| matches_with         | `(str, Regex) -> bool`                 |
 
 ### regex::
 
 function               | type
 ---------------------- | ----------------------------------------
-| is_match             | `(RegExp, str) -> bool`                |
+| is_match             | `(Regex, str) -> bool`                 |
 
 ### data::
 

@@ -36,7 +36,7 @@ pub enum Token {
     BoolLiteral(bool),
     // PolicyLiteral(literals::Policy),
     Some,
-    RegExp,
+    Regex,
     // statements
     Assign,
     If,
@@ -56,9 +56,9 @@ pub enum Token {
     And,
     Or,
     Dot,
-    PlusPlus, // concat
-    Percent,  // remainder
-    Optional,
+    PlusPlus,     // concat
+    Percent,      // remainder
+    QuestionMark, // regex option
     // reserved words
     Function,
     All,
@@ -280,7 +280,7 @@ named!(lex_operator<Span, LocToken>,
     switch!(
         take!(1),
         t @ LocatedSpan{fragment: "@", ..} => value!(LocToken::new(t, Token::At)) |
-        t @ LocatedSpan{fragment: "?", ..} => value!(LocToken::new(t, Token::Optional)) |
+        t @ LocatedSpan{fragment: "?", ..} => value!(LocToken::new(t, Token::QuestionMark)) |
         t @ LocatedSpan{fragment: ".", ..} => value!(LocToken::new(t, Token::Dot)) |
         t @ LocatedSpan{fragment: "_", ..} => value!(LocToken::new(t, Token::Underscore)) |
         t @ LocatedSpan{fragment: "*", ..} => value!(LocToken::new(t, Token::Multiply)) |
@@ -410,7 +410,7 @@ fn parse_reserved(t: Span) -> LocToken {
         "as" => LocToken::new(t, Token::As),
         "external" => LocToken::new(t, Token::External),
         "Some" => LocToken::new(t, Token::Some),
-        "RegExp" => LocToken::new(t, Token::RegExp),
+        "Regex" => LocToken::new(t, Token::Regex),
         _ => LocToken::new(t, Token::Ident(string)),
     }
 }
