@@ -12,8 +12,13 @@ use tokio_io::{io::WriteHalf, AsyncRead};
 
 /// Armour policy actor
 ///
-/// Currently, a "policy" is just an Armour program with "require", "client_payload" and "server_payload" functions.
-pub struct DataPolicy {
+/// Currently, a "policy" is an Armour program with a set of standard functions:
+/// - `allow_rest_request`
+/// - `allow_client_payload`
+/// - `allow_server_payload`
+/// - `allow_tcp_connection`
+/// - `on_tcp_disconnect`
+pub struct PolicyActor {
     /// policy program
     program: Arc<lang::Program>,
     allow_all: bool,
@@ -27,28 +32,42 @@ pub struct DataPolicy {
     tcp_proxies: HashMap<u16, Addr<tcp_proxy::TcpDataServer>>,
 }
 
-impl DataPolicy {
+// implement Actor trait for PolicyActor
+impl Actor for PolicyActor {
+    type Context = Context<Self>;
+    fn started(&mut self, _ctx: &mut Self::Context) {
+        info!("started Armour policy")
+    }
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
+        self.uds_framed.write(PolicyResponse::ShuttingDown);
+        info!("stopped Armour policy")
+    }
+}
+
+const PROXY_CAPACITY: usize = 1; // likely to be just one proxy most of the time
+
+impl PolicyActor {
     fn default_policy() -> Arc<lang::Program> {
         Arc::new(lang::Program::default())
     }
     /// Start a new policy actor that connects to a data plane master on a Unix socket.
     pub fn create_policy<P: AsRef<std::path::Path>>(
         master_socket: P,
-    ) -> std::io::Result<Addr<DataPolicy>> {
+    ) -> std::io::Result<Addr<PolicyActor>> {
         tokio_uds::UnixStream::connect(master_socket)
             .and_then(|stream| {
-                let addr = DataPolicy::create(|ctx| {
+                let addr = PolicyActor::create(|ctx| {
                     let (r, w) = stream.split();
                     ctx.add_stream(FramedRead::new(r, PolicyCodec));
-                    DataPolicy {
-                        program: DataPolicy::default_policy(),
+                    PolicyActor {
+                        program: PolicyActor::default_policy(),
                         allow_all: false,
                         debug: false,
                         timeout: std::time::Duration::from_secs(5),
                         connection_number: 0,
                         uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
-                        http_proxies: HashMap::new(),
-                        tcp_proxies: HashMap::new(),
+                        http_proxies: HashMap::with_capacity(PROXY_CAPACITY),
+                        tcp_proxies: HashMap::with_capacity(PROXY_CAPACITY),
                     }
                 });
                 future::ok(addr)
@@ -60,14 +79,14 @@ impl DataPolicy {
         self.allow_all = false
     }
     fn deny_all_policy(&mut self) {
-        self.program = DataPolicy::default_policy();
+        self.program = PolicyActor::default_policy();
         self.allow_all = false
     }
     fn allow_all_policy(&mut self) {
-        self.program = DataPolicy::default_policy();
+        self.program = PolicyActor::default_policy();
         self.allow_all = true
     }
-    fn evaluate_policy(
+    fn evaluate_bool(
         &self,
         function: &str,
         args: Vec<lang::Expr>,
@@ -94,13 +113,11 @@ impl DataPolicy {
                         };
                         future::ok(accept)
                     }
-                    _ => future::err(lang::Error::new(
-                        "did not evaluate to a bool or policy literal",
-                    )),
+                    _ => future::err(lang::Error::new("did not evaluate to a bool literal")),
                 }),
         )
     }
-    fn evaluate_policy_unit(
+    fn evaluate_unit(
         &self,
         function: &str,
         args: Vec<lang::Expr>,
@@ -121,17 +138,15 @@ impl DataPolicy {
                         };
                         future::ok(())
                     }
-                    _ => future::err(lang::Error::new(
-                        "did not evaluate to a bool or policy literal",
-                    )),
+                    _ => future::err(lang::Error::new("did not evaluate to a unit literal")),
                 }),
         )
     }
 }
 
-impl actix::io::WriteHandler<std::io::Error> for DataPolicy {}
+impl actix::io::WriteHandler<std::io::Error> for PolicyActor {}
 
-impl StreamHandler<PolicyRequest, std::io::Error> for DataPolicy {
+impl StreamHandler<PolicyRequest, std::io::Error> for PolicyActor {
     fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) {
         // pass on message to regular handler
         ctx.notify(msg)
@@ -142,15 +157,16 @@ impl StreamHandler<PolicyRequest, std::io::Error> for DataPolicy {
     }
 }
 
-/// Internal proxy message for getting policy information
-pub struct GetPolicy;
+/// Request REST policy information
+pub struct GetRestPolicy;
 
-impl Message for GetPolicy {
-    type Result = Policy;
+impl Message for GetRestPolicy {
+    type Result = RestPolicy;
 }
 
+/// Information about REST policies
 #[derive(MessageResponse)]
-pub struct Policy {
+pub struct RestPolicy {
     pub allow_all: bool,
     pub debug: bool,
     pub timeout: std::time::Duration,
@@ -161,14 +177,14 @@ pub struct Policy {
 }
 
 // handle request to get current policy status information
-impl Handler<GetPolicy> for DataPolicy {
-    type Result = Policy;
+impl Handler<GetRestPolicy> for PolicyActor {
+    type Result = RestPolicy;
 
-    fn handle(&mut self, _msg: GetPolicy, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: GetRestPolicy, _ctx: &mut Context<Self>) -> Self::Result {
         let connection_number = self.connection_number;
         self.connection_number += 1;
         if self.allow_all {
-            Policy {
+            RestPolicy {
                 allow_all: true,
                 debug: self.debug,
                 timeout: self.timeout,
@@ -179,12 +195,12 @@ impl Handler<GetPolicy> for DataPolicy {
             }
         } else {
             let program = &self.program;
-            Policy {
+            RestPolicy {
                 allow_all: false,
                 debug: self.debug,
                 timeout: self.timeout,
                 connection_number,
-                require: program.arg_count(interface::ALLOW_REST),
+                require: program.arg_count(interface::ALLOW_REST_REQUEST),
                 client_payload: program.arg_count(interface::ALLOW_CLIENT_PAYLOAD),
                 server_payload: program.arg_count(interface::ALLOW_SERVER_PAYLOAD),
             }
@@ -192,86 +208,82 @@ impl Handler<GetPolicy> for DataPolicy {
     }
 }
 
-type VExpr = Vec<lang::Expr>;
-
-/// Internal proxy message for requesting function evaluation over the policy
-pub enum Evaluate {
-    Request(VExpr),
-    ClientPayload(VExpr),
-    ServerPayload(VExpr),
+/// REST policy functions
+pub enum RestFn {
+    Request,
+    ClientPayload,
+    ServerPayload,
 }
 
-impl Message for Evaluate {
+/// Request evaluation of a (REST) policy function
+pub struct EvalRestFn(pub RestFn, pub Vec<lang::Expr>);
+
+impl Message for EvalRestFn {
     type Result = Result<bool, lang::Error>;
 }
 
 // handle requests to evaluate the Armour policy
-impl Handler<Evaluate> for DataPolicy {
+impl Handler<EvalRestFn> for PolicyActor {
     type Result = Box<dyn Future<Item = bool, Error = lang::Error>>;
 
-    fn handle(&mut self, msg: Evaluate, _ctx: &mut Context<Self>) -> Self::Result {
-        match msg {
-            Evaluate::Request(args) => self.evaluate_policy(interface::ALLOW_REST, args),
-            Evaluate::ClientPayload(args) => {
-                self.evaluate_policy(interface::ALLOW_CLIENT_PAYLOAD, args)
-            }
-            Evaluate::ServerPayload(args) => {
-                self.evaluate_policy(interface::ALLOW_SERVER_PAYLOAD, args)
-            }
-        }
+    fn handle(&mut self, msg: EvalRestFn, _ctx: &mut Context<Self>) -> Self::Result {
+        let function = match msg.0 {
+            RestFn::Request => interface::ALLOW_REST_REQUEST,
+            RestFn::ClientPayload => interface::ALLOW_CLIENT_PAYLOAD,
+            RestFn::ServerPayload => interface::ALLOW_SERVER_PAYLOAD,
+        };
+        self.evaluate_bool(function, msg.1)
     }
 }
 
 // TCP connection policies
-pub struct ConnectPolicy(pub std::net::SocketAddr, pub std::net::SocketAddr);
+pub struct GetTcpPolicy(pub std::net::SocketAddr, pub std::net::SocketAddr);
 
-pub enum ConnectionPolicy {
+pub enum TcpPolicy {
     Allow(Box<Option<ConnectionStats>>),
     Block,
 }
 
-impl Message for ConnectPolicy {
-    type Result = Result<ConnectionPolicy, lang::Error>;
+impl Message for GetTcpPolicy {
+    type Result = Result<TcpPolicy, lang::Error>;
 }
 
-impl Handler<ConnectPolicy> for DataPolicy {
-    type Result = Box<dyn Future<Item = ConnectionPolicy, Error = lang::Error>>;
+impl Handler<GetTcpPolicy> for PolicyActor {
+    type Result = Box<dyn Future<Item = TcpPolicy, Error = lang::Error>>;
 
-    fn handle(&mut self, msg: ConnectPolicy, _ctx: &mut Context<Self>) -> Self::Result {
-        match msg {
-            ConnectPolicy(from, to) => {
-                if self.allow_all {
+    fn handle(&mut self, msg: GetTcpPolicy, _ctx: &mut Context<Self>) -> Self::Result {
+        let GetTcpPolicy(from, to) = msg;
+        if self.allow_all {
+            self.connection_number += 1;
+            Box::new(future::ok(TcpPolicy::Allow(Box::new(None))))
+        } else {
+            match self.program.arg_count(interface::ALLOW_TCP_CONNECTION) {
+                Some(n) if n == 2 || n == 3 => {
+                    let connection_number = self.connection_number;
                     self.connection_number += 1;
-                    Box::new(future::ok(ConnectionPolicy::Allow(Box::new(None))))
-                } else {
-                    match self.program.arg_count(interface::ALLOW_TCP) {
-                        Some(n) if n == 2 || n == 3 => {
-                            let connection_number = self.connection_number;
-                            self.connection_number += 1;
-                            let from = from.to_expression();
-                            let to = to.to_expression();
-                            let number = connection_number.to_expression();
-                            if let (Some(from), Some(to)) = (from.host(), to.host()) {
-                                info!(r#"checking connection from "{}" to "{}""#, from, to)
-                            }
-                            let connection = ConnectionStats::new(&from, &to, &number);
-                            let args = match n {
-                                2 => vec![from, to],
-                                _ => vec![from, to, number],
-                            };
-                            Box::new(self.evaluate_policy(interface::ALLOW_TCP, args).and_then(
-                                move |res| {
-                                    future::ok(if res {
-                                        ConnectionPolicy::Allow(Box::new(Some(connection)))
-                                    } else {
-                                        ConnectionPolicy::Block
-                                    })
-                                },
-                            ))
-                        }
-                        _ => Box::new(future::ok(ConnectionPolicy::Block)),
+                    let from = from.to_expression();
+                    let to = to.to_expression();
+                    let number = connection_number.to_expression();
+                    if let (Some(from), Some(to)) = (from.host(), to.host()) {
+                        info!(r#"checking connection from "{}" to "{}""#, from, to)
                     }
+                    let connection = ConnectionStats::new(&from, &to, &number);
+                    let args = match n {
+                        2 => vec![from, to],
+                        _ => vec![from, to, number],
+                    };
+                    Box::new(
+                        self.evaluate_bool(interface::ALLOW_TCP_CONNECTION, args)
+                            .and_then(move |res| {
+                                future::ok(if res {
+                                    TcpPolicy::Allow(Box::new(Some(connection)))
+                                } else {
+                                    TcpPolicy::Block
+                                })
+                            }),
+                    )
                 }
+                _ => Box::new(future::ok(TcpPolicy::Block)),
             }
         }
     }
@@ -303,7 +315,7 @@ impl Message for ConnectionStats {
 }
 
 // sent by the TCP proxy when the TCP connection finishes
-impl Handler<ConnectionStats> for DataPolicy {
+impl Handler<ConnectionStats> for PolicyActor {
     type Result = Box<dyn Future<Item = (), Error = ()>>;
 
     fn handle(&mut self, msg: ConnectionStats, _ctx: &mut Context<Self>) -> Self::Result {
@@ -328,7 +340,7 @@ impl Handler<ConnectionStats> for DataPolicy {
                 _ => unreachable!(),
             };
             Box::new(
-                self.evaluate_policy_unit(interface::ON_TCP_DISCONNECT, args)
+                self.evaluate_unit(interface::ON_TCP_DISCONNECT, args)
                     .map_err(|e| log::warn!("error: {}", e)),
             )
         } else {
@@ -338,7 +350,7 @@ impl Handler<ConnectionStats> for DataPolicy {
 }
 
 // handle messages from the data plane master
-impl Handler<PolicyRequest> for DataPolicy {
+impl Handler<PolicyRequest> for PolicyActor {
     type Result = ();
 
     fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) -> Self::Result {
@@ -455,18 +467,6 @@ impl Handler<PolicyRequest> for DataPolicy {
             }
             PolicyRequest::Shutdown => System::current().stop(),
         }
-    }
-}
-
-// implement Actor trait for DataPolicy
-impl Actor for DataPolicy {
-    type Context = Context<Self>;
-    fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("started Armour policy")
-    }
-    fn stopped(&mut self, _ctx: &mut Self::Context) {
-        self.uds_framed.write(PolicyResponse::ShuttingDown);
-        info!("stopped Armour policy")
     }
 }
 

@@ -1,5 +1,5 @@
 use actix::prelude::*;
-use armour_data::{http_proxy, policy};
+use armour_data::{http_proxy, policy::PolicyActor};
 use armour_data_interface::{PolicyRequest, ProxyConfig};
 use clap::{crate_version, App as ClapApp, Arg};
 use std::env;
@@ -60,7 +60,7 @@ fn main() -> std::io::Result<()> {
     // install the CLI policy
     let master_socket = matches.value_of("master socket").unwrap();
 
-    let policy = policy::DataPolicy::create_policy(master_socket).unwrap_or_else(|e| {
+    let policy = PolicyActor::create_policy(master_socket).unwrap_or_else(|e| {
         log::warn!(
             r#"failed to connect to data master "{}": {}"#,
             master_socket,
@@ -69,7 +69,7 @@ fn main() -> std::io::Result<()> {
         std::process::exit(1)
     });
 
-    // start up the proxy server
+    // start a proxy server
     if let Some(port) = proxy_port {
         policy.do_send(PolicyRequest::Start(ProxyConfig {
             port,
