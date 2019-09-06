@@ -1,0 +1,43 @@
+external logger @ "log_sock" {
+// external logger @ "10.1.26.49:8445" {
+  fn log(_) -> ()
+  fn rest(i64, str, str, str, ID, ID) -> ()
+  fn client_payload(i64, i64) -> ()
+  fn server_payload(i64, i64) -> ()
+  fn tcp(i64, ID, ID) -> ()
+  fn tcp_stats(i64, i64, i64) -> ()
+}
+
+// REST request allow/deny
+fn allow_rest_request(req: HttpRequest, from: ID, to: ID, n: i64) -> bool {
+  // logger::log(req);
+  let date = if let Some(date) = req.unique_header("date") {
+     str::from_utf8(date)
+  } else {
+     "-"
+  };
+  logger::rest(n, date, req.method(), req.path(), from, to);
+  flow(from, to)
+}
+
+//information flow Labels
+fn labels(from: ID) -> str {
+  if let Some(frid) = list::reduce(from.hosts()) {
+    if frid in ["server-1", "server-3"] {
+        return "trusted"
+    } else {
+        return "untrusted"
+    }
+  } else {
+    return "untrusted"
+  }
+}
+
+//integrity, can't store in a trusted container
+fn flow(from: ID, to: ID) -> bool {
+    if labels(from) == "trusted" {
+        true
+    } else {
+        labels(to).contains("untrusted")
+    }
+}
