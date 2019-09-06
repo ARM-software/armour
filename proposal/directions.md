@@ -12,13 +12,17 @@ In general, we are looking to add control plane features. Possible areas include
     - Dissemination/distribution (one to many)
     - Versioning & consistency
     - Derivation: logger and/or GUI editor/frontend
+	- Oracle management
 - Demonstrator(s) and "policy services"
     - Own PoC, based on start home/city scenarios
     - Session tracking
     - Information flow
+	- Logging and debugging (perhaps some support for SQL-like queries, record-and-replay, etc.)
 - Infrastructure
     - Permit master <-> "policy service" communication
     - Better (more dynamic/integrated) iptables solution (on-boarding)
     - k8s, Docker Swarm and Argus
     - Links with Icecap
 - Benchmarking
+- Beyond μservices
+  - IoT / Edge / Devices management?
