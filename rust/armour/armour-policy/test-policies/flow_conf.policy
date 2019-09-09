@@ -30,7 +30,7 @@ fn label(from: ID) -> str {
 //confidentiality, can't read from secret, can't store secret in public
 fn flow(req: HttpRequest, from: ID, to: ID) -> bool {
   let method = req.method();
-  let to_label = to.label();;
+  let to_label = to.label();
   method == "GET" && to_label == "public" ||
   method == "POST" &&  (from.label() != "secret" || to_label == "secret")
 }
