@@ -1,0 +1,12 @@
+external test @ "localhost:9000" {
+  // has internal state "i"
+
+  // i := <arg>
+  fn set(i64) -> ()
+
+  // return (i++)
+  fn inc() -> i64
+
+  // reverse list and swap items
+  fn rev(List<(str, f64)>) -> List<(f64, str)>
+}
