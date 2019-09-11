@@ -1,0 +1,19 @@
+external test @ "localhost:9000" {
+  // has internal state "i"
+
+  // i := <arg>
+  fn set(i64) -> ()
+
+  // return (i++)
+  fn inc() -> i64
+
+  // reverse list and swap items
+  fn rev(List<(str, f64)>) -> List<(f64, str)>
+}
+
+fn try() -> bool {
+  let tt = test::inc();
+  test::set(tt);
+  let t = test::rev([("a", 1.1), ("b", 2.0), ("c", 3.4)]);
+  true
+}
