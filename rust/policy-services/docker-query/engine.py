@@ -36,7 +36,6 @@ class TestImpl(test_capnp.External.Server):
                             l = items[j]
                             j += 1
                             l.text = str(getattr(container,args[2].text))
-                        print(list)
                         return list
                     else:
                         raise Exception('can only retrieve id, image, labels and status of a container')
