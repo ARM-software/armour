@@ -2,7 +2,7 @@ Docker Engine Query Policy Service
 ==================================
 
 ## Requirements
-- [Install capnproto] (https://capnproto.org/install.html):
+- [Install capnproto](https://capnproto.org/install.html):
 	- Debian / Ubuntu: 
 
 			 apt-get install capnproto
