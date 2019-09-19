@@ -17,7 +17,7 @@ lazy_static! {
 
 lazy_static! {
     pub static ref INSTANCE0: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>deny all|allow all|shutdown|ports|stop all|debug on|debug off)\s*$"#).unwrap();
+        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>deny all|allow all|shutdown|ports|stop all|debug on|debug off|status)\s*$"#).unwrap();
 }
 
 lazy_static! {

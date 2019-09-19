@@ -142,6 +142,50 @@ impl PolicyActor {
                 }),
         )
     }
+    fn rest_policy(&self) -> RestPolicy {
+        if self.allow_all {
+            RestPolicy {
+                allow_all: true,
+                debug: self.debug,
+                timeout: self.timeout,
+                connection_number: self.connection_number,
+                require: None,
+                client_payload: None,
+                server_payload: None,
+            }
+        } else {
+            let program = &self.program;
+            RestPolicy {
+                allow_all: false,
+                debug: self.debug,
+                timeout: self.timeout,
+                connection_number: self.connection_number,
+                require: program.arg_count(interface::ALLOW_REST_REQUEST),
+                client_payload: program.arg_count(interface::ALLOW_CLIENT_PAYLOAD),
+                server_payload: program.arg_count(interface::ALLOW_SERVER_PAYLOAD),
+            }
+        }
+    }
+    fn is_deny_all(&self) -> bool {
+        !(self.allow_all
+            || self.program.has_function(interface::ALLOW_REST_REQUEST)
+            || self.program.has_function(interface::ALLOW_CLIENT_PAYLOAD)
+            || self.program.has_function(interface::ALLOW_SERVER_PAYLOAD)
+            || self.program.has_function(interface::ALLOW_TCP_CONNECTION))
+    }
+    fn print(&self) {
+        println!("debug is {}", if self.debug { "on" } else { "off" });
+        println!("timeout is {:?}", self.timeout);
+        print!("policy is:");
+        if self.allow_all {
+            println!(" allow all")
+        } else if self.is_deny_all() {
+            println!(" deny all")
+        } else {
+            println!();
+            self.program.print()
+        }
+    }
 }
 
 impl actix::io::WriteHandler<std::io::Error> for PolicyActor {}
@@ -181,30 +225,9 @@ impl Handler<GetRestPolicy> for PolicyActor {
     type Result = RestPolicy;
 
     fn handle(&mut self, _msg: GetRestPolicy, _ctx: &mut Context<Self>) -> Self::Result {
-        let connection_number = self.connection_number;
+        let policy = self.rest_policy();
         self.connection_number += 1;
-        if self.allow_all {
-            RestPolicy {
-                allow_all: true,
-                debug: self.debug,
-                timeout: self.timeout,
-                connection_number,
-                require: None,
-                client_payload: None,
-                server_payload: None,
-            }
-        } else {
-            let program = &self.program;
-            RestPolicy {
-                allow_all: false,
-                debug: self.debug,
-                timeout: self.timeout,
-                connection_number,
-                require: program.arg_count(interface::ALLOW_REST_REQUEST),
-                client_payload: program.arg_count(interface::ALLOW_CLIENT_PAYLOAD),
-                server_payload: program.arg_count(interface::ALLOW_SERVER_PAYLOAD),
-            }
-        }
+        policy
     }
 }
 
@@ -355,6 +378,7 @@ impl Handler<PolicyRequest> for PolicyActor {
 
     fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) -> Self::Result {
         match msg {
+            PolicyRequest::PrintStatus => self.print(),
             PolicyRequest::Timeout(secs) => {
                 self.timeout = std::time::Duration::from_secs(secs.into());
                 info!("timout: {:?}", self.timeout)

@@ -185,6 +185,7 @@ fn master_command(
     [<id>|all] allow all      request allow all policy
     [<id>|all] deny all       request deny all policy
     [<id>|all] debug on|off   enable/disable display of HTTP requests
+    [<id>|all] status         print status
     [<id>|all] ports          list active ports
     [<id>|all] shutdown       request shutdown
     [<id>|all] timeout <secs> server response timeout
@@ -206,13 +207,14 @@ fn master_command(
 fn instance0_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captures) {
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     if let Some(request) = match command.as_ref().map(String::as_str) {
-        Some("ports") => Some(PolicyRequest::QueryActivePorts),
         Some("allow all") => Some(PolicyRequest::AllowAll),
-        Some("deny all") => Some(PolicyRequest::DenyAll),
-        Some("shutdown") => Some(PolicyRequest::Shutdown),
-        Some("stop all") => Some(PolicyRequest::StopAll),
-        Some("debug on") => Some(PolicyRequest::Debug(true)),
         Some("debug off") => Some(PolicyRequest::Debug(false)),
+        Some("debug on") => Some(PolicyRequest::Debug(true)),
+        Some("deny all") => Some(PolicyRequest::DenyAll),
+        Some("ports") => Some(PolicyRequest::QueryActivePorts),
+        Some("shutdown") => Some(PolicyRequest::Shutdown),
+        Some("status") => Some(PolicyRequest::PrintStatus),
+        Some("stop all") => Some(PolicyRequest::StopAll),
         _ => {
             log::info!("unknown command");
             None

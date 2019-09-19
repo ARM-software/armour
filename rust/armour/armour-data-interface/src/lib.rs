@@ -117,6 +117,7 @@ pub struct ProxyConfig {
 pub enum PolicyRequest {
     AllowAll,
     DenyAll,
+    PrintStatus,
     QueryActivePorts,
     Shutdown,
     StopAll,
@@ -124,9 +125,9 @@ pub enum PolicyRequest {
     Start(ProxyConfig),
     StartTcp(u16),
     Stop(u16),
+    Timeout(u8),
     UpdateFromData(Program),
     UpdateFromFile(std::path::PathBuf),
-    Timeout(u8),
 }
 
 /// Messages from proxy instance to master
