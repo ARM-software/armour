@@ -420,6 +420,12 @@ impl LocLiteral {
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct Ident(pub String);
 
+impl From<&str> for Ident {
+    fn from(s: &str) -> Self {
+        Ident(s.to_string())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LocIdent(Loc, Ident);
 
@@ -434,8 +440,17 @@ impl LocIdent {
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Prefix {
-    PrefixMinus,
+    Minus,
     Not,
+}
+
+impl std::fmt::Display for Prefix {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Prefix::Minus => write!(f, "-"),
+            Prefix::Not => write!(f, "!"),
+        }
+    }
 }
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
@@ -458,6 +473,31 @@ pub enum Infix {
     Module,
     In,
     Dot,
+}
+
+impl std::fmt::Display for Infix {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Infix::Equal => write!(f, "=="),
+            Infix::NotEqual => write!(f, "!="),
+            Infix::Plus => write!(f, "+"),
+            Infix::Minus => write!(f, "-"),
+            Infix::Divide => write!(f, "/"),
+            Infix::Multiply => write!(f, "*"),
+            Infix::Remainder => write!(f, "%"),
+            Infix::GreaterThanEqual => write!(f, ">="),
+            Infix::LessThanEqual => write!(f, "<="),
+            Infix::GreaterThan => write!(f, ">"),
+            Infix::LessThan => write!(f, "<"),
+            Infix::And => write!(f, "&&"),
+            Infix::Or => write!(f, "||"),
+            Infix::Concat => write!(f, "@"),
+            Infix::ConcatStr => write!(f, "++"),
+            Infix::Module => write!(f, "::"),
+            Infix::In => write!(f, "in"),
+            Infix::Dot => write!(f, "."),
+        }
+    }
 }
 
 pub enum Assoc {
@@ -872,7 +912,7 @@ fn parse_prefix_expr(input: Tokens) -> IResult<Tokens, LocExpr> {
         match t1.tok0().clone() {
             Token::Minus => Ok((
                 i2,
-                LocExpr(t1.loc(), Expr::PrefixExpr(Prefix::PrefixMinus, Box::new(e))),
+                LocExpr(t1.loc(), Expr::PrefixExpr(Prefix::Minus, Box::new(e))),
             )),
             Token::Not => Ok((
                 i2,

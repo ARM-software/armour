@@ -3,15 +3,14 @@
 use super::policy::{
     EvalRestFn, GetRestPolicy, PolicyActor, RestFn, RestPolicy, ToArmourExpression,
 };
-use actix_web::client::{self, Client, ClientRequest, ClientResponse, SendRequestError};
 use actix_web::{
+    client::{Client, ClientRequest, ClientResponse, PayloadError, SendRequestError},
     http::header::{ContentEncoding, HeaderName, HeaderValue},
     middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
 use armour_data_interface::{own_ip, ProxyConfig};
 use armour_policy::lang::Expr;
-use futures::stream::Stream;
-use futures::{future, Future};
+use futures::{future, stream::Stream, Future};
 use std::collections::HashSet;
 use std::net::IpAddr;
 
@@ -349,7 +348,7 @@ fn response(
     p: RestPolicy,
     policy: web::Data<actix::Addr<PolicyActor>>,
     res: Result<
-        ClientResponse<impl Stream<Item = web::Bytes, Error = client::PayloadError> + 'static>,
+        ClientResponse<impl Stream<Item = web::Bytes, Error = PayloadError> + 'static>,
         SendRequestError,
     >,
     response_streaming: bool,

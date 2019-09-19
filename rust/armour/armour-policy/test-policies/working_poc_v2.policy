@@ -66,11 +66,11 @@ fn poc_connection(req: HttpRequest, from: ID, to: ID) -> bool {
   if let Some(to_label) = unique_label(to_hosts) {
     if let Some(from_label) = unique_label(from_hosts) {
       if to_label == "mqtt" && to_port == Some(1883) {
-          if from_label matches "allow" | "dtp" | "mqtt" | "untrusted" | "verify" | "on_during" {true} else {false }
-      } else if to_label matches "mysql" && to_port == Some(3306) {
-          if from_label matches "mysql_from" | "allow" {true} else {false }
-      } else if to_label matches "verify" && to_port == Some(5000){
-          if from_label matches "mysql_from" | "allow" {true} else {false }
+          from_label.matches_with(Regex("allow" | "dtp" | "mqtt" | "untrusted" | "verify" | "on_during"))
+      } else if to_label == "mysql" && to_port == Some(3306) {
+          from_label.matches_with(Regex("mysql_from" | "allow"))
+      } else if to_label == "verify" && to_port == Some(5000){
+          from_label.matches_with(Regex("mysql_from" | "allow"))
       } else if to_label matches "dtp" | "mysql_from" | "cloud" | "on_during" {
           from_label == "allow"  && to_port == Some(5000)
       } else if to_label == "mongodb" && to_port == Some(27017){
@@ -80,8 +80,13 @@ fn poc_connection(req: HttpRequest, from: ID, to: ID) -> bool {
           (from_label == "dtp" &&
             (to_label == "mongo" && to_port == Some(5000))
             || (to_label == "notifications" && to_port == Some(80)) )
-      } else {false }
-    } else {false }
-  } else {false }
-
+      } else {
+        false
+      }
+    } else {
+      false
+    }
+  } else {
+    false
+  }
 }

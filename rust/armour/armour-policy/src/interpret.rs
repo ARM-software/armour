@@ -18,7 +18,7 @@ impl Literal {
     fn eval_prefix(&self, p: &Prefix) -> Option<Self> {
         match (p, self) {
             (Prefix::Not, Literal::Bool(b)) => Some(Literal::Bool(!b)),
-            (Prefix::PrefixMinus, Literal::Int(i)) => Some(Literal::Int(-i)),
+            (Prefix::Minus, Literal::Int(i)) => Some(Literal::Int(-i)),
             _ => None,
         }
     }
@@ -239,7 +239,7 @@ impl Expr {
         match self {
             Expr::Var(_) | Expr::BVar(_) => Box::new(future::err(Error::new("eval variable"))),
             Expr::LitExpr(_) => Box::new(future::ok(self)),
-            Expr::Closure(_) => Box::new(future::err(Error::new("eval, closure"))),
+            Expr::Closure(_, _) => Box::new(future::err(Error::new("eval, closure"))),
             Expr::ReturnExpr(e) => Box::new(
                 e.eval(env)
                     .and_then(|res| future::ok(Expr::return_expr(res))),
@@ -788,22 +788,21 @@ impl Expr {
                                     }
                                 } else {
                                     // external function (RPC)
-                                    match function.split("::").collect::<Vec<&str>>().as_slice() {
-                                        [external, method] => {
-                                            let fut = env.external(external, method, args);
-                                            if is_async {
-                                                actix::spawn(fut.then(move |res| {
-                                                    if let Err(e) = res {
-                                                        log::warn!(r#"async call to "{}": {}"#, function, e.to_string())
-                                                    };
-                                                    future::ok(())
-                                                }));
-                                                future::Either::A(future::ok(Expr::unit()))
-                                            } else {
-                                                future::Either::B(future::Either::A(fut))
-                                            }
+                                    if let Some((external, method)) = Headers::split(&function) {
+                                        let fut = env.external(external, method, args);
+                                        if is_async {
+                                            actix::spawn(fut.then(move |res| {
+                                                if let Err(e) = res {
+                                                    log::warn!(r#"async call to "{}": {}"#, function, e.to_string())
+                                                };
+                                                future::ok(())
+                                            }));
+                                            future::Either::A(future::ok(Expr::unit()))
+                                        } else {
+                                            future::Either::B(future::Either::A(fut))
                                         }
-                                        _ => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, args)))),
+                                    } else {
+                                        future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, args))))
                                     }
                                 }
                             }

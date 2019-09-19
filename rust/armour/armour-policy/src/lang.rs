@@ -174,7 +174,7 @@ pub enum Expr {
     BlockExpr(Block, Vec<Expr>),
     Let(Vec<String>, Box<Expr>, Box<Expr>),
     Iter(parser::Iter, Vec<String>, Box<Expr>, Box<Expr>),
-    Closure(Box<Expr>),
+    Closure(parser::Ident, Box<Expr>),
     IfExpr {
         cond: Box<Expr>,
         consequence: Box<Expr>,
@@ -204,46 +204,46 @@ impl Default for Expr {
     }
 }
 
-impl fmt::Display for Expr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Expr::Var(id) => write!(f, r#"var "{}""#, id.0),
-            Expr::BVar(i) => write!(f, "bvar {}", i),
-            Expr::LitExpr(l) => write!(f, "{}", l),
-            Expr::Let(_, _, _) => write!(f, "let <..> = <..>; <..>"),
-            Expr::Iter(op, _, _, _) => write!(f, "{} <..> in <..> {{<..>}}", op),
-            Expr::Closure(_) => write!(f, "lambda <..>"),
-            Expr::ReturnExpr(_) => write!(f, "return <..>"),
-            Expr::PrefixExpr(p, _) => write!(f, "{:?} <..>", p),
-            Expr::InfixExpr(op, _, _) => write!(f, "{:?} <..>", op),
-            Expr::BlockExpr(Block::Block, _) => write!(f, "{{<..>}}"),
-            Expr::BlockExpr(Block::List, _) => write!(f, "[<..>]"),
-            Expr::BlockExpr(Block::Tuple, _) => write!(f, "(<..>)"),
-            Expr::IfExpr {
-                alternative: None, ..
-            } => write!(f, "if <..> {{<..>}}"),
-            Expr::IfExpr {
-                alternative: Some(_),
-                ..
-            } => write!(f, "if <..> {{<..>}} else {{<..>}}"),
-            Expr::IfMatchExpr {
-                alternative: None, ..
-            } => write!(f, "if <..> matches <..> {{<..>}}"),
-            Expr::IfMatchExpr {
-                alternative: Some(_),
-                ..
-            } => write!(f, "if <..> matches <..> {{<..>}} else {{<..>}}"),
-            Expr::IfSomeMatchExpr {
-                alternative: None, ..
-            } => write!(f, "if let Some(<..>) = <..> {{<..>}}"),
-            Expr::IfSomeMatchExpr {
-                alternative: Some(_),
-                ..
-            } => write!(f, "if let Some(<..>) = <..> {{<..>}} else {{<..>}}"),
-            Expr::CallExpr { function, .. } => write!(f, "{}(<..>)", function),
-        }
-    }
-}
+// impl fmt::Display for Expr {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         match self {
+//             Expr::Var(id) => write!(f, r#"var "{}""#, id.0),
+//             Expr::BVar(i) => write!(f, "bvar {}", i),
+//             Expr::LitExpr(l) => write!(f, "{}", l),
+//             Expr::Let(_, _, _) => write!(f, "let <..> = <..>; <..>"),
+//             Expr::Iter(op, _, _, _) => write!(f, "{} <..> in <..> {{<..>}}", op),
+//             Expr::Closure(_) => write!(f, "lambda <..>"),
+//             Expr::ReturnExpr(_) => write!(f, "return <..>"),
+//             Expr::PrefixExpr(p, _) => write!(f, "{:?} <..>", p),
+//             Expr::InfixExpr(op, _, _) => write!(f, "{:?} <..>", op),
+//             Expr::BlockExpr(Block::Block, _) => write!(f, "{{<..>}}"),
+//             Expr::BlockExpr(Block::List, _) => write!(f, "[<..>]"),
+//             Expr::BlockExpr(Block::Tuple, _) => write!(f, "(<..>)"),
+//             Expr::IfExpr {
+//                 alternative: None, ..
+//             } => write!(f, "if <..> {{<..>}}"),
+//             Expr::IfExpr {
+//                 alternative: Some(_),
+//                 ..
+//             } => write!(f, "if <..> {{<..>}} else {{<..>}}"),
+//             Expr::IfMatchExpr {
+//                 alternative: None, ..
+//             } => write!(f, "if <..> matches <..> {{<..>}}"),
+//             Expr::IfMatchExpr {
+//                 alternative: Some(_),
+//                 ..
+//             } => write!(f, "if <..> matches <..> {{<..>}} else {{<..>}}"),
+//             Expr::IfSomeMatchExpr {
+//                 alternative: None, ..
+//             } => write!(f, "if let Some(<..>) = <..> {{<..>}}"),
+//             Expr::IfSomeMatchExpr {
+//                 alternative: Some(_),
+//                 ..
+//             } => write!(f, "if let Some(<..>) = <..> {{<..>}} else {{<..>}}"),
+//             Expr::CallExpr { function, .. } => write!(f, "{}(<..>)", function),
+//         }
+//     }
+// }
 
 impl Expr {
     pub fn var(v: &str) -> Expr {
@@ -329,7 +329,7 @@ impl Expr {
             Expr::Iter(op, l, e1, e2) => {
                 Expr::Iter(op, l, Box::new(e1.abs(i, v)), Box::new(e2.abs(i, v)))
             }
-            Expr::Closure(e) => Expr::Closure(Box::new(e.abs(i + 1, v))),
+            Expr::Closure(v2, e) => Expr::Closure(v2, Box::new(e.abs(i + 1, v))),
             Expr::ReturnExpr(e) => Expr::return_expr(e.abs(i, v)),
             Expr::PrefixExpr(p, e) => Expr::prefix_expr(p, e.abs(i, v)),
             Expr::InfixExpr(op, e1, e2) => Expr::infix_expr(op, e1.abs(i, v), e2.abs(i, v)),
@@ -381,7 +381,7 @@ impl Expr {
         if v == "_" {
             self
         } else {
-            Expr::Closure(Box::new(self.abs(0, v)))
+            Expr::Closure(parser::Ident::from(v), Box::new(self.abs(0, v)))
         }
     }
     pub fn let_expr(self, v: Vec<&str>, e: Expr) -> Expr {
@@ -426,7 +426,7 @@ impl Expr {
                 Expr::Iter(op, l, e1, e2) => {
                     Expr::Iter(op, l, Box::new(e1.shift(i, d)), Box::new(e2.shift(i, d)))
                 }
-                Expr::Closure(e) => Expr::Closure(Box::new(e.shift(i, d + 1))),
+                Expr::Closure(v, e) => Expr::Closure(v, Box::new(e.shift(i, d + 1))),
                 Expr::ReturnExpr(e) => Expr::return_expr(e.shift(i, d)),
                 Expr::PrefixExpr(p, e) => Expr::prefix_expr(p, e.shift(i, d)),
                 Expr::InfixExpr(op, e1, e2) => Expr::infix_expr(op, e1.shift(i, d), e2.shift(i, d)),
@@ -496,7 +496,7 @@ impl Expr {
             Expr::Iter(op, l, e1, e2) => {
                 Expr::Iter(op, l, Box::new(e1.subst(i, u)), Box::new(e2.subst(i, u)))
             }
-            Expr::Closure(e) => Expr::Closure(Box::new(e.subst(i + 1, u))),
+            Expr::Closure(v, e) => Expr::Closure(v, Box::new(e.subst(i + 1, u))),
             Expr::ReturnExpr(e) => Expr::return_expr(e.subst(i, u)),
             Expr::PrefixExpr(p, e) => Expr::prefix_expr(p, e.subst(i, u)),
             Expr::InfixExpr(op, e1, e2) => Expr::infix_expr(op, e1.subst(i, u), e2.subst(i, u)),
@@ -549,7 +549,7 @@ impl Expr {
     }
     pub fn apply(self, u: &Expr) -> Result<Expr, self::Error> {
         match self {
-            Expr::Closure(e) => Ok(e.subst(0, u)),
+            Expr::Closure(_, e) => Ok(e.subst(0, u)),
             _ => Err(Error::new("apply: expression is not a closure")),
         }
     }
@@ -1250,7 +1250,7 @@ impl std::str::FromStr for Expr {
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
-pub struct Code(BTreeMap<String, Expr>);
+pub struct Code(pub BTreeMap<String, Expr>);
 
 struct CallGraph {
     graph: graph::DiGraph<String, lexer::Loc>,

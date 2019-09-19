@@ -128,6 +128,32 @@ impl Headers {
             .ok_or_else(|| Error::new("no current function"))?
             .typ())
     }
+    pub fn split(name: &str) -> Option<(&str, &str)> {
+        if let [module, method] = name.split("::").collect::<Vec<&str>>().as_slice() {
+            Some((module, method))
+        } else {
+            None
+        }
+    }
+    pub fn method(name: &str) -> Option<&str> {
+        if let Some(Some(args)) = Headers::builtins(name).map(|ty| ty.args()) {
+            if let Some(ty) = args.iter().next() {
+                if let Some((module, method)) = Headers::split(name) {
+                    if module == ty.to_string().as_str() {
+                        Some(method)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
     pub fn resolve(name: &str, typs: &[Typ]) -> String {
         if name.starts_with(".::") {
             let rest = name.trim_start_matches(".::");

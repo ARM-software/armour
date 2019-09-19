@@ -381,7 +381,13 @@ impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Literal::Bool(b) => write!(f, "{}", b),
-            Literal::Data(d) => write!(f, "{:x?}", d),
+            Literal::Data(d) => {
+                if let Ok(s) = std::str::from_utf8(d) {
+                    write!(f, r#"b"{}""#, s)
+                } else {
+                    write!(f, "{:x?}", d)
+                }
+            }
             Literal::Float(d) => {
                 if 8 < d.abs().log10() as usize {
                     write!(f, "{:e}", d)

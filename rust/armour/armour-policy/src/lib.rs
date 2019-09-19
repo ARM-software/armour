@@ -30,5 +30,7 @@ pub mod lexer;
 pub mod literals;
 /// Parser implemented using [nom](../nom/index.html)
 pub mod parser;
+/// Pretty-printer
+pub mod pretty;
 /// Type system
 pub mod types;

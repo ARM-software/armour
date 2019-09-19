@@ -42,6 +42,7 @@ fn main() -> io::Result<()> {
     } else {
         prog = lang::Program::default()
     }
+    prog.print();
 
     if let Some(timeout) = matches.value_of("timeout") {
         let d = Duration::from_secs(timeout.parse().map_err(|_| {
@@ -79,7 +80,8 @@ fn main() -> io::Result<()> {
                             let fut = e
                                 .evaluate(prog.clone())
                                 .and_then(|r| {
-                                    println!(": {}", r.clone());
+                                    r.print();
+                                    // println!(": {}", r.clone());
                                     future::ok(())
                                 })
                                 .or_else(|err| {

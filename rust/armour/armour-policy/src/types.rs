@@ -225,7 +225,7 @@ impl Prefix {
     pub fn typ(&self) -> (Typ, Typ) {
         match self {
             Prefix::Not => (Typ::Bool, Typ::Bool),
-            Prefix::PrefixMinus => (Typ::I64, Typ::I64),
+            Prefix::Minus => (Typ::I64, Typ::I64),
         }
     }
 }
@@ -262,6 +262,12 @@ impl parser::Param {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Signature(Option<Vec<Typ>>, Typ);
+
+impl Default for Signature {
+    fn default() -> Self {
+        Signature(None, Typ::Unit)
+    }
+}
 
 impl Signature {
     pub fn new(args: Vec<Typ>, typ: Typ) -> Self {
