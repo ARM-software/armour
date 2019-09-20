@@ -741,7 +741,7 @@ impl Expr {
                     .map(|(e, p)| {
                         let re = parser::PolicyRegex::from_pat(p)?;
                         let cap_names: HashSet<(String, parser::As)> =
-                            re.0.capture_names()
+                            re.capture_names()
                                 .filter_map(|x| x.map(parser::Pat::strip_as))
                                 .collect();
                         if set.is_disjoint(&cap_names) {

@@ -557,17 +557,17 @@ impl Expr {
                             Expr::ReturnExpr(_) => future::ok((f, None)),
                             Expr::LitExpr(Literal::Str(ref s)) => {
                                 let names: Vec<&str> =
-                                    re.0.capture_names().filter_map(|s| s).collect();
+                                    re.capture_names().filter_map(|s| s).collect();
                                 // if there are no bindings then do a simple "is_match", otherwise collect
                                 // variable captures
                                 if names.is_empty() {
-                                    if re.0.is_match(s) {
+                                    if re.is_match(s) {
                                         future::ok((f, Some(BTreeMap::new())))
                                     } else {
                                         future::ok((f, None))
                                     }
                                 } else {
-                                    match re.0.captures(s) {
+                                    match re.captures(s) {
                                         // matches
                                         Some(cap) => {
                                             let mut is_match = true;

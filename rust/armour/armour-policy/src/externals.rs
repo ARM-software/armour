@@ -187,7 +187,7 @@ impl Externals {
             Literal::ID(id) => Externals::build_value(v, &id.to_literal())?,
             Literal::Int(i) => v.set_int64(*i),
             Literal::IpAddr(ip) => Externals::build_value(v, &ip.to_literal())?,
-            Literal::Regex(r) => v.set_text(r.as_str()),
+            Literal::Regex(r) => v.set_text(&r.to_string()),
             Literal::Str(s) => v.set_text(s),
             Literal::Unit => v.set_unit(()),
             Literal::Tuple(ts) => {

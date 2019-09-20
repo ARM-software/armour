@@ -1,29 +1,30 @@
 use super::headers::Headers;
 use super::lang::{Block, Expr, Program};
 use super::literals::Literal;
-use super::parser::{Assoc, Infix, Precedence};
+use super::parser::{As, Assoc, Infix, Pat, PolicyRegex, Precedence};
 use super::types::Typ;
 use pretty::termcolor::{Color, ColorChoice, ColorSpec, StandardStream};
 use pretty::{BoxDoc, Doc};
 use std::fmt;
 
-// TODO: regex
+fn bracket<'a>(
+    doc: Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec>,
+) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
+    Doc::text("(").append(doc.nest(1)).append(")")
+}
 
 impl Expr {
     fn vec_str_to_doc<'a, 'b>(l: &'b [String]) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
         if l.len() == 1 {
             Doc::as_string(l.get(0).unwrap())
         } else {
-            Doc::text("(")
-                .append(
-                    Doc::intersperse(
-                        l.iter().map(Doc::as_string),
-                        Doc::text(",").append(Doc::space()),
-                    )
-                    .nest(1),
+            bracket(
+                Doc::intersperse(
+                    l.iter().map(Doc::as_string),
+                    Doc::text(",").append(Doc::space()),
                 )
-                .append(Doc::text(")"))
-                .group()
+                .group(),
+            )
         }
     }
     fn closure_var(&self) -> Option<&str> {
@@ -59,6 +60,7 @@ impl Expr {
             Other,
         }
         let class = match data {
+            "as" => Class::Keyword,
             "async" => Class::Control,
             "else" => Class::Control,
             "false" => Class::Keyword,
@@ -123,12 +125,12 @@ impl Expr {
                 let right = r.precedence();
                 let own = self.precedence();
                 let left = if left.0 < own.0 || left == own && own.1 == Assoc::Right {
-                    Doc::text("(").append(l.to_doc().nest(1)).append(")")
+                    bracket(l.to_doc())
                 } else {
                     l.to_doc()
                 };
                 let right = if right.0 < own.0 || right == own && own.1 == Assoc::Left {
-                    Doc::text("(").append(r.to_doc().nest(1)).append(")")
+                    bracket(r.to_doc())
                 } else {
                     r.to_doc()
                 };
@@ -168,16 +170,13 @@ impl Expr {
                     .group(),
                 )
                 .append("]"),
-            Expr::BlockExpr(Block::Tuple, es) => Doc::text("(")
-                .append(
-                    Doc::intersperse(
-                        es.iter().map(|e| e.to_doc()),
-                        Doc::text(",").append(Doc::space()),
-                    )
-                    .nest(1)
-                    .group(),
+            Expr::BlockExpr(Block::Tuple, es) => bracket(
+                Doc::intersperse(
+                    es.iter().map(|e| e.to_doc()),
+                    Doc::text(",").append(Doc::space()),
                 )
-                .append(")"),
+                .group(),
+            ),
             Expr::IfExpr {
                 cond,
                 consequence,
@@ -264,11 +263,9 @@ impl Expr {
                                         .append(Doc::space())
                                         .append(Expr::key("matches"))
                                         .append(Doc::space())
-                                        .append(Doc::as_string(re.as_str()).annotate(
-                                            ColorSpec::new().set_fg(Some(Color::Red)).clone(),
-                                        ))
+                                        .append(re.to_doc())
                                 }),
-                                Doc::text("&&").append(Doc::space()),
+                                Doc::space().append("&&").append(Doc::space()),
                             ))
                             .nest(2),
                     )
@@ -314,18 +311,13 @@ impl Expr {
                     doc.append(args.next().unwrap().to_doc())
                         .append(".")
                         .append(Expr::method(method))
-                        .append(
-                            Doc::text("(")
-                                .append(
-                                    Doc::intersperse(
-                                        args.map(|e| e.to_doc()),
-                                        Doc::text(",").append(Doc::space()),
-                                    )
-                                    .nest(1)
-                                    .group(),
-                                )
-                                .append(")"),
-                        )
+                        .append(bracket(
+                            Doc::intersperse(
+                                args.map(|e| e.to_doc()),
+                                Doc::text(",").append(Doc::space()),
+                            )
+                            .group(),
+                        ))
                 } else {
                     let f = if function == "option::Some" {
                         Doc::text("Some")
@@ -336,18 +328,13 @@ impl Expr {
                     } else {
                         Expr::method(&function)
                     };
-                    doc.append(f).append(
-                        Doc::text("(")
-                            .append(
-                                Doc::intersperse(
-                                    arguments.iter().map(|e| e.to_doc()),
-                                    Doc::text(",").append(Doc::space()),
-                                )
-                                .nest(1)
-                                .group(),
-                            )
-                            .append(")"),
-                    )
+                    doc.append(f).append(bracket(
+                        Doc::intersperse(
+                            arguments.iter().map(|e| e.to_doc()),
+                            Doc::text(",").append(Doc::space()),
+                        )
+                        .group(),
+                    ))
                 }
             }
         }
@@ -395,6 +382,92 @@ impl Infix {
     }
 }
 
+impl Pat {
+    fn is_alt(&self) -> bool {
+        if let Pat::Alt(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+    fn is_alt_or_seq(&self) -> bool {
+        match self {
+            Pat::Alt(_) | Pat::Seq(_) => true,
+            _ => false,
+        }
+    }
+    fn postfix<'a>(&self, s: &'static str) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
+        (if self.is_alt_or_seq() {
+            bracket(self.to_doc())
+        } else {
+            self.to_doc()
+        })
+        .append(s)
+    }
+    fn to_doc<'a>(&self) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
+        match self {
+            Pat::Any => Doc::text("."),
+            Pat::Lit(s) => Doc::text("\"")
+                .append(Doc::as_string(s))
+                .append("\"")
+                .annotate(ColorSpec::new().set_fg(Some(Color::Green)).clone()),
+            Pat::Class(s) => Doc::as_string(format!(":{}:", s))
+                .annotate(ColorSpec::new().set_fg(Some(Color::Green)).clone()),
+            Pat::Alt(ps) => Doc::intersperse(
+                ps.iter().map(|p| p.to_doc()),
+                Doc::space().append(Doc::text("|")).append(Doc::space()),
+            )
+            .group(),
+            Pat::Seq(ps) => Doc::intersperse(
+                ps.iter().map(|p| {
+                    if p.is_alt() {
+                        bracket(p.to_doc())
+                    } else {
+                        p.to_doc()
+                    }
+                }),
+                Doc::space(),
+            )
+            .group(),
+            Pat::As(id, As::Str) => Doc::text("[")
+                .append(Doc::as_string(id.0.clone()))
+                .append("]"),
+            Pat::As(id, As::I64) => Doc::text("[")
+                .append(Doc::as_string(id.0.clone()))
+                .append(" ")
+                .append(Expr::key("as"))
+                .append(" i64]"),
+            Pat::As(id, As::Base64) => Doc::text("[")
+                .append(Doc::as_string(id.0.clone()))
+                .append(" ")
+                .append(Expr::key("as"))
+                .append(" base64]"),
+            Pat::Opt(p) => p.postfix("?"),
+            Pat::Star(p) => p.postfix("*"),
+            Pat::Plus(p) => p.postfix("+"),
+            Pat::CaseInsensitive(p) => p.postfix("!"),
+            Pat::IgnoreWhitespace(p) => p.postfix("%"),
+        }
+    }
+}
+
+impl PolicyRegex {
+    fn to_doc<'a>(&self) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
+        self.0.to_doc()
+    }
+    fn to_pretty(&self, width: usize) -> String {
+        let mut w = Vec::new();
+        self.to_doc().render(width, &mut w).unwrap();
+        String::from_utf8(w).unwrap()
+    }
+}
+
+impl fmt::Display for PolicyRegex {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_pretty(80))
+    }
+}
+
 impl Literal {
     fn literal<'a, 'b>(&'a self) -> Doc<'b, BoxDoc<'b, ColorSpec>, ColorSpec> {
         Doc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Green)).clone())
@@ -412,12 +485,7 @@ impl Literal {
                     self.non_parse_literal()
                 }
             }
-            Literal::Regex(r) => Doc::text("Regex(")
-                .append(
-                    Doc::as_string(r.as_str())
-                        .annotate(ColorSpec::new().set_fg(Some(Color::Red)).clone()),
-                )
-                .append(")"),
+            Literal::Regex(r) => Doc::text("Regex(").append(r.to_doc()).append(")"),
             Literal::Unit => Doc::text("()"),
             Literal::List(lits) => Doc::text("[")
                 .append(
@@ -432,16 +500,13 @@ impl Literal {
             Literal::Tuple(lits) => match lits.len() {
                 0 => Doc::text("None"),
                 1 => Doc::text("Some(").append(lits[0].to_doc()).append(")"),
-                _ => Doc::text("(")
-                    .append(
-                        Doc::intersperse(
-                            lits.iter().map(|l| l.to_doc()),
-                            Doc::text(",").append(Doc::space()),
-                        )
-                        .nest(1)
-                        .group(),
+                _ => bracket(
+                    Doc::intersperse(
+                        lits.iter().map(|l| l.to_doc()),
+                        Doc::text(",").append(Doc::space()),
                     )
-                    .append(")"),
+                    .group(),
+                ),
             },
             Literal::HttpRequest(_) | Literal::ID(_) | Literal::IpAddr(_) => {
                 self.non_parse_literal()
@@ -469,16 +534,13 @@ impl Typ {
                     .append("<")
                     .append(ts[0].to_doc())
                     .append(">"),
-                _ => Doc::text("(")
-                    .append(
-                        Doc::intersperse(
-                            ts.iter().map(|t| t.to_doc()),
-                            Doc::text(",").append(Doc::space()),
-                        )
-                        .nest(1)
-                        .group(),
+                _ => bracket(
+                    Doc::intersperse(
+                        ts.iter().map(|t| t.to_doc()),
+                        Doc::text(",").append(Doc::space()),
                     )
-                    .append(")"),
+                    .group(),
+                ),
             },
             _ => Typ::internal(Doc::as_string(self)),
         }

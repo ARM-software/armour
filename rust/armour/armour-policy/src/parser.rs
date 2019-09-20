@@ -293,14 +293,14 @@ impl LocExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum As {
     Str,
     I64,
     Base64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Pat {
     Any,
     Lit(String),
@@ -381,24 +381,27 @@ impl Pat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PolicyRegex(#[serde(with = "serde_regex")] pub Regex);
+pub struct PolicyRegex(pub Pat, #[serde(with = "serde_regex")] pub Regex);
 
 impl PartialEq for PolicyRegex {
     fn eq(&self, other: &PolicyRegex) -> bool {
-        self.as_str() == other.as_str()
+        self.0 == other.0
     }
 }
 
 impl PolicyRegex {
     pub fn from_pat(p: &Pat) -> Result<PolicyRegex, regex::Error> {
         let re = Regex::new(&format!("^{}$", p.to_regex_str(false)))?;
-        Ok(PolicyRegex(re))
-    }
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
+        Ok(PolicyRegex(p.clone(), re))
     }
     pub fn is_match(&self, s: &str) -> bool {
-        self.0.is_match(s)
+        self.1.is_match(s)
+    }
+    pub fn capture_names(&self) -> regex::CaptureNames {
+        self.1.capture_names()
+    }
+    pub fn captures<'a>(&self, s: &'a str) -> Option<regex::Captures<'a>> {
+        self.1.captures(s)
     }
 }
 
