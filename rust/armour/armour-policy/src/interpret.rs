@@ -237,7 +237,7 @@ impl Expr {
     }
     fn eval(self, env: Arc<Program>) -> Box<dyn Future<Item = Expr, Error = self::Error>> {
         match self {
-            Expr::Var(_) | Expr::BVar(_) => Box::new(future::err(Error::new("eval variable"))),
+            Expr::Var(_) | Expr::BVar(_, _) => Box::new(future::err(Error::new("eval variable"))),
             Expr::LitExpr(_) => Box::new(future::ok(self)),
             Expr::Closure(_, _) => Box::new(future::err(Error::new("eval, closure"))),
             Expr::ReturnExpr(e) => Box::new(

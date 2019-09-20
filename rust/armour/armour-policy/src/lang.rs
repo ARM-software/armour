@@ -166,7 +166,7 @@ pub enum Block {
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Expr {
     Var(parser::Ident),
-    BVar(usize),
+    BVar(parser::Ident, usize),
     LitExpr(Literal),
     ReturnExpr(Box<Expr>),
     PrefixExpr(Prefix, Box<Expr>),
@@ -203,47 +203,6 @@ impl Default for Expr {
         Expr::LitExpr(Literal::Unit)
     }
 }
-
-// impl fmt::Display for Expr {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         match self {
-//             Expr::Var(id) => write!(f, r#"var "{}""#, id.0),
-//             Expr::BVar(i) => write!(f, "bvar {}", i),
-//             Expr::LitExpr(l) => write!(f, "{}", l),
-//             Expr::Let(_, _, _) => write!(f, "let <..> = <..>; <..>"),
-//             Expr::Iter(op, _, _, _) => write!(f, "{} <..> in <..> {{<..>}}", op),
-//             Expr::Closure(_) => write!(f, "lambda <..>"),
-//             Expr::ReturnExpr(_) => write!(f, "return <..>"),
-//             Expr::PrefixExpr(p, _) => write!(f, "{:?} <..>", p),
-//             Expr::InfixExpr(op, _, _) => write!(f, "{:?} <..>", op),
-//             Expr::BlockExpr(Block::Block, _) => write!(f, "{{<..>}}"),
-//             Expr::BlockExpr(Block::List, _) => write!(f, "[<..>]"),
-//             Expr::BlockExpr(Block::Tuple, _) => write!(f, "(<..>)"),
-//             Expr::IfExpr {
-//                 alternative: None, ..
-//             } => write!(f, "if <..> {{<..>}}"),
-//             Expr::IfExpr {
-//                 alternative: Some(_),
-//                 ..
-//             } => write!(f, "if <..> {{<..>}} else {{<..>}}"),
-//             Expr::IfMatchExpr {
-//                 alternative: None, ..
-//             } => write!(f, "if <..> matches <..> {{<..>}}"),
-//             Expr::IfMatchExpr {
-//                 alternative: Some(_),
-//                 ..
-//             } => write!(f, "if <..> matches <..> {{<..>}} else {{<..>}}"),
-//             Expr::IfSomeMatchExpr {
-//                 alternative: None, ..
-//             } => write!(f, "if let Some(<..>) = <..> {{<..>}}"),
-//             Expr::IfSomeMatchExpr {
-//                 alternative: Some(_),
-//                 ..
-//             } => write!(f, "if let Some(<..>) = <..> {{<..>}} else {{<..>}}"),
-//             Expr::CallExpr { function, .. } => write!(f, "{}(<..>)", function),
-//         }
-//     }
-// }
 
 impl Expr {
     pub fn var(v: &str) -> Expr {
@@ -317,10 +276,10 @@ impl Expr {
     }
     fn abs(self, i: usize, v: &str) -> Expr {
         match self {
-            Expr::BVar(_) | Expr::LitExpr(_) => self,
+            Expr::BVar(_, _) | Expr::LitExpr(_) => self,
             Expr::Var(ref id) => {
                 if id.0 == v {
-                    Expr::BVar(i)
+                    Expr::BVar(id.to_owned(), i)
                 } else {
                     self
                 }
@@ -413,9 +372,9 @@ impl Expr {
         } else {
             match self {
                 Expr::Var(_) | Expr::LitExpr(_) => self,
-                Expr::BVar(j) => {
+                Expr::BVar(ref id, j) => {
                     if j >= d {
-                        Expr::BVar(j + 1)
+                        Expr::BVar(id.to_owned(), j + 1)
                     } else {
                         self
                     }
@@ -481,13 +440,13 @@ impl Expr {
     pub fn subst(self, i: usize, u: &Expr) -> Expr {
         match self {
             Expr::Var(_) | Expr::LitExpr(_) => self,
-            Expr::BVar(j) => {
+            Expr::BVar(ref id, j) => {
                 if j < i {
                     self
                 } else if j == i {
                     u.clone().shift(i, 0)
                 } else {
-                    Expr::BVar(j - 1)
+                    Expr::BVar(id.to_owned(), j - 1)
                 }
             }
             Expr::Let(l, e1, e2) => {

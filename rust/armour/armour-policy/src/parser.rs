@@ -500,6 +500,7 @@ impl std::fmt::Display for Infix {
     }
 }
 
+#[derive(PartialEq)]
 pub enum Assoc {
     Left,
     Right,
