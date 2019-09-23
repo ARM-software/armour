@@ -37,18 +37,19 @@ fn test_connection(from: ID, to: ID) -> bool {
   let on_during = ["on-during-conversation"];
   let cloud = ["cloud-update"];
 
-  if any to_host in to_hosts { to_host in mqtt } {
-    any from_host in from_hosts { from_host in allow @ ["dtp"] @ mqtt @ untrusted @ verify @ on_during }
-  } else if any to_host in to_hosts { to_host in dtp } {
+  if !to_hosts.is_disjoint(mqtt) {
+    !from_hosts.is_disjoint(allow @ ["dtp"] @ mqtt @ untrusted @ verify @ on_during)
+  } else if !to_hosts.is_disjoint(dtp) {
     "dtp" in from_hosts
   } else if "mongo" in to_hosts {
-    any from_host in from_hosts { from_host in mongo }
-  } else if any to_host in to_hosts { to_host in mysql_to } {
-    any from_host in from_hosts { from_host in mysql_from @ allow }
-  } else if any to_host in to_hosts { to_host in ["dtp"] @ verify @ on_during @ mysql_from @ cloud} {
-    any from_host in from_hosts { from_host in allow }
+    !from_hosts.is_disjoint(mongo)
+  } else if !to_hosts.is_disjoint(mysql_to) {
+    !from_hosts.is_disjoint(mysql_from @ allow)
+  } else if !to_hosts.is_disjoint(["dtp"] @ verify @ on_during @ mysql_from @ cloud) {
+    !from_hosts.is_disjoint(allow)
   } else { false}
 }
+
 //L7 policy, test for dtp container
 //fn dtp_connection(req: HttpRequest, from: ID, to: ID) -> bool {
 

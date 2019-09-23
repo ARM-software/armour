@@ -2,7 +2,7 @@
 // NOTE: no optimization
 use super::headers::Headers;
 use super::lang::{Block, Error, Expr, Program};
-use super::literals::{HttpRequest, Literal, Method, ToLiteral};
+use super::literals::{HttpRequest, Literal, Method, ToLiteral, VecSet};
 use super::parser::{As, Infix, Iter, Pat, Prefix};
 use futures::{
     future,
@@ -49,7 +49,7 @@ impl Literal {
             (Infix::ConcatStr, Literal::Str(i), Literal::Str(j)) => {
                 Some(Literal::Str(format!("{}{}", i, j)))
             }
-            (Infix::In, _, Literal::List(l)) => Some(Literal::Bool(l.iter().any(|o| o == self))),
+            (Infix::In, _, Literal::List(l)) => Some(VecSet::contains(l, self)),
             _ => None,
         }
     }
@@ -162,6 +162,18 @@ impl Literal {
             ("ID::add_ip", Literal::ID(id), Literal::IpAddr(q)) => Some(Literal::ID(id.add_ip(*q))),
             ("ID::set_port", Literal::ID(id), Literal::Int(q)) => {
                 Some(Literal::ID(id.set_port(*q as u16)))
+            }
+            ("list::is_subset", Literal::List(i), Literal::List(j)) => {
+                Some(VecSet::is_subset(i, j))
+            }
+            ("list::is_disjoint", Literal::List(i), Literal::List(j)) => {
+                Some(VecSet::is_disjoint(i, j))
+            }
+            ("list::difference", Literal::List(i), Literal::List(j)) => {
+                Some(VecSet::difference(i, j))
+            }
+            ("list::intersection", Literal::List(i), Literal::List(j)) => {
+                Some(VecSet::intersection(i, j))
             }
             _ => None,
         }

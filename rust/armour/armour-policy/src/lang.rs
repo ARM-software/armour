@@ -580,7 +580,7 @@ impl Expr {
                 if t1 == Typ::Return {
                     if t2 == Typ::Return {
                         Typ::type_check(
-                            "(in)equality",
+                            "equality/inequality/concat",
                             vec![(Some(e1.loc()), &typ1)],
                             vec![(Some(e2.loc()), &typ2)],
                         )?
@@ -740,10 +740,10 @@ impl Expr {
                     .iter()
                     .map(|(e, p)| {
                         let re = parser::PolicyRegex::from_pat(p)?;
-                        let cap_names: HashSet<(String, parser::As)> =
-                            re.capture_names()
-                                .filter_map(|x| x.map(parser::Pat::strip_as))
-                                .collect();
+                        let cap_names: HashSet<(String, parser::As)> = re
+                            .capture_names()
+                            .filter_map(|x| x.map(parser::Pat::strip_as))
+                            .collect();
                         if set.is_disjoint(&cap_names) {
                             set.extend(cap_names);
                             Ok(re)
@@ -925,10 +925,14 @@ impl Expr {
                             .collect();
                         Typ::type_check(function, types, args)?
                     };
-                    let typ = if function == "list::reduce" {
-                        types.iter().next().unwrap().dest_list().unwrap().option()
-                    } else {
-                        typ
+                    let typ = match function.as_str() {
+                        "list::reduce" => {
+                            types.iter().next().unwrap().dest_list().unwrap().option()
+                        }
+                        "list::difference" | "list::intersection" => {
+                            types.iter().next().unwrap().to_owned()
+                        }
+                        _ => typ,
                     };
                     calls.push(
                         vec![Call {

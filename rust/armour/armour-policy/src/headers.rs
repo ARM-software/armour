@@ -56,6 +56,34 @@ impl Headers {
             "str::contains" => sig(vec![Typ::Str, Typ::Str], Typ::Bool),
             "list::len" => sig(vec![Typ::List(Box::new(Typ::Return))], Typ::I64),
             "list::reduce" => sig(vec![Typ::List(Box::new(Typ::Return))], Typ::Return.option()),
+            "list::is_subset" => sig(
+                vec![
+                    Typ::List(Box::new(Typ::Return)),
+                    Typ::List(Box::new(Typ::Return)),
+                ],
+                Typ::Bool,
+            ),
+            "list::is_disjoint" => sig(
+                vec![
+                    Typ::List(Box::new(Typ::Return)),
+                    Typ::List(Box::new(Typ::Return)),
+                ],
+                Typ::Bool,
+            ),
+            "list::difference" => sig(
+                vec![
+                    Typ::List(Box::new(Typ::Return)),
+                    Typ::List(Box::new(Typ::Return)),
+                ],
+                Typ::List(Box::new(Typ::Return)),
+            ),
+            "list::intersection" => sig(
+                vec![
+                    Typ::List(Box::new(Typ::Return)),
+                    Typ::List(Box::new(Typ::Return)),
+                ],
+                Typ::List(Box::new(Typ::Return)),
+            ),
             "HttpRequest::GET" => sig(vec![], Typ::HttpRequest),
             "HttpRequest::POST" => sig(vec![], Typ::HttpRequest),
             "HttpRequest::PUT" => sig(vec![], Typ::HttpRequest),

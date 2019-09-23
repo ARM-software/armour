@@ -105,7 +105,7 @@ $ cargo run [input file]
     | or (shortcuts)  | `|| : (bool, bool) -> bool`            |
     | concat string   | `++ : (str, str) -> str`               |
     | concat list     | `@ : (List<ty>, List<ty>) -> List<ty>` |
-    | list membership | `in : (List<ty>, List<ty>) -> bool`    |
+    | list membership | `in : (ty, List<ty>) -> bool`          |
 
 - Function call
 
@@ -362,6 +362,10 @@ function               | type
 ---------------------- | ----------------------------------------
 | len                  | `List<ty> -> i64`                      |
 | reduce               | `List<ty> -> Option<ty>`               |
+| is_disjoint          | `(List<ty1>, List<ty2>) -> bool`       |
+| is_subset            | `(List<ty1>, List<ty2>) -> bool`       |
+| difference           | `(List<ty1>, List<ty2>) -> List<ty1>`  |
+| intersection         | `(List<ty1>, List<ty2>) -> List<ty1>`  |
 
 ### option::
 

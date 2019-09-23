@@ -911,7 +911,7 @@ fn parse_prefix_expr(input: Tokens) -> IResult<Tokens, LocExpr> {
     if t1.tok.is_empty() {
         Err(Err::Error(error_position!(input, ErrorKind::Tag)))
     } else {
-        let (i2, e) = try_parse!(i1, parse_atom_expr);
+        let (i2, e) = try_parse!(i1, parse_expr);
 
         match t1.tok0().clone() {
             Token::Minus => Ok((

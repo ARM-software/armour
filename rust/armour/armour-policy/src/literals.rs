@@ -319,6 +319,36 @@ impl From<(&str, &str, &str, &str, Vec<(&str, &[u8])>)> for HttpRequest {
     }
 }
 
+pub struct VecSet;
+
+impl VecSet {
+    pub fn contains(l: &[Literal], x: &Literal) -> Literal {
+        Literal::Bool(l.iter().any(|y| x == y))
+    }
+    pub fn is_subset(x: &[Literal], y: &[Literal]) -> Literal {
+        Literal::Bool(x.iter().all(|ex| y.iter().any(|ey| ex == ey)))
+    }
+    pub fn is_disjoint(x: &[Literal], y: &[Literal]) -> Literal {
+        Literal::Bool(!x.iter().any(|ex| y.iter().any(|ey| ex == ey)))
+    }
+    pub fn difference(x: &[Literal], y: &[Literal]) -> Literal {
+        Literal::List(
+            x.to_owned()
+                .into_iter()
+                .filter(|ex| !y.iter().any(|ey| ex == ey))
+                .collect(),
+        )
+    }
+    pub fn intersection(x: &[Literal], y: &[Literal]) -> Literal {
+        Literal::List(
+            x.to_owned()
+                .into_iter()
+                .filter(|ex| y.iter().any(|ey| ex == ey))
+                .collect(),
+        )
+    }
+}
+
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Literal {
     Bool(bool),
