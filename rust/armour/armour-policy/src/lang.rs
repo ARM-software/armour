@@ -1255,6 +1255,15 @@ pub struct Program {
 }
 
 impl Program {
+    pub fn blake2_hash(&self) -> Option<Vec<u8>> {
+        bincode::serialize(self)
+            .map(|bytes| {
+                blake2_rfc::blake2b::blake2b(64, b"armour", &bytes)
+                    .as_bytes()
+                    .to_vec()
+            })
+            .ok()
+    }
     pub fn has_function(&self, name: &str) -> bool {
         self.code.0.contains_key(name)
     }

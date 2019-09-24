@@ -129,26 +129,49 @@ pub enum Policy {
 /// Policy update request messages
 #[derive(Serialize, Deserialize, Message, Clone)]
 pub enum PolicyRequest {
-    ActivePorts,
     Debug(Protocol, bool),
-    PrintStatus,
     SetPolicy(Protocol, Policy),
     Shutdown,
     StartHttp(HttpConfig),
     StartTcp(u16),
+    Status,
     Stop(Protocol),
     Timeout(u8),
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Status {
+    pub port: Option<u16>,
+    pub policy: Policy,
+    pub debug: bool,
+}
+
+impl std::fmt::Display for Status {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if let Some(port) = self.port {
+            writeln!(f, "active on port {}", port)?
+        } else {
+            writeln!(f, "inactive")?
+        }
+        writeln!(f, "debug is {}", if self.debug { "on" } else { "off" })?;
+        write!(f, "policy is: ")?;
+        match &self.policy {
+            Policy::AllowAll => writeln!(f, "allow all"),
+            Policy::DenyAll => writeln!(f, "deny all"),
+            Policy::Program(prog) => writeln!(f, "{:02x?}", prog.blake2_hash().unwrap()),
+        }
+    }
+}
+
 /// Messages from proxy instance to master
-#[derive(Serialize, Deserialize, Debug, Message)]
+#[derive(Serialize, Deserialize, Message)]
 pub enum PolicyResponse {
     Started,
     Stopped,
     ShuttingDown,
     UpdatedPolicy,
     RequestFailed,
-    ActivePorts { http: Option<u16>, tcp: Option<u16> },
+    Status { http: Box<Status>, tcp: Box<Status> },
 }
 
 /// Transport codec for Master to Proxy instance communication

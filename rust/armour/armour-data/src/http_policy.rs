@@ -64,18 +64,19 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
             || self.program.has_function(interface::ALLOW_CLIENT_PAYLOAD)
             || self.program.has_function(interface::ALLOW_SERVER_PAYLOAD))
     }
-    fn print(&self) {
-        println!("== REST Policy ==");
-        println!("debug is {}", if self.debug { "on" } else { "off" });
-        print!("policy is:");
-        if self.allow_all {
-            println!(" allow all")
+    fn status(&self) -> Box<interface::Status> {
+        let policy = if self.is_allow_all() {
+            interface::Policy::AllowAll
         } else if self.is_deny_all() {
-            println!(" deny all")
+            interface::Policy::DenyAll
         } else {
-            println!();
-            self.program.print()
-        }
+            interface::Policy::Program((*self.policy()).clone())
+        };
+        Box::new(interface::Status {
+            port: self.port(),
+            debug: self.debug(),
+            policy,
+        })
     }
 }
 

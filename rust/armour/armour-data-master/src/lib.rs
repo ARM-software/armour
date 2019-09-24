@@ -197,11 +197,6 @@ impl Actor for ArmourDataInstance {
 
 impl actix::io::WriteHandler<std::io::Error> for ArmourDataInstance {}
 
-fn port_option_to_string(p: Option<u16>) -> String {
-    p.map(|port| format!("port {}", port))
-        .unwrap_or_else(|| "none".to_string())
-}
-
 impl StreamHandler<PolicyResponse, std::io::Error> for ArmourDataInstance {
     fn handle(&mut self, msg: PolicyResponse, ctx: &mut Self::Context) {
         match msg {
@@ -214,12 +209,9 @@ impl StreamHandler<PolicyResponse, std::io::Error> for ArmourDataInstance {
                 self.master.do_send(Disconnect(self.id));
                 ctx.stop()
             }
-            PolicyResponse::ActivePorts { http, tcp } => info!(
-                "{}: http - {}, tcp - {}",
-                self.id,
-                port_option_to_string(http),
-                port_option_to_string(tcp)
-            ),
+            PolicyResponse::Status { http, tcp } => {
+                info!("{}:\n=== HTTP ===\n{}=== TCP ===\n{}", self.id, http, tcp)
+            }
         }
     }
 }

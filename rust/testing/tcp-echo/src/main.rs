@@ -8,8 +8,12 @@ fn main() {
         .for_each(|sock| {
             let mut sock = sock.unwrap();
             let mut buf = [0; 32];
-            sock.read(&mut buf).unwrap();
-            println!("received: {:?}", String::from_utf8(buf.to_vec()).unwrap());
-            sock.write(b"heard you").unwrap();
+            let size = sock.read(&mut buf).unwrap();
+            println!(
+                "received {} bytes: {:?}",
+                size,
+                String::from_utf8(buf.to_vec()).unwrap()
+            );
+            let _size = sock.write(b"heard you").unwrap();
         })
 }

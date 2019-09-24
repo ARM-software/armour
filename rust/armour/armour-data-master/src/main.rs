@@ -185,11 +185,11 @@ fn master_command(
     [<id>|all] allow all      request allow all policy
     [<id>|all] deny all       request deny all policy
     [<id>|all] debug on|off   enable/disable display of HTTP requests
-    [<id>|all] status         print status
-    [<id>|all] ports          list active ports
+    [<id>|all] status         retrieve and print status
     [<id>|all] shutdown       request shutdown
     [<id>|all] timeout <secs> server response timeout
     [<id>|all] policy <path>  read policy from <path> and send to instance
+    [<id>|all] print <path>   print policy from <path>
     [<id>|all] stop all       stop listening on all ports
     [<id>|all] start [tcp|streaming] <port>
                               start listening for HTTP/TCP requests on <port>
@@ -209,9 +209,8 @@ fn instance0_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captu
         Some("debug off") => Some(PolicyRequest::Debug(Protocol::All, false)),
         Some("debug on") => Some(PolicyRequest::Debug(Protocol::All, true)),
         Some("deny all") => Some(PolicyRequest::SetPolicy(Protocol::All, Policy::DenyAll)),
-        Some("ports") => Some(PolicyRequest::ActivePorts),
         Some("shutdown") => Some(PolicyRequest::Shutdown),
-        Some("status") => Some(PolicyRequest::PrintStatus),
+        Some("status") => Some(PolicyRequest::Status),
         Some("stop all") => Some(PolicyRequest::Stop(Protocol::All)),
         _ => {
             log::info!("unknown command");
@@ -263,13 +262,29 @@ fn instance1_command(
                 None
             }
         }
+        Some("print") => {
+            let path = PathBuf::from(arg);
+            match lang::Program::check_from_file(&path, &*POLICY_SIG) {
+                Ok(prog) => {
+                    log::info!("policy: {:02x?}", prog.blake2_hash().unwrap());
+                    prog.print()
+                }
+                Err(err) => {
+                    log::warn!(r#"{:?}: {}"#, path, err);
+                }
+            };
+            None
+        }
         Some("policy") => {
             let path = PathBuf::from(arg);
             match lang::Program::check_from_file(&path, &*POLICY_SIG) {
-                Ok(prog) => Some(PolicyRequest::SetPolicy(
-                    Protocol::All,
-                    Policy::Program(prog),
-                )),
+                Ok(prog) => {
+                    log::info!("sending policy: {:02x?}", prog.blake2_hash().unwrap());
+                    Some(PolicyRequest::SetPolicy(
+                        Protocol::All,
+                        Policy::Program(prog),
+                    ))
+                }
                 Err(err) => {
                     log::warn!(r#"{:?}: {}"#, path, err);
                     None

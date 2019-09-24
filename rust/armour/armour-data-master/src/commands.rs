@@ -17,12 +17,12 @@ lazy_static! {
 
 lazy_static! {
     pub static ref INSTANCE0: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>deny all|allow all|shutdown|ports|stop all|debug on|debug off|status)\s*$"#).unwrap();
+        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>deny all|allow all|shutdown|stop all|debug on|debug off|status)\s*$"#).unwrap();
 }
 
 lazy_static! {
     pub static ref INSTANCE1: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>policy|remote|start streaming|start tcp|start|stop|wait|timeout|run)\s+(?P<arg>.*)\s*$"#)
+        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>print|policy|start streaming|start tcp|start|stop|wait|timeout|run)\s+(?P<arg>.*)\s*$"#)
             .unwrap();
 }
 

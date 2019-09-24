@@ -62,18 +62,19 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
     fn is_deny_all(&self) -> bool {
         !(self.allow_all || self.program.has_function(interface::ALLOW_TCP_CONNECTION))
     }
-    fn print(&self) {
-        println!("== TCP Policy ==");
-        println!("debug is {}", if self.debug { "on" } else { "off" });
-        print!("policy is:");
-        if self.allow_all {
-            println!(" allow all")
+    fn status(&self) -> Box<interface::Status> {
+        let policy = if self.is_allow_all() {
+            interface::Policy::AllowAll
         } else if self.is_deny_all() {
-            println!(" deny all")
+            interface::Policy::DenyAll
         } else {
-            println!();
-            self.program.print()
-        }
+            interface::Policy::Program((*self.policy()).clone())
+        };
+        Box::new(interface::Status {
+            port: self.port(),
+            debug: self.debug(),
+            policy,
+        })
     }
 }
 

@@ -1,7 +1,7 @@
 //! actix-web support for Armour policies
 use super::{http_policy::RestPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_proxy};
 use actix::prelude::*;
-use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse, Protocol};
+use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse, Protocol, Status};
 use armour_policy::{lang, literals};
 use futures::{future, Future};
 use std::convert::TryInto;
@@ -22,7 +22,7 @@ pub trait Policy<P> {
     fn allow_all(&mut self);
     fn is_allow_all(&self) -> bool;
     fn is_deny_all(&self) -> bool;
-    fn print(&self);
+    fn status(&self) -> Box<Status>;
     fn evaluate<T: std::convert::TryFrom<literals::Literal> + 'static>(
         &self,
         function: &str,
@@ -107,10 +107,6 @@ impl PolicyActor {
             })
             .wait()
     }
-    fn print(&self) {
-        self.http.print();
-        self.tcp.print();
-    }
 }
 
 impl actix::io::WriteHandler<std::io::Error> for PolicyActor {}
@@ -132,7 +128,6 @@ impl Handler<PolicyRequest> for PolicyActor {
 
     fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) -> Self::Result {
         match msg {
-            PolicyRequest::PrintStatus => self.print(),
             PolicyRequest::Timeout(secs) => {
                 self.http
                     .set_timeout(std::time::Duration::from_secs(secs.into()));
@@ -150,9 +145,9 @@ impl Handler<PolicyRequest> for PolicyActor {
                 ctx.notify(PolicyRequest::Debug(Protocol::Rest, debug));
                 ctx.notify(PolicyRequest::Debug(Protocol::TCP, debug))
             }
-            PolicyRequest::ActivePorts => self.uds_framed.write(PolicyResponse::ActivePorts {
-                http: self.http.port(),
-                tcp: self.tcp.port(),
+            PolicyRequest::Status => self.uds_framed.write(PolicyResponse::Status {
+                http: self.http.status(),
+                tcp: self.tcp.status(),
             }),
             PolicyRequest::Stop(Protocol::Rest) => {
                 if self.http.stop() {
