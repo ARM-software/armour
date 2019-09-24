@@ -2,7 +2,7 @@
 // NOTE: no optimization
 use super::headers::Headers;
 use super::lang::{Block, Error, Expr, Program};
-use super::literals::{HttpRequest, Literal, Method, ToLiteral, VecSet};
+use super::literals::{HttpRequest, HttpResponse, Literal, Method, ToLiteral, VecSet};
 use super::parser::{As, Infix, Iter, Pat, Prefix};
 use futures::{
     future,
@@ -98,6 +98,12 @@ impl Literal {
             ("HttpRequest::query_pairs", Literal::HttpRequest(req)) => Some(req.query_pairs()),
             ("HttpRequest::header_pairs", Literal::HttpRequest(req)) => Some(req.header_pairs()),
             ("HttpRequest::headers", Literal::HttpRequest(req)) => Some(req.headers()),
+            ("HttpResponse::new", Literal::Int(code)) => Some(HttpResponse::literal(*code as u16)),
+            ("HttpResponse::status", Literal::HttpResponse(res)) => Some(res.status()),
+            ("HttpResponse::version", Literal::HttpResponse(res)) => Some(res.version()),
+            ("HttpResponse::reason", Literal::HttpResponse(res)) => Some(res.reason()),
+            ("HttpResponse::header_pairs", Literal::HttpResponse(req)) => Some(req.header_pairs()),
+            ("HttpResponse::headers", Literal::HttpResponse(req)) => Some(req.headers()),
             ("list::len", Literal::List(l)) => Some(Literal::Int(l.len() as i64)),
             ("list::reduce", Literal::List(l)) => {
                 if let Some(v) = l.get(0) {
@@ -158,6 +164,15 @@ impl Literal {
             ("HttpRequest::unique_header", Literal::HttpRequest(req), Literal::Str(h)) => {
                 Some(req.unique_header(&h))
             }
+            ("HttpResponse::header", Literal::HttpResponse(res), Literal::Str(h)) => {
+                Some(res.header(&h))
+            }
+            ("HttpResponse::unique_header", Literal::HttpResponse(res), Literal::Str(h)) => {
+                Some(res.unique_header(&h))
+            }
+            ("HttpResponse::set_reason", Literal::HttpResponse(req), Literal::Str(q)) => {
+                Some(Literal::HttpResponse(req.set_reason(q)))
+            }
             ("ID::add_host", Literal::ID(id), Literal::Str(q)) => Some(Literal::ID(id.add_host(q))),
             ("ID::add_ip", Literal::ID(id), Literal::IpAddr(q)) => Some(Literal::ID(id.add_ip(*q))),
             ("ID::set_port", Literal::ID(id), Literal::Int(q)) => {
@@ -186,6 +201,12 @@ impl Literal {
                 Literal::Str(h),
                 Literal::Data(v),
             ) => Some(Literal::HttpRequest(req.set_header(h, v))),
+            (
+                "HttpResponse::set_header",
+                Literal::HttpResponse(res),
+                Literal::Str(h),
+                Literal::Data(v),
+            ) => Some(Literal::HttpResponse(res.set_header(h, v))),
             _ => None,
         }
     }

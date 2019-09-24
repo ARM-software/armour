@@ -90,12 +90,63 @@ impl Default for Version {
 }
 
 #[derive(PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
+struct Headers {
+    headers: BTreeMap<String, Vec<Vec<u8>>>,
+}
+
+impl Headers {
+    pub fn header(&self, s: &str) -> Literal {
+        match self.headers.get(s) {
+            None => Literal::none(),
+            Some(vs) => Literal::List(vs.iter().map(|v| Literal::Data(v.clone())).collect()).some(),
+        }
+    }
+    pub fn unique_header(&self, s: &str) -> Literal {
+        match self.headers.get(s) {
+            Some(v) => match v.as_slice() {
+                [d] => Literal::Data(d.clone()).some(),
+                _ => Literal::none(),
+            },
+            _ => Literal::none(),
+        }
+    }
+    pub fn set_header(&mut self, k: &str, v: &[u8]) {
+        let s = v.to_vec();
+        if let Some(l) = self.headers.get_mut(k) {
+            l.push(s)
+        } else {
+            self.headers.insert(k.to_string(), vec![s]);
+        }
+    }
+    pub fn headers(&self) -> Literal {
+        Literal::List(
+            self.headers
+                .keys()
+                .map(|k| Literal::Str(k.to_string()))
+                .collect(),
+        )
+    }
+    pub fn header_pairs(&self) -> Literal {
+        let mut pairs = Vec::new();
+        for (k, vs) in self.headers.iter() {
+            for v in vs {
+                pairs.push(Literal::Tuple(vec![
+                    Literal::Str(k.to_string()),
+                    Literal::Data(v.to_vec()),
+                ]))
+            }
+        }
+        Literal::List(pairs)
+    }
+}
+
+#[derive(PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HttpRequest {
     method: Method,
     version: Version,
     path: String,
     query: String,
-    headers: BTreeMap<String, Vec<Vec<u8>>>,
+    headers: Headers,
 }
 
 impl HttpRequest {
@@ -152,49 +203,72 @@ impl HttpRequest {
         }
     }
     pub fn header(&self, s: &str) -> Literal {
-        match self.headers.get(s) {
-            None => Literal::none(),
-            Some(vs) => Literal::List(vs.iter().map(|v| Literal::Data(v.clone())).collect()).some(),
-        }
+        self.headers.header(s)
     }
     pub fn unique_header(&self, s: &str) -> Literal {
-        match self.headers.get(s) {
-            Some(v) => match v.as_slice() {
-                [d] => Literal::Data(d.clone()).some(),
-                _ => Literal::none(),
-            },
-            _ => Literal::none(),
-        }
+        self.headers.unique_header(s)
     }
     pub fn set_header(&self, k: &str, v: &[u8]) -> HttpRequest {
         let mut new = self.clone();
-        let s = v.to_vec();
-        if let Some(l) = new.headers.get_mut(k) {
-            l.push(s)
-        } else {
-            new.headers.insert(k.to_string(), vec![s]);
-        }
+        new.headers.set_header(k, v);
         new
     }
     pub fn headers(&self) -> Literal {
-        Literal::List(
-            self.headers
-                .keys()
-                .map(|k| Literal::Str(k.to_string()))
-                .collect(),
-        )
+        self.headers.headers()
     }
     pub fn header_pairs(&self) -> Literal {
-        let mut pairs = Vec::new();
-        for (k, vs) in self.headers.iter() {
-            for v in vs {
-                pairs.push(Literal::Tuple(vec![
-                    Literal::Str(k.to_string()),
-                    Literal::Data(v.to_vec()),
-                ]))
-            }
+        self.headers.header_pairs()
+    }
+}
+
+#[derive(PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
+pub struct HttpResponse {
+    version: Version,
+    status: u16,
+    headers: Headers,
+    reason: Option<String>,
+}
+
+impl HttpResponse {
+    pub fn literal(status: u16) -> Literal {
+        let mut new = HttpResponse::default();
+        new.status = status;
+        Literal::HttpResponse(new)
+    }
+    pub fn status(&self) -> Literal {
+        Literal::Int(i64::from(self.status))
+    }
+    pub fn version(&self) -> Literal {
+        Literal::Str(self.version.to_string())
+    }
+    pub fn header(&self, s: &str) -> Literal {
+        self.headers.header(s)
+    }
+    pub fn unique_header(&self, s: &str) -> Literal {
+        self.headers.unique_header(s)
+    }
+    pub fn reason(&self) -> Literal {
+        if let Some(ref reason) = self.reason {
+            Literal::Str(reason.clone()).some()
+        } else {
+            Literal::none()
         }
-        Literal::List(pairs)
+    }
+    pub fn set_reason(&self, reason: &str) -> HttpResponse {
+        let mut new = self.clone();
+        new.reason = Some(reason.to_string());
+        new
+    }
+    pub fn set_header(&self, k: &str, v: &[u8]) -> HttpResponse {
+        let mut new = self.clone();
+        new.headers.set_header(k, v);
+        new
+    }
+    pub fn headers(&self) -> Literal {
+        self.headers.headers()
+    }
+    pub fn header_pairs(&self) -> Literal {
+        self.headers.header_pairs()
     }
 }
 
@@ -291,16 +365,20 @@ impl ToLiteral for HttpRequest {
     }
 }
 
+impl ToLiteral for HttpResponse {
+    fn to_literal(&self) -> Literal {
+        Literal::Tuple(vec![self.version(), self.status(), self.header_pairs()])
+    }
+}
+
 impl ToLiteral for ID {
     fn to_literal(&self) -> Literal {
         Literal::Tuple(vec![self.hosts(), self.ips(), self.port()])
     }
 }
 
-impl From<(&str, &str, &str, &str, Vec<(&str, &[u8])>)> for HttpRequest {
-    #[allow(clippy::type_complexity)]
-    fn from(req: (&str, &str, &str, &str, Vec<(&str, &[u8])>)) -> Self {
-        let (method, version, path, query, h) = req;
+impl From<Vec<(&str, &[u8])>> for Headers {
+    fn from(h: Vec<(&str, &[u8])>) -> Self {
         let mut headers: BTreeMap<String, Vec<Vec<u8>>> = BTreeMap::new();
         for (k, v) in h.iter() {
             if let Some(l) = headers.get_mut(&k.to_string()) {
@@ -309,12 +387,20 @@ impl From<(&str, &str, &str, &str, Vec<(&str, &[u8])>)> for HttpRequest {
                 headers.insert(k.to_string(), vec![v.to_vec()]);
             }
         }
+        Headers { headers }
+    }
+}
+
+impl From<(&str, &str, &str, &str, Vec<(&str, &[u8])>)> for HttpRequest {
+    #[allow(clippy::type_complexity)]
+    fn from(req: (&str, &str, &str, &str, Vec<(&str, &[u8])>)) -> Self {
+        let (method, version, path, query, h) = req;
         HttpRequest {
             method: method.parse().unwrap_or_default(),
             version: version.parse().unwrap_or_default(),
             path: path.to_owned(),
             query: query.to_owned(),
-            headers,
+            headers: Headers::from(h),
         }
     }
 }
@@ -355,6 +441,7 @@ pub enum Literal {
     Data(Vec<u8>),
     Float(f64),
     HttpRequest(HttpRequest),
+    HttpResponse(HttpResponse),
     ID(ID),
     Int(i64),
     IpAddr(std::net::IpAddr),
@@ -379,6 +466,7 @@ impl Literal {
             Literal::Data(_) => Typ::Data,
             Literal::Float(_) => Typ::F64,
             Literal::HttpRequest(_) => Typ::HttpRequest,
+            Literal::HttpResponse(_) => Typ::HttpResponse,
             Literal::ID(_) => Typ::ID,
             Literal::Int(_) => Typ::I64,
             Literal::IpAddr(_) => Typ::IpAddr,
@@ -428,6 +516,7 @@ impl fmt::Display for Literal {
                 }
             }
             Literal::HttpRequest(r) => write!(f, "{:?}", r),
+            Literal::HttpResponse(r) => write!(f, "{:?}", r),
             Literal::ID(id) => write!(f, "{:?}", id),
             Literal::Int(i) => write!(f, "{}", i),
             Literal::IpAddr(ip) => write!(f, "{}", ip),

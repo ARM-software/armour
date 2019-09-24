@@ -120,6 +120,27 @@ impl Headers {
                 vec![Typ::HttpRequest, Typ::Str, Typ::Data],
                 Typ::HttpRequest,
             ),
+            "HttpResponse::new" => sig(vec![Typ::I64], Typ::HttpResponse),
+            "HttpResponse::status" => sig(vec![Typ::HttpResponse], Typ::I64),
+            "HttpResponse::version" => sig(vec![Typ::HttpResponse], Typ::Str),
+            "HttpResponse::reason" => sig(vec![Typ::HttpResponse], Typ::Str.option()),
+            "HttpResponse::set_reason" => sig(vec![Typ::HttpResponse, Typ::Str], Typ::HttpResponse),
+            "HttpResponse::header" => sig(
+                vec![Typ::HttpResponse, Typ::Str],
+                Typ::List(Box::new(Typ::Data)).option(),
+            ),
+            "HttpResponse::unique_header" => {
+                sig(vec![Typ::HttpResponse, Typ::Str], Typ::Data.option())
+            }
+            "HttpResponse::headers" => sig(vec![Typ::HttpResponse], Typ::List(Box::new(Typ::Str))),
+            "HttpResponse::header_pairs" => sig(
+                vec![Typ::HttpResponse],
+                Typ::List(Box::new(Typ::Tuple(vec![Typ::Str, Typ::Data]))),
+            ),
+            "HttpResponse::set_header" => sig(
+                vec![Typ::HttpResponse, Typ::Str, Typ::Data],
+                Typ::HttpResponse,
+            ),
             "IpAddr::lookup" => sig(
                 vec![Typ::Str],
                 Typ::Tuple(vec![Typ::List(Box::new(Typ::IpAddr))]),

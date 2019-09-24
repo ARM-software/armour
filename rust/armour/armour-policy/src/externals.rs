@@ -184,6 +184,7 @@ impl Externals {
             Literal::Data(d) => v.set_data(d),
             Literal::Float(f) => v.set_float64(*f),
             Literal::HttpRequest(req) => Externals::build_value(v, &req.to_literal())?,
+            Literal::HttpResponse(res) => Externals::build_value(v, &res.to_literal())?,
             Literal::ID(id) => Externals::build_value(v, &id.to_literal())?,
             Literal::Int(i) => v.set_int64(*i),
             Literal::IpAddr(ip) => Externals::build_value(v, &ip.to_literal())?,

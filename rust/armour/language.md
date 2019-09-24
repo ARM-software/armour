@@ -42,7 +42,7 @@ $ cargo run [input file]
 
     `Regex("a" | "b".*)`
 
-- **`HttpRequest`**
+- **`HttpRequest`**, **`HttpResponse`**
 
 - **`ID`**
 
@@ -287,12 +287,28 @@ function               | type
 | route                | `HttpRequest -> List<str>`                |
 | query                | `HttpRequest -> str`                      |
 | header               | `(HttpRequest, str) -> Option<List<data>>`|
+| unique_header        | `(HttpRequest, str) -> Option<data>`      |
 | headers              | `HttpRequest -> List<str>`                |
 | query_pairs          | `HttpRequest -> List<(str, str)>`         |
 | header_pairs         | `HttpRequest -> List<(str, data)>`        |
 | set_path             | `(HttpRequest, str) -> HttpRequest`       |
 | set_query            | `(HttpRequest, str) -> HttpRequest`       |
 | set_header           | `(HttpRequest, str, data) -> HttpRequest` |
+
+### HttpResponse::
+
+function               | type
+---------------------- | ----------------------------------------------
+| new                  | `i64 -> HttpResponse`                        |
+| status               | `HttpResponse -> i64`                        |
+| version              | `HttpResponse -> str`                        |
+| reason               | `HttpResponse -> Option<str>`                |
+| header               | `(HttpResponse, str) -> Option<List<data>>`  |
+| unique_header        | `(HttpResponse, str) -> Option<data>`        |
+| headers              | `HttpResponse -> List<str>`                  |
+| header_pairs         | `HttpResponse -> List<(str, data)>`          |
+| set_reason           | `(HttpResponse, str) -> HttpResponse `       |
+| set_header           | `(HttpResponse, str, data) -> HttpResponse ` |
 
 ### IpAddr::
 
