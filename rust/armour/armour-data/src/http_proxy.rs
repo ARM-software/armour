@@ -1,14 +1,14 @@
 //! HTTP proxy with Armour policies
 
-use super::policy::{
-    EvalRestFn, GetRestPolicy, PolicyActor, RestFn, RestPolicy, ToArmourExpression,
-};
+use super::http_policy::{EvalRestFn, GetRestPolicy, RestFn, RestPolicyStatus};
+use super::policy::PolicyActor;
+use super::ToArmourExpression;
 use actix_web::{
     client::{Client, ClientRequest, ClientResponse, PayloadError, SendRequestError},
     http::header::{ContentEncoding, HeaderName, HeaderValue},
     middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
-use armour_data_interface::{own_ip, ProxyConfig};
+use armour_data_interface::{own_ip, HttpConfig};
 use armour_policy::lang::Expr;
 use futures::{future, stream::Stream, Future};
 use std::collections::HashSet;
@@ -16,7 +16,7 @@ use std::net::IpAddr;
 
 pub fn start_proxy(
     policy: actix::Addr<PolicyActor>,
-    config: armour_data_interface::ProxyConfig,
+    config: armour_data_interface::HttpConfig,
 ) -> std::io::Result<actix_web::dev::Server> {
     let socket_address = format!("0.0.0.0:{}", config.port);
     let encoding = if config.response_streaming {
@@ -47,7 +47,7 @@ struct Connection {
 }
 
 impl Connection {
-    fn new(p: &RestPolicy, req: &HttpRequest, config: &ProxyConfig) -> Result<Connection, ()> {
+    fn new(p: &RestPolicyStatus, req: &HttpRequest, config: &HttpConfig) -> Result<Connection, ()> {
         // obtain the forwarding URL
         let url = match req.forward_url((*config).port) {
             Ok(url) => url,
@@ -62,17 +62,17 @@ impl Connection {
             (p.allow_all || p.server_payload.is_none()) && config.response_streaming;
         let (from, to) = match p {
             // the policy inpterpreter will be needing the endpoint IDs
-            RestPolicy {
+            RestPolicyStatus {
                 allow_all: false,
                 require: Some(n),
                 ..
             }
-            | RestPolicy {
+            | RestPolicyStatus {
                 allow_all: false,
                 client_payload: Some(n),
                 ..
             }
-            | RestPolicy {
+            | RestPolicyStatus {
                 allow_all: false,
                 server_payload: Some(n),
                 ..
@@ -109,10 +109,10 @@ fn proxy(
     payload: web::Payload,
     policy: web::Data<actix::Addr<PolicyActor>>,
     client: web::Data<Client>,
-    config: web::Data<ProxyConfig>,
+    config: web::Data<HttpConfig>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     policy.send(GetRestPolicy).then(|p| {
-        if let Ok(RestPolicy { debug: true, .. }) = p {
+        if let Ok(RestPolicyStatus { debug: true, .. }) = p {
             debug!("{:?}", req)
         }
         match p {
@@ -121,13 +121,13 @@ fn proxy(
                 match Connection::new(&p, &req, &config) {
                     Ok(connection) => match p {
                         // "allow all" policy
-                        RestPolicy {
+                        RestPolicyStatus {
                             allow_all: true, ..
                         } => future::Either::B(future::Either::B(request(
                             p, req, connection, payload, policy, client, config,
                         ))),
                         // deny all
-                        RestPolicy {
+                        RestPolicyStatus {
                             require: None,
                             client_payload: None,
                             server_payload: None,
@@ -136,7 +136,7 @@ fn proxy(
                             "request denied",
                         )))),
                         // check "require"
-                        RestPolicy {
+                        RestPolicyStatus {
                             require: Some(arg_count),
                             connection_number,
                             ..
@@ -177,9 +177,11 @@ fn proxy(
                             ))
                         }
                         // no "require" function
-                        RestPolicy { require: None, .. } => future::Either::B(future::Either::B(
-                            request(p, req, connection, payload, policy, client, config),
-                        )),
+                        RestPolicyStatus { require: None, .. } => {
+                            future::Either::B(future::Either::B(request(
+                                p, req, connection, payload, policy, client, config,
+                            )))
+                        }
                     },
                     // could not obtain forwarding URL
                     Err(()) => {
@@ -207,17 +209,17 @@ fn proxy(
 
 // Process request (so far it's allow by the policy)
 fn request(
-    p: RestPolicy,
+    p: RestPolicyStatus,
     req: HttpRequest,
     connection: Connection,
     payload: web::Payload,
     policy: web::Data<actix::Addr<PolicyActor>>,
     client: web::Data<Client>,
-    config: web::Data<ProxyConfig>,
+    config: web::Data<HttpConfig>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match p {
         // check client payload
-        RestPolicy {
+        RestPolicyStatus {
             allow_all: false,
             client_payload: Some(arg_count),
             debug,
@@ -298,7 +300,7 @@ fn request(
                 }),
         ),
         // allow client payload without check
-        RestPolicy { debug, timeout, .. } => {
+        RestPolicyStatus { debug, timeout, .. } => {
             let mut client_request = client
                 .request_from(connection.url(), req.head())
                 .process_headers(req.peer_addr())
@@ -345,7 +347,7 @@ fn request(
 
 /// Send server response back to client
 fn response(
-    p: RestPolicy,
+    p: RestPolicyStatus,
     policy: web::Data<actix::Addr<PolicyActor>>,
     res: Result<
         ClientResponse<impl Stream<Item = web::Bytes, Error = PayloadError> + 'static>,
@@ -369,7 +371,7 @@ fn response(
                 debug!("{:?}", client_resp)
             }
             future::Either::A(match p {
-                RestPolicy {
+                RestPolicyStatus {
                     allow_all: false,
                     server_payload: Some(arg_count),
                     connection_number,

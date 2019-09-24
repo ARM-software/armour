@@ -106,28 +106,38 @@ lazy_static! {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct ProxyConfig {
+pub struct HttpConfig {
     pub port: u16,
     pub request_streaming: bool,
     pub response_streaming: bool,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub enum Protocol {
+    All,
+    Rest,
+    TCP,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum Policy {
+    AllowAll,
+    DenyAll,
+    Program(Program),
+}
+
 /// Policy update request messages
 #[derive(Serialize, Deserialize, Message, Clone)]
 pub enum PolicyRequest {
-    AllowAll,
-    DenyAll,
+    ActivePorts,
+    Debug(Protocol, bool),
     PrintStatus,
-    QueryActivePorts,
+    SetPolicy(Protocol, Policy),
     Shutdown,
-    StopAll,
-    Debug(bool),
-    Start(ProxyConfig),
+    StartHttp(HttpConfig),
     StartTcp(u16),
-    Stop(u16),
+    Stop(Protocol),
     Timeout(u8),
-    UpdateFromData(Program),
-    UpdateFromFile(std::path::PathBuf),
 }
 
 /// Messages from proxy instance to master
@@ -138,10 +148,7 @@ pub enum PolicyResponse {
     ShuttingDown,
     UpdatedPolicy,
     RequestFailed,
-    ActivePorts {
-        http: HashSet<u16>,
-        tcp: HashSet<u16>,
-    },
+    ActivePorts { http: Option<u16>, tcp: Option<u16> },
 }
 
 /// Transport codec for Master to Proxy instance communication

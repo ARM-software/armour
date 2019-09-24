@@ -1,14 +1,16 @@
-use super::{policy, Stop};
+use super::{policy, tcp_policy, Stop};
 use actix::prelude::*;
 use bytes::{Bytes, BytesMut};
 use futures::{future, Future};
-use policy::{PolicyActor, TcpPolicy};
+use policy::PolicyActor;
 use std::collections::HashSet;
 use std::net::SocketAddr;
-#[cfg(target_os = "linux")]
-use std::os::unix::io::AsRawFd;
+use tcp_policy::TcpPolicyStatus;
 use tokio_codec::{BytesCodec, FramedRead};
 use tokio_io::{io::WriteHalf, AsyncRead};
+
+#[cfg(target_os = "linux")]
+use std::os::unix::io::AsRawFd;
 
 pub fn start_proxy(
     proxy_port: u16,
@@ -131,10 +133,10 @@ impl Handler<TcpConnect> for TcpDataServer {
                 } else {
                     let server = self
                         .policy
-                        .send(policy::GetTcpPolicy(peer_addr, socket))
+                        .send(tcp_policy::GetTcpPolicy(peer_addr, socket))
                         .then(move |res| match res {
                             // allow connection
-                            Ok(Ok(TcpPolicy::Allow(connection))) => future::Either::A(
+                            Ok(Ok(TcpPolicyStatus::Allow(connection))) => future::Either::A(
                                 tokio_tcp::TcpStream::connect(&socket).and_then(move |sock| {
                                     let client = TcpDataClientInstance::create(|ctx| {
                                         let (r, w) = msg.0.split();
@@ -173,7 +175,7 @@ impl Handler<TcpConnect> for TcpDataServer {
                                 }),
                             ),
                             // reject
-                            Ok(Ok(TcpPolicy::Block)) => {
+                            Ok(Ok(TcpPolicyStatus::Block)) => {
                                 info!("connection denied");
                                 if let Err(e) = msg.0.shutdown(std::net::Shutdown::Both) {
                                     warn!("{}", e);
@@ -319,7 +321,7 @@ struct TcpDataServerInstance {
     master: Addr<TcpDataMaster>,
     client: Addr<TcpDataClientInstance>,
     tcp_framed: actix::io::FramedWrite<WriteHalf<tokio_tcp::TcpStream>, BytesCodec>,
-    connection: Option<policy::ConnectionStats>,
+    connection: Option<tcp_policy::ConnectionStats>,
 }
 
 impl Actor for TcpDataServerInstance {

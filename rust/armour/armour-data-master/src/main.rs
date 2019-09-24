@@ -2,7 +2,7 @@
 //!
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
-use armour_data_interface::{PolicyRequest, ProxyConfig, POLICY_SIG};
+use armour_data_interface::{HttpConfig, Policy, PolicyRequest, Protocol, POLICY_SIG};
 use armour_data_master as master;
 use armour_policy::lang;
 use clap::{crate_version, App, Arg};
@@ -190,9 +190,7 @@ fn master_command(
     [<id>|all] shutdown       request shutdown
     [<id>|all] timeout <secs> server response timeout
     [<id>|all] policy <path>  read policy from <path> and send to instance
-    [<id>|all] remote <path>  ask instance to read policy from <path>
     [<id>|all] stop all       stop listening on all ports
-    [<id>|all] stop <port>    stop listening on <port>
     [<id>|all] start [tcp|streaming] <port>
                               start listening for HTTP/TCP requests on <port>
 
@@ -207,14 +205,14 @@ fn master_command(
 fn instance0_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captures) {
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     if let Some(request) = match command.as_ref().map(String::as_str) {
-        Some("allow all") => Some(PolicyRequest::AllowAll),
-        Some("debug off") => Some(PolicyRequest::Debug(false)),
-        Some("debug on") => Some(PolicyRequest::Debug(true)),
-        Some("deny all") => Some(PolicyRequest::DenyAll),
-        Some("ports") => Some(PolicyRequest::QueryActivePorts),
+        Some("allow all") => Some(PolicyRequest::SetPolicy(Protocol::All, Policy::AllowAll)),
+        Some("debug off") => Some(PolicyRequest::Debug(Protocol::All, false)),
+        Some("debug on") => Some(PolicyRequest::Debug(Protocol::All, true)),
+        Some("deny all") => Some(PolicyRequest::SetPolicy(Protocol::All, Policy::DenyAll)),
+        Some("ports") => Some(PolicyRequest::ActivePorts),
         Some("shutdown") => Some(PolicyRequest::Shutdown),
         Some("status") => Some(PolicyRequest::PrintStatus),
-        Some("stop all") => Some(PolicyRequest::StopAll),
+        Some("stop all") => Some(PolicyRequest::Stop(Protocol::All)),
         _ => {
             log::info!("unknown command");
             None
@@ -244,18 +242,14 @@ fn instance1_command(
                 None
             }
         }
-        Some(s @ "start") | Some(s @ "start streaming") | Some(s @ "stop") => {
+        Some(s @ "start") | Some(s @ "start streaming") => {
             if let Ok(port) = arg.parse::<u16>() {
-                Some(if s.starts_with("start") {
-                    let streaming = s.ends_with("streaming");
-                    PolicyRequest::Start(ProxyConfig {
-                        port,
-                        request_streaming: streaming,
-                        response_streaming: streaming,
-                    })
-                } else {
-                    PolicyRequest::Stop(port)
-                })
+                let streaming = s.ends_with("streaming");
+                Some(PolicyRequest::StartHttp(HttpConfig {
+                    port,
+                    request_streaming: streaming,
+                    response_streaming: streaming,
+                }))
             } else {
                 log::warn!("{}: expecting port number, got {}", s, arg);
                 None
@@ -272,14 +266,16 @@ fn instance1_command(
         Some("policy") => {
             let path = PathBuf::from(arg);
             match lang::Program::check_from_file(&path, &*POLICY_SIG) {
-                Ok(prog) => Some(PolicyRequest::UpdateFromData(prog)),
+                Ok(prog) => Some(PolicyRequest::SetPolicy(
+                    Protocol::All,
+                    Policy::Program(prog),
+                )),
                 Err(err) => {
                     log::warn!(r#"{:?}: {}"#, path, err);
                     None
                 }
             }
         }
-        Some("remote") => Some(PolicyRequest::UpdateFromFile(PathBuf::from(arg))),
         Some("wait") => {
             if commands::instance(&caps) == master::Instances::SoleInstance {
                 if let Ok(delay) = arg.parse::<u8>() {

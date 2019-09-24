@@ -454,3 +454,25 @@ impl fmt::Display for Literal {
         }
     }
 }
+
+impl std::convert::TryFrom<Literal> for bool {
+    type Error = ();
+    fn try_from(l: Literal) -> Result<bool, Self::Error> {
+        if let Literal::Bool(b) = l {
+            Ok(b)
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl std::convert::TryFrom<Literal> for () {
+    type Error = ();
+    fn try_from(l: Literal) -> Result<(), Self::Error> {
+        if let Literal::Unit = l {
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+}

@@ -1,6 +1,6 @@
 use actix::prelude::*;
 use armour_data::{http_proxy, policy::PolicyActor};
-use armour_data_interface::{PolicyRequest, ProxyConfig};
+use armour_data_interface::{HttpConfig, PolicyRequest};
 use clap::{crate_version, App as ClapApp, Arg};
 use std::env;
 
@@ -71,7 +71,7 @@ fn main() -> std::io::Result<()> {
 
     // start a proxy server
     if let Some(port) = proxy_port {
-        policy.do_send(PolicyRequest::Start(ProxyConfig {
+        policy.do_send(PolicyRequest::StartHttp(HttpConfig {
             port,
             request_streaming: false,
             response_streaming: false,
