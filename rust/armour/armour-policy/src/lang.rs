@@ -1257,13 +1257,22 @@ pub struct Program {
     pub headers: Headers,
 }
 
+struct Hash<'a>(&'a [u8]);
+
+impl<'a> std::fmt::Display for Hash<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        for byte in self.0 {
+            std::fmt::LowerHex::fmt(byte, f)?
+        }
+        write!(f, "")
+    }
+}
+
 impl Program {
-    pub fn blake2_hash(&self) -> Option<Vec<u8>> {
+    pub fn blake2_hash(&self) -> Option<String> {
         bincode::serialize(self)
             .map(|bytes| {
-                blake2_rfc::blake2b::blake2b(64, b"armour", &bytes)
-                    .as_bytes()
-                    .to_vec()
+                Hash(blake2_rfc::blake2b::blake2b(24, b"armour", &bytes).as_bytes()).to_string()
             })
             .ok()
     }

@@ -170,7 +170,7 @@ impl std::fmt::Display for Status {
         match &self.policy {
             Policy::AllowAll => writeln!(f, "allow all"),
             Policy::DenyAll => writeln!(f, "deny all"),
-            Policy::Program(prog) => writeln!(f, "{:02x?}", prog.blake2_hash().unwrap()),
+            Policy::Program(prog) => writeln!(f, "{}", prog.blake2_hash().unwrap()),
         }
     }
 }

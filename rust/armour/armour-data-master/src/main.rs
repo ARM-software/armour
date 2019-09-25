@@ -279,7 +279,7 @@ fn instance1_command(
             let path = PathBuf::from(arg);
             match lang::Program::check_from_file(&path, &*POLICY_SIG) {
                 Ok(prog) => {
-                    log::info!("sending policy: {:02x?}", prog.blake2_hash().unwrap());
+                    log::info!("sending policy: {}", prog.blake2_hash().unwrap());
                     Some(PolicyRequest::SetPolicy(
                         Protocol::All,
                         Policy::Program(prog),
