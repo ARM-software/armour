@@ -5,7 +5,7 @@ extern crate log;
 
 use actix::prelude::*;
 use actix_web::web;
-use armour_policy::{lang, literals};
+use armour_policy::{expressions, literals};
 
 #[derive(Message)]
 pub struct Stop;
@@ -18,20 +18,20 @@ pub mod tcp_proxy;
 
 /// Trait for converting rust types into Armour expressions
 pub trait ToArmourExpression {
-    fn to_expression(&self) -> lang::Expr;
+    fn to_expression(&self) -> expressions::Expr;
 }
 
 // convert payloads into Armour-language expressions
 impl ToArmourExpression for usize {
-    fn to_expression(&self) -> lang::Expr {
-        lang::Expr::i64(*self as i64)
+    fn to_expression(&self) -> expressions::Expr {
+        expressions::Expr::i64(*self as i64)
     }
 }
 
 /// Convert an actix-web HttpRequest into an equivalent Armour language literal
 impl ToArmourExpression for web::HttpRequest {
-    fn to_expression(&self) -> lang::Expr {
-        lang::Expr::http_request(literals::HttpRequest::from((
+    fn to_expression(&self) -> expressions::Expr {
+        expressions::Expr::http_request(literals::HttpRequest::from((
             self.method().as_str(),
             format!("{:?}", self.version()).as_str(),
             self.path(),
@@ -46,9 +46,9 @@ impl ToArmourExpression for web::HttpRequest {
 
 /// Convert an actix-web HttpResponse into an equivalent Armour language literal
 impl ToArmourExpression for web::HttpResponse {
-    fn to_expression(&self) -> lang::Expr {
+    fn to_expression(&self) -> expressions::Expr {
         let head = self.head();
-        lang::Expr::http_response(literals::HttpResponse::from((
+        expressions::Expr::http_response(literals::HttpResponse::from((
             format!("{:?}", head.version).as_str(),
             self.status().as_u16(),
             head.reason,
@@ -62,21 +62,21 @@ impl ToArmourExpression for web::HttpResponse {
 
 // convert payloads into Armour-language expressions
 impl ToArmourExpression for web::Bytes {
-    fn to_expression(&self) -> lang::Expr {
-        lang::Expr::data(self)
+    fn to_expression(&self) -> expressions::Expr {
+        expressions::Expr::data(self)
     }
 }
 
 // convert payloads into Armour-language expressions
 impl ToArmourExpression for web::BytesMut {
-    fn to_expression(&self) -> lang::Expr {
-        lang::Expr::data(self)
+    fn to_expression(&self) -> expressions::Expr {
+        expressions::Expr::data(self)
     }
 }
 
 // convert socket addresses into Armour-language expressions (of type ID)
 impl ToArmourExpression for std::net::SocketAddr {
-    fn to_expression(&self) -> lang::Expr {
+    fn to_expression(&self) -> expressions::Expr {
         let mut id = literals::ID::default();
         let ip = self.ip();
         if ip.is_ipv4() {
@@ -86,23 +86,23 @@ impl ToArmourExpression for std::net::SocketAddr {
         if let Ok(host) = dns_lookup::lookup_addr(&ip) {
             id = id.add_host(&host)
         }
-        lang::Expr::id(id)
+        expressions::Expr::id(id)
     }
 }
 
 impl ToArmourExpression for Option<std::net::SocketAddr> {
-    fn to_expression(&self) -> lang::Expr {
+    fn to_expression(&self) -> expressions::Expr {
         if let Some(addr) = self {
             addr.to_expression()
         } else {
-            lang::Expr::id(literals::ID::default())
+            expressions::Expr::id(literals::ID::default())
         }
     }
 }
 
 // convert URLs into Armour-language expressions (of type ID)
 impl ToArmourExpression for url::Url {
-    fn to_expression(&self) -> lang::Expr {
+    fn to_expression(&self) -> expressions::Expr {
         let mut id = literals::ID::default();
         if let Some(host) = self.host_str() {
             id = id.add_host(host);
@@ -121,6 +121,6 @@ impl ToArmourExpression for url::Url {
                 s => log::debug!("scheme is: {}", s),
             }
         }
-        lang::Expr::id(id)
+        expressions::Expr::id(id)
     }
 }

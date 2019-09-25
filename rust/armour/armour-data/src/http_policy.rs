@@ -2,7 +2,7 @@
 use super::policy::{Policy, PolicyActor};
 use actix::prelude::*;
 use armour_data_interface as interface;
-use armour_policy::lang;
+use armour_policy::{lang, expressions};
 use futures::Future;
 use std::sync::Arc;
 
@@ -162,15 +162,15 @@ pub enum RestFn {
 }
 
 /// Request evaluation of a (REST) policy function
-pub struct EvalRestFn(pub RestFn, pub Vec<lang::Expr>);
+pub struct EvalRestFn(pub RestFn, pub Vec<expressions::Expr>);
 
 impl Message for EvalRestFn {
-    type Result = Result<bool, lang::Error>;
+    type Result = Result<bool, expressions::Error>;
 }
 
 // handle requests to evaluate the Armour policy
 impl Handler<EvalRestFn> for PolicyActor {
-    type Result = Box<dyn Future<Item = bool, Error = lang::Error>>;
+    type Result = Box<dyn Future<Item = bool, Error = expressions::Error>>;
 
     fn handle(&mut self, msg: EvalRestFn, _ctx: &mut Context<Self>) -> Self::Result {
         let function = match msg.0 {

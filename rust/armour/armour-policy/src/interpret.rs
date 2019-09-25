@@ -1,7 +1,8 @@
 /// policy language interpreter
 // NOTE: no optimization
+use super::expressions::{Block, Error, Expr};
 use super::headers::Headers;
-use super::lang::{Block, Error, Expr, Program};
+use super::lang::Program;
 use super::literals::{HttpRequest, HttpResponse, Literal, Method, ToLiteral, VecSet};
 use super::parser::{As, Infix, Iter, Pat, Prefix};
 use futures::{

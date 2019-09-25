@@ -4,7 +4,7 @@ use super::tcp_proxy;
 use super::{Stop, ToArmourExpression};
 use actix::prelude::*;
 use armour_data_interface as interface;
-use armour_policy::lang;
+use armour_policy::{expressions, lang};
 use futures::{future, Future};
 use std::sync::Arc;
 
@@ -95,11 +95,11 @@ pub enum TcpPolicyStatus {
 }
 
 impl Message for GetTcpPolicy {
-    type Result = Result<TcpPolicyStatus, lang::Error>;
+    type Result = Result<TcpPolicyStatus, expressions::Error>;
 }
 
 impl Handler<GetTcpPolicy> for PolicyActor {
-    type Result = Box<dyn Future<Item = TcpPolicyStatus, Error = lang::Error>>;
+    type Result = Box<dyn Future<Item = TcpPolicyStatus, Error = expressions::Error>>;
 
     fn handle(&mut self, msg: GetTcpPolicy, _ctx: &mut Context<Self>) -> Self::Result {
         let GetTcpPolicy(from, to) = msg;
@@ -144,13 +144,13 @@ impl Handler<GetTcpPolicy> for PolicyActor {
 pub struct ConnectionStats {
     pub sent: usize,
     pub received: usize,
-    pub from: lang::Expr,
-    pub to: lang::Expr,
-    pub number: lang::Expr,
+    pub from: expressions::Expr,
+    pub to: expressions::Expr,
+    pub number: expressions::Expr,
 }
 
 impl ConnectionStats {
-    pub fn new(from: &lang::Expr, to: &lang::Expr, number: &lang::Expr) -> ConnectionStats {
+    pub fn new(from: &expressions::Expr, to: &expressions::Expr, number: &expressions::Expr) -> ConnectionStats {
         ConnectionStats {
             sent: 0,
             received: 0,

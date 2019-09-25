@@ -2,7 +2,7 @@
 use super::{http_policy::RestPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_proxy};
 use actix::prelude::*;
 use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse, Protocol, Status};
-use armour_policy::{lang, literals};
+use armour_policy::{expressions, lang, literals};
 use futures::{future, Future};
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -25,8 +25,8 @@ pub trait Policy<P> {
     fn evaluate<T: std::convert::TryFrom<literals::Literal> + 'static>(
         &self,
         function: &str,
-        args: Vec<lang::Expr>,
-    ) -> Box<dyn Future<Item = T, Error = lang::Error>> {
+        args: Vec<expressions::Expr>,
+    ) -> Box<dyn Future<Item = T, Error = expressions::Error>> {
         let now = if self.debug() {
             info!(r#"evaluting "{}""#, function);
             Some(std::time::Instant::now())
@@ -34,7 +34,7 @@ pub trait Policy<P> {
             None
         };
         Box::new(
-            lang::Expr::call(function, args)
+            expressions::Expr::call(function, args)
                 .evaluate(self.policy())
                 .and_then(move |result| {
                     if let Some(elapsed) = now.map(|t| t.elapsed()) {
@@ -42,14 +42,14 @@ pub trait Policy<P> {
                         info!("evaluate time: {:?}", elapsed)
                     };
                     match result {
-                        lang::Expr::LitExpr(lit) => {
+                        expressions::Expr::LitExpr(lit) => {
                             if let Ok(r) = lit.try_into() {
                                 future::ok(r)
                             } else {
-                                future::err(lang::Error::new("literal has wrong type"))
+                                future::err(expressions::Error::new("literal has wrong type"))
                             }
                         }
-                        _ => future::err(lang::Error::new("did not evaluate to a literal")),
+                        _ => future::err(expressions::Error::new("did not evaluate to a literal")),
                     }
                 }),
         )

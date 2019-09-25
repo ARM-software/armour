@@ -9,7 +9,7 @@ use actix_web::{
     middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
 use armour_data_interface::{own_ip, HttpConfig};
-use armour_policy::lang::Expr;
+use armour_policy::expressions::Expr;
 use futures::{future, stream::Stream, Future};
 use std::collections::HashSet;
 use std::net::IpAddr;

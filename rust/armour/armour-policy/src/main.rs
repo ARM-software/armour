@@ -1,5 +1,5 @@
 /// Armour policy language
-use armour_policy::lang;
+use armour_policy::{expressions, lang};
 use clap::{crate_version, App, Arg};
 use futures::{future, Future};
 use rustyline::{error::ReadlineError, Editor};
@@ -74,7 +74,7 @@ fn main() -> io::Result<()> {
                 let line = line.trim();
                 if line != "" {
                     rl.add_history_entry(line);
-                    match lang::Expr::from_string(line, &headers) {
+                    match expressions::Expr::from_string(line, &headers) {
                         Ok(e) => {
                             // println!("{:#?}", e);
                             let fut = e

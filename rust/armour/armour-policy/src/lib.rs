@@ -22,7 +22,9 @@ pub mod externals;
 pub mod headers;
 /// Policy language interpreter
 pub mod interpret;
-/// Language AST and interface
+/// Language AST
+pub mod expressions;
+/// Language interface
 pub mod lang;
 /// Lexer implemented using [nom](../nom/index.html)
 pub mod lexer;
