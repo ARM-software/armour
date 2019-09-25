@@ -23,11 +23,8 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
     fn port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|(p, _)| *p)
     }
-    fn proxy(&self) -> Option<Addr<tcp_proxy::TcpDataServer>> {
-        self.proxy.as_ref().map(|(_, s)| s.clone())
-    }
     fn stop(&mut self) -> bool {
-        if let Some(server) = self.proxy() {
+        if let Some((_, ref server)) = self.proxy {
             server.do_send(Stop);
             self.proxy = None;
             true

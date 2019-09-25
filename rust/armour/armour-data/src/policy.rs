@@ -13,7 +13,6 @@ pub trait Policy<P> {
     fn start(&mut self, port: u16, proxy: P);
     fn stop(&mut self) -> bool;
     fn port(&self) -> Option<u16>;
-    fn proxy(&self) -> Option<P>;
     fn set_policy(&mut self, p: lang::Program);
     fn policy(&self) -> Arc<lang::Program>;
     fn set_debug(&mut self, _: bool);
@@ -29,7 +28,7 @@ pub trait Policy<P> {
         args: Vec<lang::Expr>,
     ) -> Box<dyn Future<Item = T, Error = lang::Error>> {
         let now = if self.debug() {
-            debug!(r#"evaluting "{}""#, function);
+            info!(r#"evaluting "{}""#, function);
             Some(std::time::Instant::now())
         } else {
             None
@@ -39,8 +38,8 @@ pub trait Policy<P> {
                 .evaluate(self.policy())
                 .and_then(move |result| {
                     if let Some(elapsed) = now.map(|t| t.elapsed()) {
-                        debug!("result: {:?}", result);
-                        debug!("evaluate time: {:?}", elapsed)
+                        info!("result: {}", result);
+                        info!("evaluate time: {:?}", elapsed)
                     };
                     match result {
                         lang::Expr::LitExpr(lit) => {

@@ -22,11 +22,8 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
     fn port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|(p, _)| *p)
     }
-    fn proxy(&self) -> Option<actix_web::dev::Server> {
-        self.proxy.as_ref().map(|(_, s)| s.clone())
-    }
     fn stop(&mut self) -> bool {
-        if let Some(server) = self.proxy() {
+        if let Some((_, ref server)) = self.proxy {
             server.stop(true); // graceful stop
             self.proxy = None;
             true
@@ -62,7 +59,8 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
         !(self.allow_all
             || self.program.has_function(interface::ALLOW_REST_REQUEST)
             || self.program.has_function(interface::ALLOW_CLIENT_PAYLOAD)
-            || self.program.has_function(interface::ALLOW_SERVER_PAYLOAD))
+            || self.program.has_function(interface::ALLOW_SERVER_PAYLOAD)
+            || self.program.has_function(interface::ALLOW_REST_RESPONSE))
     }
     fn status(&self) -> Box<interface::Status> {
         let policy = if self.is_allow_all() {
@@ -100,9 +98,10 @@ impl RestPolicy {
                 debug: self.debug,
                 timeout: self.timeout,
                 connection_number,
-                require: None,
+                request: None,
                 client_payload: None,
                 server_payload: None,
+                response: None,
             }
         } else {
             let program = &self.program;
@@ -111,9 +110,10 @@ impl RestPolicy {
                 debug: self.debug,
                 timeout: self.timeout,
                 connection_number,
-                require: program.arg_count(interface::ALLOW_REST_REQUEST),
+                request: program.arg_count(interface::ALLOW_REST_REQUEST),
                 client_payload: program.arg_count(interface::ALLOW_CLIENT_PAYLOAD),
                 server_payload: program.arg_count(interface::ALLOW_SERVER_PAYLOAD),
+                response: program.arg_count(interface::ALLOW_REST_REQUEST),
             }
         }
     }
@@ -136,9 +136,10 @@ pub struct RestPolicyStatus {
     pub debug: bool,
     pub timeout: std::time::Duration,
     pub connection_number: usize,
-    pub require: Option<u8>,
+    pub request: Option<u8>,
     pub client_payload: Option<u8>,
     pub server_payload: Option<u8>,
+    pub response: Option<u8>,
 }
 
 // handle request to get current policy status information
@@ -157,6 +158,7 @@ pub enum RestFn {
     Request,
     ClientPayload,
     ServerPayload,
+    Response,
 }
 
 /// Request evaluation of a (REST) policy function
@@ -175,6 +177,7 @@ impl Handler<EvalRestFn> for PolicyActor {
             RestFn::Request => interface::ALLOW_REST_REQUEST,
             RestFn::ClientPayload => interface::ALLOW_CLIENT_PAYLOAD,
             RestFn::ServerPayload => interface::ALLOW_SERVER_PAYLOAD,
+            RestFn::Response => interface::ALLOW_REST_RESPONSE,
         };
         self.http.evaluate(function, msg.1)
     }

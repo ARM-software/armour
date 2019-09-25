@@ -32,6 +32,12 @@ fn allow_server_payload(payload: data, from: ID, to: ID, n: i64) -> bool {
   true
 }
 
+// REST response allow/deny
+fn allow_rest_response(res: HttpResponse, from: ID, to: ID, n: i64) -> bool {
+  async logger::log(res.header("date"));
+  res.status() == 200
+}
+
 // TCP connection allow/deny
 fn allow_tcp_connection(from: ID, to: ID, n: i64) -> bool {
   async logger::tcp(n, from, to);

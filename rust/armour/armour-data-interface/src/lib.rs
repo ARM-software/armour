@@ -49,6 +49,7 @@ trait SerializeEncoder<T: serde::Serialize, E: std::convert::From<std::io::Error
 pub const ALLOW_REST_REQUEST: &str = "allow_rest_request";
 pub const ALLOW_CLIENT_PAYLOAD: &str = "allow_client_payload";
 pub const ALLOW_SERVER_PAYLOAD: &str = "allow_server_payload";
+pub const ALLOW_REST_RESPONSE: &str = "allow_rest_response";
 pub const ALLOW_TCP_CONNECTION: &str = "allow_tcp_connection";
 pub const ON_TCP_DISCONNECT: &str = "on_tcp_disconnect";
 
@@ -65,6 +66,17 @@ lazy_static! {
                     Signature::new(vec![Typ::HttpRequest, Typ::ID, Typ::ID], Typ::Bool),
                     Signature::new(vec![Typ::HttpRequest], Typ::Bool),
                     Signature::new(Vec::new(), Typ::Bool),
+                ],
+            ),
+            (
+                ALLOW_REST_RESPONSE,
+                vec![
+                    Signature::new(
+                        vec![Typ::HttpResponse, Typ::ID, Typ::ID, Typ::I64],
+                        Typ::Bool,
+                    ),
+                    Signature::new(vec![Typ::HttpResponse, Typ::ID, Typ::ID], Typ::Bool),
+                    Signature::new(vec![Typ::HttpResponse], Typ::Bool),
                 ],
             ),
             (

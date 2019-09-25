@@ -405,6 +405,19 @@ impl From<(&str, &str, &str, &str, Vec<(&str, &[u8])>)> for HttpRequest {
     }
 }
 
+impl From<(&str, u16, Option<&str>, Vec<(&str, &[u8])>)> for HttpResponse {
+    #[allow(clippy::type_complexity)]
+    fn from(res: (&str, u16, Option<&str>, Vec<(&str, &[u8])>)) -> Self {
+        let (version, status, reason, h) = res;
+        HttpResponse {
+            version: version.parse().unwrap_or_default(),
+            status,
+            reason: reason.map(|s| s.to_string()),
+            headers: Headers::from(h),
+        }
+    }
+}
+
 pub struct VecSet;
 
 impl VecSet {

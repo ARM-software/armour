@@ -44,6 +44,22 @@ impl ToArmourExpression for web::HttpRequest {
     }
 }
 
+/// Convert an actix-web HttpResponse into an equivalent Armour language literal
+impl ToArmourExpression for web::HttpResponse {
+    fn to_expression(&self) -> lang::Expr {
+        let head = self.head();
+        lang::Expr::http_response(literals::HttpResponse::from((
+            format!("{:?}", head.version).as_str(),
+            self.status().as_u16(),
+            head.reason,
+            self.headers()
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_bytes()))
+                .collect(),
+        )))
+    }
+}
+
 // convert payloads into Armour-language expressions
 impl ToArmourExpression for web::Bytes {
     fn to_expression(&self) -> lang::Expr {
