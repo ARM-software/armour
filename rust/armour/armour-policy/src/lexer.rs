@@ -13,7 +13,7 @@ use std::ops::{Range, RangeFrom, RangeFull, RangeTo};
 
 pub type Span<'a> = LocatedSpan<&'a str>;
 
-#[derive(PartialEq, Eq, Debug, Clone, Hash)]
+#[derive(Default, PartialEq, Eq, Debug, Clone, Hash)]
 pub struct Loc(u32, usize);
 
 impl<'a> fmt::Display for Loc {

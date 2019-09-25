@@ -799,7 +799,8 @@ named!(parse_atom_expr<Tokens, LocExpr>, alt!(
     complete!(parse_paren_expr) |
     complete!(parse_list_expr) |
     complete!(parse_if_expr) |
-    complete!(parse_iter_expr)
+    complete!(parse_iter_expr) |
+    complete!(parse_all_any_expr)
 ));
 
 named!(parse_iter_expr<Tokens, LocExpr>,
@@ -831,6 +832,29 @@ named!(parse_iter_expr<Tokens, LocExpr>,
                 idents,
                 expr: Box::new(expr),
                 body
+            }
+        ))
+    )
+);
+
+named!(parse_all_any_expr<Tokens, LocExpr>,
+    do_parse!(
+        t: alt!(
+            tag_token!(Token::All) |
+            tag_token!(Token::Any)
+        ) >>
+        expr: parse_list_expr >>
+        (LocExpr(
+            t.loc(),
+            Expr::IterExpr {
+                op: match t.tok0() {
+                    Token::All => Iter::All,
+                    Token::Any => Iter::Any,
+                    _ => unreachable!(),
+                },
+                idents: vec![LocIdent(Loc::default(), Ident::from("x"))],
+                expr: Box::new(expr),
+                body: BlockStmt::from(LocExpr(Loc::default(), Expr::IdentExpr(Ident::from("x")))),
             }
         ))
     )

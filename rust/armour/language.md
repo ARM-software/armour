@@ -134,20 +134,29 @@ $ cargo run [input file]
 - **all**, **any**, **filter**, **filter_map**, **foreach**, **map**
 
     ```
+    > all [1 < 2, 2 < 4]
+    : true
+
     > all x in [1, 2, 4] { x < 3 }
     : false
-    
+
     > all x in [1, 2, 4] { x - 2 < 3 }
     : true
+
+    > any [3 < 2, 2 < 4]
+    : true    
 
     > any (x, y) in [(1, true), (2, false), (4, false)] { x < 3 && y }
     : true
 
     > filter x in [("x", 1"), ("y", 2), ("x", 3)] { x.0 == "x" }
     : [("x", 1), ("x", 3)]
-    
+
     > map x in [1, 2, 3] { x % 2 == 0 }
     : [false, true, false]
+
+    > filter_map x in [1, 2, 3, 4] { if x % 2 == 0 { Some((x, 2 * x)) } else { None } }
+    : [(2, 4), (4, 8)]
     ```
 
 - **if**
