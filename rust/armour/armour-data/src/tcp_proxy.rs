@@ -1,63 +1,3 @@
-use super::{policy, tcp_codec, tcp_policy, Stop};
-use actix::prelude::*;
-use futures::{future, Future};
-use policy::PolicyActor;
-use std::collections::HashSet;
-use std::net::SocketAddr;
-use tcp_policy::TcpPolicyStatus;
-use tokio_codec::FramedRead;
-use tokio_io::{io::WriteHalf, AsyncRead};
-
-#[cfg(target_os = "linux")]
-use std::os::unix::io::AsRawFd;
-
-pub fn start_proxy(
-    proxy_port: u16,
-    policy: Addr<PolicyActor>,
-) -> std::io::Result<Addr<TcpDataServer>> {
-    // start master actor (for keeping track of connections)
-    let master = TcpDataMaster::start_default();
-    // start server, listening for connections on a TCP socket
-    let socket_in = SocketAddr::from(([0, 0, 0, 0], proxy_port));
-    log::info!("starting TCP repeater on port {}", proxy_port,);
-    let listener = tokio_tcp::TcpListener::bind(&socket_in)?;
-    let master_clone = master.clone();
-    let server = TcpDataServer::create(move |ctx| {
-        ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(TcpConnect));
-        TcpDataServer {
-            master: master_clone,
-            policy,
-            port: socket_in.port(),
-        }
-    });
-    Ok(server)
-}
-
-/// Actor that handles Unix socket connections.
-///
-/// When new data plane instances arrive, we give them the address of the master.
-pub struct TcpDataServer {
-    master: Addr<TcpDataMaster>,
-    policy: Addr<PolicyActor>,
-    pub port: u16,
-}
-
-impl Actor for TcpDataServer {
-    type Context = Context<Self>;
-    fn stopped(&mut self, _ctx: &mut Context<Self>) {
-        info!("stopped socket: {}", self.port);
-        self.master.do_send(Stop)
-    }
-}
-
-/// Notification of new TCP socket connection
-// #[derive(Message)]
-struct TcpConnect(tokio_tcp::TcpStream);
-
-impl Message for TcpConnect {
-    type Result = Result<(), ()>;
-}
-
 // The following is needed for testing:
 
 // Terminal 1 (for armour-data-master)
@@ -74,6 +14,65 @@ impl Message for TcpConnect {
 //     - apt update
 //     - apt install curl
 //     - curl https://...
+
+use super::{policy, tcp_codec, tcp_policy, Stop};
+use actix::prelude::*;
+use futures::{future, Future};
+use policy::PolicyActor;
+use std::net::SocketAddr;
+use tcp_policy::TcpPolicyStatus;
+use tokio_codec::FramedRead;
+use tokio_io::{io::WriteHalf, AsyncRead};
+
+#[cfg(target_os = "linux")]
+use std::os::unix::io::AsRawFd;
+
+pub fn start_proxy(
+    proxy_port: u16,
+    policy: Addr<PolicyActor>,
+) -> std::io::Result<Addr<TcpDataServer>> {
+    let socket_in = SocketAddr::from(([0, 0, 0, 0], proxy_port));
+    log::info!("starting TCP repeater on port {}", proxy_port,);
+    let listener = tokio_tcp::TcpListener::bind(&socket_in)?;
+    // start server, listening for connections on a TCP socket
+    let server = TcpDataServer::create(move |ctx| {
+        ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(TcpConnect));
+        TcpDataServer {
+            policy,
+            port: socket_in.port(),
+        }
+    });
+    Ok(server)
+}
+
+/// Actor that handles Unix socket connections.
+///
+/// When new data plane instances arrive, we give them the address of the master.
+pub struct TcpDataServer {
+    policy: Addr<PolicyActor>,
+    pub port: u16,
+}
+
+impl Actor for TcpDataServer {
+    type Context = Context<Self>;
+    fn stopped(&mut self, _ctx: &mut Context<Self>) {
+        info!("stopped socket: {}", self.port);
+    }
+}
+
+impl Handler<Stop> for TcpDataServer {
+    type Result = ();
+    fn handle(&mut self, _msg: Stop, ctx: &mut Context<Self>) -> Self::Result {
+        ctx.stop()
+    }
+}
+
+/// Notification of new TCP socket connection
+struct TcpConnect(tokio_tcp::TcpStream);
+
+impl Message for TcpConnect {
+    type Result = Result<(), ()>;
+}
 
 // obtain the original socket destination (SO_ORIGINAL_DST)
 // we assume Linux's `iptables` have been used to redirect connections to the proxy
@@ -119,7 +118,6 @@ impl Handler<TcpConnect> for TcpDataServer {
                 );
                 // For each incoming connection we create `TcpDataClientInstance` actor
                 // We also create a `TcpData` actor
-                let master = self.master.clone();
                 let policy = self.policy.clone();
                 if socket.port() == self.port
                     && armour_data_interface::INTERFACE_IPS.contains(&socket.ip())
@@ -137,6 +135,7 @@ impl Handler<TcpConnect> for TcpDataServer {
                             // allow connection
                             Ok(Ok(TcpPolicyStatus::Allow(connection))) => future::Either::A(
                                 tokio_tcp::TcpStream::connect(&socket).and_then(move |sock| {
+                                    // create actor for handling connection
                                     TcpData::create(move |ctx| {
                                         let (r, wc) = msg.0.split();
                                         TcpData::add_stream(
@@ -156,7 +155,6 @@ impl Handler<TcpConnect> for TcpDataServer {
                                         );
                                         TcpData {
                                             policy,
-                                            master,
                                             tcp_client_framed: actix::io::FramedWrite::new(
                                                 wc,
                                                 tcp_codec::client::ClientCodec::new(),
@@ -212,41 +210,26 @@ impl Handler<TcpConnect> for TcpDataServer {
     }
 }
 
-/// Actor that manages data plane TCP connections
-#[derive(Default)]
-struct TcpDataMaster {
-    connections: HashSet<Addr<TcpData>>,
+/// Actor that handles TCP communication with a data plane instance
+///
+/// There will be one actor per TCP socket connection
+struct TcpData {
+    policy: Addr<PolicyActor>,
+    tcp_client_framed:
+        actix::io::FramedWrite<WriteHalf<tokio_tcp::TcpStream>, tcp_codec::client::ClientCodec>,
+    tcp_server_framed:
+        actix::io::FramedWrite<WriteHalf<tokio_tcp::TcpStream>, tcp_codec::server::ServerCodec>,
+    connection: Option<tcp_policy::ConnectionStats>,
 }
 
-impl Actor for TcpDataMaster {
+impl Actor for TcpData {
     type Context = Context<Self>;
-    fn stopped(&mut self, _ctx: &mut Context<Self>) {
-        for server in self.connections.iter() {
-            server.do_send(Stop)
+
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
+        if let Some(connection) = &self.connection {
+            self.policy.do_send(connection.clone());
         }
-    }
-}
-
-/// Connection notification (from Client Instance to Master)
-#[derive(Message)]
-struct ConnectServer(Addr<TcpData>);
-
-impl Handler<ConnectServer> for TcpDataMaster {
-    type Result = ();
-    fn handle(&mut self, msg: ConnectServer, _ctx: &mut Context<Self>) -> Self::Result {
-        self.connections.insert(msg.0.clone());
-    }
-}
-
-/// Disconnect notification (from Instance to Master)
-#[derive(Message)]
-struct Disconnect(Addr<TcpData>);
-
-impl Handler<Disconnect> for TcpDataMaster {
-    type Result = ();
-    fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) -> Self::Result {
-        info!("end of connection, removing TCP instance");
-        self.connections.remove(&msg.0);
+        info!("end of connection")
     }
 }
 
@@ -259,7 +242,6 @@ impl StreamHandler<tcp_codec::client::ClientBytes, std::io::Error> for TcpData {
         self.tcp_server_framed.write(msg.0.freeze())
     }
     fn finished(&mut self, ctx: &mut Context<Self>) {
-        // info!("end of connection");
         ctx.stop()
     }
 }
@@ -274,60 +256,3 @@ impl StreamHandler<tcp_codec::server::ServerBytes, std::io::Error> for TcpData {
 }
 
 impl actix::io::WriteHandler<std::io::Error> for TcpData {}
-
-impl Handler<Stop> for TcpData {
-    type Result = ();
-    fn handle(&mut self, _msg: Stop, ctx: &mut Context<Self>) -> Self::Result {
-        ctx.stop()
-    }
-}
-
-impl Handler<Stop> for TcpDataServer {
-    type Result = ();
-    fn handle(&mut self, _msg: Stop, ctx: &mut Context<Self>) -> Self::Result {
-        ctx.stop()
-    }
-}
-
-impl Handler<Stop> for TcpDataMaster {
-    type Result = ();
-    fn handle(&mut self, _msg: Stop, ctx: &mut Context<Self>) -> Self::Result {
-        ctx.stop()
-    }
-}
-
-/// Actor that handles TCP communication with a data plane instance
-///
-/// There will be one actor per TCP socket connection
-struct TcpData {
-    policy: Addr<PolicyActor>,
-    master: Addr<TcpDataMaster>,
-    tcp_client_framed:
-        actix::io::FramedWrite<WriteHalf<tokio_tcp::TcpStream>, tcp_codec::client::ClientCodec>,
-    tcp_server_framed:
-        actix::io::FramedWrite<WriteHalf<tokio_tcp::TcpStream>, tcp_codec::server::ServerCodec>,
-    connection: Option<tcp_policy::ConnectionStats>,
-}
-
-impl Actor for TcpData {
-    type Context = Context<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        self.master
-            .send(ConnectServer(ctx.address()))
-            .into_actor(self)
-            .then(|res, _act, ctx| {
-                if res.is_err() {
-                    ctx.stop()
-                };
-                actix::fut::ok(())
-            })
-            .wait(ctx)
-    }
-    fn stopped(&mut self, ctx: &mut Self::Context) {
-        if let Some(connection) = &self.connection {
-            self.policy.do_send(connection.clone());
-        }
-        self.master.do_send(Disconnect(ctx.address()));
-    }
-}
