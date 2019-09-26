@@ -15,7 +15,11 @@
 //     - apt install curl
 //     - curl https://...
 
-use super::{policy, tcp_codec, tcp_policy, Stop};
+use super::{
+    policy,
+    tcp_codec::{client, server},
+    tcp_policy, Stop,
+};
 use actix::prelude::*;
 use futures::{future, Future};
 use policy::PolicyActor;
@@ -32,7 +36,7 @@ pub fn start_proxy(
     policy: Addr<PolicyActor>,
 ) -> std::io::Result<Addr<TcpDataServer>> {
     let socket_in = SocketAddr::from(([0, 0, 0, 0], proxy_port));
-    log::info!("starting TCP repeater on port {}", proxy_port,);
+    log::info!("starting TCP repeater on port {}", proxy_port);
     let listener = tokio_tcp::TcpListener::bind(&socket_in)?;
     // start server, listening for connections on a TCP socket
     let server = TcpDataServer::create(move |ctx| {
@@ -104,6 +108,12 @@ fn original_dst(_sock: &tokio_tcp::TcpStream) -> Option<std::net::SocketAddr> {
     None
 }
 
+fn shutdown_both(stream: tokio_tcp::TcpStream) {
+    if let Err(e) = stream.shutdown(std::net::Shutdown::Both) {
+        warn!("{}", e);
+    }
+}
+
 impl Handler<TcpConnect> for TcpDataServer {
     // type Result = ();
     type Result = Box<dyn Future<Item = (), Error = ()>>;
@@ -116,9 +126,6 @@ impl Handler<TcpConnect> for TcpDataServer {
                     "TCP {}: received from {}, forwarding to {}",
                     self.port, peer_addr, socket
                 );
-                // For each incoming connection we create `TcpDataClientInstance` actor
-                // We also create a `TcpData` actor
-                let policy = self.policy.clone();
                 if socket.port() == self.port
                     && armour_data_interface::INTERFACE_IPS.contains(&socket.ip())
                 {
@@ -128,10 +135,12 @@ impl Handler<TcpConnect> for TcpDataServer {
                     };
                     Box::new(futures::future::ok(()))
                 } else {
+                    // For each incoming connection we create a `TcpData` actor
+                    let policy = self.policy.clone();
                     let server = self
                         .policy
                         .send(tcp_policy::GetTcpPolicy(peer_addr, socket))
-                        .then(move |res| match res {
+                        .then(move |allow| match allow {
                             // allow connection
                             Ok(Ok(TcpPolicyStatus::Allow(connection))) => future::Either::A(
                                 tokio_tcp::TcpStream::connect(&socket).and_then(move |sock| {
@@ -139,30 +148,24 @@ impl Handler<TcpConnect> for TcpDataServer {
                                     TcpData::create(move |ctx| {
                                         let (r, wc) = msg.0.split();
                                         TcpData::add_stream(
-                                            FramedRead::new(
-                                                r,
-                                                tcp_codec::client::ClientCodec::new(),
-                                            ),
+                                            FramedRead::new(r, client::ClientCodec),
                                             ctx,
                                         );
                                         let (r, ws) = sock.split();
                                         TcpData::add_stream(
-                                            FramedRead::new(
-                                                r,
-                                                tcp_codec::server::ServerCodec::new(),
-                                            ),
+                                            FramedRead::new(r, server::ServerCodec),
                                             ctx,
                                         );
                                         TcpData {
                                             policy,
                                             tcp_client_framed: actix::io::FramedWrite::new(
                                                 wc,
-                                                tcp_codec::client::ClientCodec::new(),
+                                                client::ClientCodec,
                                                 ctx,
                                             ),
                                             tcp_server_framed: actix::io::FramedWrite::new(
                                                 ws,
-                                                tcp_codec::server::ServerCodec::new(),
+                                                server::ServerCodec,
                                                 ctx,
                                             ),
                                             connection: *connection,
@@ -174,25 +177,19 @@ impl Handler<TcpConnect> for TcpDataServer {
                             // reject
                             Ok(Ok(TcpPolicyStatus::Block)) => {
                                 info!("connection denied");
-                                if let Err(e) = msg.0.shutdown(std::net::Shutdown::Both) {
-                                    warn!("{}", e);
-                                };
+                                shutdown_both(msg.0);
                                 future::Either::B(future::ok(()))
                             }
                             // policy error
                             Ok(Err(e)) => {
                                 warn!("{}", e);
-                                if let Err(e) = msg.0.shutdown(std::net::Shutdown::Both) {
-                                    warn!("{}", e);
-                                };
+                                shutdown_both(msg.0);
                                 future::Either::B(future::ok(()))
                             }
                             // actor error
                             Err(e) => {
                                 warn!("{}", e);
-                                if let Err(e) = msg.0.shutdown(std::net::Shutdown::Both) {
-                                    warn!("{}", e);
-                                };
+                                shutdown_both(msg.0);
                                 future::Either::B(future::ok(()))
                             }
                         })
@@ -215,10 +212,8 @@ impl Handler<TcpConnect> for TcpDataServer {
 /// There will be one actor per TCP socket connection
 struct TcpData {
     policy: Addr<PolicyActor>,
-    tcp_client_framed:
-        actix::io::FramedWrite<WriteHalf<tokio_tcp::TcpStream>, tcp_codec::client::ClientCodec>,
-    tcp_server_framed:
-        actix::io::FramedWrite<WriteHalf<tokio_tcp::TcpStream>, tcp_codec::server::ServerCodec>,
+    tcp_client_framed: actix::io::FramedWrite<WriteHalf<tokio_tcp::TcpStream>, client::ClientCodec>,
+    tcp_server_framed: actix::io::FramedWrite<WriteHalf<tokio_tcp::TcpStream>, server::ServerCodec>,
     connection: Option<tcp_policy::ConnectionStats>,
 }
 
@@ -234,24 +229,25 @@ impl Actor for TcpData {
 }
 
 // read from client becomes write to server
-impl StreamHandler<tcp_codec::client::ClientBytes, std::io::Error> for TcpData {
-    fn handle(&mut self, msg: tcp_codec::client::ClientBytes, _ctx: &mut Self::Context) {
+impl StreamHandler<client::ClientBytes, std::io::Error> for TcpData {
+    fn handle(&mut self, msg: client::ClientBytes, _ctx: &mut Self::Context) {
         if let Some(connection) = self.connection.as_mut() {
             connection.sent += msg.0.len();
         }
-        self.tcp_server_framed.write(msg.0.freeze())
+        self.tcp_server_framed.write(msg.0)
     }
     fn finished(&mut self, ctx: &mut Context<Self>) {
         ctx.stop()
     }
 }
+
 // read from server becomes write to client
-impl StreamHandler<tcp_codec::server::ServerBytes, std::io::Error> for TcpData {
-    fn handle(&mut self, msg: tcp_codec::server::ServerBytes, _ctx: &mut Self::Context) {
+impl StreamHandler<server::ServerBytes, std::io::Error> for TcpData {
+    fn handle(&mut self, msg: server::ServerBytes, _ctx: &mut Self::Context) {
         if let Some(connection) = self.connection.as_mut() {
             connection.received += msg.0.len();
         }
-        self.tcp_client_framed.write(msg.0.freeze())
+        self.tcp_client_framed.write(msg.0)
     }
 }
 

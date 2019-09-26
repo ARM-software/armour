@@ -7,26 +7,18 @@ pub mod client {
     #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
     pub struct ClientCodec;
 
-    pub struct ClientBytes(pub BytesMut);
-
-    impl ClientCodec {
-        /// Creates a new `ClientCodec` for shipping around raw bytes.
-        pub fn new() -> ClientCodec {
-            ClientCodec
-        }
-    }
+    pub struct ClientBytes(pub Bytes);
 
     impl Decoder for ClientCodec {
         type Item = ClientBytes;
         type Error = io::Error;
 
         fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<ClientBytes>, io::Error> {
-            if !buf.is_empty() {
-                let len = buf.len();
-                Ok(Some(ClientBytes(buf.split_to(len))))
+            Ok(if !buf.is_empty() {
+                Some(ClientBytes(buf.split_to(buf.len()).freeze()))
             } else {
-                Ok(None)
-            }
+                None
+            })
         }
     }
 
@@ -51,26 +43,18 @@ pub mod server {
     #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
     pub struct ServerCodec;
 
-    pub struct ServerBytes(pub BytesMut);
-
-    impl ServerCodec {
-        /// Creates a new `ServerCodec` for shipping around raw bytes.
-        pub fn new() -> ServerCodec {
-            ServerCodec
-        }
-    }
+    pub struct ServerBytes(pub Bytes);
 
     impl Decoder for ServerCodec {
         type Item = ServerBytes;
         type Error = io::Error;
 
         fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<ServerBytes>, io::Error> {
-            if !buf.is_empty() {
-                let len = buf.len();
-                Ok(Some(ServerBytes(buf.split_to(len))))
+            Ok(if !buf.is_empty() {
+                Some(ServerBytes(buf.split_to(buf.len()).freeze()))
             } else {
-                Ok(None)
-            }
+                None
+            })
         }
     }
 
