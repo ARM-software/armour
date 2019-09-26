@@ -13,6 +13,7 @@ pub struct Stop;
 pub mod http_policy;
 pub mod http_proxy;
 pub mod policy;
+pub mod tcp_codec;
 pub mod tcp_policy;
 pub mod tcp_proxy;
 
