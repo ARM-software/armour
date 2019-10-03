@@ -3,7 +3,7 @@
 // There have been significant modifications, in particular making use of nom_locate
 
 // use super::literals;
-use nom::character::complete::{digit1, not_line_ending};
+use nom::character::complete::{digit1, multispace0, not_line_ending};
 use nom::number::complete::recognize_float;
 use nom::*;
 use nom5_locate::LocatedSpan;
@@ -24,7 +24,7 @@ impl<'a> fmt::Display for Loc {
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Token {
-    Illegal,
+    Illegal(String),
     EOF,
     // identifier and literals
     Comment(String),
@@ -474,7 +474,7 @@ named!(lex_string<Span, LocToken>,
 
 // Illegal tokens
 named!(lex_illegal<Span, LocToken>,
-    do_parse!(t: take!(1) >> (LocToken::new(t, Token::Illegal)))
+    do_parse!(t: take!(1) >> (LocToken::new(t, Token::Illegal(t.to_string()))))
 );
 
 named!(lex_token<Span, LocToken>,
@@ -487,7 +487,7 @@ named!(lex_token<Span, LocToken>,
     )
 );
 
-named!(lex_tokens<Span, Vec<LocToken>>, ws!(many0!(lex_token)));
+named!(lex_tokens<Span, Vec<LocToken>>, many0!(delimited!(multispace0, lex_token, multispace0)));
 
 pub fn lex(buf: &str) -> Vec<LocToken> {
     let (loc, mut tokens) = lex_tokens(Span::new(buf)).unwrap();

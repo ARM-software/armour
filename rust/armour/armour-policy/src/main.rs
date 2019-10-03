@@ -37,7 +37,7 @@ fn main() -> io::Result<()> {
 
     // try to load code from an input file
     if let Some(filename) = matches.value_of("input file") {
-        prog = lang::Program::from_file(filename)
+        prog = lang::Program::from_file(filename, &lang::Interface::default())
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
     } else {
         prog = lang::Program::default()

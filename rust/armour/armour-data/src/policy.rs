@@ -1,7 +1,7 @@
 //! actix-web support for Armour policies
 use super::{http_policy::RestPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_proxy};
 use actix::prelude::*;
-use armour_data_interface::{PolicyCodec, PolicyRequest, PolicyResponse, Protocol, Status};
+use armour_data_interface::codec::{PolicyCodec, PolicyRequest, PolicyResponse, Protocol, Status};
 use armour_policy::{expressions, lang, literals};
 use futures::{future, Future};
 use std::convert::TryInto;
@@ -12,15 +12,13 @@ use tokio_io::{io::WriteHalf, AsyncRead};
 pub trait Policy<P> {
     fn start(&mut self, port: u16, proxy: P);
     fn stop(&mut self) -> bool;
-    fn port(&self) -> Option<u16>;
-    fn set_policy(&mut self, p: lang::Program);
-    fn policy(&self) -> Arc<lang::Program>;
     fn set_debug(&mut self, _: bool);
-    fn debug(&self) -> bool;
+    fn set_policy(&mut self, p: lang::Program);
     fn deny_all(&mut self);
     fn allow_all(&mut self);
-    fn is_allow_all(&self) -> bool;
-    fn is_deny_all(&self) -> bool;
+    fn port(&self) -> Option<u16>;
+    fn policy(&self) -> Arc<lang::Program>;
+    fn debug(&self) -> bool;
     fn status(&self) -> Box<Status>;
     fn evaluate<T: std::convert::TryFrom<literals::Literal> + 'static>(
         &self,
@@ -194,7 +192,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                 }
             },
             PolicyRequest::SetPolicy(Protocol::Rest, policy) => {
-                use armour_data_interface::Policy;
+                use armour_data_interface::codec::Policy;
                 match policy {
                     Policy::AllowAll => self.http.allow_all(),
                     Policy::DenyAll => self.http.deny_all(),
@@ -204,7 +202,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                 info!("installed REST policy")
             }
             PolicyRequest::SetPolicy(Protocol::TCP, policy) => {
-                use armour_data_interface::Policy;
+                use armour_data_interface::codec::Policy;
                 match policy {
                     Policy::AllowAll => self.tcp.allow_all(),
                     Policy::DenyAll => self.tcp.deny_all(),

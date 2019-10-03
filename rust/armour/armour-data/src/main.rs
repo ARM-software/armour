@@ -1,6 +1,6 @@
 use actix::prelude::*;
 use armour_data::{http_proxy, policy::PolicyActor};
-use armour_data_interface::{HttpConfig, PolicyRequest};
+use armour_data_interface::codec::{HttpConfig, PolicyRequest};
 use clap::{crate_version, App as ClapApp, Arg};
 use std::env;
 

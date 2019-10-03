@@ -1,13 +1,13 @@
+use super::expressions::{Error, Expr};
 /// policy language
 use super::{externals, headers, lexer, literals, parser, types};
-use super::expressions::{Error, Expr};
 use futures::{future, Future};
 use headers::Headers;
 use literals::Literal;
 use petgraph::graph;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
-use types::Typ;
+use types::{Signature, Typ};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Code(pub BTreeMap<String, Expr>);
@@ -49,6 +49,7 @@ pub struct Program {
     pub code: Code,
     pub externals: externals::Externals,
     pub headers: Headers,
+    interface: Interface,
 }
 
 struct Hash<'a>(&'a [u8]);
@@ -62,6 +63,103 @@ impl<'a> std::fmt::Display for Hash<'a> {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct FunctionInterface {
+    signatures: Vec<types::Signature>,
+    default: types::Signature,
+    default_to_allow: bool,
+    allow: Literal,
+    deny: Literal,
+}
+
+impl FunctionInterface {
+    pub fn new(
+        signatures: Vec<types::Signature>,
+        default: types::Signature,
+        default_to_allow: bool,
+        allow: Literal,
+        deny: Literal,
+    ) -> FunctionInterface {
+        FunctionInterface {
+            signatures,
+            default,
+            default_to_allow,
+            allow,
+            deny,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct Interface(BTreeMap<String, FunctionInterface>);
+
+impl Interface {
+    pub fn new() -> Self {
+        Interface(BTreeMap::new())
+    }
+    pub fn insert(&mut self, name: &str, policy: FunctionInterface) {
+        self.0.insert(name.to_string(), policy);
+    }
+    pub fn insert_bool(&mut self, name: &str, args: Vec<Vec<Typ>>, default_to_allow: bool) {
+        let sigs = args
+            .into_iter()
+            .map(|v| Signature::new(v, Typ::Bool))
+            .collect();
+        self.insert(
+            name,
+            FunctionInterface::new(
+                sigs,
+                Signature::any(Typ::Bool),
+                default_to_allow,
+                Literal::Bool(true),
+                Literal::Bool(false),
+            ),
+        )
+    }
+    pub fn insert_unit(&mut self, name: &str, args: Vec<Vec<Typ>>) {
+        let sigs = args
+            .into_iter()
+            .map(|v| Signature::new(v, Typ::Unit))
+            .collect();
+        self.insert(
+            name,
+            FunctionInterface::new(
+                sigs,
+                Signature::any(Typ::Unit),
+                false,
+                Literal::Unit,
+                Literal::Unit,
+            ),
+        )
+    }
+    pub fn extend(&mut self, other: &Interface) {
+        self.0
+            .extend(other.0.iter().map(|(name, i)| (name.clone(), i.clone())))
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub enum Policy {
+    Allow,
+    Deny,
+    Args(u8),
+}
+
+impl Default for Policy {
+    fn default() -> Self {
+        Policy::Deny
+    }
+}
+
+impl Policy {
+    pub fn is_allow(&self) -> bool {
+        *self == Policy::Allow
+    }
+    fn is_deny(&self) -> bool {
+        *self == Policy::Deny
+    }
+}
+
 impl Program {
     pub fn blake2_hash(&self) -> Option<String> {
         bincode::serialize(self)
@@ -70,13 +168,49 @@ impl Program {
             })
             .ok()
     }
-    pub fn has_function(&self, name: &str) -> bool {
-        self.code.0.contains_key(name)
+    pub fn policy(&self, name: &str) -> Policy {
+        if let Some(e) = self.internal(name) {
+            if let Some(i) = self.interface(name) {
+                match e {
+                    Expr::LitExpr(body) => {
+                        if *body == i.allow {
+                            Policy::Allow
+                        } else if *body == i.deny {
+                            Policy::Deny
+                        } else {
+                            Policy::Args(self.arg_count(name).unwrap_or_default())
+                        }
+                    }
+                    _ => Policy::Args(self.arg_count(name).unwrap_or_default()),
+                }
+            } else {
+                log::warn!("function not in policy interface: {}", name);
+                Policy::Deny
+            }
+        } else {
+            log::warn!("missing policy function: {}", name);
+            Policy::Deny
+        }
     }
+    pub fn is_allow_all(&self) -> bool {
+        self.interface
+            .0
+            .iter()
+            .all(|(function, i)| i.allow == Literal::Unit || self.policy(&function).is_allow())
+    }
+    pub fn is_deny_all(&self) -> bool {
+        self.interface
+            .0
+            .iter()
+            .all(|(function, i)| i.allow == Literal::Unit || self.policy(&function).is_deny())
+    }
+    // pub fn has_function(&self, name: &str) -> bool {
+    //     self.code.0.contains_key(name)
+    // }
     pub fn typ(&self, name: &str) -> Option<types::Signature> {
         self.headers.typ(name)
     }
-    pub fn arg_count(&self, name: &str) -> Option<u8> {
+    fn arg_count(&self, name: &str) -> Option<u8> {
         self.typ(name)
             .map(|sig| sig.args().unwrap_or_else(Vec::new).len() as u8)
     }
@@ -88,6 +222,9 @@ impl Program {
     }
     pub fn internal(&self, s: &str) -> Option<&Expr> {
         self.code.0.get(s)
+    }
+    pub fn interface(&self, s: &str) -> Option<&FunctionInterface> {
+        self.interface.0.get(s)
     }
     pub fn external(
         &self,
@@ -135,7 +272,7 @@ impl Program {
         self.code.0.insert(name.to_string(), e);
         Ok(())
     }
-    fn type_check1(
+    fn type_check(
         function: &str,
         sig1: &types::Signature,
         sig2: &types::Signature,
@@ -156,16 +293,23 @@ impl Program {
             (None, None) | (None, Some(_)) => Ok(()),
         }
     }
-    fn type_check(&self, function: &str, sigs: &[types::Signature]) -> Result<(), Error> {
+    fn check_interface(
+        &mut self,
+        function: &str,
+        interface: &FunctionInterface,
+        allow: bool,
+    ) -> Result<(), Error> {
         match self.headers.typ(function) {
             Some(f_sig) => {
-                if sigs
+                if interface
+                    .signatures
                     .iter()
-                    .any(|sig| Program::type_check1(function, &f_sig, sig).is_ok())
+                    .any(|sig| Program::type_check(function, &f_sig, sig).is_ok())
                 {
                     Ok(())
                 } else {
-                    let possible = sigs
+                    let possible = interface
+                        .signatures
                         .iter()
                         .map(|sig| sig.to_string())
                         .collect::<Vec<String>>()
@@ -176,25 +320,55 @@ impl Program {
                     )))
                 }
             }
-            None => Ok(()), // ok if not present
+            None => {
+                // add default using interface
+                self.headers
+                    .add_function(function, interface.default.clone())?;
+                let lit = if allow {
+                    interface.allow.clone()
+                } else {
+                    interface.deny.clone()
+                };
+                self.code.0.insert(function.to_owned(), Expr::LitExpr(lit));
+                Ok(())
+            }
         }
     }
-    pub fn check_from_file<P: AsRef<std::path::Path>>(
+    pub fn set_interface(
+        &mut self,
+        interface: &Interface,
+        allow: Option<bool>,
+    ) -> Result<(), Error> {
+        for (function, i) in interface.0.iter() {
+            self.check_interface(function, i, allow.unwrap_or_else(|| i.default_to_allow))?
+        }
+        self.interface = interface.clone();
+        Ok(())
+    }
+    pub fn allow_all(interface: &Interface) -> Result<Self, Error> {
+        let mut prog = Program::default();
+        prog.set_interface(interface, Some(true))?;
+        Ok(prog)
+    }
+    pub fn deny_all(interface: &Interface) -> Result<Self, Error> {
+        let mut prog = Program::default();
+        prog.set_interface(interface, Some(false))?;
+        Ok(prog)
+    }
+    pub fn from_buf(buf: &str, interface: &Interface) -> Result<Self, Error> {
+        let mut prog: Self = buf.parse()?;
+        prog.set_interface(interface, None)?;
+        Ok(prog)
+    }
+    pub fn from_file<P: AsRef<std::path::Path>>(
         path: P,
-        check: &[(&'static str, Vec<types::Signature>)],
+        interface: &Interface,
     ) -> Result<Self, Error> {
         use std::io::prelude::Read;
         let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
         let mut buf = String::new();
-        reader.read_to_string(&mut buf).unwrap();
-        let prog: Self = buf.parse()?;
-        for (f, sigs) in check {
-            prog.type_check(f, sigs)?
-        }
-        Ok(prog)
-    }
-    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, Error> {
-        Program::check_from_file(path, &Vec::new())
+        reader.read_to_string(&mut buf)?;
+        Program::from_buf(&buf, interface)
     }
 }
 
@@ -202,7 +376,10 @@ impl std::str::FromStr for Program {
     type Err = Error;
 
     fn from_str(buf: &str) -> Result<Self, Self::Err> {
-        match parser::parse_program(lexer::Tokens::new(&lexer::lex(buf))) {
+        let toks = lexer::lex(buf);
+        let tokens = lexer::Tokens::new(&toks);
+        // println!("{}", tokens);
+        match parser::parse_program(tokens) {
             Ok((_rest, prog_parse)) => {
                 let mut call_graph = CallGraph::new();
                 let mut prog = Program::default();

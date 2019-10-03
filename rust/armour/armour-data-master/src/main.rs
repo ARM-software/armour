@@ -2,7 +2,8 @@
 //!
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
-use armour_data_interface::{HttpConfig, Policy, PolicyRequest, Protocol, POLICY_SIG};
+use armour_data_interface::codec::{HttpConfig, Policy, PolicyRequest, Protocol};
+use armour_data_interface::policy::TCP_REST_POLICY;
 use armour_data_master as master;
 use armour_policy::lang;
 use clap::{crate_version, App, Arg};
@@ -264,7 +265,7 @@ fn instance1_command(
         }
         Some("print") => {
             let path = PathBuf::from(arg);
-            match lang::Program::check_from_file(&path, &*POLICY_SIG) {
+            match lang::Program::from_file(&path, &TCP_REST_POLICY) {
                 Ok(prog) => {
                     log::info!("policy: {:02x?}", prog.blake2_hash().unwrap());
                     prog.print()
@@ -277,7 +278,7 @@ fn instance1_command(
         }
         Some("policy") => {
             let path = PathBuf::from(arg);
-            match lang::Program::check_from_file(&path, &*POLICY_SIG) {
+            match lang::Program::from_file(&path, &TCP_REST_POLICY) {
                 Ok(prog) => {
                     log::info!("sending policy: {}", prog.blake2_hash().unwrap());
                     Some(PolicyRequest::SetPolicy(

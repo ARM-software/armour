@@ -1,6 +1,6 @@
-use super::headers::Headers;
 use super::expressions::{Block, Expr};
-use super::lang::{Program};
+use super::headers::Headers;
+use super::lang::Program;
 use super::literals::Literal;
 use super::parser::{As, Assoc, Infix, Pat, PolicyRegex, Precedence};
 use super::types::Typ;
