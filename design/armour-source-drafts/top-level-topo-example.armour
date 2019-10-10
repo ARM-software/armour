@@ -1,0 +1,114 @@
+policy poc_topology {
+       // these labels can be queried to test wheter infromation flow policies are in use 
+       defines-labels {
+       		      poc
+		      poc::topo
+       }
+
+       uses-lables {
+       		    poc
+		    poc::topo
+       		    poc::id
+ 		    poc::id::debug
+ 		    poc::id::mqtt-debug
+ 		    poc::id::dtp
+		    poc::id::verify-id
+		    poc::id::picolbri
+		    poc::id::pipharm
+		    poc::id::mongo
+		    poc::id::accounting
+		    poc::id::mongo-web
+		    poc::id::dbread
+		    poc::id::dbwrite
+		    poc::id::launch
+		    poc::id::notifications
+		    poc::id::cloud-update
+		    poc::id::mqtt-trusted
+		    poc::id::mysql
+       } 
+
+       labeling-policy {
+		    when  {docker::container::image = “debug-hasg”}
+		    label {poc::id::debug}
+
+		    when  {docker::container::image = “mqtt-debug—hash”}
+		    label {poc::id::mqtt-debug}
+
+		    when  {docker::container::image = “dtp-hash”}
+		    label {poc::id::dtp}
+
+		    when  {docker::container::image = “verify-id-hash”}
+		    label {poc::id::verify-id}
+
+		    when  {docker::container::image = “picolibri-hash”}
+		    label {poc::id::picolibri}
+
+		    when  {docker::container::image = “pipharm-hash”}
+		    label {poc::id::pipharm}
+
+		    when  {docker::container::image = “mongo-hash”}
+		    label {poc::id::mongo}
+
+		    when  {docker::container::image = “accounting-hash”}
+		    label {poc::id::accounting}
+
+		    when  {docker::container::image = “mongo-web-hash”}
+		    label {poc::id::mongo-web}
+
+		    when  {docker::container::image = “dbread-hash”}
+		    label {poc::id::dbread}
+
+		    when  {docker::container::image = “dbwrite-hash”}
+		    label {poc::id::dbwrite}
+
+		    when  {docker::container::image = “launch-hash”}
+		    label {poc::id::launch}
+
+		    when  {docker::container::image = “notifications-hash”}
+		    label {poc::id::notifications}
+
+		    when  {docker::container::image = “cloud-update-hash”}
+		    label {poc::id::cloud-update}
+
+		    when  {docker::container::image = “mqtt-trusted-hash”}
+		    label {poc::id::mqtt-trusted}
+
+		    when  {docker::container::image = “mysql-hash”}
+		    label {poc::id::mysql}
+       }
+
+       policy {
+       	      fn topology(from: ID, to: ID) -> bool {
+	          if from has poc::id::debug {
+ 		         true
+ 		  } else if to has poc::id::mqtt-debug {
+ 		    	 from has any [poc::id::dtp, poc::id::verify-id, poc::id::picolbri, poc::id::pipharm]
+ 		  } else if to has poc::id::mongo {        
+ 		    	 from has any [poc::id::accounting, poc::id::mongo-web]
+ 		  } else if to has poc::id::mysql {
+ 		    	 from has any [poc::id::dbread, poc::id::dbwrite, poc::id::launch]
+ 		  } else if from has poc::id::dtp {
+ 		    	 to has any [poc::id::notifications, poc::id::accounting, poc::id::mqtt-debug]
+ 		  } else if from has poc::id::launch {
+ 		    	 to has any [poc::id::cloud-update, poc::id::mqtt-trusted, poc::id::verify-id, poc::id::mysql]
+ 		  } else if to has poc::id::verify-id {
+ 		    	 from has poc::id::dbwrite
+ 		  } else {
+ 		    	 from has poc::id::cloud-update
+ 		  }
+ 	      }
+
+	      fn allowed_rest_request(from:ID, to:ID, rq: HTTPEequest) {
+ 	          topology(from, to)
+	      }
+
+	      fn allowed_tcp_request(from:ID, to:ID) {
+ 	          allow-flow(from, to)
+	      }
+	}
+
+	default policy {
+ 	      join allow_rest_request(from:ID, to:ID, rq: HTTPEequest) 
+	      join allow_tcp_request(from:ID, to:ID, rq: HTTPEequest)
+	}
+}

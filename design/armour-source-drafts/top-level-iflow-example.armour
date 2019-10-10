@@ -1,0 +1,86 @@
+policy information_flow_security {
+       uses-policy reads-writes as rw; // abstractions for methods as to whether they read or write for IFS
+       
+       // these labels can be queried to test wheter infromation flow policies are in use 
+       defines-labels {
+       		      ifs
+		      ifs::confidentiality
+		      ifs::integrity		      
+       }
+
+       // recommended use:
+       // 	    ifs::confidentiality and ifs::integrity levels can be associated to source/destination IDs
+       //	    ifs::confidentiality and ifs::integrity levels can be associated to methods
+       // 	    ifs::confidentiality and ifs::integrity levels can be associated to method arguments
+       // 	    ifs::confidentiality and ifs::integrity levels can be associated to ports for the case of TCP requests
+       uses-lables {
+       		    ifs
+		    ifs::confidentiality
+       		    ifs::confidentiality::high
+ 		    ifs::confidentiality::low
+ 		    ifs::confidentiality::no-check
+		    ifs::integrity
+ 		    ifs::integrity::high
+ 		    ifs::integrity::low
+ 		    ifs::confidentiality::no-check
+       } 
+
+       policy {
+       	      fn allowed-conf(from: ID, to: ID, method: Meta, args: List(Meta)) { // not using args
+ 	            // assuming that either both endpoints are labeled, or reject
+ 	            if from has ifs::confidentiality && to has ifs::confidentiality {
+		       	 if from ifs::confidentiality::no-check && to ifs::confidentiality::no-check {
+ 			      tag method with ifs::confidentiality::no-check;
+			      return true
+			 } else {
+ 			      ifs_conf_leq(from.lables, to.lables) && method has rw::writes ||
+ 			      ifs_conf_leq(to.lables, from.lables) && method has rw::reads 
+			 }
+		    } else {
+ 		         tag method with ifs::confidentiality::no-check;
+			 return true;
+		    }
+	      } 
+
+	      fn ifs_conf_leq(lhs: Meta, rhs: Meta) {
+                   lhs has ifs::confidentiality::low || rhs has ifs::confidentiality::high
+ 	      }
+
+       	      fn allowed-int(from: ID, to: ID, method: Meta, args: List(Meta)) { // not using args
+ 	            // assuming that either both endpoints are labeled, or reject
+ 	            if from has ifs::integrity && to has ifs::integrity {
+		       	 if from ifs::integrity::no-check && to ifs::integrity::no-check {
+ 			      tag method with ifs::integrity::no-check;
+ 			      return true;
+			 } else {
+ 			      ifs_int_leq(from.lables, to.lables) && method has rw::reads ||
+ 			      ifs_int_leq(to.lables, from.lables) && method has rw::writes;
+			 }
+		    } else {
+ 		         tag method with ifs::integrity::no-check;
+			 return true;
+		    }
+	      } 
+
+	      fn ifs_int_leq(lhs: Meta, rhs: Meta) {
+                   lhs has ifs::integrity::low || rhs has ifs::integrity::high
+ 	      }
+
+	      fn allowed-flow(from: ID, to: ID, method: Meta, args: List(Meta)) {
+ 	          allowed-conf(from, to, method) && allowed-int(from, to, method)
+	      }
+
+	      fn allowed_rest_request(from:ID, to:ID, rq: HTTPEequest) {
+ 	          allow-flow(from, to, rq.method, rq.args)
+	      }
+
+	      fn allowed_tcp_request(from:ID, to:ID) {
+ 	          allow-flow(from, to, , )
+	      }
+	}
+
+	default policy {
+ 	      join allow_rest_request(from:ID, to:ID, rq: HTTPEequest) 
+	      join allow_tcp_request(from:ID, to:ID, rq: HTTPEequest)
+	}
+}

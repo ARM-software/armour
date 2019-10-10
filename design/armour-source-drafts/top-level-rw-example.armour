@@ -1,0 +1,10 @@
+policy reads-writes {
+       defines-labels {
+            reads-writes
+       }
+
+       uses-labels {
+            reads-writes::reads
+            reads-writes::writes
+       }
+}
