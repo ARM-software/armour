@@ -13,21 +13,21 @@ policy main {
        // rest::method::... is a primitive label in armour
        labeling-policy {
        		    when  { poc::id
- 		    	        rest::method::GET }
+ 		    	    rest::method::GET }
 		    label { rw::reads }
 
        		    when  { poc::id
- 		    	        rest::method::PUT }
-		    label { rw::reads }
-
-
-       		    when  { poc::id
- 		    	        rest::method::POST }
+ 		    	    rest::method::PUT }
 		    label { rw::reads }
 
 
        		    when  { poc::id
- 		    	        rest::method::DELETE }
+ 		    	    rest::method::POST }
+		    label { rw::reads }
+
+
+       		    when  { poc::id
+ 		    	    rest::method::DELETE }
 		    label { rw::reads }
 	}
 }
