@@ -68,12 +68,6 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
         self.status.update_for_policy(&p);
         self.program = Arc::new(p)
     }
-    fn deny_all(&mut self) {
-        self.set_policy(lang::Program::deny_all(&policy::REST_POLICY).unwrap())
-    }
-    fn allow_all(&mut self) {
-        self.set_policy(lang::Program::allow_all(&policy::REST_POLICY).unwrap())
-    }
     fn port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|(p, _)| *p)
     }
@@ -84,17 +78,10 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
         self.status.debug
     }
     fn status(&self) -> Box<codec::Status> {
-        let policy = if self.program.is_allow_all() {
-            codec::Policy::AllowAll
-        } else if self.program.is_deny_all() {
-            codec::Policy::DenyAll
-        } else {
-            codec::Policy::Program((*self.policy()).clone())
-        };
         Box::new(codec::Status {
             port: self.port(),
             debug: self.debug(),
-            policy,
+            policy: (*self.policy()).clone(),
         })
     }
 }
@@ -102,7 +89,7 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
 impl Default for RestPolicy {
     fn default() -> Self {
         RestPolicy {
-            program: Arc::new(lang::Program::deny_all(&policy::REST_POLICY).unwrap()),
+            program: Arc::new(lang::Program::default()),
             proxy: None,
             status: RestPolicyStatus::default(),
         }

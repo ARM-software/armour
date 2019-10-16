@@ -15,6 +15,7 @@ pub mod client {
 
         fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<ClientBytes>, io::Error> {
             Ok(if !buf.is_empty() {
+                log::info!("client buf len is: {}", buf.len());
                 Some(ClientBytes(buf.split_to(buf.len()).freeze()))
             } else {
                 None
@@ -27,6 +28,7 @@ pub mod client {
         type Error = io::Error;
 
         fn encode(&mut self, data: Bytes, buf: &mut BytesMut) -> Result<(), io::Error> {
+            log::info!("client data len is: {}", data.len());
             buf.reserve(data.len());
             buf.put(data);
             Ok(())
@@ -51,6 +53,7 @@ pub mod server {
 
         fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<ServerBytes>, io::Error> {
             Ok(if !buf.is_empty() {
+                log::info!("server buf len is: {}", buf.len());
                 Some(ServerBytes(buf.split_to(buf.len()).freeze()))
             } else {
                 None
@@ -63,6 +66,7 @@ pub mod server {
         type Error = io::Error;
 
         fn encode(&mut self, data: Bytes, buf: &mut BytesMut) -> Result<(), io::Error> {
+            log::info!("server data len is: {}", data.len());
             buf.reserve(data.len());
             buf.put(data);
             Ok(())

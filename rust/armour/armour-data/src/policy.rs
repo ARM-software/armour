@@ -14,8 +14,6 @@ pub trait Policy<P> {
     fn stop(&mut self) -> bool;
     fn set_debug(&mut self, _: bool);
     fn set_policy(&mut self, p: lang::Program);
-    fn deny_all(&mut self);
-    fn allow_all(&mut self);
     fn port(&self) -> Option<u16>;
     fn policy(&self) -> Arc<lang::Program>;
     fn debug(&self) -> bool;
@@ -191,29 +189,19 @@ impl Handler<PolicyRequest> for PolicyActor {
                     warn!("failed to start TCP proxy on port {}: {}", port, err)
                 }
             },
-            PolicyRequest::SetPolicy(Protocol::Rest, policy) => {
-                use armour_data_interface::codec::Policy;
-                match policy {
-                    Policy::AllowAll => self.http.allow_all(),
-                    Policy::DenyAll => self.http.deny_all(),
-                    Policy::Program(prog) => self.http.set_policy(prog),
-                }
+            PolicyRequest::SetPolicy(Protocol::Rest, prog) => {
+                self.http.set_policy(prog);
                 self.uds_framed.write(PolicyResponse::UpdatedPolicy);
                 info!("installed REST policy")
             }
-            PolicyRequest::SetPolicy(Protocol::TCP, policy) => {
-                use armour_data_interface::codec::Policy;
-                match policy {
-                    Policy::AllowAll => self.tcp.allow_all(),
-                    Policy::DenyAll => self.tcp.deny_all(),
-                    Policy::Program(prog) => self.tcp.set_policy(prog),
-                }
+            PolicyRequest::SetPolicy(Protocol::TCP, prog) => {
+                self.tcp.set_policy(prog);
                 self.uds_framed.write(PolicyResponse::UpdatedPolicy);
                 info!("installed TCP policy")
             }
-            PolicyRequest::SetPolicy(Protocol::All, policy) => {
-                ctx.notify(PolicyRequest::SetPolicy(Protocol::Rest, policy.clone()));
-                ctx.notify(PolicyRequest::SetPolicy(Protocol::TCP, policy))
+            PolicyRequest::SetPolicy(Protocol::All, prog) => {
+                ctx.notify(PolicyRequest::SetPolicy(Protocol::Rest, prog.clone()));
+                ctx.notify(PolicyRequest::SetPolicy(Protocol::TCP, prog))
             }
             PolicyRequest::Shutdown => System::current().stop(),
         }

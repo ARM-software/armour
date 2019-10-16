@@ -7,13 +7,14 @@ use nom::character::complete::{digit1, multispace0, not_line_ending};
 use nom::number::complete::recognize_float;
 use nom::*;
 use nom5_locate::LocatedSpan;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::iter::Enumerate;
 use std::ops::{Range, RangeFrom, RangeFull, RangeTo};
 
 pub type Span<'a> = LocatedSpan<&'a str>;
 
-#[derive(Default, PartialEq, Eq, Debug, Clone, Hash)]
+#[derive(Default, PartialEq, Eq, Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct Loc(u32, usize);
 
 impl<'a> fmt::Display for Loc {

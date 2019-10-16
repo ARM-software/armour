@@ -20,18 +20,11 @@ pub enum Protocol {
     TCP,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub enum Policy {
-    AllowAll,
-    DenyAll,
-    Program(Program),
-}
-
 /// Message from master to proxy instance
 #[derive(Serialize, Deserialize, Message, Clone)]
 pub enum PolicyRequest {
     Debug(Protocol, bool),
-    SetPolicy(Protocol, Policy),
+    SetPolicy(Protocol, Program),
     Shutdown,
     StartHttp(HttpConfig),
     StartTcp(u16),
@@ -43,7 +36,7 @@ pub enum PolicyRequest {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Status {
     pub debug: bool,
-    pub policy: Policy,
+    pub policy: Program,
     pub port: Option<u16>,
 }
 
@@ -56,14 +49,8 @@ impl std::fmt::Display for Status {
         }
         writeln!(f, "debug is {}", if self.debug { "on" } else { "off" })?;
         write!(f, "policy is: ")?;
-        match &self.policy {
-            Policy::AllowAll => writeln!(f, "allow all"),
-            Policy::DenyAll => writeln!(f, "deny all"),
-            Policy::Program(prog) => {
-                prog.print();
-                writeln!(f, "{}", prog.blake2_hash().unwrap())
-            }
-        }
+        self.policy.print();
+        writeln!(f, "{}", self.policy.description())
     }
 }
 

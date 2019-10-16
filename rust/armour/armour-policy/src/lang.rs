@@ -1,6 +1,7 @@
 use super::expressions::{Error, Expr};
 /// policy language
 use super::{externals, headers, lexer, literals, parser, types};
+use blake2_rfc::blake2b::blake2b;
 use futures::{future, Future};
 use headers::Headers;
 use literals::Literal;
@@ -12,18 +13,21 @@ use types::{Signature, Typ};
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Code(pub BTreeMap<String, Expr>);
 
+impl Code {
+    fn cut(&mut self, set: &[String]) {
+        for s in set.iter() {
+            self.0.remove(s);
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
 struct CallGraph {
     graph: graph::DiGraph<String, lexer::Loc>,
     nodes: HashMap<String, graph::NodeIndex>,
 }
 
 impl CallGraph {
-    fn new() -> CallGraph {
-        CallGraph {
-            graph: graph::Graph::new(),
-            nodes: HashMap::new(),
-        }
-    }
     fn add_node(&mut self, name: &str) {
         self.nodes
             .insert(name.to_string(), self.graph.add_node(name.to_string()));
@@ -42,14 +46,108 @@ impl CallGraph {
             Ok(())
         }
     }
+    fn unreachable(&self, top: &[&String]) -> Vec<String> {
+        let indices: Vec<&graph::NodeIndex> =
+            top.iter().filter_map(|s| self.nodes.get(*s)).collect();
+        let mut unreachable = Vec::new();
+        for (node, index) in self.nodes.iter() {
+            let is_reachable = indices.iter().any(|top_node| {
+                petgraph::algo::has_path_connecting(&self.graph, **top_node, *index, None)
+            });
+            if !is_reachable {
+                unreachable.push(node.to_string())
+            }
+        }
+        unreachable
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Program {
+    externals: externals::Externals,
     pub code: Code,
-    pub externals: externals::Externals,
     pub headers: Headers,
-    interface: Interface,
+    pub policies: Policies,
+}
+
+impl Program {
+    pub fn blake2_hash(&self) -> Option<String> {
+        bincode::serialize(self)
+            .map(|bytes| Hash(blake2b(24, b"armour", &bytes).as_bytes()).to_string())
+            .ok()
+    }
+    pub fn external(
+        &self,
+        external: &str,
+        method: &str,
+        args: Vec<Expr>,
+    ) -> Box<dyn Future<Item = Expr, Error = Error>> {
+        if let Some(socket) = self.externals.get_socket(external) {
+            match Literal::literal_vector(args) {
+                Ok(lits) => Box::new(
+                    externals::Externals::request(
+                        external.to_string(),
+                        method.to_string(),
+                        lits,
+                        socket,
+                        self.externals.timeout(),
+                    )
+                    .and_then(|r| future::ok(Expr::LitExpr(r)))
+                    .from_err(),
+                ),
+                Err(err) => Box::new(future::err(err)),
+            }
+        } else {
+            Box::new(future::err(Error::new(format!(
+                "missing exteral: {}",
+                external
+            ))))
+        }
+    }
+    pub fn internal(&self, s: &str) -> Option<&Expr> {
+        self.code.0.get(s)
+    }
+    pub fn set_timeout(&mut self, t: std::time::Duration) {
+        self.externals.set_timeout(t)
+    }
+    pub fn timeout(&self) -> std::time::Duration {
+        self.externals.timeout()
+    }
+    fn cut(&mut self, set: &[String]) {
+        log::warn!("removing unreachable functions: {:?}", set);
+        self.headers.cut(set);
+        self.code.cut(set);
+        self.policies.cut(set)
+    }
+    pub fn typ(&self, name: &str) -> Option<types::Signature> {
+        self.headers.typ(name)
+    }
+    pub fn policy(&self, name: &str) -> Policy {
+        self.policies.0.get(name).cloned().unwrap_or_default()
+    }
+    fn is_empty(&self) -> bool {
+        self.policies.0.is_empty()
+    }
+    fn is_allow_all(&self) -> bool {
+        // does not capture case when program is empty
+        self.policies.0.values().all(|p| p.is_allow())
+    }
+    fn is_deny_all(&self) -> bool {
+        self.policies.0.values().all(|p| p.is_deny())
+    }
+    pub fn description(&self) -> String {
+        if self.is_empty() {
+            "empty".to_string()
+        } else if self.is_allow_all() {
+            "allow all".to_string()
+        } else if self.is_deny_all() {
+            "deny all".to_string()
+        } else if let Some(hash) = self.blake2_hash() {
+            hash
+        } else {
+            "hash failed!".to_string()
+        }
+    }
 }
 
 struct Hash<'a>(&'a [u8]);
@@ -138,10 +236,11 @@ impl Interface {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub enum Policy {
     Allow,
     Deny,
+    Unit,
     Args(u8),
 }
 
@@ -153,25 +252,37 @@ impl Default for Policy {
 
 impl Policy {
     pub fn is_allow(&self) -> bool {
-        *self == Policy::Allow
+        *self == Policy::Allow || *self == Policy::Unit
     }
     fn is_deny(&self) -> bool {
-        *self == Policy::Deny
+        *self == Policy::Deny || *self == Policy::Unit
     }
 }
 
-impl Program {
-    pub fn blake2_hash(&self) -> Option<String> {
-        bincode::serialize(self)
-            .map(|bytes| {
-                Hash(blake2_rfc::blake2b::blake2b(24, b"armour", &bytes).as_bytes()).to_string()
-            })
-            .ok()
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+pub struct Policies(pub BTreeMap<String, Policy>);
+
+impl Policies {
+    fn cut(&mut self, set: &[String]) {
+        for s in set.iter() {
+            self.0.remove(s);
+        }
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct Module {
+    call_graph: CallGraph,
+    interface: Interface,
+    pub program: Program,
+}
+
+impl Module {
     pub fn policy(&self, name: &str) -> Policy {
-        if let Some(e) = self.internal(name) {
+        if let Some(e) = self.program.internal(name) {
             if let Some(i) = self.interface(name) {
                 match e {
+                    Expr::LitExpr(Literal::Unit) => Policy::Unit,
                     Expr::LitExpr(body) => {
                         if *body == i.allow {
                             Policy::Allow
@@ -192,84 +303,32 @@ impl Program {
             Policy::Deny
         }
     }
-    pub fn is_allow_all(&self) -> bool {
-        self.interface
-            .0
-            .iter()
-            .all(|(function, i)| i.allow == Literal::Unit || self.policy(&function).is_allow())
-    }
-    pub fn is_deny_all(&self) -> bool {
-        self.interface
-            .0
-            .iter()
-            .all(|(function, i)| i.allow == Literal::Unit || self.policy(&function).is_deny())
-    }
-    // pub fn has_function(&self, name: &str) -> bool {
-    //     self.code.0.contains_key(name)
-    // }
-    pub fn typ(&self, name: &str) -> Option<types::Signature> {
-        self.headers.typ(name)
-    }
     fn arg_count(&self, name: &str) -> Option<u8> {
-        self.typ(name)
+        self.program
+            .typ(name)
             .map(|sig| sig.args().unwrap_or_else(Vec::new).len() as u8)
-    }
-    pub fn set_timeout(&mut self, t: std::time::Duration) {
-        self.externals.set_timeout(t)
-    }
-    pub fn timeout(&self) -> std::time::Duration {
-        self.externals.timeout()
-    }
-    pub fn internal(&self, s: &str) -> Option<&Expr> {
-        self.code.0.get(s)
     }
     pub fn interface(&self, s: &str) -> Option<&FunctionInterface> {
         self.interface.0.get(s)
     }
-    pub fn external(
-        &self,
-        external: &str,
-        method: &str,
-        args: Vec<Expr>,
-    ) -> Box<dyn Future<Item = Expr, Error = Error>> {
-        if let Some(socket) = self.externals.get_socket(external) {
-            match Literal::literal_vector(args) {
-                Ok(lits) => Box::new(
-                    externals::Externals::request(
-                        external.to_string(),
-                        method.to_string(),
-                        lits,
-                        socket,
-                        self.externals.timeout(),
-                    )
-                    .and_then(|r| future::ok(Expr::LitExpr(r)))
-                    .from_err(),
-                ),
-                Err(err) => Box::new(future::err(err)),
-            }
-        } else {
-            Box::new(future::err(Error::new(format!(
-                "missing exteral: {}",
-                external
-            ))))
-        }
-    }
-    fn add_decl(&mut self, call_graph: &mut CallGraph, decl: &parser::FnDecl) -> Result<(), Error> {
+    fn add_decl(&mut self, decl: &parser::FnDecl) -> Result<(), Error> {
         // println!("{:#?}", decl);
-        let (name, e, calls) = Expr::from_decl(decl, &self.headers)?;
+        let (name, e, calls) = Expr::from_decl(decl, &self.program.headers)?;
         // println!(r#""{}": {:#?}"#, name, e);
-        let own_idx = call_graph
+        let own_idx = self
+            .call_graph
             .nodes
             .get(name)
             .ok_or_else(|| Error::new(&format!("cannot find \"{}\" node", name)))?;
         for c in calls.into_iter().filter(|c| !Headers::is_builtin(&c.name)) {
-            let call_idx = call_graph
+            let call_idx = self
+                .call_graph
                 .nodes
                 .get(&c.name)
                 .ok_or_else(|| Error::new(&format!("cannot find \"{}\" node", c.name)))?;
-            call_graph.graph.add_edge(*own_idx, *call_idx, c.loc);
+            self.call_graph.graph.add_edge(*own_idx, *call_idx, c.loc);
         }
-        self.code.0.insert(name.to_string(), e);
+        self.program.code.0.insert(name.to_string(), e);
         Ok(())
     }
     fn type_check(
@@ -299,12 +358,12 @@ impl Program {
         interface: &FunctionInterface,
         allow: bool,
     ) -> Result<(), Error> {
-        match self.headers.typ(function) {
+        match self.program.headers.typ(function) {
             Some(f_sig) => {
                 if interface
                     .signatures
                     .iter()
-                    .any(|sig| Program::type_check(function, &f_sig, sig).is_ok())
+                    .any(|sig| Module::type_check(function, &f_sig, sig).is_ok())
                 {
                     Ok(())
                 } else {
@@ -322,14 +381,18 @@ impl Program {
             }
             None => {
                 // add default using interface
-                self.headers
+                self.program
+                    .headers
                     .add_function(function, interface.default.clone())?;
                 let lit = if allow {
                     interface.allow.clone()
                 } else {
                     interface.deny.clone()
                 };
-                self.code.0.insert(function.to_owned(), Expr::LitExpr(lit));
+                self.program
+                    .code
+                    .0
+                    .insert(function.to_owned(), Expr::LitExpr(lit));
                 Ok(())
             }
         }
@@ -339,40 +402,51 @@ impl Program {
         interface: &Interface,
         allow: Option<bool>,
     ) -> Result<(), Error> {
-        for (function, i) in interface.0.iter() {
-            self.check_interface(function, i, allow.unwrap_or_else(|| i.default_to_allow))?
-        }
         self.interface = interface.clone();
+        for (function, i) in interface.0.iter() {
+            self.check_interface(function, i, allow.unwrap_or_else(|| i.default_to_allow))?;
+            self.program
+                .policies
+                .0
+                .insert(function.to_string(), self.policy(function));
+        }
         Ok(())
     }
     pub fn allow_all(interface: &Interface) -> Result<Self, Error> {
-        let mut prog = Program::default();
-        prog.set_interface(interface, Some(true))?;
-        Ok(prog)
+        let mut module = Module::default();
+        module.set_interface(interface, Some(true))?;
+        Ok(module)
     }
     pub fn deny_all(interface: &Interface) -> Result<Self, Error> {
-        let mut prog = Program::default();
-        prog.set_interface(interface, Some(false))?;
-        Ok(prog)
+        let mut module = Module::default();
+        module.set_interface(interface, Some(false))?;
+        Ok(module)
     }
-    pub fn from_buf(buf: &str, interface: &Interface) -> Result<Self, Error> {
-        let mut prog: Self = buf.parse()?;
-        prog.set_interface(interface, None)?;
-        Ok(prog)
+    pub fn from_buf(buf: &str, interface: Option<&Interface>) -> Result<Self, Error> {
+        let mut module: Module = buf.parse()?;
+        module.call_graph.check_for_cycles()?;
+        if let Some(interface) = interface {
+            module.set_interface(interface, None)?;
+            let top: Vec<&String> = interface.0.keys().collect();
+            module
+                .program
+                .cut(module.call_graph.unreachable(top.as_slice()).as_slice());
+        }
+        Ok(module)
     }
     pub fn from_file<P: AsRef<std::path::Path>>(
         path: P,
-        interface: &Interface,
+        interface: Option<&Interface>,
     ) -> Result<Self, Error> {
         use std::io::prelude::Read;
         let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
         let mut buf = String::new();
         reader.read_to_string(&mut buf)?;
-        Program::from_buf(&buf, interface)
+        Module::from_buf(&buf, interface)
     }
 }
 
-impl std::str::FromStr for Program {
+impl std::str::FromStr for Module {
     type Err = Error;
 
     fn from_str(buf: &str) -> Result<Self, Self::Err> {
@@ -381,8 +455,7 @@ impl std::str::FromStr for Program {
         // println!("{}", tokens);
         match parser::parse_program(tokens) {
             Ok((_rest, prog_parse)) => {
-                let mut call_graph = CallGraph::new();
-                let mut prog = Program::default();
+                let mut module = Module::default();
                 // process headers (for type information)
                 for decl in prog_parse.iter() {
                     match decl {
@@ -396,8 +469,8 @@ impl std::str::FromStr for Program {
                                     err
                                 ))
                             })?;
-                            prog.headers.add_function(name, sig)?;
-                            call_graph.add_node(name);
+                            module.program.headers.add_function(name, sig)?;
+                            module.call_graph.add_node(name);
                         }
                         parser::Decl::External(e) => {
                             let ename = e.name();
@@ -411,10 +484,10 @@ impl std::str::FromStr for Program {
                                         err
                                     ))
                                 })?;
-                                prog.headers.add_function(name, sig)?;
-                                call_graph.add_node(name);
+                                module.program.headers.add_function(name, sig)?;
+                                module.call_graph.add_node(name);
                             }
-                            if prog.externals.add_external(ename, e.url()) {
+                            if module.program.externals.add_external(ename, e.url()) {
                                 println!("WARNING: external \"{}\" already existed", ename)
                             }
                         }
@@ -423,11 +496,10 @@ impl std::str::FromStr for Program {
                 // process declarations
                 for decl in prog_parse {
                     if let parser::Decl::FnDecl(decl) = decl {
-                        prog.add_decl(&mut call_graph, &decl)?
+                        module.add_decl(&decl)?
                     }
                 }
-                call_graph.check_for_cycles()?;
-                Ok(prog)
+                Ok(module)
             }
             Err(nom::Err::Error((toks, _))) => match parser::parse_fn_head(toks) {
                 Ok((rest, head)) => {

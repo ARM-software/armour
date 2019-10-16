@@ -38,12 +38,6 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
         self.disconnect = p.policy(policy::ON_TCP_DISCONNECT);
         self.program = Arc::new(p)
     }
-    fn deny_all(&mut self) {
-        self.set_policy(lang::Program::deny_all(&policy::TCP_POLICY).unwrap())
-    }
-    fn allow_all(&mut self) {
-        self.set_policy(lang::Program::allow_all(&policy::TCP_POLICY).unwrap())
-    }
     fn port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|(p, _)| *p)
     }
@@ -54,17 +48,10 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
         self.debug
     }
     fn status(&self) -> Box<codec::Status> {
-        let policy = if self.program.is_allow_all() {
-            codec::Policy::AllowAll
-        } else if self.program.is_deny_all() {
-            codec::Policy::DenyAll
-        } else {
-            codec::Policy::Program((*self.policy()).clone())
-        };
         Box::new(codec::Status {
             port: self.port(),
             debug: self.debug(),
-            policy,
+            policy: (*self.policy()).clone(),
         })
     }
 }
@@ -75,7 +62,7 @@ impl Default for TcpPolicy {
             connect: lang::Policy::default(),
             disconnect: lang::Policy::default(),
             debug: false,
-            program: Arc::new(lang::Program::deny_all(&policy::TCP_POLICY).unwrap()),
+            program: Arc::new(lang::Program::default()),
             proxy: None,
         }
     }
@@ -107,7 +94,7 @@ impl Handler<GetTcpPolicy> for PolicyActor {
                 info!("deny");
                 Box::new(future::ok(TcpPolicyStatus::Block))
             }
-            lang::Policy::Args(n) if n == 2 || n == 3 => {
+            lang::Policy::Args(n) if n == 0 || n == 2 || n == 3 => {
                 let connection_number = self.connection_number;
                 self.connection_number += 1;
                 let from = from.to_expression();
@@ -118,6 +105,7 @@ impl Handler<GetTcpPolicy> for PolicyActor {
                 }
                 let connection = ConnectionStats::new(&from, &to, &number);
                 let args = match n {
+                    0 => Vec::new(),
                     2 => vec![from, to],
                     _ => vec![from, to, number],
                 };

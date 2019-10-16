@@ -12,7 +12,7 @@ use regex::Regex;
 
 lazy_static! {
     pub static ref MASTER: Regex =
-        Regex::new(r"^(?i)\s*(?P<command>list|help|launch log|launch|quit)\s*$").unwrap();
+        Regex::new(r"^(?i)\s*(?P<command>help|list|launch|launch log|quit)\s*$").unwrap();
 }
 
 lazy_static! {
@@ -22,8 +22,13 @@ lazy_static! {
 
 lazy_static! {
     pub static ref INSTANCE1: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>print|policy|start streaming|start tcp|start|stop|wait|timeout|run)\s+(?P<arg>.*)\s*$"#)
+        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>print|policy|http start|tcp start|http stop|tcp stop|wait|http timeout|run)\s+(?P<arg>.*)\s*$"#)
             .unwrap();
+}
+
+lazy_static! {
+    pub static ref COMMANDS: Regex =
+        Regex::new(r"(?x)^(?i)\s*(?P<command>help|list|launch|launch log|quit)\s*$").unwrap();
 }
 
 /// get and parse "instance" block of regular expression capture

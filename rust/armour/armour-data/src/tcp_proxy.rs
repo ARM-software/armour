@@ -234,6 +234,7 @@ impl StreamHandler<client::ClientBytes, std::io::Error> for TcpData {
         if let Some(connection) = self.connection.as_mut() {
             connection.sent += msg.0.len();
         }
+        log::info!("sent: {}", msg.0.len());
         self.tcp_server_framed.write(msg.0)
     }
     fn finished(&mut self, ctx: &mut Context<Self>) {
@@ -247,6 +248,7 @@ impl StreamHandler<server::ServerBytes, std::io::Error> for TcpData {
         if let Some(connection) = self.connection.as_mut() {
             connection.received += msg.0.len();
         }
+        log::info!("recieved: {}", msg.0.len());
         self.tcp_client_framed.write(msg.0)
     }
 }

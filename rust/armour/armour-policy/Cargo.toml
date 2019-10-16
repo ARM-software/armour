@@ -24,7 +24,7 @@ log = "0.4"
 native-tls = "0.2"
 nom = "5.0"
 nom5_locate = "0.1"
-petgraph = "0.4"
+petgraph = { version = "0.4", features = ["serde-1"] }
 pretty = { version = "0.5",  features = ["termcolor"] }
 pretty_env_logger = "0.3"
 regex = "1.3"
