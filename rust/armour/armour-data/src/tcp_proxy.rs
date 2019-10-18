@@ -1,9 +1,10 @@
 // The following is needed for testing:
 
 // Terminal 1 (for armour-data-master)
-// - docker-machine create armour
+// - docker-machine create --virtualbox-cpu-count "2" --virtualbox-memory "4096" armour
 // - docker-machine ssh armour
 // - sudo iptables -t nat -I PREROUTING -i armour -p tcp --dport 443 -j DNAT --to-destination 127.0.0.1:8443
+// - sudo iptables -t nat -I PREROUTING -i armour -p tcp --dport 5001 -j DNAT --to-destination 127.0.0.1:6000
 // - sudo sysctl -w net.ipv4.conf.armour.route_localnet=1
 // - $TARGET_PATH/armour-data-master
 
@@ -146,6 +147,13 @@ impl Handler<TcpConnect> for TcpDataServer {
                                 tokio_tcp::TcpStream::connect(&socket).and_then(move |sock| {
                                     // create actor for handling connection
                                     TcpData::create(move |ctx| {
+                                        msg.0.set_nodelay(true).unwrap();
+                                        sock.set_nodelay(true).unwrap();
+                                        msg.0
+                                            .set_linger(Some(std::time::Duration::from_secs(60)))
+                                            .unwrap();
+                                        sock.set_linger(Some(std::time::Duration::from_secs(60)))
+                                            .unwrap();
                                         let (r, wc) = msg.0.split();
                                         TcpData::add_stream(
                                             FramedRead::new(r, client::ClientCodec),
@@ -234,7 +242,6 @@ impl StreamHandler<client::ClientBytes, std::io::Error> for TcpData {
         if let Some(connection) = self.connection.as_mut() {
             connection.sent += msg.0.len();
         }
-        log::info!("sent: {}", msg.0.len());
         self.tcp_server_framed.write(msg.0)
     }
     fn finished(&mut self, ctx: &mut Context<Self>) {
@@ -248,7 +255,6 @@ impl StreamHandler<server::ServerBytes, std::io::Error> for TcpData {
         if let Some(connection) = self.connection.as_mut() {
             connection.received += msg.0.len();
         }
-        log::info!("recieved: {}", msg.0.len());
         self.tcp_client_framed.write(msg.0)
     }
 }

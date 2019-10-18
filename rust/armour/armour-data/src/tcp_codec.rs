@@ -1,5 +1,10 @@
+fn out_of_memory(needed: usize) -> bool {
+    let mut v: Vec<u8> = Vec::with_capacity(0);
+    v.try_reserve(needed).is_err()
+}
+
 pub mod client {
-    use bytes::{BufMut, Bytes, BytesMut};
+    use bytes::{Bytes, BytesMut};
     use std::io;
     use tokio_io::codec::{Decoder, Encoder};
 
@@ -15,7 +20,6 @@ pub mod client {
 
         fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<ClientBytes>, io::Error> {
             Ok(if !buf.is_empty() {
-                log::info!("client buf len is: {}", buf.len());
                 Some(ClientBytes(buf.split_to(buf.len()).freeze()))
             } else {
                 None
@@ -28,16 +32,18 @@ pub mod client {
         type Error = io::Error;
 
         fn encode(&mut self, data: Bytes, buf: &mut BytesMut) -> Result<(), io::Error> {
-            log::info!("client data len is: {}", data.len());
-            buf.reserve(data.len());
-            buf.put(data);
+            if super::out_of_memory(buf.len()) {
+                log::warn!("out of memory");
+                return Err(io::Error::new(io::ErrorKind::Other, "out of memory"));
+            }
+            buf.extend_from_slice(&data);
             Ok(())
         }
     }
 }
 
 pub mod server {
-    use bytes::{BufMut, Bytes, BytesMut};
+    use bytes::{Bytes, BytesMut};
     use std::io;
     use tokio_io::codec::{Decoder, Encoder};
 
@@ -53,7 +59,6 @@ pub mod server {
 
         fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<ServerBytes>, io::Error> {
             Ok(if !buf.is_empty() {
-                log::info!("server buf len is: {}", buf.len());
                 Some(ServerBytes(buf.split_to(buf.len()).freeze()))
             } else {
                 None
@@ -66,9 +71,11 @@ pub mod server {
         type Error = io::Error;
 
         fn encode(&mut self, data: Bytes, buf: &mut BytesMut) -> Result<(), io::Error> {
-            log::info!("server data len is: {}", data.len());
-            buf.reserve(data.len());
-            buf.put(data);
+            if super::out_of_memory(buf.len()) {
+                log::warn!("out of memory");
+                return Err(io::Error::new(io::ErrorKind::Other, "out of memory"));
+            }
+            buf.extend_from_slice(&data);
             Ok(())
         }
     }
