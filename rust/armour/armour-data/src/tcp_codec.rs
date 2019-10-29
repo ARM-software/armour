@@ -1,12 +1,7 @@
-fn out_of_memory(needed: usize) -> bool {
-    let mut v: Vec<u8> = Vec::with_capacity(0);
-    v.try_reserve(needed).is_err()
-}
-
 pub mod client {
     use bytes::{Bytes, BytesMut};
     use std::io;
-    use tokio_io::codec::{Decoder, Encoder};
+    use tokio_io::codec::Decoder;
 
     /// A simple `Codec` implementation that just ships bytes around.
     #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
@@ -26,26 +21,12 @@ pub mod client {
             })
         }
     }
-
-    impl Encoder for ClientCodec {
-        type Item = Bytes;
-        type Error = io::Error;
-
-        fn encode(&mut self, data: Bytes, buf: &mut BytesMut) -> Result<(), io::Error> {
-            if super::out_of_memory(buf.len()) {
-                log::warn!("out of memory");
-                return Err(io::Error::new(io::ErrorKind::Other, "out of memory"));
-            }
-            buf.extend_from_slice(&data);
-            Ok(())
-        }
-    }
 }
 
 pub mod server {
     use bytes::{Bytes, BytesMut};
     use std::io;
-    use tokio_io::codec::{Decoder, Encoder};
+    use tokio_io::codec::Decoder;
 
     /// A simple `Codec` implementation that just ships bytes around.
     #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
@@ -63,20 +44,6 @@ pub mod server {
             } else {
                 None
             })
-        }
-    }
-
-    impl Encoder for ServerCodec {
-        type Item = Bytes;
-        type Error = io::Error;
-
-        fn encode(&mut self, data: Bytes, buf: &mut BytesMut) -> Result<(), io::Error> {
-            if super::out_of_memory(buf.len()) {
-                log::warn!("out of memory");
-                return Err(io::Error::new(io::ErrorKind::Other, "out of memory"));
-            }
-            buf.extend_from_slice(&data);
-            Ok(())
         }
     }
 }

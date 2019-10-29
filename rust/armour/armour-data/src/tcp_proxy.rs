@@ -115,6 +115,8 @@ fn shutdown_both(stream: tokio_tcp::TcpStream) {
     }
 }
 
+// const LINGER_TIME: u64 = 60;
+
 impl Handler<TcpConnect> for TcpDataServer {
     // type Result = ();
     type Result = Box<dyn Future<Item = (), Error = ()>>;
@@ -147,13 +149,17 @@ impl Handler<TcpConnect> for TcpDataServer {
                                 tokio_tcp::TcpStream::connect(&socket).and_then(move |sock| {
                                     // create actor for handling connection
                                     TcpData::create(move |ctx| {
-                                        msg.0.set_nodelay(true).unwrap();
-                                        sock.set_nodelay(true).unwrap();
-                                        msg.0
-                                            .set_linger(Some(std::time::Duration::from_secs(60)))
-                                            .unwrap();
-                                        sock.set_linger(Some(std::time::Duration::from_secs(60)))
-                                            .unwrap();
+                                        // msg.0.set_nodelay(false).unwrap();
+                                        // sock.set_nodelay(false).unwrap();
+                                        // msg.0
+                                        //     .set_linger(Some(std::time::Duration::from_secs(
+                                        //         LINGER_TIME,
+                                        //     )))
+                                        //     .unwrap();
+                                        // sock.set_linger(Some(std::time::Duration::from_secs(
+                                        //     LINGER_TIME,
+                                        // )))
+                                        // .unwrap();
                                         let (r, wc) = msg.0.split();
                                         TcpData::add_stream(
                                             FramedRead::new(r, client::ClientCodec),
@@ -166,16 +172,8 @@ impl Handler<TcpConnect> for TcpDataServer {
                                         );
                                         TcpData {
                                             policy,
-                                            tcp_client_framed: actix::io::FramedWrite::new(
-                                                wc,
-                                                client::ClientCodec,
-                                                ctx,
-                                            ),
-                                            tcp_server_framed: actix::io::FramedWrite::new(
-                                                ws,
-                                                server::ServerCodec,
-                                                ctx,
-                                            ),
+                                            client_writer: actix::io::Writer::new(wc, ctx),
+                                            server_writer: actix::io::Writer::new(ws, ctx),
                                             connection: *connection,
                                         }
                                     });
@@ -218,10 +216,10 @@ impl Handler<TcpConnect> for TcpDataServer {
 /// Actor that handles TCP communication with a data plane instance
 ///
 /// There will be one actor per TCP socket connection
-struct TcpData {
+pub struct TcpData {
     policy: Addr<PolicyActor>,
-    tcp_client_framed: actix::io::FramedWrite<WriteHalf<tokio_tcp::TcpStream>, client::ClientCodec>,
-    tcp_server_framed: actix::io::FramedWrite<WriteHalf<tokio_tcp::TcpStream>, server::ServerCodec>,
+    client_writer: actix::io::Writer<WriteHalf<tokio_tcp::TcpStream>, std::io::Error>,
+    server_writer: actix::io::Writer<WriteHalf<tokio_tcp::TcpStream>, std::io::Error>,
     connection: Option<tcp_policy::ConnectionStats>,
 }
 
@@ -242,7 +240,7 @@ impl StreamHandler<client::ClientBytes, std::io::Error> for TcpData {
         if let Some(connection) = self.connection.as_mut() {
             connection.sent += msg.0.len();
         }
-        self.tcp_server_framed.write(msg.0)
+        self.server_writer.write(&msg.0);
     }
     fn finished(&mut self, ctx: &mut Context<Self>) {
         ctx.stop()
@@ -255,7 +253,7 @@ impl StreamHandler<server::ServerBytes, std::io::Error> for TcpData {
         if let Some(connection) = self.connection.as_mut() {
             connection.received += msg.0.len();
         }
-        self.tcp_client_framed.write(msg.0)
+        self.client_writer.write(&msg.0)
     }
 }
 
