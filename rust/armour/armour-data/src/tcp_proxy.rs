@@ -172,6 +172,7 @@ impl Handler<TcpConnect> for TcpDataServer {
                                         );
                                         TcpData {
                                             policy,
+                                            counter: 0,
                                             client_writer: actix::io::Writer::new(wc, ctx),
                                             server_writer: actix::io::Writer::new(ws, ctx),
                                             connection: *connection,
@@ -218,6 +219,7 @@ impl Handler<TcpConnect> for TcpDataServer {
 /// There will be one actor per TCP socket connection
 pub struct TcpData {
     policy: Addr<PolicyActor>,
+    counter: usize,
     client_writer: actix::io::Writer<WriteHalf<tokio_tcp::TcpStream>, std::io::Error>,
     server_writer: actix::io::Writer<WriteHalf<tokio_tcp::TcpStream>, std::io::Error>,
     connection: Option<tcp_policy::ConnectionStats>,
@@ -226,6 +228,9 @@ pub struct TcpData {
 impl Actor for TcpData {
     type Context = Context<Self>;
 
+    fn started(&mut self, ctx: &mut Self::Context) {
+        self.hb(ctx);
+    }
     fn stopped(&mut self, _ctx: &mut Self::Context) {
         if let Some(connection) = &self.connection {
             self.policy.do_send(connection.clone());
@@ -234,13 +239,31 @@ impl Actor for TcpData {
     }
 }
 
+impl TcpData {
+    fn hb(&self, ctx: &mut actix::Context<Self>) {
+        ctx.run_later(std::time::Duration::from_millis(500), |act, ctx| {
+            // println!("{}", act.counter);
+            act.counter = 0;
+            act.hb(ctx);
+        });
+    }
+}
+
+const MAX_SPEED: usize = 100_000;
+
 // read from client becomes write to server
 impl StreamHandler<client::ClientBytes, std::io::Error> for TcpData {
-    fn handle(&mut self, msg: client::ClientBytes, _ctx: &mut Self::Context) {
-        if let Some(connection) = self.connection.as_mut() {
-            connection.sent += msg.0.len();
+    fn handle(&mut self, msg: client::ClientBytes, ctx: &mut Self::Context) {
+        if self.counter > MAX_SPEED {
+            warn!("too fast, giving up!");
+            ctx.stop()
+        } else {
+            self.counter += 1;
+            if let Some(connection) = self.connection.as_mut() {
+                connection.sent += msg.0.len();
+            }
+            self.server_writer.write(&msg.0)
         }
-        self.server_writer.write(&msg.0);
     }
     fn finished(&mut self, ctx: &mut Context<Self>) {
         ctx.stop()
@@ -249,11 +272,17 @@ impl StreamHandler<client::ClientBytes, std::io::Error> for TcpData {
 
 // read from server becomes write to client
 impl StreamHandler<server::ServerBytes, std::io::Error> for TcpData {
-    fn handle(&mut self, msg: server::ServerBytes, _ctx: &mut Self::Context) {
-        if let Some(connection) = self.connection.as_mut() {
-            connection.received += msg.0.len();
+    fn handle(&mut self, msg: server::ServerBytes, ctx: &mut Self::Context) {
+        if self.counter > MAX_SPEED {
+            warn!("too fast, giving up!");
+            ctx.stop()
+        } else {
+            self.counter += 1;
+            if let Some(connection) = self.connection.as_mut() {
+                connection.received += msg.0.len();
+            }
+            self.client_writer.write(&msg.0)
         }
-        self.client_writer.write(&msg.0)
     }
 }
 
