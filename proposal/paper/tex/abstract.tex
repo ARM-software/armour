@@ -1,0 +1,37 @@
+%% Abstract
+%% Note: \begin{abstract}...\end{abstract} environment must come
+%% before \maketitle command
+\begin{abstract}
+  In the interest of development agility and functionality
+  decomposition, many large scale, edge, and IoT services are 
+  developed as the combination of a collection of network
+  communicating processes, so called \mservices{}.
+  %
+  These \mservices{} can be programmed in different languages, deployed
+  independently, and have varying degrees of security requirements.
+  %
+  While this approach greatly simplifies the deployment and life-cycle
+  of large scale networked applications, it hampers security and
+  safety analysis and it makes end-to-end arguments hard to establish.
+  
+  To tackle these problems we propose \armour{}, a language-based
+  approach secure applications developed under the \mservice{} umbrella.
+  %
+  \armour{} implements a programming language to describe security
+  policies at the level of the API of \mservices{}.
+  %
+  The runtime of \armour{} is implemented as a security monitor,
+  whereby each \mservice{} cooperates with an \armour{} proxy charged
+  with executing \armour{} policies.
+  
+  In this paper we present the high-level design of \armour{}, its
+  data-plane IR language, and its implementation.
+  %
+  We present a number of example policies and a simple evaluation of
+  our working prototype. 
+\end{abstract}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: "../main"
+%%% End:
