@@ -11,24 +11,43 @@ use super::Instances;
 use regex::Regex;
 
 lazy_static! {
-    pub static ref MASTER: Regex =
-        Regex::new(r"^(?i)\s*(?P<command>help|list|launch|launch log|quit)\s*$").unwrap();
+    pub static ref MASTER: Regex = Regex::new(
+        r"(?x)^(?i)\s*(?P<command>
+            help |
+            list |
+            launch (\s log)? |
+            quit
+            )\s*$"
+    )
+    .unwrap();
 }
 
 lazy_static! {
-    pub static ref INSTANCE0: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>deny all|allow all|shutdown|stop all|debug on|debug off|status)\s*$"#).unwrap();
+    pub static ref INSTANCE0: Regex = Regex::new(
+        r#"(?x)^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>
+            ((http | tcp) \s)? deny \s all |
+            ((http | tcp) \s)? allow \s all |
+            shutdown |
+            ((http | tcp) \s)? stop |
+            ((http | tcp) \s)? debug \s (on | off) |
+            status
+            )\s*$"#
+    )
+    .unwrap();
 }
 
 lazy_static! {
-    pub static ref INSTANCE1: Regex =
-        Regex::new(r#"^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>print|policy|http start|tcp start|http stop|tcp stop|wait|http timeout|run)\s+(?P<arg>.*)\s*$"#)
-            .unwrap();
-}
-
-lazy_static! {
-    pub static ref COMMANDS: Regex =
-        Regex::new(r"(?x)^(?i)\s*(?P<command>help|list|launch|launch log|quit)\s*$").unwrap();
+    pub static ref INSTANCE1: Regex = Regex::new(
+        r#"(?x)^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>
+            policy |
+            (streaming \s http | http | tcp) \s start |
+            ((http | tcp) \s)? stop |
+            http \s timeout |
+            run |
+            wait
+            )\s+(?P<arg>.*)\s*$"#
+    )
+    .unwrap();
 }
 
 /// get and parse "instance" block of regular expression capture

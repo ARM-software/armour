@@ -192,10 +192,11 @@ fn master_command(
     [<id>|all] [http|tcp] policy <path>   read policy from <path> and send to instance
     [<id>|all] [http|tcp] debug [on|off]  enable/disable display of HTTP requests
     [<id>|all] http timeout <secs>        server response timeout
-    [<id>|all] [http|tcp] status          retrieve and print status
+    [<id>|all] status                     retrieve and print status
     [<id>|all] [http|tcp] stop            stop listening on all ports
-    [<id>|all] [http|tcp] start <port>    start listening for HTTP/TCP requests
-                                          on <port>
+
+    [<id>|all] [streaming http|http|tcp] start <port>
+        start listening for HTTP/TCP requests on <port>
 
     <id>  instance ID number
     all   all instances"
@@ -205,22 +206,42 @@ fn master_command(
     false
 }
 
+fn protocol(s: &str) -> Protocol {
+    if s.starts_with("http") {
+        Protocol::Rest
+    } else if s.starts_with("tcp") {
+        Protocol::TCP
+    } else {
+        Protocol::All
+    }
+}
+
 fn instance0_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captures) {
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     if let Some(request) = match command.as_ref().map(String::as_str) {
-        Some("allow all") => Some(PolicyRequest::SetPolicy(
-            Protocol::All,
-            lang::Module::allow_all(&TCP_REST_POLICY).unwrap().program,
-        )),
-        Some("debug off") => Some(PolicyRequest::Debug(Protocol::All, false)),
-        Some("debug on") => Some(PolicyRequest::Debug(Protocol::All, true)),
-        Some("deny all") => Some(PolicyRequest::SetPolicy(
-            Protocol::All,
-            lang::Module::deny_all(&TCP_REST_POLICY).unwrap().program,
-        )),
+        Some(s @ "allow all") | Some(s @ "http allow all") | Some(s @ "tcp allow all") => {
+            Some(PolicyRequest::SetPolicy(
+                protocol(s),
+                lang::Module::allow_all(&TCP_REST_POLICY).unwrap().program,
+            ))
+        }
+        Some(s @ "deny all") | Some(s @ "http deny all") | Some(s @ "tcp deny all") => {
+            Some(PolicyRequest::SetPolicy(
+                protocol(s),
+                lang::Module::deny_all(&TCP_REST_POLICY).unwrap().program,
+            ))
+        }
+        Some(s @ "debug off") | Some(s @ "http debug off") | Some(s @ "tcp debug off") => {
+            Some(PolicyRequest::Debug(protocol(s), false))
+        }
+        Some(s @ "debug on") | Some(s @ "http debug on") | Some(s @ "tcp debug on") => {
+            Some(PolicyRequest::Debug(protocol(s), true))
+        }
         Some("shutdown") => Some(PolicyRequest::Shutdown),
         Some("status") => Some(PolicyRequest::Status),
-        Some("stop all") => Some(PolicyRequest::Stop(Protocol::All)),
+        Some(s @ "stop") | Some(s @ "http stop") | Some(s @ "tcp stop") => {
+            Some(PolicyRequest::Stop(protocol(s)))
+        }
         _ => {
             log::info!("unknown command");
             None
@@ -250,12 +271,13 @@ fn instance1_command(
                 None
             }
         }
-        Some(s @ "http start") => {
+        Some(s @ "http start") | Some(s @ "streaming http start") => {
             if let Ok(port) = arg.parse::<u16>() {
+                let streaming = s.starts_with("streaming");
                 Some(PolicyRequest::StartHttp(HttpConfig {
                     port,
-                    request_streaming: false,
-                    response_streaming: false,
+                    request_streaming: streaming,
+                    response_streaming: streaming,
                 }))
             } else {
                 log::warn!("{}: expecting port number, got {}", s, arg);
@@ -269,20 +291,6 @@ fn instance1_command(
                 log::warn!("expecting timeout in seconds, got {}", arg);
                 None
             }
-        }
-        Some("print") => {
-            let path = PathBuf::from(arg);
-            match lang::Module::from_file(&path, Some(&TCP_REST_POLICY)) {
-                Ok(module) => {
-                    let prog = module.program;
-                    log::info!("policy: {:02x?}", prog.blake2_hash().unwrap());
-                    prog.print()
-                }
-                Err(err) => {
-                    log::warn!(r#"{:?}: {}"#, path, err);
-                }
-            };
-            None
         }
         Some("policy") => {
             let path = PathBuf::from(arg);
