@@ -175,6 +175,8 @@ fn request(
                         } => future::Either::B(future::Either::A(future::ok(unauthorized(
                             "request denied",
                         )))),
+                        // cannot be Unit policy
+                        _ => unreachable!(),
                     },
                     // could not obtain forwarding URL
                     Err(()) => future::Either::B(future::Either::A(future::ok(internal()))),
@@ -341,6 +343,8 @@ fn client_payload(
         } => future::Either::A(future::Either::A(future::ok(unauthorized(
             "request denied (bad client payload)",
         )))),
+        // cannot be Unit policy
+        _ => unreachable!(),
     }
 }
 
@@ -463,6 +467,8 @@ fn server_payload(
                 } => future::Either::B(future::Either::A(future::ok(unauthorized(
                     "request denied (bad server payload)",
                 )))),
+                // cannot be Unit policy
+                _ => unreachable!(),
             })
         }
         // error response when connecting to server
@@ -528,6 +534,8 @@ fn response(
         } => future::Either::B(future::ok(unauthorized(
             "request denied (bad server response)",
         ))),
+        // cannot be Unit policy
+        _ => unreachable!(),
     }
 }
 

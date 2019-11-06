@@ -64,6 +64,7 @@ fn main() -> std::io::Result<()> {
     let destination = matches.value_of("destination").map(str::to_string);
     let uri = matches.value_of("uri").unwrap_or("");
     let message = matches.value_of("message").unwrap_or("").trim().to_string();
+    // let message = actix_web::web::Bytes::from_static(&[1u8; 10_485_760]);
 
     // enable logging
     env::set_var("RUST_LOG", "arm_service=debug,actix_web=debug");
@@ -130,6 +131,8 @@ fn main() -> std::io::Result<()> {
                         })
                 })
         }));
+    } else if own_port.is_none() {
+        actix::System::current().stop()
     };
 
     sys.run()

@@ -1,6 +1,6 @@
 [package]
 name = "armour-policy"
-version = "0.1.8"
+version = "0.1.9"
 authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
@@ -11,7 +11,7 @@ capnpc = "0.10"
 
 [dependencies]
 actix = "0.8"
-base64 = "0.10"
+base64 = "0.11"
 bincode = "1.2"
 blake2-rfc = "0.2"
 capnp = "0.10"
@@ -24,7 +24,7 @@ log = "0.4"
 native-tls = "0.2"
 nom = "5.0"
 nom5_locate = "0.1"
-petgraph = "0.4"
+petgraph = { version = "0.4", features = ["serde-1"] }
 pretty = { version = "0.5",  features = ["termcolor"] }
 pretty_env_logger = "0.3"
 regex = "1.3"

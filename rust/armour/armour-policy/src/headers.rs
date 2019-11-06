@@ -28,6 +28,11 @@ impl Headers {
             Ok(())
         }
     }
+    pub fn cut(&mut self, set: &[String]) {
+        for s in set.iter() {
+            self.0.remove(s);
+        }
+    }
     pub fn builtins(f: &str) -> Option<Signature> {
         let sig = |args, ty| Some(Signature::new(args, ty));
         match f {

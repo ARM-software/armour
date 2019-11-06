@@ -1,7 +1,7 @@
 pub mod client {
-    use bytes::{BufMut, Bytes, BytesMut};
+    use bytes::{Bytes, BytesMut};
     use std::io;
-    use tokio_io::codec::{Decoder, Encoder};
+    use tokio_io::codec::Decoder;
 
     /// A simple `Codec` implementation that just ships bytes around.
     #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
@@ -21,23 +21,12 @@ pub mod client {
             })
         }
     }
-
-    impl Encoder for ClientCodec {
-        type Item = Bytes;
-        type Error = io::Error;
-
-        fn encode(&mut self, data: Bytes, buf: &mut BytesMut) -> Result<(), io::Error> {
-            buf.reserve(data.len());
-            buf.put(data);
-            Ok(())
-        }
-    }
 }
 
 pub mod server {
-    use bytes::{BufMut, Bytes, BytesMut};
+    use bytes::{Bytes, BytesMut};
     use std::io;
-    use tokio_io::codec::{Decoder, Encoder};
+    use tokio_io::codec::Decoder;
 
     /// A simple `Codec` implementation that just ships bytes around.
     #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
@@ -55,17 +44,6 @@ pub mod server {
             } else {
                 None
             })
-        }
-    }
-
-    impl Encoder for ServerCodec {
-        type Item = Bytes;
-        type Error = io::Error;
-
-        fn encode(&mut self, data: Bytes, buf: &mut BytesMut) -> Result<(), io::Error> {
-            buf.reserve(data.len());
-            buf.put(data);
-            Ok(())
         }
     }
 }

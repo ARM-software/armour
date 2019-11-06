@@ -2,7 +2,7 @@
 //!
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
-use armour_data_interface::codec::{HttpConfig, Policy, PolicyRequest, Protocol};
+use armour_data_interface::codec::{HttpConfig, PolicyRequest, Protocol};
 use armour_data_interface::policy::TCP_REST_POLICY;
 use armour_data_master as master;
 use armour_policy::lang;
@@ -29,7 +29,10 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     // enable logging
-    std::env::set_var("RUST_LOG", "armour_data_master=debug,actix=debug");
+    std::env::set_var(
+        "RUST_LOG",
+        "armour_data_master=debug,armour_policy=debug,actix=debug",
+    );
     std::env::set_var("RUST_BACKTRACE", "0");
     pretty_env_logger::init();
 
@@ -176,24 +179,24 @@ fn master_command(
         Some("help") => println!(
             "COMMANDS:
     help                      list commands
-    launch [log]              start a new slave instance
     list                      list connected instances
     quit                      shutdown master and all instances
-
     run <file>                run commands from <file>
     wait <seconds>            wait for <seconds> to elapse (up to 10s)
 
-    [<id>|all] allow all      request allow all policy
-    [<id>|all] deny all       request deny all policy
-    [<id>|all] debug on|off   enable/disable display of HTTP requests
-    [<id>|all] status         retrieve and print status
-    [<id>|all] shutdown       request shutdown
-    [<id>|all] timeout <secs> server response timeout
-    [<id>|all] policy <path>  read policy from <path> and send to instance
-    [<id>|all] print <path>   print policy from <path>
-    [<id>|all] stop all       stop listening on all ports
-    [<id>|all] start [tcp|streaming] <port>
-                              start listening for HTTP/TCP requests on <port>
+    launch [log]              start a new slave instance
+    [<id>|all] shutdown       request slave shutdown
+
+    [<id>|all] [http|tcp] allow all       request allow all policy
+    [<id>|all] [http|tcp] deny all        request deny all policy
+    [<id>|all] [http|tcp] policy <path>   read policy from <path> and send to instance
+    [<id>|all] [http|tcp] debug [on|off]  enable/disable display of HTTP requests
+    [<id>|all] http timeout <secs>        server response timeout
+    [<id>|all] status                     retrieve and print status
+    [<id>|all] [http|tcp] stop            stop listening on all ports
+
+    [<id>|all] [streaming http|http|tcp] start <port>
+        start listening for HTTP/TCP requests on <port>
 
     <id>  instance ID number
     all   all instances"
@@ -203,16 +206,42 @@ fn master_command(
     false
 }
 
+fn protocol(s: &str) -> Protocol {
+    if s.starts_with("http") {
+        Protocol::Rest
+    } else if s.starts_with("tcp") {
+        Protocol::TCP
+    } else {
+        Protocol::All
+    }
+}
+
 fn instance0_command(master: &Addr<master::ArmourDataMaster>, caps: regex::Captures) {
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     if let Some(request) = match command.as_ref().map(String::as_str) {
-        Some("allow all") => Some(PolicyRequest::SetPolicy(Protocol::All, Policy::AllowAll)),
-        Some("debug off") => Some(PolicyRequest::Debug(Protocol::All, false)),
-        Some("debug on") => Some(PolicyRequest::Debug(Protocol::All, true)),
-        Some("deny all") => Some(PolicyRequest::SetPolicy(Protocol::All, Policy::DenyAll)),
+        Some(s @ "allow all") | Some(s @ "http allow all") | Some(s @ "tcp allow all") => {
+            Some(PolicyRequest::SetPolicy(
+                protocol(s),
+                lang::Module::allow_all(&TCP_REST_POLICY).unwrap().program,
+            ))
+        }
+        Some(s @ "deny all") | Some(s @ "http deny all") | Some(s @ "tcp deny all") => {
+            Some(PolicyRequest::SetPolicy(
+                protocol(s),
+                lang::Module::deny_all(&TCP_REST_POLICY).unwrap().program,
+            ))
+        }
+        Some(s @ "debug off") | Some(s @ "http debug off") | Some(s @ "tcp debug off") => {
+            Some(PolicyRequest::Debug(protocol(s), false))
+        }
+        Some(s @ "debug on") | Some(s @ "http debug on") | Some(s @ "tcp debug on") => {
+            Some(PolicyRequest::Debug(protocol(s), true))
+        }
         Some("shutdown") => Some(PolicyRequest::Shutdown),
         Some("status") => Some(PolicyRequest::Status),
-        Some("stop all") => Some(PolicyRequest::Stop(Protocol::All)),
+        Some(s @ "stop") | Some(s @ "http stop") | Some(s @ "tcp stop") => {
+            Some(PolicyRequest::Stop(protocol(s)))
+        }
         _ => {
             log::info!("unknown command");
             None
@@ -234,7 +263,7 @@ fn instance1_command(
     let arg = caps.name("arg").unwrap().as_str().trim_matches('"');
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     if let Some(request) = match command.as_ref().map(String::as_str) {
-        Some("start tcp") => {
+        Some("tcp start") => {
             if let Ok(port) = arg.parse::<u16>() {
                 Some(PolicyRequest::StartTcp(port))
             } else {
@@ -242,9 +271,9 @@ fn instance1_command(
                 None
             }
         }
-        Some(s @ "start") | Some(s @ "start streaming") => {
+        Some(s @ "http start") | Some(s @ "streaming http start") => {
             if let Ok(port) = arg.parse::<u16>() {
-                let streaming = s.ends_with("streaming");
+                let streaming = s.starts_with("streaming");
                 Some(PolicyRequest::StartHttp(HttpConfig {
                     port,
                     request_streaming: streaming,
@@ -255,7 +284,7 @@ fn instance1_command(
                 None
             }
         }
-        Some("timeout") => {
+        Some("http timeout") => {
             if let Ok(secs) = arg.parse::<u8>() {
                 Some(PolicyRequest::Timeout(secs))
             } else {
@@ -263,28 +292,13 @@ fn instance1_command(
                 None
             }
         }
-        Some("print") => {
-            let path = PathBuf::from(arg);
-            match lang::Program::from_file(&path, &TCP_REST_POLICY) {
-                Ok(prog) => {
-                    log::info!("policy: {:02x?}", prog.blake2_hash().unwrap());
-                    prog.print()
-                }
-                Err(err) => {
-                    log::warn!(r#"{:?}: {}"#, path, err);
-                }
-            };
-            None
-        }
         Some("policy") => {
             let path = PathBuf::from(arg);
-            match lang::Program::from_file(&path, &TCP_REST_POLICY) {
-                Ok(prog) => {
+            match lang::Module::from_file(&path, Some(&TCP_REST_POLICY)) {
+                Ok(module) => {
+                    let prog = module.program;
                     log::info!("sending policy: {}", prog.blake2_hash().unwrap());
-                    Some(PolicyRequest::SetPolicy(
-                        Protocol::All,
-                        Policy::Program(prog),
-                    ))
+                    Some(PolicyRequest::SetPolicy(Protocol::All, prog))
                 }
                 Err(err) => {
                     log::warn!(r#"{:?}: {}"#, path, err);

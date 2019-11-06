@@ -33,15 +33,16 @@ fn main() -> io::Result<()> {
     pretty_env_logger::init();
 
     // declare program
-    let mut prog: lang::Program;
+    let module: lang::Module;
 
     // try to load code from an input file
     if let Some(filename) = matches.value_of("input file") {
-        prog = lang::Program::from_file(filename, &lang::Interface::default())
+        module = lang::Module::from_file(filename, None)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
     } else {
-        prog = lang::Program::default()
+        module = lang::Module::default()
     }
+    let mut prog = module.program;
     prog.print();
 
     if let Some(timeout) = matches.value_of("timeout") {
