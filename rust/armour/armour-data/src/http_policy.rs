@@ -54,7 +54,7 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
     }
     fn stop(&mut self) -> bool {
         if let Some((_, ref server)) = self.proxy {
-            server.stop(true); // graceful stop
+            actix::spawn(server.stop(true)); // graceful stop
             self.proxy = None;
             true
         } else {

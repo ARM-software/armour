@@ -11,7 +11,7 @@ capnpc = "0.10"
 
 [dependencies]
 actix = "0.8"
-base64 = "0.10"
+base64 = "0.11"
 bincode = "1.2"
 blake2-rfc = "0.2"
 capnp = "0.10"

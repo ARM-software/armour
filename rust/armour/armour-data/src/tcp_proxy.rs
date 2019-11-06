@@ -148,6 +148,7 @@ impl Handler<TcpConnect> for TcpDataServer {
                             Ok(Ok(TcpPolicyStatus::Allow(connection))) => future::Either::A(
                                 tokio_tcp::TcpStream::connect(&socket).and_then(move |sock| {
                                     // create actor for handling connection
+                                    // TcpData::start_in_arbiter(&Arbiter::new(), move |ctx| {
                                     TcpData::create(move |ctx| {
                                         // msg.0.set_nodelay(false).unwrap();
                                         // sock.set_nodelay(false).unwrap();
@@ -254,6 +255,9 @@ const MAX_SPEED: usize = 100_000;
 // read from client becomes write to server
 impl StreamHandler<client::ClientBytes, std::io::Error> for TcpData {
     fn handle(&mut self, msg: client::ClientBytes, ctx: &mut Self::Context) {
+        // check if we are being flooded with client bytes and
+        // if we are then simply close the connection
+        // TODO: find a better way to handle backpressure
         if self.counter > MAX_SPEED {
             warn!("too fast, giving up!");
             ctx.stop()
