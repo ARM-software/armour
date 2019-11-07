@@ -114,7 +114,9 @@ impl Program {
         self.externals.timeout()
     }
     fn cut(&mut self, set: &[String]) {
-        log::warn!("removing unreachable functions: {:?}", set);
+        if !set.is_empty() {
+            log::warn!("removing unreachable functions: {:?}", set)
+        };
         self.headers.cut(set);
         self.code.cut(set);
         self.policies.cut(set)

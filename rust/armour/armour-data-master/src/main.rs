@@ -21,6 +21,14 @@ fn main() -> io::Result<()> {
         .author("Anthony Fox <anthony.fox@arm.com>")
         .about("Armour Data Plane Master")
         .arg(
+            Arg::with_name("script")
+                .short("r")
+                .long("run")
+                .required(false)
+                .takes_value(true)
+                .help("Run commands from a script"),
+        )
+        .arg(
             Arg::with_name("master socket")
                 .index(1)
                 .required(false)
@@ -63,6 +71,9 @@ fn main() -> io::Result<()> {
 
     // issue commands based on user input
     std::thread::spawn(move || {
+        if let Some(script) = matches.value_of("script") {
+            run_script(script, &master, &socket)
+        };
         let mut rl = Editor::new();
         rl.set_helper(Some(Helper::new()));
         if rl.load_history("armour-master.txt").is_err() {
@@ -126,6 +137,45 @@ fn armour_data() -> std::path::PathBuf {
         path
     } else {
         std::path::PathBuf::from("./armour-data")
+    }
+}
+
+fn pathbuf(s: &str) -> std::path::PathBuf {
+    PathBuf::from(s)
+        .iter()
+        .map(|oss| {
+            oss.to_str()
+                .map(|s| s.replace("\\ ", " ").into())
+                .unwrap_or_else(|| oss.to_os_string())
+        })
+        .collect()
+}
+
+fn run_script(script: &str, master: &Addr<master::ArmourDataMaster>, socket: &std::path::PathBuf) {
+    match std::fs::File::open(pathbuf(script)) {
+        Ok(file) => {
+            let mut buf_reader = std::io::BufReader::new(file);
+            let mut line = 1;
+            let mut done = false;
+            while !done {
+                let mut cmd = String::new();
+                if let Ok(res) = buf_reader.read_line(&mut cmd) {
+                    cmd = cmd.trim().to_string();
+                    if !(cmd == "" || cmd.starts_with('#')) {
+                        log::info!(r#"run command: "{}""#, cmd);
+                        if run_command(master, &cmd, socket) {
+                            return;
+                        }
+                    };
+                    line += 1;
+                    done = res == 0
+                } else {
+                    log::warn!("{}: error reading command on line {}", script, line);
+                    done = true
+                }
+            }
+        }
+        Err(err) => log::warn!("{}: {}", script, err),
     }
 }
 
@@ -293,7 +343,7 @@ fn instance1_command(
             }
         }
         Some("policy") => {
-            let path = PathBuf::from(arg);
+            let path = pathbuf(arg);
             match lang::Module::from_file(&path, Some(&TCP_REST_POLICY)) {
                 Ok(module) => {
                     let prog = module.program;
@@ -320,32 +370,7 @@ fn instance1_command(
         }
         Some("run") => {
             if commands::instance(&caps) == master::Instances::SoleInstance {
-                let arg = arg.replace("\\ ", " ");
-                match std::fs::File::open(PathBuf::from(&arg)) {
-                    Ok(file) => {
-                        let mut buf_reader = std::io::BufReader::new(file);
-                        let mut line = 1;
-                        let mut done = false;
-                        while !done {
-                            let mut cmd = String::new();
-                            if let Ok(res) = buf_reader.read_line(&mut cmd) {
-                                cmd = cmd.trim().to_string();
-                                if !(cmd == "" || cmd.starts_with('#')) {
-                                    log::info!(r#"run command: "{}""#, cmd);
-                                    if run_command(master, &cmd, socket) {
-                                        return true;
-                                    }
-                                };
-                                line += 1;
-                                done = res == 0
-                            } else {
-                                log::warn!("{}: error reading command on line {}", arg, line);
-                                done = true
-                            }
-                        }
-                    }
-                    Err(err) => log::warn!("{}: {}", arg, err),
-                }
+                run_script(arg, master, socket)
             } else {
                 log::info!("unknown command")
             };

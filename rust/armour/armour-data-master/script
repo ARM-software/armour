@@ -2,5 +2,5 @@ launch
 wait 1
 debug on
 allow all
-start streaming 8443
-start 8444
+streaming http start 8443
+status
