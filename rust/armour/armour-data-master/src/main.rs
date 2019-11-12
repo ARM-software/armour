@@ -47,9 +47,6 @@ fn main() -> io::Result<()> {
     // start Actix system
     let sys = actix::System::new("armour-data-master");
 
-    // start master actor
-    let master = master::ArmourDataMaster::start_default();
-
     // start server, listening for connections on a Unix socket
     let socket = matches
         .value_of("master socket")
@@ -59,14 +56,10 @@ fn main() -> io::Result<()> {
     let socket =
         std::fs::canonicalize(&socket).unwrap_or_else(|_| std::path::PathBuf::from(socket));
     log::info!("started Data Master on socket: {}", socket.display());
-    let master_clone = master.clone();
     let socket_clone = socket.clone();
-    let _server = master::ArmourDataServer::create(|ctx| {
+    let master = master::ArmourDataMaster::create(|ctx| {
         ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(master::UdsConnect));
-        master::ArmourDataServer {
-            master: master_clone,
-            socket: socket_clone,
-        }
+        master::ArmourDataMaster::new(socket_clone)
     });
 
     // issue commands based on user input

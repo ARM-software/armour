@@ -19,15 +19,14 @@ pub enum Instances {
 
 pub mod commands;
 
-/// Actor that handles Unix socket connections.
-///
-/// When new data plane instances arrive, we give them the address of the master.
-pub struct ArmourDataServer {
-    pub master: Addr<ArmourDataMaster>,
-    pub socket: std::path::PathBuf,
+/// Actor that handles Unix socket connections
+pub struct ArmourDataMaster {
+    instances: HashMap<usize, Addr<ArmourDataInstance>>,
+    count: usize,
+    socket: std::path::PathBuf,
 }
 
-impl Actor for ArmourDataServer {
+impl Actor for ArmourDataMaster {
     type Context = Context<Self>;
     fn stopped(&mut self, _ctx: &mut Context<Self>) {
         info!("removing socket: {}", self.socket.display());
@@ -40,12 +39,12 @@ impl Actor for ArmourDataServer {
 #[derive(Message)]
 pub struct UdsConnect(pub tokio_uds::UnixStream);
 
-impl Handler<UdsConnect> for ArmourDataServer {
+impl Handler<UdsConnect> for ArmourDataMaster {
     type Result = ();
 
-    fn handle(&mut self, msg: UdsConnect, _: &mut Context<Self>) {
+    fn handle(&mut self, msg: UdsConnect, ctx: &mut Context<Self>) {
         // For each incoming connection we create `ArmourDataInstance` actor
-        let master = self.master.clone();
+        let master = ctx.address();
         ArmourDataInstance::create(move |ctx| {
             let (r, w) = msg.0.split();
             ArmourDataInstance::add_stream(FramedRead::new(r, MasterCodec), ctx);
@@ -58,18 +57,14 @@ impl Handler<UdsConnect> for ArmourDataServer {
     }
 }
 
-/// Actor that manages multiple data plane instances
-#[derive(Default)]
-pub struct ArmourDataMaster {
-    instances: HashMap<usize, Addr<ArmourDataInstance>>,
-    count: usize,
-}
-
-impl Actor for ArmourDataMaster {
-    type Context = Context<Self>;
-}
-
 impl ArmourDataMaster {
+    pub fn new(socket: std::path::PathBuf) -> Self {
+        ArmourDataMaster {
+            instances: HashMap::new(),
+            count: 0,
+            socket,
+        }
+    }
     fn get_instances(&self, instances: Instances) -> Vec<&Addr<ArmourDataInstance>> {
         match instances {
             Instances::Error => {
