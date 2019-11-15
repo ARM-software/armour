@@ -307,13 +307,13 @@ impl SummaryMap {
         }
     }
     fn html_table(&self) -> String {
-        let mut s = String::from(r#"<table style="width:100%"><tr><th>service</th><th>client</th><th>first</th><th>last</th><th>methods</th><th>sent</th><th>received</th></tr>"#);
+        let mut s = String::from(r#"<table border=1 frame=hsides rules=rows style="width:100%"><tr><th>service</th><th>client</th><th>first</th><th>last</th><th>methods</th><th>sent</th><th>received</th></tr>"#);
         for (to, from) in self.0.iter() {
             let len = from.len();
             let mut iter = from.iter();
             if let Some((from, summary)) = iter.next() {
                 let rowspan = if 1 < len {
-                    format!(r#" rowspan="{}""#, len)
+                    format!(r#" rowspan="{}" style="vertical-align: top;""#, len)
                 } else {
                     "".to_string()
                 };
