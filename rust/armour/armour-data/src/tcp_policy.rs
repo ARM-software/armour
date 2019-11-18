@@ -17,9 +17,9 @@ pub struct TcpPolicy {
 }
 
 impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
-    fn start(&mut self, port: u16, proxy: Addr<tcp_proxy::TcpDataServer>) {
+    fn start(&mut self, port: u16, server: Addr<tcp_proxy::TcpDataServer>) {
         self.stop();
-        self.proxy = Some((port, proxy))
+        self.proxy = Some((port, server))
     }
     fn stop(&mut self) -> bool {
         if let Some((_, ref server)) = self.proxy {
