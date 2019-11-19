@@ -1,0 +1,11 @@
+fn require() -> bool {
+    return true
+}
+
+fn client_payload(payload: data) -> bool {
+    return true
+}
+
+fn server_payload(payload: data) -> bool {
+    return true
+}
