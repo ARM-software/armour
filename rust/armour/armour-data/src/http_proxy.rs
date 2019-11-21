@@ -491,9 +491,12 @@ fn server_payload(
                             .then(move |allowed| match allowed {
                                 // allow
                                 // Ok(Ok(true)) => future::Either::A(client_resp.body(server_payload)),
-                                Ok(Ok(true)) => future::Either::A(future::ok(
-                                    HttpResponseBuilder::from(client_resp).body(server_payload),
-                                )),
+                                Ok(Ok(true)) => {
+                                    log::info!("replying to client (1)");
+                                    future::Either::A(future::ok(
+                                        HttpResponseBuilder::from(client_resp).body(server_payload),
+                                    ))
+                                }
                                 // reject
                                 Ok(Ok(false)) => future::Either::B(future::ok(unauthorized(
                                     "request denied (bad server payload)",
@@ -529,6 +532,7 @@ fn server_payload(
                             Ok::<_, Error>(body)
                         })
                         .and_then(move |server_payload| {
+                            log::info!("replying to client (2)");
                             future::ok(HttpResponseBuilder::from(client_resp).body(server_payload))
                         }),
                 )))
