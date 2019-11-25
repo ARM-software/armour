@@ -40,7 +40,7 @@ lazy_static! {
     pub static ref INSTANCE1: Regex = Regex::new(
         r#"(?x)^(?i)\s*(?P<instance>([[:digit:]]+|all)\s+)?(?P<command>
             policy |
-            (streaming \s http | http | tcp) \s start |
+            (http | tcp) \s start |
             ((http | tcp) \s)? stop |
             http \s timeout |
             run |

@@ -20,18 +20,13 @@ pub fn start_proxy(
     config: HttpConfig,
 ) -> std::io::Result<actix_web::dev::Server> {
     let socket_address = format!("0.0.0.0:{}", config.port);
-    let encoding = if config.response_streaming {
-        ContentEncoding::Auto
-    } else {
-        ContentEncoding::Identity
-    };
     let server = HttpServer::new(move || {
         App::new()
             .data(policy.clone())
             .data(Client::new())
-            .data(config.clone())
+            .data(config.port)
             .wrap(middleware::Logger::default())
-            .wrap(middleware::Compress::new(encoding))
+            .wrap(middleware::Compress::new(ContentEncoding::Identity))
             .default_service(web::route().to_async(request))
     })
     .bind(&socket_address)?
@@ -49,13 +44,13 @@ fn request(
     payload: web::Payload,
     policy: web::Data<actix::Addr<PolicyActor>>,
     client: web::Data<Client>,
-    config: web::Data<HttpConfig>,
+    proxy_port: web::Data<u16>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
-    policy.send(GetRestPolicy).then(|p| {
+    policy.send(GetRestPolicy).then(move |p| {
         match p {
             // we succeeded in getting a policy
             Ok(p) => {
-                match Connection::new(&p, &req, &config) {
+                match Connection::new(&p, &req, *proxy_port) {
                     Ok(connection) => match p {
                         // check request
                         RestPolicyStatus {
@@ -79,9 +74,7 @@ fn request(
                                 move |allowed| match allowed {
                                     // allow request
                                     Ok(Ok(true)) => future::Either::A({
-                                        client_payload(
-                                            p, req, connection, payload, policy, client, config,
-                                        )
+                                        client_payload(p, req, connection, payload, policy, client)
                                     }),
                                     // reject
                                     Ok(Ok(false)) => future::Either::B(future::ok(unauthorized(
@@ -105,7 +98,7 @@ fn request(
                             request: Policy::Allow,
                             ..
                         } => future::Either::B(future::Either::B(client_payload(
-                            p, req, connection, payload, policy, client, config,
+                            p, req, connection, payload, policy, client,
                         ))),
                         // deny
                         RestPolicyStatus {
@@ -138,7 +131,6 @@ fn client_payload(
     payload: web::Payload,
     policy: web::Data<actix::Addr<PolicyActor>>,
     client: web::Data<Client>,
-    config: web::Data<HttpConfig>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match p {
         // check client payload
@@ -177,13 +169,10 @@ fn client_payload(
                             match allowed {
                                 // allow payload
                                 Ok(Ok(true)) => {
-                                    let mut client_request = client
+                                    let client_request = client
                                         .request_from(connection.uri(), req.head())
                                         .process_headers(req.peer_addr())
                                         .timeout(timeout);
-                                    if connection.no_decompress {
-                                        client_request = client_request.no_decompress()
-                                    }
                                     if debug {
                                         debug!("{:?}", client_request)
                                     };
@@ -192,15 +181,7 @@ fn client_payload(
                                             // forward the request (with the original client payload)
                                             .send_body(client_payload)
                                             // send the response back to the client
-                                            .then(move |res| {
-                                                response(
-                                                    p,
-                                                    policy,
-                                                    res,
-                                                    config.response_streaming,
-                                                    connection,
-                                                )
-                                            }),
+                                            .then(move |res| response(p, policy, res, connection)),
                                     )
                                 }
                                 // reject
@@ -228,46 +209,29 @@ fn client_payload(
             timeout,
             ..
         } => {
-            let mut client_request = client
+            let client_request = client
                 .request_from(connection.uri(), req.head())
                 .process_headers(req.peer_addr())
                 .timeout(timeout);
             // let server_payload = fns.map(|x| x.server_payload).unwrap_or(false);
-            if connection.no_decompress {
-                client_request = client_request.no_decompress()
-            }
             if debug {
                 debug!("{:?}", client_request)
             };
-            future::Either::B(if config.request_streaming {
-                future::Either::A(
-                    client_request
-                        // forward the request (with the original client payload)
-                        .send_stream(payload)
-                        // send the response back to the client
-                        .then(move |res| {
-                            response(p, policy, res, config.response_streaming, connection)
-                        }),
-                )
-            } else {
-                future::Either::B(
-                    payload
-                        .from_err()
-                        .fold(web::BytesMut::new(), |mut body, chunk| {
-                            body.extend_from_slice(&chunk);
-                            Ok::<_, Error>(body)
-                        })
-                        .and_then(move |client_payload| {
-                            client_request
-                                // forward the request (with the original client payload)
-                                .send_body(client_payload)
-                                // send the response back to the client
-                                .then(move |res| {
-                                    response(p, policy, res, config.response_streaming, connection)
-                                })
-                        }),
-                )
-            })
+            future::Either::B(
+                payload
+                    .from_err()
+                    .fold(web::BytesMut::new(), |mut body, chunk| {
+                        body.extend_from_slice(&chunk);
+                        Ok::<_, Error>(body)
+                    })
+                    .and_then(move |client_payload| {
+                        client_request
+                            // forward the request (with the original client payload)
+                            .send_body(client_payload)
+                            // send the response back to the client
+                            .then(move |res| response(p, policy, res, connection))
+                    }),
+            )
         }
         // deny
         RestPolicyStatus {
@@ -289,16 +253,13 @@ fn response(
         ClientResponse<impl Stream<Item = web::Bytes, Error = PayloadError> + 'static>,
         SendRequestError,
     >,
-    response_streaming: bool,
     connection: Connection,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match res {
         Ok(res) => {
             let mut response_builder = HttpResponse::build(res.status());
             for (header_name, header_value) in res.headers().iter().filter(|(h, _)| {
-                *h != "connection"
-                    && *h != "content-length"
-                    && (connection.no_decompress || *h != "content-encoding")
+                *h != "connection" && *h != "content-length" && *h != "content-encoding"
             }) {
                 // debug!("header {}: {:?}", header_name, header_value);
                 response_builder.header(header_name.clone(), header_value.clone());
@@ -329,12 +290,7 @@ fn response(
                         move |allowed| match allowed {
                             // allow
                             Ok(Ok(true)) => future::Either::A(server_payload(
-                                p,
-                                policy,
-                                response,
-                                res,
-                                response_streaming,
-                                connection,
+                                p, policy, response, res, connection,
                             )),
                             // reject
                             Ok(Ok(false)) => future::Either::B(future::ok(unauthorized(
@@ -358,12 +314,7 @@ fn response(
                     response: Policy::Allow,
                     ..
                 } => future::Either::B(future::Either::A(server_payload(
-                    p,
-                    policy,
-                    response,
-                    res,
-                    response_streaming,
-                    connection,
+                    p, policy, response, res, connection,
                 ))),
                 // deny
                 RestPolicyStatus {
@@ -387,7 +338,6 @@ fn server_payload(
     policy: web::Data<actix::Addr<PolicyActor>>,
     client_resp: HttpResponse,
     res: ClientResponse<impl Stream<Item = web::Bytes, Error = PayloadError> + 'static>,
-    response_streaming: bool,
     connection: Connection,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match p {
@@ -454,24 +404,16 @@ fn server_payload(
         RestPolicyStatus {
             server_payload: Policy::Allow,
             ..
-        } => {
-            if response_streaming {
-                future::Either::B(future::Either::B(future::Either::A(future::ok(
-                    HttpResponseBuilder::from(client_resp).streaming(res),
-                ))))
-            } else {
-                future::Either::B(future::Either::B(future::Either::B(
-                    res.from_err()
-                        .fold(web::BytesMut::new(), |mut body, chunk| {
-                            body.extend_from_slice(&chunk);
-                            Ok::<_, Error>(body)
-                        })
-                        .and_then(move |server_payload| {
-                            future::ok(HttpResponseBuilder::from(client_resp).body(server_payload))
-                        }),
-                )))
-            }
-        }
+        } => future::Either::B(future::Either::B(
+            res.from_err()
+                .fold(web::BytesMut::new(), |mut body, chunk| {
+                    body.extend_from_slice(&chunk);
+                    Ok::<_, Error>(body)
+                })
+                .and_then(move |server_payload| {
+                    future::ok(HttpResponseBuilder::from(client_resp).body(server_payload))
+                }),
+        )),
         // deny
         RestPolicyStatus {
             server_payload: Policy::Deny,
@@ -493,25 +435,21 @@ fn unauthorized(message: &'static str) -> HttpResponse {
 }
 
 struct Connection {
-    no_decompress: bool,
     uri: uri::Uri,
     from: Expr,
     to: Expr,
 }
 
 impl Connection {
-    fn new(p: &RestPolicyStatus, req: &HttpRequest, config: &HttpConfig) -> Result<Connection, ()> {
+    fn new(p: &RestPolicyStatus, req: &HttpRequest, proxy_port: u16) -> Result<Connection, ()> {
         // obtain the forwarding URI
-        let uri = match req.forward_uri((*config).port) {
+        let uri = match req.forward_uri(proxy_port) {
             Ok(uri) => uri,
             Err(err) => {
                 warn!("{}", err);
                 return Err(());
             }
         };
-        // do not bother decompressing the server payload if streaming is allowed and we are not
-        // checking the payload
-        let no_decompress = p.server_payload.is_allow() && config.response_streaming;
         // let now = std::time::Instant::now();
         let (from, to) = if p.has_ids() {
             (req.peer_addr().to_expression(), uri.clone().to_expression())
@@ -525,12 +463,7 @@ impl Connection {
                 info!(r#"request from "{}" to "{}""#, peer, uri)
             }
         }
-        Ok(Connection {
-            no_decompress,
-            uri,
-            from,
-            to,
-        })
+        Ok(Connection { uri, from, to })
     }
     fn from(&self) -> Expr {
         self.from.clone()

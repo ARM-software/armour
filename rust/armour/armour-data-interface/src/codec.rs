@@ -9,8 +9,6 @@ use tokio_io::codec::{Decoder, Encoder};
 #[derive(Serialize, Deserialize, Clone)]
 pub struct HttpConfig {
     pub port: u16,
-    pub request_streaming: bool,
-    pub response_streaming: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
