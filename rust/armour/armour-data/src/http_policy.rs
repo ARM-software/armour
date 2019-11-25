@@ -25,6 +25,24 @@ impl RestPolicyStatus {
         self.server_payload = prog.policy(policy::ALLOW_SERVER_PAYLOAD);
         self.response = prog.policy(policy::ALLOW_REST_RESPONSE)
     }
+    pub fn has_ids(&self) -> bool {
+        match self {
+            // the policy inpterpreter will be needing the endpoint IDs
+            RestPolicyStatus {
+                request: lang::Policy::Args(n),
+                ..
+            }
+            | RestPolicyStatus {
+                client_payload: lang::Policy::Args(n),
+                ..
+            }
+            | RestPolicyStatus {
+                server_payload: lang::Policy::Args(n),
+                ..
+            } => 3 <= *n,
+            _ => false,
+        }
+    }
 }
 
 impl Default for RestPolicyStatus {

@@ -4,7 +4,7 @@ extern crate lazy_static;
 extern crate log;
 
 use actix::prelude::*;
-use actix_web::web;
+use actix_web::{http::uri, web};
 use armour_policy::{expressions, literals};
 
 #[derive(Message)]
@@ -102,10 +102,12 @@ impl ToArmourExpression for Option<std::net::SocketAddr> {
 }
 
 // convert URLs into Armour-language expressions (of type ID)
-impl ToArmourExpression for url::Url {
+impl ToArmourExpression for uri::Uri {
     fn to_expression(&self) -> expressions::Expr {
+        // new default ID
         let mut id = literals::ID::default();
-        if let Some(host) = self.host_str() {
+        // try to set the host and add IP addresses
+        if let Some(host) = self.host() {
             id = id.add_host(host);
             if let Ok(ips) = dns_lookup::lookup_host(host) {
                 for ip in ips.iter().filter(|ip| ip.is_ipv4()) {
@@ -113,13 +115,14 @@ impl ToArmourExpression for url::Url {
                 }
             }
         }
-        if let Some(port) = self.port() {
+        // try to set the port
+        if let Some(port) = self.port_u16() {
             id = id.set_port(port)
-        } else {
-            match self.scheme() {
-                "https" => id = id.set_port(443),
-                "http" => id = id.set_port(80),
-                s => log::debug!("scheme is: {}", s),
+        } else if let Some(scheme) = self.scheme_part() {
+            if *scheme == uri::Scheme::HTTPS {
+                id = id.set_port(443)
+            } else if *scheme == uri::Scheme::HTTP {
+                id = id.set_port(80)
             }
         }
         expressions::Expr::id(id)

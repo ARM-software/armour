@@ -7,13 +7,13 @@ use actix_web::{
     client::{Client, ClientRequest, ClientResponse, PayloadError, SendRequestError},
     dev::HttpResponseBuilder,
     http::header::{ContentEncoding, HeaderName, HeaderValue},
+    http::uri,
     middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
 use armour_data_interface::{codec::HttpConfig, own_ip};
 use armour_policy::{expressions::Expr, lang::Policy};
 use futures::{future, stream::Stream, Future};
 use std::collections::HashSet;
-use std::net::IpAddr;
 
 pub fn start_proxy(
     policy: actix::Addr<PolicyActor>,
@@ -40,65 +40,6 @@ pub fn start_proxy(
     Ok(server)
 }
 
-struct Connection {
-    no_decompress: bool,
-    url: url::Url,
-    from: Expr,
-    to: Expr,
-}
-
-impl Connection {
-    fn new(p: &RestPolicyStatus, req: &HttpRequest, config: &HttpConfig) -> Result<Connection, ()> {
-        // obtain the forwarding URL
-        let url = match req.forward_url((*config).port) {
-            Ok(url) => url,
-            Err(err) => {
-                warn!("{}", err);
-                return Err(());
-            }
-        };
-        // do not bother decompressing the server payload if streaming is allowed and we are not
-        // checking the payload
-        let no_decompress = p.server_payload.is_allow() && config.response_streaming;
-        // let now = std::time::Instant::now();
-        let (from, to) = match p {
-            // the policy inpterpreter will be needing the endpoint IDs
-            RestPolicyStatus {
-                request: Policy::Args(n),
-                ..
-            }
-            | RestPolicyStatus {
-                client_payload: Policy::Args(n),
-                ..
-            }
-            | RestPolicyStatus {
-                server_payload: Policy::Args(n),
-                ..
-            } if 3 <= *n => (req.peer_addr().to_expression(), url.clone().to_expression()),
-            _ => (Expr::default(), Expr::default()),
-        };
-        // info!("from/to lookup: {:?}", now.elapsed());
-        if let Some(peer) = from.host() {
-            info!(r#"request from "{}" to "{}""#, peer, url)
-        }
-        Ok(Connection {
-            no_decompress,
-            url,
-            from,
-            to,
-        })
-    }
-    fn from(&self) -> Expr {
-        self.from.clone()
-    }
-    fn to(&self) -> Expr {
-        self.to.clone()
-    }
-    fn url(&self) -> &str {
-        self.url.as_str()
-    }
-}
-
 /// Main HttpRequest proxy
 ///
 /// Checks request against Armour policy and, if accepted, forwards it using [ForwardUrl](trait.ForwardUrl.html).
@@ -111,9 +52,6 @@ fn request(
     config: web::Data<HttpConfig>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     policy.send(GetRestPolicy).then(|p| {
-        if let Ok(RestPolicyStatus { debug: true, .. }) = p {
-            debug!("{:?}", req)
-        }
         match p {
             // we succeeded in getting a policy
             Ok(p) => {
@@ -240,7 +178,7 @@ fn client_payload(
                                 // allow payload
                                 Ok(Ok(true)) => {
                                     let mut client_request = client
-                                        .request_from(connection.url(), req.head())
+                                        .request_from(connection.uri(), req.head())
                                         .process_headers(req.peer_addr())
                                         .timeout(timeout);
                                     if connection.no_decompress {
@@ -291,7 +229,7 @@ fn client_payload(
             ..
         } => {
             let mut client_request = client
-                .request_from(connection.url(), req.head())
+                .request_from(connection.uri(), req.head())
                 .process_headers(req.peer_addr())
                 .timeout(timeout);
             // let server_payload = fns.map(|x| x.server_payload).unwrap_or(false);
@@ -554,34 +492,86 @@ fn unauthorized(message: &'static str) -> HttpResponse {
     HttpResponse::Unauthorized().body(message)
 }
 
+struct Connection {
+    no_decompress: bool,
+    uri: uri::Uri,
+    from: Expr,
+    to: Expr,
+}
+
+impl Connection {
+    fn new(p: &RestPolicyStatus, req: &HttpRequest, config: &HttpConfig) -> Result<Connection, ()> {
+        // obtain the forwarding URI
+        let uri = match req.forward_uri((*config).port) {
+            Ok(uri) => uri,
+            Err(err) => {
+                warn!("{}", err);
+                return Err(());
+            }
+        };
+        // do not bother decompressing the server payload if streaming is allowed and we are not
+        // checking the payload
+        let no_decompress = p.server_payload.is_allow() && config.response_streaming;
+        // let now = std::time::Instant::now();
+        let (from, to) = if p.has_ids() {
+            (req.peer_addr().to_expression(), uri.clone().to_expression())
+        } else {
+            (Expr::default(), Expr::default())
+        };
+        // info!("from/to lookup: {:?}", now.elapsed());
+        if p.debug {
+            info!("{:?}", req);
+            if let Some(peer) = from.host() {
+                info!(r#"request from "{}" to "{}""#, peer, uri)
+            }
+        }
+        Ok(Connection {
+            no_decompress,
+            uri,
+            from,
+            to,
+        })
+    }
+    fn from(&self) -> Expr {
+        self.from.clone()
+    }
+    fn to(&self) -> Expr {
+        self.to.clone()
+    }
+    fn uri(&self) -> &uri::Uri {
+        &self.uri
+    }
+}
+
 /// Extract a forwarding URL
-trait ForwardUrl {
-    fn forward_url(&self, proxy_port: u16) -> Result<url::Url, Error>
+trait ForwardUri {
+    fn forward_uri(&self, proxy_port: u16) -> Result<uri::Uri, Error>
     where
         Self: Sized;
 }
 
 // Get forwarding address from headers
-impl ForwardUrl for HttpRequest {
-    fn forward_url(&self, proxy_port: u16) -> Result<url::Url, Error> {
+impl ForwardUri for HttpRequest {
+    fn forward_uri(&self, proxy_port: u16) -> Result<uri::Uri, Error> {
         let info = self.connection_info();
-        match url::Url::parse(&format!(
-            "{}://{}{}",
-            info.scheme(),
-            info.host(),
-            self.uri()
-        )) {
-            Ok(url) => {
-                if url.port().unwrap_or(80) == proxy_port
-                    && url.host().map(is_local_host).unwrap_or(true)
+        let mut uri = uri::Builder::new();
+        uri.scheme(info.scheme());
+        uri.authority(info.host());
+        if let Some(p_and_q) = self.uri().path_and_query() {
+            uri.path_and_query(p_and_q.clone());
+        }
+        match uri.build() {
+            Ok(uri) => {
+                if uri.port_u16().unwrap_or(80) == proxy_port
+                    && uri.host().map(is_local_host).unwrap_or(true)
                 {
                     warn!("trying to proxy self");
                     Err("cannot proxy self".to_actix())
                 } else {
-                    Ok(url)
+                    Ok(uri)
                 }
             }
-            Err(err) => Err(err.to_actix()),
+            Err(err) => Err(err.into()),
         }
     }
 }
@@ -607,11 +597,12 @@ lazy_static! {
     };
 }
 
-fn is_local_host(host: url::Host<&str>) -> bool {
-    match host {
-        url::Host::Domain(domain) => LOCAL_HOST_NAMES.contains(&domain.to_ascii_lowercase()),
-        url::Host::Ipv4(v4) => own_ip(&IpAddr::V4(v4)),
-        url::Host::Ipv6(v6) => own_ip(&IpAddr::V6(v6)),
+fn is_local_host(host: &str) -> bool {
+    use std::str::FromStr;
+    if let Ok(ipv4) = std::net::Ipv4Addr::from_str(host) {
+        own_ip(&ipv4.into())
+    } else {
+        LOCAL_HOST_NAMES.contains(&host.to_ascii_lowercase())
     }
 }
 
@@ -650,6 +641,5 @@ trait ToActixError {
     }
 }
 
-impl ToActixError for url::ParseError {}
 impl ToActixError for http::header::ToStrError {}
 impl ToActixError for &str {}
