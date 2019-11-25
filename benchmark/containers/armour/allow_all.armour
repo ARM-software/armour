@@ -1,4 +1,4 @@
-fn require() -> bool {
+fn allow_rest_request() -> bool {
     return true
 }
 

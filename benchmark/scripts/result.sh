@@ -32,3 +32,8 @@ elif [[ "$2" =~ ^(baseline|nginx)$ ]]; then
   data http latency
   data http scalability
 fi
+
+#
+#ofile=data-$1
+#res=`grep -e "99.000%" -e "Requests/sec:" -e "Transfer/sec:" $1 | awk '{print $2}' | awk '{printf $0 (NR%3?" ":"\n")}'| awk 'BEGIN {i=7000} {print i,"  ",$1 ,"  ",$2,"  ",$3; i=i-200}'`
+#echo "$res" >> $ofile

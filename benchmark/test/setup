@@ -1,1 +1,0 @@
-aws ec2 run-instances --image-id 
