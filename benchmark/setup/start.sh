@@ -39,9 +39,14 @@ SHELL
 elif [ "$i" -le 25 ]; then
   ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
 cd /home/ec2-user/scripts
-screen -d -m -S test ./test.sh armour latency policy
+screen -d -m -S test ./test.sh armour latency http-req
 SHELL
 elif [ "$i" -le 30 ]; then
+  ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
+cd /home/ec2-user/scripts
+screen -d -m -S test ./test.sh armour latency http-id
+SHELL
+elif [ "$i" -le 35 ]; then
   ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
 cd /home/ec2-user/scripts
 screen -d -m -S test ./test.sh armour latency allow

@@ -26,9 +26,13 @@ elif [ $1 = "armour" ] && [ $3 = "log" ]; then
   ./clean.sh
   ./armour.sh log-http
   ./http-perf.sh $1 $2 $ip
-elif [ $1 = "armour" ] && [ $3 = "policy" ]; then
+elif [ $1 = "armour" ] && [ $3 = "http-req" ]; then
   ./clean.sh
-  ./armour.sh http
+  ./armour.sh http-req
+  ./http-perf.sh $1 $2 $ip
+elif [ $1 = "armour" ] && [ $3 = "http-id" ]; then
+  ./clean.sh
+  ./armour.sh http-id
   ./http-perf.sh $1 $2 $ip
 elif [ $1 = "armour" ] && [ $3 = "allow" ]; then
   ./clean.sh
