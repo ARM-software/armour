@@ -18,6 +18,7 @@ Micro-benchmark of Armour data-plan
 - sozu version: 0.11.0
 - amrour version: (20Nov)
 
-### Run test
+### Usage
 
-Just run: `./start.sh` in the setup dir
+- Run `./start.sh` in the setup dir.
+- After the test are done, run `./get-results.sh` to get the results and produce the graphs.

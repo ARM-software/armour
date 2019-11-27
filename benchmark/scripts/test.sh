@@ -25,17 +25,17 @@ elif [ $1 = "envoy" ]; then
 elif [ $1 = "armour" ] && [ $3 = "log" ]; then
   ./clean.sh
   ./armour.sh log-http
-  ./http-perf.sh $1 $2 $ip
+  ./http-perf.sh $1 $2 $ip log-http
 elif [ $1 = "armour" ] && [ $3 = "http-req" ]; then
   ./clean.sh
-  ./armour.sh http-req
-  ./http-perf.sh $1 $2 $ip
+  ./armour.sh $3
+  ./http-perf.sh $1 $2 $ip $3
 elif [ $1 = "armour" ] && [ $3 = "http-id" ]; then
   ./clean.sh
-  ./armour.sh http-id
-  ./http-perf.sh $1 $2 $ip
+  ./armour.sh $3
+  ./http-perf.sh $1 $2 $ip $3
 elif [ $1 = "armour" ] && [ $3 = "allow" ]; then
   ./clean.sh
-  ./armour.sh allow
-  ./http-perf.sh $1 $2 $ip
+  ./armour.sh $3
+  ./http-perf.sh $1 $2 $ip $3
 fi

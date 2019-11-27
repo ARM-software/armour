@@ -1,8 +1,0 @@
-
-
-sudo mkdir /var/run/sozu/
-sudo -E env "PATH=$PATH" sozu start -c /home/ec2-user/containers/sozu/config.toml
-sleep 2s
-cd /home/ec2-user/scripts
-
-screen -d -m -S test ./test.sh sozu http latency

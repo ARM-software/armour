@@ -10,6 +10,7 @@ do
   echo ./wrk2/wrk -c1 -t1 -R$j -d60s --latency http://$2 >> $1
   docker exec -it client-1 ./wrk2/wrk -c1 -t1 -R$j -d30s --latency  http://$2 >> $1
   docker restart srv-nginx
+  docker restart client-1
   let "j-=200"
 done
 }
@@ -45,7 +46,11 @@ function http {
 }
 # $1 proxy, $2 latency/scalability, $3 local ip
 cd /home/ec2-user/results
-dir=$1/
+if [ $1 = "armour" ]; then
+  dir=$1-$4/
+else
+  dir=$1/
+fi
 time=$(date +"%Y:%m:%d-%H:%M:%S")
 file=$dir$time-$1_$2
 
