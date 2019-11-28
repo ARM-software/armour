@@ -3,15 +3,20 @@
 function latency {
 echo Latency >> $1
 echo -e "\nLatency and Throughput using wrk2, each test is run for 60s" >> $1
-j=7000
+j=20000
 while [ $j -ge 100 ]
 do
   echo test$j-$i >> $1
-  echo ./wrk2/wrk -c1 -t1 -R$j -d60s --latency http://$2 >> $1
-  docker exec -it client-1 ./wrk2/wrk -c1 -t1 -R$j -d30s --latency  http://$2 >> $1
+  if [ $3 = "linkerd" ]; then
+    echo ./wrk2/wrk -c1 -t1 -R$j -d60s -H "Host: srv-nginx" --latency http://$2 >> $1
+    docker exec -it client-1 ./wrk2/wrk -c1 -t1 -R$j -d30s -H "Host: srv-nginx" --latency  http://$2 >> $1
+  else 
+    echo ./wrk2/wrk -c1 -t1 -R$j -d60s --latency http://$2 >> $1
+    docker exec -it client-1 ./wrk2/wrk -c1 -t1 -R$j -d30s --latency  http://$2 >> $1
+  fi
   docker restart srv-nginx
   docker restart client-1
-  let "j-=200"
+  let "j-=500"
 done
 }
 
@@ -21,8 +26,13 @@ echo -e "\n\nScalability using wrk2 but with n clients per a single server" >> $
 for j in {1..10}
 do
   echo test$j >> $1
-  echo  ./wrk2/wrk -c$((j*100)) -t1 -d60s -R2000 --latency http://$2 >> $1
-  docker exec -it client-1 ./wrk2/wrk -c$((j*100)) -t1 -d60s -R2000 --latency http://$2 >> $1
+  if [ $3 = "linkerd" ]; then
+    echo  ./wrk2/wrk -c$((j*100)) -t1 -d60s -H "Host: srv-nginx" -R2000 --latency http://$2 >> $1
+    docker exec -it client-1 ./wrk2/wrk -c$((j*100)) -t1 -d60s -H "Host: srv-nginx" -R2000 --latency http://$2 >> $1
+  else
+    echo  ./wrk2/wrk -c$((j*100)) -t1 -d60s -R2000 --latency http://$2 >> $1
+    docker exec -it client-1 ./wrk2/wrk -c$((j*100)) -t1 -d60s -R2000 --latency http://$2 >> $1
+  fi
 done
 }
 
@@ -37,11 +47,13 @@ function http {
     srv=$4:8080
   elif [ $1 = "nginx" ]; then
     srv=$4:80/nginx
+  elif [ $1 = "linkerd" ]; then
+    srv=$4:4140/
   fi
   if [ $3 = "latency" ]; then
-    latency $2 $srv
+    latency $2 $srv $1
   elif [ $3 = "Scalability" ]; then
-    Scalability $2 $srv
+    Scalability $2 $srv $1
   fi
 }
 # $1 proxy, $2 latency/scalability, $3 local ip

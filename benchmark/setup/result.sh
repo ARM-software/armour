@@ -1,6 +1,6 @@
 #!/bin/bash
 mkdir ../results/new/
-mkdir ../results/new/armour-log-http ../results/new/armour-http-id ../results/new/armour-http-req ../results/new/armour-allow ../results/new/envoy ../results/new/nginx ../results/new/baseline
+mkdir ../results/new/linkerd ../results/new/armour-log-http ../results/new/armour-http-id ../results/new/armour-http-req ../results/new/armour-allow ../results/new/envoy ../results/new/nginx ../results/new/baseline
 cd ../raw-data/
 loc=`find . -type f -print0 | xargs -0 ls -t`
 i=1
@@ -11,6 +11,8 @@ if [[ $f == *"armour-allow"* ]]; then
   cp $f ../results/new/armour-allow/$file-$i
 elif [[ $f == *"nginx"* ]]; then
 cp $f ../results/new/nginx/$file-$i
+elif [[ $f == *"linkerd"* ]]; then
+cp $f ../results/new/linkerd/$file-$i
 elif [[ $f == *"envoy"* ]]; then
 cp $f ../results/new/envoy/$file-$i
 elif [[ $f == *"baseline"* ]]; then
@@ -25,13 +27,13 @@ fi
 i=$((i+1))
 done
 
-cd ../results/new/
+cd ../results/new-t2-large/
 dir=`ls -d -- */`
 for path in $dir
 do
     for file in $path/*
         do
-        grep -e "0.990625" -e "Requests/sec:" $file | awk '{print $1 " " $2}' | awk '{printf $0 (NR%2?" ":"\n")}'| awk 'BEGIN {i=14000} {print i,"  ",$1 ,"  ",$4; i=i-200}' >> "$path"temp
+        grep -e "0.990625" -e "Requests/sec:" $file | awk '{print $1 " " $2}' | awk '{printf $0 (NR%2?" ":"\n")}'| awk 'BEGIN {i=20000} {print i,"  ",$1 ,"  ",$4; i=i-500}' >> "$path"temp
         done
 gawk '{
     vals[$1][$2]
@@ -114,7 +116,7 @@ rm "$path"temp
 done
 cd ../results/new
 gnuplot -e "set terminal png size 1500,700; set output 'plot_latency.png'; set key outside; 
-plot 'nginx_latency' with linespoints, 'baseline_latency' with linespoints, 'armour-allow_latency' with linespoints, 'envoy_latency' with linespoints, 'armour-http-id_latency' with linespoints, 'armour-http-req_latency' with linespoints, 'armour-log-http_latency' with linespoints"
+plot 'linkerd_latency' with linespoints,  'baseline_latency' with linespoints, 'armour-allow_latency' with linespoints, 'envoy_latency' with linespoints, 'armour-http-id_latency' with linespoints, 'armour-http-req_latency' with linespoints, 'armour-log-http_latency' with linespoints"
 
 gnuplot -e "set terminal png size 1500,700; set output 'plot_throughput.png'; set key outside; 
-plot 'nginx_throughput' with linespoints, 'baseline_throughput' with linespoints, 'armour-allow_throughput' with linespoints, 'envoy_throughput' with linespoints, 'armour-http-id_throughput' with linespoints, 'armour-http-req_throughput' with linespoints, 'armour-log-http_throughput' with linespoints"
+plot 'linkerd_throughput' with linespoints, 'baseline_throughput' with linespoints, 'armour-allow_throughput' with linespoints, 'envoy_throughput' with linespoints, 'armour-http-id_throughput' with linespoints, 'armour-http-req_throughput' with linespoints, 'armour-log-http_throughput' with linespoints"

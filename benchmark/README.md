@@ -16,6 +16,7 @@ Micro-benchmark of Armour data-plan
 - nginx version: 1.16.1
 - envoy version: 1.12.1
 - sozu version: 0.11.0
+- linkerd version: 1.7.0
 - amrour version: (20Nov)
 
 ### Usage

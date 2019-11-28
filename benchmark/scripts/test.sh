@@ -3,7 +3,7 @@
 ip=`ip a list eth0 | grep -o "inet [0-9]*\.[0-9]*\.[0-9]*\.[0-9]*" | awk '{print$2}'`
 sudo sed -i "s/private-ip/$ip/g" /home/ec2-user/containers/docker-compose.yaml
 if [ -z "$1" ]; then
-  echo "please specify one of the setups:\n baseline   -   armour  -  sozu  -  envoy  -  nginx"
+  echo "please specify one of the setups:\n baseline   -   armour  -  sozu  -  envoy  -  nginx  -  linkerd"
   exit 1
 elif [ $1 = "baseline" ]; then
   ./clean.sh
@@ -19,6 +19,10 @@ elif [ $1 = "sozu" ]; then
   ./proxy.sh $1
   ./http-perf.sh $1 $2 $ip
 elif [ $1 = "envoy" ]; then
+  ./clean.sh
+  ./proxy.sh $1
+  ./http-perf.sh $1 $2 $ip
+elif [ $1 = "linkerd" ]; then
   ./clean.sh
   ./proxy.sh $1
   ./http-perf.sh $1 $2 $ip

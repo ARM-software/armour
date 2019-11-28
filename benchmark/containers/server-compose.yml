@@ -5,10 +5,8 @@ services:
     hostname: srv-nginx
     image: nginx
     extra_hosts:
-      - "localho.st:private-ip"
       - "srv-arm:172.20.0.2"
       - "client-1:172.21.0.2"
-      - "client-2:172.22.0.2"
     networks:
       srv-net-1:
         ipv4_address: 172.19.0.2
@@ -17,10 +15,8 @@ services:
     container_name: srv-arm
     hostname: srv-arm
     extra_hosts:
-      - "localho.st:private-ip"
       - "srv-nginx:172.19.0.2"
       - "client-1:172.21.0.2"
-      - "client-2:172.22.0.2"
     build:
       context: .
       dockerfile: Dockerfile
@@ -29,15 +25,16 @@ services:
     networks:
       srv-net-2:
         ipv4_address: 172.20.0.2
-
+      
   client-1:
     container_name: client-1
     hostname: client-1
     extra_hosts:
-      - "localho.st:private-ip"
       - "srv-nginx:172.19.0.2"
       - "srv-arm:172.20.0.2"
-      - "client-2:172.22.0.2"
+      - "srv-apache:172.23.0.2"
+      - "srv-lighttpd:172.24.0.2"
+      - "srv-cherokee:172.25.0.2"
     build:
       context: .
       dockerfile: Dockerfile
@@ -45,23 +42,40 @@ services:
     networks:
       cl-net-1:
         ipv4_address: 172.21.0.2
-
-  client-2:
-    container_name: client-2
-    hostname: client-2
+  srv-apache:
+    container_name: srv-apache
+    hostname: srv-apache
+    image: httpd:latest
     extra_hosts:
-      - "localho.st:private-ip"
-      - "srv-nginx:172.19.0.2"
-      - "client-1:172.21.0.2"
       - "srv-arm:172.20.0.2"
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: client-python
+      - "client-1:172.21.0.2"
     networks:
-      cl-net-2:
-        ipv4_address: 172.22.0.2
+      srv-net-3:
+        ipv4_address: 172.23.0.2
 
+  srv-lighttpd:
+    container_name: srv-lighttpd
+    hostname: srv-lighttpd
+    image: sebp/lighttpd
+    volumes:
+      - /home/ec2-user/containers/lighttpd/:/var/www/localhost/htdocs
+    extra_hosts:
+      - "srv-arm:172.20.0.2"
+      - "client-1:172.21.0.2"
+    networks:
+      srv-net-4:
+        ipv4_address: 172.24.0.2
+
+  srv-cherokee:
+    container_name: srv-cherokee
+    hostname: srv-cherokee
+    image: managedkaos/cherokee
+    extra_hosts:
+      - "srv-arm:172.20.0.2"
+      - "client-1:172.21.0.2"
+    networks:
+      srv-net-5:
+        ipv4_address: 172.25.0.2
 networks:
   srv-net-1:
     driver: bridge
@@ -80,6 +94,33 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/28
+  
+  srv-net-3:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: srv-net-3
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.23.0.0/28
+
+  srv-net-4:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: srv-net-4
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.24.0.0/28
+
+  srv-net-5:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: srv-net-5
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.25.0.0/28
 
   cl-net-1:
     driver: bridge
@@ -89,12 +130,3 @@ networks:
     ipam:
       config:
         - subnet: 172.21.0.0/28
-
-  cl-net-2:
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.name: cl-net-2
-    internal: true
-    ipam:
-      config:
-        - subnet: 172.22.0.0/28
