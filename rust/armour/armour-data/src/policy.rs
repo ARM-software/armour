@@ -1,13 +1,52 @@
 //! actix-web support for Armour policies
 use super::{http_policy::RestPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_proxy};
 use actix::prelude::*;
+use actix_web::http::uri;
 use armour_data_interface::codec::{PolicyCodec, PolicyRequest, PolicyResponse, Protocol, Status};
 use armour_policy::{expressions, lang, literals};
 use futures::{future, Future};
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::sync::Arc;
 use tokio_codec::FramedRead;
 use tokio_io::{io::WriteHalf, AsyncRead};
+
+#[derive(Clone, Debug)]
+pub enum ID {
+    Uri(actix_web::http::uri::Uri),
+    SocketAddr(std::net::SocketAddr),
+    Anonymous,
+}
+
+impl From<actix_web::http::uri::Uri> for ID {
+    fn from(uri: actix_web::http::uri::Uri) -> Self {
+        ID::Uri(uri)
+    }
+}
+
+impl From<Option<std::net::SocketAddr>> for ID {
+    fn from(sock: Option<std::net::SocketAddr>) -> Self {
+        if let Some(s) = sock {
+            ID::SocketAddr(s)
+        } else {
+            ID::Anonymous
+        }
+    }
+}
+
+fn scheme_port(u: &uri::Uri) -> Option<u16> {
+    if let Some(scheme) = u.scheme_part() {
+        if *scheme == actix_web::http::uri::Scheme::HTTP {
+            Some(80)
+        } else if *scheme == actix_web::http::uri::Scheme::HTTPS {
+            Some(443)
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
 
 pub trait Policy<P> {
     fn start(&mut self, port: u16, proxy: P);
@@ -67,6 +106,8 @@ pub struct PolicyActor {
     // proxies
     pub http: RestPolicy,
     pub tcp: TcpPolicy,
+    ids_uri: HashMap<actix_web::http::uri::Uri, literals::ID>,
+    ids_ip: HashMap<std::net::IpAddr, literals::ID>,
 }
 
 // implement Actor trait for PolicyActor
@@ -96,11 +137,46 @@ impl PolicyActor {
                         uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
                         http: RestPolicy::default(),
                         tcp: TcpPolicy::default(),
+                        ids_uri: HashMap::new(),
+                        ids_ip: HashMap::new(),
                     }
                 });
                 future::ok(addr)
             })
             .wait()
+    }
+    fn id(&mut self, id: ID) -> literals::ID {
+        match id {
+            ID::Anonymous => literals::ID::default(),
+            ID::Uri(u) => self.ids_uri.get(&u).cloned().unwrap_or_else(|| {
+                let mut port = u.port_u16();
+                if port.is_none() {
+                    port = scheme_port(&u)
+                }
+                let id = literals::ID::from((u.host(), port));
+                self.ids_uri.insert(u, id.clone());
+                id
+            }),
+            ID::SocketAddr(s) => {
+                let ip = s.ip();
+                self.ids_ip
+                    .get(&ip)
+                    .map(|id| id.set_port(s.port()))
+                    .unwrap_or_else(|| {
+                        let id = literals::ID::from(s);
+                        self.ids_ip.insert(ip, id.clone());
+                        id
+                    })
+            }
+        }
+    }
+    // performance critical (computes IDs, which could involve DNS lookup)
+    pub fn connection(&mut self, from: ID, to: ID) -> literals::Connection {
+        let number = self.connection_number;
+        self.connection_number += 1;
+        // let now = std::time::Instant::now();
+        // info!("now: {:?}", now.elapsed());
+        literals::Connection::from((&self.id(from), &self.id(to), number))
     }
 }
 

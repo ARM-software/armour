@@ -1,7 +1,7 @@
 //! HTTP proxy with Armour policies
 
-use super::http_policy::{EvalRestFn, GetRestPolicy, RestFn, RestPolicyStatus};
-use super::policy::PolicyActor;
+use super::http_policy::{EvalRestFn, GetRestPolicy, RestFn, RestPolicyResponse, RestPolicyStatus};
+use super::policy::{PolicyActor, ID};
 use super::ToArmourExpression;
 use actix_web::{
     client::{Client, ClientRequest, ClientResponse, PayloadError, SendRequestError},
@@ -11,7 +11,7 @@ use actix_web::{
     middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
 use armour_data_interface::{codec::HttpConfig, own_ip};
-use armour_policy::{expressions::Expr, lang::Policy};
+use armour_policy::{lang::Policy, literals};
 use futures::{future, stream::Stream, Future};
 use std::collections::HashSet;
 
@@ -46,99 +46,94 @@ fn request(
     client: web::Data<Client>,
     proxy_port: web::Data<u16>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
-    policy.send(GetRestPolicy).then(move |p| {
-        match p {
-            // we succeeded in getting a policy
-            Ok(p) => {
-                match Connection::new(&p, &req, *proxy_port) {
-                    Ok(connection) => match p {
-                        // check request
-                        RestPolicyStatus {
-                            request: Policy::Args(arg_count),
-                            connection_number,
-                            ..
-                        } => {
-                            let args = match arg_count {
-                                0 => Vec::new(),
-                                1 => vec![req.to_expression()],
-                                3 => vec![req.to_expression(), connection.from(), connection.to()],
-                                4 => vec![
-                                    req.to_expression(),
-                                    connection.from(),
-                                    connection.to(),
-                                    connection_number.to_expression(),
-                                ],
-                                _ => unreachable!(),
-                            };
-                            future::Either::A(policy.send(EvalRestFn(RestFn::Request, args)).then(
-                                move |allowed| match allowed {
-                                    // allow request
-                                    Ok(Ok(true)) => future::Either::A({
-                                        client_payload(p, req, connection, payload, policy, client)
-                                    }),
-                                    // reject
-                                    Ok(Ok(false)) => future::Either::B(future::ok(unauthorized(
-                                        "bad client request",
-                                    ))),
-                                    // policy error
-                                    Ok(Err(e)) => {
-                                        warn!("{}", e);
-                                        future::Either::B(future::ok(internal()))
+    if let Ok(connection) = Connection::new(&req, *proxy_port) {
+        future::Either::A(
+            policy
+                .send(GetRestPolicy(connection.from_to()))
+                .then(move |p| {
+                    if let Ok(p) = p {
+                        // we succeeded in getting a policy
+                        future::Either::A(match p.status {
+                            // check request
+                            RestPolicyStatus {
+                                request: Policy::Args(count),
+                                ..
+                            } => {
+                                let args = if count == 0 {
+                                    vec![]
+                                } else {
+                                    vec![(&req, &p.connection).to_expression()]
+                                };
+                                let message = EvalRestFn(RestFn::Request, args);
+                                future::Either::A(policy.send(message).then(move |allowed| {
+                                    match allowed {
+                                        // allow request
+                                        Ok(Ok(true)) => future::Either::A(client_payload(
+                                            p, req, connection, payload, policy, client,
+                                        )),
+                                        // reject
+                                        Ok(Ok(false)) => future::Either::B(future::ok(
+                                            unauthorized("bad client request"),
+                                        )),
+                                        // policy error
+                                        Ok(Err(e)) => {
+                                            warn!("{}", e);
+                                            future::Either::B(future::ok(internal()))
+                                        }
+                                        // actor error
+                                        Err(e) => {
+                                            warn!("{}", e);
+                                            future::Either::B(future::ok(internal()))
+                                        }
                                     }
-                                    // actor error
-                                    Err(e) => {
-                                        warn!("{}", e);
-                                        future::Either::B(future::ok(internal()))
-                                    }
-                                },
-                            ))
-                        }
-                        // allow
-                        RestPolicyStatus {
-                            request: Policy::Allow,
-                            ..
-                        } => future::Either::B(future::Either::B(client_payload(
-                            p, req, connection, payload, policy, client,
-                        ))),
-                        // deny
-                        RestPolicyStatus {
-                            request: Policy::Deny,
-                            ..
-                        } => future::Either::B(future::Either::A(future::ok(unauthorized(
-                            "request denied",
-                        )))),
-                        // cannot be Unit policy
-                        _ => unreachable!(),
-                    },
-                    // could not obtain forwarding URL
-                    Err(()) => future::Either::B(future::Either::A(future::ok(internal()))),
-                }
-            }
-            // we failed to get a policy
-            Err(err) => {
-                warn!("{}", err);
-                future::Either::B(future::Either::A(future::ok(internal())))
-            }
-        }
-    })
+                                }))
+                            }
+                            // allow
+                            RestPolicyStatus {
+                                request: Policy::Allow,
+                                ..
+                            } => future::Either::B(future::Either::A(client_payload(
+                                p, req, connection, payload, policy, client,
+                            ))),
+                            // deny
+                            RestPolicyStatus {
+                                request: Policy::Deny,
+                                ..
+                            } => future::Either::B(future::Either::B(future::ok(unauthorized(
+                                "request denied",
+                            )))),
+                            // cannot be Unit policy
+                            _ => unreachable!(),
+                        })
+                    } else {
+                        // we failed to get a policy
+                        warn!("{}", p.err().unwrap());
+                        future::Either::B(future::ok(internal()))
+                    }
+                }),
+        )
+    } else {
+        // could not obtain forwarding URL
+        future::Either::B(future::ok(internal()))
+    }
 }
 
 // Process request (so far it's allow by the policy)
 fn client_payload(
-    p: RestPolicyStatus,
+    p: RestPolicyResponse,
     req: HttpRequest,
     connection: Connection,
     payload: web::Payload,
     policy: web::Data<actix::Addr<PolicyActor>>,
     client: web::Data<Client>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
-    match p {
+    match p.status {
         // check client payload
         RestPolicyStatus {
-            client_payload: Policy::Args(arg_count),
+            client_payload: Policy::Args(_arg_count),
             debug,
             timeout,
-            connection_number,
+            // connection_number,
             ..
         } => future::Either::A(future::Either::B(
             payload
@@ -148,58 +143,44 @@ fn client_payload(
                     Ok::<_, Error>(body)
                 })
                 .and_then(move |client_payload| {
-                    let args = match arg_count {
-                        1 => vec![client_payload.to_expression()],
-                        3 => vec![
-                            client_payload.to_expression(),
-                            connection.from(),
-                            connection.to(),
-                        ],
-                        4 => vec![
-                            client_payload.to_expression(),
-                            connection.from(),
-                            connection.to(),
-                            connection_number.to_expression(),
-                        ],
-                        _ => unreachable!(),
-                    };
-                    policy
-                        .send(EvalRestFn(RestFn::ClientPayload, args))
-                        .then(move |allowed| {
-                            match allowed {
-                                // allow payload
-                                Ok(Ok(true)) => {
-                                    let client_request = client
-                                        .request_from(connection.uri(), req.head())
-                                        .process_headers(req.peer_addr())
-                                        .timeout(timeout);
-                                    if debug {
-                                        debug!("{:?}", client_request)
-                                    };
-                                    future::Either::A(
-                                        client_request
-                                            // forward the request (with the original client payload)
-                                            .send_body(client_payload)
-                                            // send the response back to the client
-                                            .then(move |res| response(p, policy, res, connection)),
-                                    )
-                                }
-                                // reject
-                                Ok(Ok(false)) => future::Either::B(future::ok(unauthorized(
-                                    "request denied (bad client payload)",
-                                ))),
-                                // policy error
-                                Ok(Err(e)) => {
-                                    warn!("{}", e);
-                                    future::Either::B(future::ok(internal()))
-                                }
-                                // actor error
-                                Err(e) => {
-                                    warn!("{}", e);
-                                    future::Either::B(future::ok(internal()))
-                                }
+                    let payload = literals::Payload::from((client_payload.as_ref(), &p.connection));
+                    let args = vec![payload.into()];
+                    let message = EvalRestFn(RestFn::ClientPayload, args);
+                    policy.send(message).then(move |allowed| {
+                        match allowed {
+                            // allow payload
+                            Ok(Ok(true)) => {
+                                let client_request = client
+                                    .request_from(connection.uri(), req.head())
+                                    .process_headers(req.peer_addr())
+                                    .timeout(timeout);
+                                if debug {
+                                    debug!("{:?}", client_request)
+                                };
+                                future::Either::A(
+                                    client_request
+                                        // forward the request (with the original client payload)
+                                        .send_body(client_payload)
+                                        // send the response back to the client
+                                        .then(move |res| response(p, policy, res)),
+                                )
                             }
-                        })
+                            // reject
+                            Ok(Ok(false)) => future::Either::B(future::ok(unauthorized(
+                                "request denied (bad client payload)",
+                            ))),
+                            // policy error
+                            Ok(Err(e)) => {
+                                warn!("{}", e);
+                                future::Either::B(future::ok(internal()))
+                            }
+                            // actor error
+                            Err(e) => {
+                                warn!("{}", e);
+                                future::Either::B(future::ok(internal()))
+                            }
+                        }
+                    })
                 }),
         )),
         // allow
@@ -229,7 +210,7 @@ fn client_payload(
                             // forward the request (with the original client payload)
                             .send_body(client_payload)
                             // send the response back to the client
-                            .then(move |res| response(p, policy, res, connection))
+                            .then(move |res| response(p, policy, res))
                     }),
             )
         }
@@ -247,13 +228,12 @@ fn client_payload(
 
 /// Send server response back to client
 fn response(
-    p: RestPolicyStatus,
+    p: RestPolicyResponse,
     policy: web::Data<actix::Addr<PolicyActor>>,
     res: Result<
         ClientResponse<impl Stream<Item = web::Bytes, Error = PayloadError> + 'static>,
         SendRequestError,
     >,
-    connection: Connection,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match res {
         Ok(res) => {
@@ -265,57 +245,45 @@ fn response(
                 response_builder.header(header_name.clone(), header_value.clone());
             }
             let response: HttpResponse = response_builder.into();
-            if p.debug {
+            if p.status.debug {
                 debug!("{:?}", response)
             }
-            match p {
+            match p.status {
                 // check server response
                 RestPolicyStatus {
-                    response: Policy::Args(arg_count),
-                    connection_number,
+                    response: Policy::Args(count),
                     ..
                 } => {
-                    let args = match arg_count {
-                        1 => vec![response.to_expression()],
-                        3 => vec![response.to_expression(), connection.from(), connection.to()],
-                        4 => vec![
-                            response.to_expression(),
-                            connection.from(),
-                            connection.to(),
-                            connection_number.to_expression(),
-                        ],
-                        _ => unreachable!(),
+                    let args = if count == 0 {
+                        vec![]
+                    } else {
+                        vec![(&response, &p.connection).to_expression()]
                     };
-                    future::Either::A(policy.send(EvalRestFn(RestFn::Response, args)).then(
-                        move |allowed| match allowed {
-                            // allow
-                            Ok(Ok(true)) => future::Either::A(server_payload(
-                                p, policy, response, res, connection,
-                            )),
-                            // reject
-                            Ok(Ok(false)) => future::Either::B(future::ok(unauthorized(
-                                "request denied (bad server response)",
-                            ))),
-                            // policy error
-                            Ok(Err(e)) => {
-                                warn!("{}", e);
-                                future::Either::B(future::ok(internal()))
-                            }
-                            // actor error
-                            Err(e) => {
-                                warn!("{}", e);
-                                future::Either::B(future::ok(internal()))
-                            }
-                        },
-                    ))
+                    let message = EvalRestFn(RestFn::Response, args);
+                    future::Either::A(policy.send(message).then(move |allowed| match allowed {
+                        // allow
+                        Ok(Ok(true)) => future::Either::A(server_payload(p, policy, response, res)),
+                        // reject
+                        Ok(Ok(false)) => future::Either::B(future::ok(unauthorized(
+                            "request denied (bad server response)",
+                        ))),
+                        // policy error
+                        Ok(Err(e)) => {
+                            warn!("{}", e);
+                            future::Either::B(future::ok(internal()))
+                        }
+                        // actor error
+                        Err(e) => {
+                            warn!("{}", e);
+                            future::Either::B(future::ok(internal()))
+                        }
+                    }))
                 }
                 // allow
                 RestPolicyStatus {
                     response: Policy::Allow,
                     ..
-                } => future::Either::B(future::Either::A(server_payload(
-                    p, policy, response, res, connection,
-                ))),
+                } => future::Either::B(future::Either::A(server_payload(p, policy, response, res))),
                 // deny
                 RestPolicyStatus {
                     response: Policy::Deny,
@@ -334,17 +302,16 @@ fn response(
 
 /// Send server response back to client
 fn server_payload(
-    p: RestPolicyStatus,
+    p: RestPolicyResponse,
     policy: web::Data<actix::Addr<PolicyActor>>,
     client_resp: HttpResponse,
     res: ClientResponse<impl Stream<Item = web::Bytes, Error = PayloadError> + 'static>,
-    connection: Connection,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
-    match p {
+    match p.status {
         // check server payload
         RestPolicyStatus {
-            server_payload: Policy::Args(arg_count),
-            connection_number,
+            server_payload: Policy::Args(_arg_count),
+            // connection_number,
             // debug,
             ..
         } => {
@@ -356,47 +323,34 @@ fn server_payload(
                         Ok::<_, Error>(body)
                     })
                     .and_then(move |server_payload| {
-                        let args = match arg_count {
-                            1 => vec![server_payload.to_expression()],
-                            3 => vec![
-                                server_payload.to_expression(),
-                                connection.from(),
-                                connection.to(),
-                            ],
-                            4 => vec![
-                                server_payload.to_expression(),
-                                connection.from(),
-                                connection.to(),
-                                connection_number.to_expression(),
-                            ],
-                            _ => unreachable!(),
-                        };
                         // if debug {
                         //     debug!("\n{:?}", server_payload)
                         // };
-                        policy
-                            .send(EvalRestFn(RestFn::ServerPayload, args))
-                            .then(move |allowed| match allowed {
-                                // allow
-                                // Ok(Ok(true)) => future::Either::A(client_resp.body(server_payload)),
-                                Ok(Ok(true)) => future::Either::A(future::ok(
-                                    HttpResponseBuilder::from(client_resp).body(server_payload),
-                                )),
-                                // reject
-                                Ok(Ok(false)) => future::Either::B(future::ok(unauthorized(
-                                    "request denied (bad server payload)",
-                                ))),
-                                // policy error
-                                Ok(Err(e)) => {
-                                    warn!("{}", e);
-                                    future::Either::B(future::ok(internal()))
-                                }
-                                // actor error
-                                Err(e) => {
-                                    warn!("{}", e);
-                                    future::Either::B(future::ok(internal()))
-                                }
-                            })
+                        let payload =
+                            literals::Payload::from((server_payload.as_ref(), &p.connection));
+                        let args = vec![payload.into()];
+                        let message = EvalRestFn(RestFn::ServerPayload, args);
+                        policy.send(message).then(move |allowed| match allowed {
+                            // allow
+                            // Ok(Ok(true)) => future::Either::A(client_resp.body(server_payload)),
+                            Ok(Ok(true)) => future::Either::A(future::ok(
+                                HttpResponseBuilder::from(client_resp).body(server_payload),
+                            )),
+                            // reject
+                            Ok(Ok(false)) => future::Either::B(future::ok(unauthorized(
+                                "request denied (bad server payload)",
+                            ))),
+                            // policy error
+                            Ok(Err(e)) => {
+                                warn!("{}", e);
+                                future::Either::B(future::ok(internal()))
+                            }
+                            // actor error
+                            Err(e) => {
+                                warn!("{}", e);
+                                future::Either::B(future::ok(internal()))
+                            }
+                        })
                     }),
             )
         }
@@ -436,12 +390,12 @@ fn unauthorized(message: &'static str) -> HttpResponse {
 
 struct Connection {
     uri: uri::Uri,
-    from: Expr,
-    to: Expr,
+    from: ID,
+    to: ID,
 }
 
 impl Connection {
-    fn new(p: &RestPolicyStatus, req: &HttpRequest, proxy_port: u16) -> Result<Connection, ()> {
+    fn new(req: &HttpRequest, proxy_port: u16) -> Result<Connection, ()> {
         // obtain the forwarding URI
         let uri = match req.forward_uri(proxy_port) {
             Ok(uri) => uri,
@@ -450,29 +404,18 @@ impl Connection {
                 return Err(());
             }
         };
-        // let now = std::time::Instant::now();
-        let (from, to) = if p.has_ids() {
-            (req.peer_addr().to_expression(), uri.clone().to_expression())
-        } else {
-            (Expr::default(), Expr::default())
-        };
-        // info!("from/to lookup: {:?}", now.elapsed());
-        if p.debug {
-            info!("{:?}", req);
-            if let Some(peer) = from.host() {
-                info!(r#"request from "{}" to "{}""#, peer, uri)
-            }
-        }
-        Ok(Connection { uri, from, to })
-    }
-    fn from(&self) -> Expr {
-        self.from.clone()
-    }
-    fn to(&self) -> Expr {
-        self.to.clone()
+        let to = uri.clone().into();
+        Ok(Connection {
+            uri,
+            from: req.peer_addr().into(),
+            to,
+        })
     }
     fn uri(&self) -> &uri::Uri {
         &self.uri
+    }
+    fn from_to(&self) -> (ID, ID) {
+        (self.from.clone(), self.to.clone())
     }
 }
 

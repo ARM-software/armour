@@ -1,10 +1,10 @@
 //! actix-web support for Armour policies
 use super::policy::{Policy, PolicyActor};
-use super::tcp_proxy;
-use super::{Stop, ToArmourExpression};
+use super::{tcp_proxy, Stop};
 use actix::prelude::*;
 use armour_data_interface::{codec, policy};
 use armour_policy::{expressions, lang};
+use expressions::Expr;
 use futures::{future, Future};
 use std::sync::Arc;
 
@@ -97,9 +97,9 @@ impl Handler<GetTcpPolicy> for PolicyActor {
             lang::Policy::Args(n) if n == 0 || n == 2 || n == 3 => {
                 let connection_number = self.connection_number;
                 self.connection_number += 1;
-                let from = from.to_expression();
-                let to = to.to_expression();
-                let number = connection_number.to_expression();
+                let from = Expr::from(from);
+                let to = Expr::from(to);
+                let number = Expr::from(connection_number);
                 if let (Some(from), Some(to)) = (from.host(), to.host()) {
                     info!(r#"checking connection from "{}" to "{}""#, from, to)
                 }
@@ -168,8 +168,8 @@ impl Handler<ConnectionStats> for PolicyActor {
                     msg.from,
                     msg.to,
                     msg.number,
-                    msg.sent.to_expression(),
-                    msg.received.to_expression(),
+                    Expr::from(msg.sent),
+                    Expr::from(msg.received),
                 ],
                 _ => unreachable!(), // policy is checked beforehand
             };

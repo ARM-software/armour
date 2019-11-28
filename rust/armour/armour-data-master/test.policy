@@ -9,42 +9,47 @@ external logger @ "log_sock" {
 }
 
 // REST request allow/deny
-fn allow_rest_request(req: HttpRequest, from: ID, to: ID, n: i64) -> bool {
+fn allow_rest_request(req: HttpRequest) -> bool {
   // logger::log(req);
   let date = if let Some(date) = req.unique_header("date") {
      str::from_utf8(date)
   } else {
      "-"
   };
-  async logger::rest(n, date, req.method(), req.path(), from, to);
+  let c = req.connection();
+  let (from, to) = c.from_to();
+  logger::rest(c.number(), date, req.method(), req.path(), from, to);
   true
 }
 
 // REST client payload allow/deny
-fn allow_client_payload(payload: data, from: ID, to: ID, n: i64) -> bool {
-  async logger::client_payload(n, payload.len());
+fn allow_client_payload(payload: Payload) -> bool {
+  async
+  logger::client_payload(payload.connection().number(), payload.data().len());
   true
 }
 
 // REST server payload allow/deny
-fn allow_server_payload(payload: data, from: ID, to: ID, n: i64) -> bool {
-  async logger::server_payload(n, payload.len());
+fn allow_server_payload(payload: Payload) -> bool {
+  async
+  logger::server_payload(payload.connection().number(), payload.data().len());
   true
 }
 
 // REST response allow/deny
-fn allow_rest_response(res: HttpResponse, from: ID, to: ID, n: i64) -> bool {
-  async logger::log(res.header("date"));
+fn allow_rest_response(res: HttpResponse) -> bool {
+  // async logger::log(res.header("date"));
   res.status() == 200
 }
 
 // TCP connection allow/deny
-fn allow_tcp_connection(from: ID, to: ID, n: i64) -> bool {
-  async logger::tcp(n, from, to);
+fn allow_tcp_connection(c: Connection) -> bool {
+  let (from, to) = c.from_to();
+  async logger::tcp(c.number(), from, to);
   true
 }
 
 // called when TCP connection ends
-fn on_tcp_disconnect(from: ID, to: ID, n: i64, sent: i64, received: i64) async {
-  logger::tcp_stats(n, sent, received)
+fn on_tcp_disconnect(c: Connection, sent: i64, received: i64) async {
+  logger::tcp_stats(c.number(), sent, received)
 }

@@ -8,6 +8,7 @@ use std::fmt;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Typ {
     Bool,
+    Connection,
     Data,
     F64,
     HttpRequest,
@@ -15,7 +16,8 @@ pub enum Typ {
     I64,
     ID,
     IpAddr,
-    Policy,
+    Payload,
+    // Policy,
     Regex,
     Return,
     Str,
@@ -29,6 +31,7 @@ impl fmt::Display for Typ {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Typ::Bool => write!(f, "bool"),
+            Typ::Connection => write!(f, "Connection"),
             Typ::Data => write!(f, "data"),
             Typ::F64 => write!(f, "f64"),
             Typ::HttpRequest => write!(f, "HttpRequest"),
@@ -36,7 +39,8 @@ impl fmt::Display for Typ {
             Typ::I64 => write!(f, "i64"),
             Typ::ID => write!(f, "ID"),
             Typ::IpAddr => write!(f, "IpAddr"),
-            Typ::Policy => write!(f, "Policy"),
+            Typ::Payload => write!(f, "Payload"),
+            // Typ::Policy => write!(f, "Policy"),
             Typ::Regex => write!(f, "Regex"),
             Typ::Return => write!(f, "!"),
             Typ::Str => write!(f, "str"),
@@ -166,6 +170,7 @@ impl Typ {
     fn try_from_str(s: &str) -> Result<Self, self::Error> {
         match s {
             "bool" => Ok(Typ::Bool),
+            "Connection" => Ok(Typ::Connection),
             "data" => Ok(Typ::Data),
             "f64" => Ok(Typ::F64),
             "HttpRequest" => Ok(Typ::HttpRequest),
@@ -173,7 +178,8 @@ impl Typ {
             "i64" => Ok(Typ::I64),
             "ID" => Ok(Typ::ID),
             "IpAddr" => Ok(Typ::IpAddr),
-            "Policy" => Ok(Typ::Policy),
+            "Payload" => Ok(Typ::Payload),
+            // "Policy" => Ok(Typ::Policy),
             "Regex" => Ok(Typ::Regex),
             "str" => Ok(Typ::Str),
             "unit" => Ok(Typ::Unit),

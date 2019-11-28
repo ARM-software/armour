@@ -11,58 +11,28 @@ pub const ON_TCP_DISCONNECT: &str = "on_tcp_disconnect";
 lazy_static! {
     pub static ref REST_POLICY: Interface = {
         let mut policy = Interface::new();
-        policy.insert_bool(ALLOW_REST_REQUEST,
-            vec![
-                vec![Typ::HttpRequest, Typ::ID, Typ::ID, Typ::I64],
-                vec![Typ::HttpRequest, Typ::ID, Typ::ID],
-                vec![Typ::HttpRequest],
-                Vec::new(),
-            ],
-            false, // default to disallow
-        );
-        policy.insert_bool(ALLOW_CLIENT_PAYLOAD,
-            vec![
-                vec![Typ::Data, Typ::ID, Typ::ID, Typ::I64],
-                vec![Typ::Data, Typ::ID, Typ::ID],
-                vec![Typ::Data],
-            ],
-            true, // default to allow
-        );
-        policy.insert_bool(ALLOW_SERVER_PAYLOAD,
-            vec![
-                vec![Typ::Data, Typ::ID, Typ::ID, Typ::I64],
-                vec![Typ::Data, Typ::ID, Typ::ID],
-                vec![Typ::Data],
-            ],
-            true, // default to allow
-        );
-        policy.insert_bool(ALLOW_REST_RESPONSE,
-            vec![
-                vec![Typ::HttpResponse, Typ::ID, Typ::ID, Typ::I64],
-                vec![Typ::HttpResponse, Typ::ID, Typ::ID],
-                vec![Typ::HttpResponse],
-                Vec::new(),
-            ],
-            true, // default to allow
+        policy.insert_bool(ALLOW_REST_REQUEST, vec![vec![Typ::HttpRequest], Vec::new()]);
+        policy.insert_bool(ALLOW_CLIENT_PAYLOAD, vec![vec![Typ::Payload]]);
+        policy.insert_bool(ALLOW_SERVER_PAYLOAD, vec![vec![Typ::Payload]]);
+        policy.insert_bool(
+            ALLOW_REST_RESPONSE,
+            vec![vec![Typ::HttpResponse], Vec::new()],
         );
         policy
     };
     pub static ref TCP_POLICY: Interface = {
         let mut policy = Interface::new();
-        policy.insert_bool(ALLOW_TCP_CONNECTION,
+        policy.insert_bool(
+            ALLOW_TCP_CONNECTION,
+            vec![vec![Typ::Connection], Vec::new()],
+        );
+        policy.insert_unit(
+            ON_TCP_DISCONNECT,
             vec![
-                vec![Typ::ID, Typ::ID, Typ::I64],
-                vec![Typ::ID, Typ::ID],
+                vec![Typ::Connection, Typ::I64, Typ::I64],
+                vec![Typ::Connection],
                 Vec::new(),
             ],
-            false, // default to disallow
-        );
-        policy.insert_unit(ON_TCP_DISCONNECT,
-            vec![
-                vec![Typ::ID, Typ::ID, Typ::I64, Typ::I64, Typ::I64],
-                vec![Typ::ID, Typ::ID, Typ::I64],
-                vec![Typ::ID, Typ::ID],
-            ]
         );
         policy
     };

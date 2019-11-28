@@ -167,7 +167,6 @@ impl<'a> std::fmt::Display for Hash<'a> {
 pub struct FunctionInterface {
     signatures: Vec<types::Signature>,
     default: types::Signature,
-    default_to_allow: bool,
     allow: Literal,
     deny: Literal,
 }
@@ -176,14 +175,12 @@ impl FunctionInterface {
     pub fn new(
         signatures: Vec<types::Signature>,
         default: types::Signature,
-        default_to_allow: bool,
         allow: Literal,
         deny: Literal,
     ) -> FunctionInterface {
         FunctionInterface {
             signatures,
             default,
-            default_to_allow,
             allow,
             deny,
         }
@@ -200,7 +197,7 @@ impl Interface {
     pub fn insert(&mut self, name: &str, policy: FunctionInterface) {
         self.0.insert(name.to_string(), policy);
     }
-    pub fn insert_bool(&mut self, name: &str, args: Vec<Vec<Typ>>, default_to_allow: bool) {
+    pub fn insert_bool(&mut self, name: &str, args: Vec<Vec<Typ>>) {
         let sigs = args
             .into_iter()
             .map(|v| Signature::new(v, Typ::Bool))
@@ -210,7 +207,6 @@ impl Interface {
             FunctionInterface::new(
                 sigs,
                 Signature::any(Typ::Bool),
-                default_to_allow,
                 Literal::Bool(true),
                 Literal::Bool(false),
             ),
@@ -226,7 +222,6 @@ impl Interface {
             FunctionInterface::new(
                 sigs,
                 Signature::any(Typ::Unit),
-                false,
                 Literal::Unit,
                 Literal::Unit,
             ),
@@ -399,14 +394,10 @@ impl Module {
             }
         }
     }
-    pub fn set_interface(
-        &mut self,
-        interface: &Interface,
-        allow: Option<bool>,
-    ) -> Result<(), Error> {
+    pub fn set_interface(&mut self, interface: &Interface, allow: bool) -> Result<(), Error> {
         self.interface = interface.clone();
         for (function, i) in interface.0.iter() {
-            self.check_interface(function, i, allow.unwrap_or_else(|| i.default_to_allow))?;
+            self.check_interface(function, i, allow)?;
             self.program
                 .policies
                 .0
@@ -416,19 +407,20 @@ impl Module {
     }
     pub fn allow_all(interface: &Interface) -> Result<Self, Error> {
         let mut module = Module::default();
-        module.set_interface(interface, Some(true))?;
+        module.set_interface(interface, true)?;
         Ok(module)
     }
     pub fn deny_all(interface: &Interface) -> Result<Self, Error> {
         let mut module = Module::default();
-        module.set_interface(interface, Some(false))?;
+        module.set_interface(interface, false)?;
         Ok(module)
     }
     pub fn from_buf(buf: &str, interface: Option<&Interface>) -> Result<Self, Error> {
         let mut module: Module = buf.parse()?;
         module.call_graph.check_for_cycles()?;
         if let Some(interface) = interface {
-            module.set_interface(interface, None)?;
+            // TODO: if no interface functions are declared then default to deny
+            module.set_interface(interface, true)?;
             let top: Vec<&String> = interface.0.keys().collect();
             module
                 .program

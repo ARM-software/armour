@@ -474,7 +474,7 @@ impl Literal {
         Doc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Green)).clone())
     }
     fn non_parse_literal<'a, 'b>(&'a self) -> Doc<'b, BoxDoc<'b, ColorSpec>, ColorSpec> {
-        Doc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Red)).clone())
+        Doc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Blue)).clone())
     }
     fn to_doc<'a>(&self) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
         match self {
@@ -509,9 +509,11 @@ impl Literal {
                     .group(),
                 ),
             },
-            Literal::HttpRequest(_) | Literal::ID(_) | Literal::IpAddr(_) => {
-                self.non_parse_literal()
-            }
+            Literal::HttpRequest(_)
+            | Literal::ID(_)
+            | Literal::Payload(_)
+            | Literal::Connection(_)
+            | Literal::IpAddr(_) => self.non_parse_literal(),
             _ => self.literal(),
         }
     }

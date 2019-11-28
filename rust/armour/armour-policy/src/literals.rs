@@ -140,6 +140,203 @@ impl Headers {
     }
 }
 
+impl From<Vec<(&str, &[u8])>> for Headers {
+    fn from(h: Vec<(&str, &[u8])>) -> Self {
+        let mut headers: BTreeMap<String, Vec<Vec<u8>>> = BTreeMap::new();
+        for (k, v) in h.iter() {
+            if let Some(l) = headers.get_mut(&k.to_string()) {
+                l.push(v.to_vec())
+            } else {
+                headers.insert(k.to_string(), vec![v.to_vec()]);
+            }
+        }
+        Headers { headers }
+    }
+}
+
+#[derive(PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
+pub struct ID {
+    hosts: BTreeSet<String>,
+    ips: BTreeSet<std::net::IpAddr>,
+    port: Option<u16>,
+}
+
+impl ID {
+    pub fn host(&self) -> Option<String> {
+        if let Some(name) = self.hosts.iter().next() {
+            if std::net::IpAddr::from_str(name).is_err() {
+                Some(name.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+    pub fn hosts(&self) -> Literal {
+        Literal::List(
+            self.hosts
+                .iter()
+                .map(|s| Literal::Str(s.to_string()))
+                .collect(),
+        )
+    }
+    pub fn ips(&self) -> Literal {
+        Literal::List(self.ips.iter().map(|ip| Literal::IpAddr(*ip)).collect())
+    }
+    pub fn port(&self) -> Literal {
+        match self.port {
+            Some(p) => Literal::Int(p.into()).some(),
+            None => Literal::none(),
+        }
+    }
+    pub fn add_host(&self, host: &str) -> ID {
+        let mut new = self.clone();
+        new.hosts.insert(host.to_string());
+        new
+    }
+    pub fn add_ip(&self, ip: std::net::IpAddr) -> ID {
+        let mut new = self.clone();
+        new.ips.insert(ip);
+        new
+    }
+    pub fn set_port(&self, port: u16) -> ID {
+        let mut new = self.clone();
+        new.port = Some(port);
+        new
+    }
+}
+
+impl From<std::net::IpAddr> for ID {
+    fn from(ip: std::net::IpAddr) -> Self {
+        let mut ips = BTreeSet::new();
+        if ip.is_ipv4() {
+            ips.insert(ip);
+        }
+        let mut hosts = BTreeSet::new();
+        // log::warn!("performing reverse DNS lookup!");
+        if let Ok(host) = dns_lookup::lookup_addr(&ip) {
+            hosts.insert(host);
+        }
+        ID {
+            hosts,
+            ips,
+            port: None,
+        }
+    }
+}
+
+impl From<std::net::SocketAddr> for ID {
+    fn from(s: std::net::SocketAddr) -> Self {
+        let mut id = ID::from(s.ip());
+        id.port = Some(s.port());
+        id
+    }
+}
+
+impl From<(Option<&str>, Option<u16>)> for ID {
+    fn from(s: (Option<&str>, Option<u16>)) -> Self {
+        let (host, port) = s;
+        let mut hosts = BTreeSet::new();
+        let mut ips = BTreeSet::new();
+        if let Some(host) = host {
+            hosts.insert(host.to_string());
+            // log::warn!("performing DNS lookup!");
+            if let Ok(host_ips) = dns_lookup::lookup_host(host) {
+                for ip in host_ips.iter().filter(|ip| ip.is_ipv4()) {
+                    ips.insert(*ip);
+                }
+            }
+        }
+        ID { hosts, ips, port }
+    }
+}
+
+#[derive(PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
+pub struct Connection {
+    from: ID,
+    to: ID,
+    number: i64,
+}
+
+impl Connection {
+    pub fn literal(from: &ID, to: &ID, number: i64) -> Literal {
+        Literal::Connection(Connection {
+            from: from.clone(),
+            to: to.clone(),
+            number,
+        })
+    }
+    pub fn from_to(&self) -> Literal {
+        Literal::Tuple(vec![self.from_lit(), self.to_lit()])
+    }
+    pub fn from_lit(&self) -> Literal {
+        Literal::ID(self.from.clone())
+    }
+    pub fn to_lit(&self) -> Literal {
+        Literal::ID(self.to.clone())
+    }
+    pub fn number(&self) -> Literal {
+        Literal::Int(self.number)
+    }
+    pub fn set_from(&self, from: &ID) -> Connection {
+        let mut conn = self.clone();
+        conn.from = from.clone();
+        conn
+    }
+    pub fn set_to(&self, to: &ID) -> Connection {
+        let mut conn = self.clone();
+        conn.to = to.clone();
+        conn
+    }
+    pub fn set_number(&self, number: i64) -> Connection {
+        let mut conn = self.clone();
+        conn.number = number;
+        conn
+    }
+}
+
+impl From<(&ID, &ID, usize)> for Connection {
+    fn from(conn: (&ID, &ID, usize)) -> Self {
+        let (from, to, number) = conn;
+        Connection {
+            from: from.clone(),
+            to: to.clone(),
+            number: number as i64,
+        }
+    }
+}
+
+#[derive(PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
+pub struct Payload {
+    payload: Vec<u8>,
+    connection: Connection,
+}
+
+impl Payload {
+    pub fn literal(data: &[u8], connection: &Connection) -> Literal {
+        Literal::Payload(Payload {
+            payload: data.to_vec(),
+            connection: connection.clone(),
+        })
+    }
+    pub fn data(&self) -> Literal {
+        self.payload.clone().into()
+    }
+    pub fn connection(&self) -> Literal {
+        self.connection.clone().into()
+    }
+}
+
+impl From<(&[u8], &Connection)> for Payload {
+    fn from(pld: (&[u8], &Connection)) -> Self {
+        Payload {
+            payload: pld.0.to_vec(),
+            connection: pld.1.clone(),
+        }
+    }
+}
+
 #[derive(PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HttpRequest {
     method: Method,
@@ -147,6 +344,7 @@ pub struct HttpRequest {
     path: String,
     query: String,
     headers: Headers,
+    connection: Connection,
 }
 
 impl HttpRequest {
@@ -154,6 +352,9 @@ impl HttpRequest {
         let mut new = HttpRequest::default();
         new.method = method;
         new
+    }
+    pub fn connection(&self) -> Literal {
+        self.connection.clone().into()
     }
     pub fn method(&self) -> Literal {
         Literal::Str(self.method.to_string())
@@ -219,6 +420,26 @@ impl HttpRequest {
     pub fn header_pairs(&self) -> Literal {
         self.headers.header_pairs()
     }
+    pub fn set_connection(&self, c: &Connection) -> HttpRequest {
+        let mut new = self.clone();
+        new.connection = c.clone();
+        new
+    }
+}
+
+impl From<(&str, &str, &str, &str, Vec<(&str, &[u8])>, Connection)> for HttpRequest {
+    #[allow(clippy::type_complexity)]
+    fn from(req: (&str, &str, &str, &str, Vec<(&str, &[u8])>, Connection)) -> Self {
+        let (method, version, path, query, h, connection) = req;
+        HttpRequest {
+            method: method.parse().unwrap_or_default(),
+            version: version.parse().unwrap_or_default(),
+            path: path.to_owned(),
+            query: query.to_owned(),
+            headers: Headers::from(h),
+            connection,
+        }
+    }
 }
 
 #[derive(PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
@@ -227,6 +448,7 @@ pub struct HttpResponse {
     status: u16,
     headers: Headers,
     reason: Option<String>,
+    connection: Connection,
 }
 
 impl HttpResponse {
@@ -234,6 +456,9 @@ impl HttpResponse {
         let mut new = HttpResponse::default();
         new.status = status;
         Literal::HttpResponse(new)
+    }
+    pub fn connection(&self) -> Literal {
+        self.connection.clone().into()
     }
     pub fn status(&self) -> Literal {
         Literal::Int(i64::from(self.status))
@@ -270,150 +495,23 @@ impl HttpResponse {
     pub fn header_pairs(&self) -> Literal {
         self.headers.header_pairs()
     }
-}
-
-#[derive(PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
-pub struct ID {
-    hosts: BTreeSet<String>,
-    ips: BTreeSet<std::net::IpAddr>,
-    port: Option<u16>,
-}
-
-impl ID {
-    pub fn host(&self) -> Option<String> {
-        if let Some(name) = self.hosts.iter().next() {
-            if std::net::IpAddr::from_str(name).is_err() {
-                Some(name.clone())
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-    pub fn hosts(&self) -> Literal {
-        Literal::List(
-            self.hosts
-                .iter()
-                .map(|s| Literal::Str(s.to_string()))
-                .collect(),
-        )
-    }
-    pub fn ips(&self) -> Literal {
-        Literal::List(self.ips.iter().map(|ip| Literal::IpAddr(*ip)).collect())
-    }
-    pub fn port(&self) -> Literal {
-        match self.port {
-            Some(p) => Literal::Int(p.into()).some(),
-            None => Literal::none(),
-        }
-    }
-    pub fn add_host(&self, host: &str) -> ID {
+    pub fn set_connection(&self, c: &Connection) -> HttpResponse {
         let mut new = self.clone();
-        new.hosts.insert(host.to_string());
-        new
-    }
-    pub fn add_ip(&self, ip: std::net::IpAddr) -> ID {
-        let mut new = self.clone();
-        new.ips.insert(ip);
-        new
-    }
-    pub fn set_port(&self, port: u16) -> ID {
-        let mut new = self.clone();
-        new.port = Some(port);
+        new.connection = c.clone();
         new
     }
 }
 
-pub trait ToLiteral {
-    fn to_literal(&self) -> Literal;
-}
-
-impl ToLiteral for std::net::IpAddr {
-    fn to_literal(&self) -> Literal {
-        match self {
-            std::net::IpAddr::V4(ip) => {
-                let [a, b, c, d] = ip.octets();
-                #[allow(clippy::cast_lossless)]
-                Literal::Tuple(vec![
-                    Literal::Int(a as i64),
-                    Literal::Int(b as i64),
-                    Literal::Int(c as i64),
-                    Literal::Int(d as i64),
-                ])
-            }
-            std::net::IpAddr::V6(ip) => {
-                if let Some(ipv4) = ip.to_ipv4() {
-                    std::net::IpAddr::V4(ipv4).to_literal()
-                } else {
-                    Literal::none()
-                }
-            }
-        }
-    }
-}
-
-impl ToLiteral for HttpRequest {
-    fn to_literal(&self) -> Literal {
-        Literal::Tuple(vec![
-            self.method(),
-            self.version(),
-            self.path(),
-            self.query(),
-            self.header_pairs(),
-        ])
-    }
-}
-
-impl ToLiteral for HttpResponse {
-    fn to_literal(&self) -> Literal {
-        Literal::Tuple(vec![self.version(), self.status(), self.header_pairs()])
-    }
-}
-
-impl ToLiteral for ID {
-    fn to_literal(&self) -> Literal {
-        Literal::Tuple(vec![self.hosts(), self.ips(), self.port()])
-    }
-}
-
-impl From<Vec<(&str, &[u8])>> for Headers {
-    fn from(h: Vec<(&str, &[u8])>) -> Self {
-        let mut headers: BTreeMap<String, Vec<Vec<u8>>> = BTreeMap::new();
-        for (k, v) in h.iter() {
-            if let Some(l) = headers.get_mut(&k.to_string()) {
-                l.push(v.to_vec())
-            } else {
-                headers.insert(k.to_string(), vec![v.to_vec()]);
-            }
-        }
-        Headers { headers }
-    }
-}
-
-impl From<(&str, &str, &str, &str, Vec<(&str, &[u8])>)> for HttpRequest {
+impl From<(&str, u16, Option<&str>, Vec<(&str, &[u8])>, Connection)> for HttpResponse {
     #[allow(clippy::type_complexity)]
-    fn from(req: (&str, &str, &str, &str, Vec<(&str, &[u8])>)) -> Self {
-        let (method, version, path, query, h) = req;
-        HttpRequest {
-            method: method.parse().unwrap_or_default(),
-            version: version.parse().unwrap_or_default(),
-            path: path.to_owned(),
-            query: query.to_owned(),
-            headers: Headers::from(h),
-        }
-    }
-}
-
-impl From<(&str, u16, Option<&str>, Vec<(&str, &[u8])>)> for HttpResponse {
-    #[allow(clippy::type_complexity)]
-    fn from(res: (&str, u16, Option<&str>, Vec<(&str, &[u8])>)) -> Self {
-        let (version, status, reason, h) = res;
+    fn from(res: (&str, u16, Option<&str>, Vec<(&str, &[u8])>, Connection)) -> Self {
+        let (version, status, reason, h, connection) = res;
         HttpResponse {
             version: version.parse().unwrap_or_default(),
             status,
             reason: reason.map(|s| s.to_string()),
             headers: Headers::from(h),
+            connection,
         }
     }
 }
@@ -451,6 +549,7 @@ impl VecSet {
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Literal {
     Bool(bool),
+    Connection(Connection),
     Data(Vec<u8>),
     Float(f64),
     HttpRequest(HttpRequest),
@@ -459,6 +558,7 @@ pub enum Literal {
     Int(i64),
     IpAddr(std::net::IpAddr),
     List(Vec<Literal>),
+    Payload(Payload),
     // Policy(Policy),
     Regex(parser::PolicyRegex),
     Str(String),
@@ -476,6 +576,7 @@ impl Literal {
     pub fn typ(&self) -> Typ {
         match self {
             Literal::Bool(_) => Typ::Bool,
+            Literal::Connection(_) => Typ::Connection,
             Literal::Data(_) => Typ::Data,
             Literal::Float(_) => Typ::F64,
             Literal::HttpRequest(_) => Typ::HttpRequest,
@@ -484,6 +585,7 @@ impl Literal {
             Literal::Int(_) => Typ::I64,
             Literal::IpAddr(_) => Typ::IpAddr,
             Literal::List(l) => l.get(0).map(|t| t.typ()).unwrap_or(Typ::Return),
+            Literal::Payload(_) => Typ::Payload,
             // Literal::Policy(_) => Typ::Policy,
             Literal::Regex(_) => Typ::Regex,
             Literal::Str(_) => Typ::Str,
@@ -512,6 +614,7 @@ impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Literal::Bool(b) => write!(f, "{}", b),
+            Literal::Connection(c) => write!(f, "{:?}", c),
             Literal::Data(d) => {
                 if let Ok(s) = std::str::from_utf8(d) {
                     write!(f, r#"b"{}""#, s)
@@ -551,9 +654,173 @@ impl fmt::Display for Literal {
             }
             Literal::Regex(r) => write!(f, "{:?}", r),
             Literal::Str(s) => write!(f, r#""{}""#, s),
+            Literal::Payload(p) => write!(f, "{:?}", p),
             // Literal::Policy(p) => write!(f, "{:?}", p),
             Literal::Unit => write!(f, "()"),
         }
+    }
+}
+
+impl From<bool> for Literal {
+    fn from(b: bool) -> Self {
+        Literal::Bool(b)
+    }
+}
+
+impl From<Connection> for Literal {
+    fn from(conn: Connection) -> Self {
+        Literal::Connection(conn)
+    }
+}
+
+impl From<&Connection> for Literal {
+    fn from(conn: &Connection) -> Self {
+        Literal::Tuple(vec![
+            (&conn.from).into(),
+            (&conn.to).into(),
+            conn.number.into(),
+        ])
+    }
+}
+
+impl From<Vec<u8>> for Literal {
+    fn from(d: Vec<u8>) -> Self {
+        Literal::Data(d)
+    }
+}
+
+impl From<&[u8]> for Literal {
+    fn from(d: &[u8]) -> Self {
+        Literal::Data(d.to_vec())
+    }
+}
+
+impl From<f64> for Literal {
+    fn from(n: f64) -> Self {
+        Literal::Float(n)
+    }
+}
+
+impl From<HttpRequest> for Literal {
+    fn from(r: HttpRequest) -> Self {
+        Literal::HttpRequest(r)
+    }
+}
+
+impl From<&HttpRequest> for Literal {
+    fn from(req: &HttpRequest) -> Self {
+        Literal::Tuple(vec![
+            req.method(),
+            req.version(),
+            req.path(),
+            req.query(),
+            req.header_pairs(),
+            (&req.connection).into(),
+        ])
+    }
+}
+
+impl From<HttpResponse> for Literal {
+    fn from(r: HttpResponse) -> Self {
+        Literal::HttpResponse(r)
+    }
+}
+
+impl From<&HttpResponse> for Literal {
+    fn from(res: &HttpResponse) -> Self {
+        Literal::Tuple(vec![
+            res.version(),
+            res.status(),
+            res.header_pairs(),
+            (&res.connection).into(),
+        ])
+    }
+}
+
+impl From<ID> for Literal {
+    fn from(id: ID) -> Self {
+        Literal::ID(id)
+    }
+}
+
+impl From<&ID> for Literal {
+    fn from(id: &ID) -> Self {
+        Literal::Tuple(vec![id.hosts(), id.ips(), id.port()])
+    }
+}
+
+impl From<std::net::SocketAddr> for Literal {
+    fn from(s: std::net::SocketAddr) -> Self {
+        Literal::ID(s.into())
+    }
+}
+
+impl From<usize> for Literal {
+    fn from(n: usize) -> Self {
+        Literal::Int(n as i64)
+    }
+}
+
+impl From<i64> for Literal {
+    fn from(n: i64) -> Self {
+        Literal::Int(n)
+    }
+}
+
+impl From<std::net::IpAddr> for Literal {
+    fn from(ip: std::net::IpAddr) -> Self {
+        Literal::IpAddr(ip)
+    }
+}
+
+impl From<&std::net::IpAddr> for Literal {
+    fn from(ip: &std::net::IpAddr) -> Self {
+        match ip {
+            std::net::IpAddr::V4(ip) => {
+                let [a, b, c, d] = ip.octets();
+                #[allow(clippy::cast_lossless)]
+                Literal::Tuple(vec![
+                    Literal::Int(a as i64),
+                    Literal::Int(b as i64),
+                    Literal::Int(c as i64),
+                    Literal::Int(d as i64),
+                ])
+            }
+            std::net::IpAddr::V6(ip) => {
+                if let Some(ipv4) = ip.to_ipv4() {
+                    Literal::from(&std::net::IpAddr::V4(ipv4))
+                } else {
+                    Literal::none()
+                }
+            }
+        }
+    }
+}
+
+impl From<Payload> for Literal {
+    fn from(pld: Payload) -> Self {
+        Literal::Payload(pld)
+    }
+}
+
+impl From<&Payload> for Literal {
+    fn from(pld: &Payload) -> Self {
+        Literal::Tuple(vec![
+            pld.payload.as_slice().into(),
+            (&pld.connection).into(),
+        ])
+    }
+}
+
+impl From<&str> for Literal {
+    fn from(s: &str) -> Self {
+        Literal::Str(s.to_string())
+    }
+}
+
+impl From<()> for Literal {
+    fn from(_: ()) -> Self {
+        Literal::Unit
     }
 }
 
@@ -571,7 +838,7 @@ impl std::convert::TryFrom<Literal> for bool {
 impl std::convert::TryFrom<Literal> for () {
     type Error = ();
     fn try_from(l: Literal) -> Result<(), Self::Error> {
-        if let Literal::Unit = l {
+        if l == Literal::Unit {
             Ok(())
         } else {
             Err(())
