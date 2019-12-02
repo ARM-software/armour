@@ -2,5 +2,6 @@
 
 members = [
     "arm-service",
+    "server",
     "tcp-echo",
 ]
