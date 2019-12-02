@@ -9,10 +9,10 @@ do
   echo test$j-$i >> $1
   if [ $3 = "linkerd" ]; then
     echo ./wrk2/wrk -c1 -t1 -R$j -d60s -H "Host: srv-nginx" --latency http://$2 >> $1
-    docker exec -it client-1 ./wrk2/wrk -c1 -t1 -R$j -d30s -H "Host: srv-nginx" --latency  http://$2 >> $1
+    docker exec -it client-1 ./wrk2/wrk -c1 -t1 -R$j -d60s -H "Host: srv-nginx" --latency  http://$2 >> $1
   else 
     echo ./wrk2/wrk -c1 -t1 -R$j -d60s --latency http://$2 >> $1
-    docker exec -it client-1 ./wrk2/wrk -c1 -t1 -R$j -d30s --latency  http://$2 >> $1
+    docker exec -it client-1 ./wrk2/wrk -c1 -t1 -R$j -d60s --latency  http://$2 >> $1
   fi
   docker restart srv-nginx
   docker restart client-1

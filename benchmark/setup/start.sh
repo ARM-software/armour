@@ -1,8 +1,8 @@
 #!/bin/bash
 cd ~/Downloads
-aws ec2 run-instances --image-id ami-0dd49290cc6fe1109 --count 65 --instance-type t2.large --key-name some-key --security-groups arm-default --region eu-west-2
+aws ec2 run-instances --image-id ami-031e67f35fa14d051 --count 40 --instance-type t2.large --key-name some-key --security-groups arm-default --region eu-west-2
 sleep 60s
-aws ec2 describe-instances --filters "Name=image-id,Values=ami-0dd49290cc6fe1109"  --region eu-west-2 --query 'Reservations[*].Instances[*].NetworkInterfaces[*].PrivateIpAddresses[*].[Association.PublicIp]' --output text > ips
+aws ec2 describe-instances --filters "Name=image-id,Values=ami-031e67f35fa14d051"  --region eu-west-2 --query 'Reservations[*].Instances[*].NetworkInterfaces[*].PrivateIpAddresses[*].[Association.PublicIp]' --output text > ips
 
 ARRAY=( $( cat ips ) )
 i=1
@@ -57,31 +57,6 @@ elif [ "$i" -le 40 ]; then
   ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
 cd /home/ec2-user/scripts
 screen -d -m -S test ./test.sh armour latency allow
-SHELL
-elif [ "$i" -le 45 ]; then
-  ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
-cd /home/ec2-user/scripts
-screen -d -m -S test ./server-test.sh srv-nginx
-SHELL
-elif [ "$i" -le 50 ]; then
-  ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
-cd /home/ec2-user/scripts
-screen -d -m -S test ./server-test.sh srv-apache
-SHELL
-elif [ "$i" -le 55 ]; then
-  ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
-cd /home/ec2-user/scripts
-screen -d -m -S test ./server-test.sh srv-lighttpd
-SHELL
-elif [ "$i" -le 50 ]; then
-  ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
-cd /home/ec2-user/scripts
-screen -d -m -S test ./server-test.sh srv-arm
-SHELL
-elif [ "$i" -le 65 ]; then
-  ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
-cd /home/ec2-user/scripts
-screen -d -m -S test ./server-test.sh srv-cherokee
 SHELL
 fi
 i=$((i+1))
