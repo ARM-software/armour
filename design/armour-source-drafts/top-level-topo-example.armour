@@ -1,11 +1,13 @@
 policy poc_topology {
+       uses information_flow_security
+
        // these labels can be queried to test wheter infromation flow policies are in use 
        defines-labels {
        		      poc
 		      poc::topo
        }
 
-       uses-lables {
+       uses-labels {
        		    poc
 		    poc::topo
        		    poc::id
@@ -28,53 +30,101 @@ policy poc_topology {
        } 
 
        labeling-policy {
-		    when  {docker::container::image = “debug-hasg”}
-		    label {poc::id::debug}
+		    when  {docker::container::image = “debug-hash”}
+		    label {poc::id::debug
+		    	   ifs::confidentiality::high
+		    	   ifs::integrity::high
+		    }
 
 		    when  {docker::container::image = “mqtt-debug—hash”}
-		    label {poc::id::mqtt-debug}
+		    label {poc::id::mqtt-debug
+		    	   ifs::confidentiality::high
+		    	   ifs::integrity::high
+		    }
 
 		    when  {docker::container::image = “dtp-hash”}
-		    label {poc::id::dtp}
+		    label {poc::id::dtp
+		    	   ifs::confidentiality::low
+		    	   ifs::integrity::low
+		    }
 
 		    when  {docker::container::image = “verify-id-hash”}
-		    label {poc::id::verify-id}
+		    label {poc::id::verify-id
+		    	   ifs::confidentiality::high
+		    	   ifs::integrity::high
+		    }
 
 		    when  {docker::container::image = “picolibri-hash”}
-		    label {poc::id::picolibri}
+		    label {poc::id::picolibri
+		    	   ifs::confidentiality::low
+		    	   ifs::integrity::low
+		    }
 
 		    when  {docker::container::image = “pipharm-hash”}
-		    label {poc::id::pipharm}
+		    label {poc::id::pipharm
+		    	   ifs::confidentiality::low
+		    	   ifs::integrity::low
+		    }
 
 		    when  {docker::container::image = “mongo-hash”}
-		    label {poc::id::mongo}
+		    label {poc::id::mongo
+		    	   ifs::confidentiality::low
+		    	   ifs::integrity::low
+		    }
 
 		    when  {docker::container::image = “accounting-hash”}
-		    label {poc::id::accounting}
+		    label {poc::id::accounting
+		    	   ifs::confidentiality::high
+		    	   ifs::integrity::high
+		    }
 
 		    when  {docker::container::image = “mongo-web-hash”}
-		    label {poc::id::mongo-web}
+		    label {poc::id::mongo-web
+		    	   ifs::confidentiality::low
+		    	   ifs::integrity::low
+		    }
 
 		    when  {docker::container::image = “dbread-hash”}
-		    label {poc::id::dbread}
+		    label {poc::id::dbread
+		    	   ifs::confidentiality::high
+		    	   ifs::integrity::high
+		    }
 
 		    when  {docker::container::image = “dbwrite-hash”}
-		    label {poc::id::dbwrite}
+		    label {poc::id::dbwrite
+		    	   ifs::confidentiality::high
+		    	   ifs::integrity::high
+		    }
 
 		    when  {docker::container::image = “launch-hash”}
-		    label {poc::id::launch}
+		    label {poc::id::launch
+		    	   ifs::confidentiality::high
+		    	   ifs::integrity::high
+		    }
 
 		    when  {docker::container::image = “notifications-hash”}
-		    label {poc::id::notifications}
+		    label {poc::id::notifications
+		    	   ifs::confidentiality::low
+		    	   ifs::integrity::low
+		    }
 
 		    when  {docker::container::image = “cloud-update-hash”}
-		    label {poc::id::cloud-update}
+		    label {poc::id::cloud-update
+		    	   ifs::confidentiality::low
+		    	   ifs::integrity::low
+		    }
 
 		    when  {docker::container::image = “mqtt-trusted-hash”}
-		    label {poc::id::mqtt-trusted}
+		    label {poc::id::mqtt-trusted
+		    	   ifs::confidentiality::high
+		    	   ifs::integrity::high
+		    }
 
 		    when  {docker::container::image = “mysql-hash”}
-		    label {poc::id::mysql}
+		    label {poc::id::mysql
+		    	   ifs::confidentiality::high
+		    	   ifs::integrity::high
+		    }
        }
 
        policy {

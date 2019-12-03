@@ -13,6 +13,7 @@ fn require(req: HttpRequest, from: ID, to: ID) -> bool {
      logger::connection("-", from, to)
   };
   true
+  test_connection(from, to);
 }
 
 // TCP connection/deny

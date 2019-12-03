@@ -165,7 +165,7 @@ networks:
 
   cloud:
     driver: bridge
-    internal: true
+    internal: false
     driver_opts:
       com.docker.network.bridge.name: cloud
     ipam:

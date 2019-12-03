@@ -3,3 +3,4 @@ wait 1
 start 6000
 start tcp  6001
 allow all
+allow all

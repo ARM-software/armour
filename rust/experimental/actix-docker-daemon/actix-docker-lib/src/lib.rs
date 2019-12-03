@@ -47,38 +47,12 @@ pub struct DockerActor {
 impl DockerActor {
     fn get_container(&mut self, container: String) ->
     impl Future<Item = Result<String, String>, Error=Error> {
-        let mut filter = Vec::new();
-        filter.push(ContainerFilter::LabelName(container.to_string()));
-        self.docker.containers()
-            .list(&ContainerListOptionsBuilder::default().filter(filter).build())
-            .map(|containers| {
-                if containers.len() == 1 {
-                    Ok(containers[0].id.to_string())
-                } else {
-                    Err("Container is ambiguous or non-existant".to_string())
-                }
-            })
-            .map_err(|e| {
-                info!("Error getting network {:?}", e);
-                Error::new(ErrorKind::Other, format!("Error creating network {:?}", e))
-            })
+        futures::future::ok(Ok(self.docker.containers().get(&container).id().to_string()))
     }
 
     fn get_network(&mut self, network: String) ->
     impl Future<Item = Result<String, String>, Error=Error> {
-        self.docker.networks().list(&Default::default())
-            .map(|mut networks| {
-                networks.retain(move |n| n.name == network.clone());
-                if networks.len() == 1 {
-                    Ok(networks[0].id.to_string())
-                } else {
-                    Err("Network is ambiguous or non-existant".to_string())
-                }
-            })
-            .map_err(|e| {
-                info!("Error getting network {:?}", e);
-                Error::new(ErrorKind::Other, format!("Error creating network {:?}", e))
-            })
+        futures::future::ok(Ok(self.docker.networks().get(&network).id().to_string()))
     }
 }
 

@@ -50,7 +50,8 @@ IFACES="poc_accounting \
 	poc_temp \
 	poc_trust \
 	poc_verify \
-	poc_vitals cloud "
+	poc_vitals 
+	poc_cloud "
 
 PROXY_FILE=$1
 IPTABLES_FILE=$2
@@ -68,12 +69,13 @@ echo "launch" > $PROXY_FILE
 echo "wait 1" >> $PROXY_FILE
 echo "start "$rest_port >> $PROXY_FILE
 echo "start tcp " $tcp_port >> $PROXY_FILE
+echo "allow all" >> $PROXY_FILE
 
-echo "iptables -A FORWARD \
-	       -p tcp \
-	       -d 127.0.0.1 \
-	       --dport $rest_port \
-	       -j ACCEPT" >> $IPTABLES_FILE
+# echo "iptables -A FORWARD \
+# 	       -p tcp \
+# 	       -d 127.0.0.1 \
+# 	       --dport $rest_port \
+# 	       -j ACCEPT" >> $IPTABLES_FILE
 echo "iptables -t nat -I PREROUTING \
 	       -i poc_+ \
 	       -p tcp \
@@ -88,11 +90,11 @@ for i in "${rest_endpoints[@]}"; do
 		 -j DNAT --to-destination 127.0.0.1:$rest_port" >> $IPTABLES_FILE
 done
 
-echo "iptables -A FORWARD \ 
-     	       -p tcp \
-	        -d 127.0.0.1 \ 
-		--dport $tcp_port \ 
-		-j ACCEPT" >> $IPTABLES_FILE
+# echo "iptables -A FORWARD \ 
+#      	       -p tcp \
+# 	        -d 127.0.0.1 \ 
+# 		--dport $tcp_port \ 
+# 		-j ACCEPT" >> $IPTABLES_FILE
 for i in "${tcp_endpoints[@]}"; do
   IFS=':' read -ra ports <<< "$i"
   echo "iptables -t nat -I PREROUTING \
@@ -103,13 +105,14 @@ for i in "${tcp_endpoints[@]}"; do
 		 -j DNAT --to-destination 127.0.0.1:$tcp_port" >> $IPTABLES_FILE
 done
 
-# DNS access for cloud
-echo "iptables -t nat -I PREROUTING \
-	       -i cloud \
-	       -p tcp \
-	       --dport 53 \
-	       -j DNAT \
-	       --to-destination 127.0.0.1:$tcp_port" >> $IPTABLES_FILE
+# 13-09-2019
+# # DNS access for cloud
+# echo "iptables -t nat -I PREROUTING \
+# 	       -i cloud \
+# 	       -p tcp \
+# 	       --dport 53 \
+# 	       -j DNAT \
+# 	       --to-destination 127.0.0.1:$tcp_port" >> $IPTABLES_FILE
 
 # DNS access for poc_+
 echo "iptables -t nat -I PREROUTING \
@@ -119,10 +122,10 @@ echo "iptables -t nat -I PREROUTING \
 	       -j DNAT \
 	       --to-destination 127.0.0.1:$tcp_port" >> $IPTABLES_FILE
 
-
+# 13-09-2019
 # HTTPS access for cloud
 echo "iptables -t nat -I PREROUTING \
-	       -i cloud \
+	       -i poc_+ \
 	       -p tcp \
 	       --dport 443 \
 	       -j DNAT \
@@ -152,19 +155,24 @@ echo "sysctl -w net.ipv4.ip_forward=1"  >> $IPTABLES_FILE;
 
 # This rule masquerades the cloud proxy to allow it to talk to the internet
 echo "iptables -t nat -I POSTROUTING \
-	       -s 172.36.0.0/28 \
-	       ! -o cloud \
 	       -j MASQUERADE" >> $IPTABLES_FILE
 
-# Allows cloud contaier to move along with DOCKER rules
-echo "iptables -I FORWARD \
-	       -o cloud \
-	       -m conntrack \
-	       --ctstate RELATED,ESTABLISHED \
-	       -j ACCEPT"  >> $IPTABLES_FILE
-echo "iptables -I FORWARD \
-	       -i cloud \
-	       -j ACCEPT"  >> $IPTABLES_FILE
+# # This rule masquerades the cloud proxy to allow it to talk to the internet
+# echo "iptables -t nat -I POSTROUTING \
+# 	       -s 172.36.0.0/28 \
+# 	       ! -o cloud \
+# 	       -j MASQUERADE" >> $IPTABLES_FILE
+
+# # # Allows cloud contaier to move along with DOCKER rules
+# echo "iptables -I FORWARD \
+# 	       -o cloud \
+# 	       -m conntrack \
+# 	       --ctstate RELATED,ESTABLISHED \
+# 	       -j ACCEPT"  >> $IPTABLES_FILE
+
+# echo "iptables -I FORWARD \
+# 	       -i cloud \
+# 	       -j ACCEPT"  >> $IPTABLES_FILE
 
 echo "echo '172.39.0.2 notifications'		>> /etc/hosts" >> $IPTABLES_FILE
 echo "echo '172.38.0.2 mongo-web-interface'	>> /etc/hosts" >> $IPTABLES_FILE

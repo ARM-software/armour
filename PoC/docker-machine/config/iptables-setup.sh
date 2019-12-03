@@ -1,4 +1,3 @@
-iptables -A FORWARD 	       -p tcp 	       -d 127.0.0.1 	       --dport 6000 	       -j ACCEPT
 iptables -t nat -I PREROUTING 	       -i poc_+ 	       -p tcp 	       -j DNAT --to-destination 127.0.0.1:6000
 iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.39.0.2 		 --dport 80 		 -j DNAT --to-destination 127.0.0.1:6000
 iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.38.0.2 		 --dport 81 		 -j DNAT --to-destination 127.0.0.1:6000
@@ -14,7 +13,6 @@ iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.21.0.2 		 --dport 
 iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.20.0.2 		 --dport 6000 		 -j DNAT --to-destination 127.0.0.1:6000
 iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.19.0.2 		 --dport 5000 		 -j DNAT --to-destination 127.0.0.1:6000
 iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.18.0.2 		 --dport 5000 		 -j DNAT --to-destination 127.0.0.1:6000
-iptables -A FORWARD 	       -p tcp 	       -d 127.0.0.1 	       --dport 6001 	       -j ACCEPT
 iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.37.0.2 		 --dport 27017 		 -j DNAT --to-destination 127.0.0.1:6001
 iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.34.0.2 		 --dport 4713 		 -j DNAT --to-destination 127.0.0.1:6001
 iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.33.0.2 		 --dport 3306 		 -j DNAT --to-destination 127.0.0.1:6001
@@ -26,9 +24,8 @@ iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.26.0.2 		 --dport 
 iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.25.0.2 		 --dport 1880 		 -j DNAT --to-destination 127.0.0.1:6001
 iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.22.0.2 		 --dport 4713 		 -j DNAT --to-destination 127.0.0.1:6001
 iptables -t nat -I PREROUTING 		 -i poc_+ 		 -p tcp 		 -d 172.36.0.2 		 --dport 5000 		 -j DNAT --to-destination 127.0.0.1:6001
-iptables -t nat -I PREROUTING 	       -i cloud 	       -p tcp 	       --dport 53 	       -j DNAT 	       --to-destination 127.0.0.1:6001
 iptables -t nat -I PREROUTING 	       -i poc_+ 	       -p tcp 	       --dport 53 	       -j DNAT 	       --to-destination 127.0.0.1:6001
-iptables -t nat -I PREROUTING 	       -i cloud 	       -p tcp 	       --dport 443 	       -j DNAT 	       --to-destination 127.0.0.1:6001
+iptables -t nat -I PREROUTING 	       -i poc_+ 	       -p tcp 	       --dport 443 	       -j DNAT 	       --to-destination 127.0.0.1:6001
 iptables -t nat -I PREROUTING 	       -m addrtype 	       --dst-type LOCAL 	       -j DOCKER
 sysctl -w net.ipv4.conf.poc_accounting.route_localnet=1
 sysctl -w net.ipv4.conf.poc_colibri.route_localnet=1
@@ -51,11 +48,9 @@ sysctl -w net.ipv4.conf.poc_temp.route_localnet=1
 sysctl -w net.ipv4.conf.poc_trust.route_localnet=1
 sysctl -w net.ipv4.conf.poc_verify.route_localnet=1
 sysctl -w net.ipv4.conf.poc_vitals.route_localnet=1
-sysctl -w net.ipv4.conf.cloud.route_localnet=1
+sysctl -w net.ipv4.conf.poc_cloud.route_localnet=1
 sysctl -w net.ipv4.ip_forward=1
-iptables -t nat -I POSTROUTING 	       -s 172.36.0.0/28 	       ! -o cloud 	       -j MASQUERADE
-iptables -I FORWARD 	       -o cloud 	       -m conntrack 	       --ctstate RELATED,ESTABLISHED 	       -j ACCEPT
-iptables -I FORWARD 	       -i cloud 	       -j ACCEPT
+iptables -t nat -I POSTROUTING 	       -j MASQUERADE
 echo '172.39.0.2 notifications'		>> /etc/hosts
 echo '172.38.0.2 mongo-web-interface'	>> /etc/hosts
 echo '172.37.0.2 mongo'			>> /etc/hosts
