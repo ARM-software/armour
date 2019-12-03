@@ -310,20 +310,15 @@ fn instance1_command(
             if let Ok(port) = arg.parse::<u16>() {
                 Some(PolicyRequest::StartTcp(port))
             } else {
-                log::warn!("start tcp: expecting port number, got {}", arg);
+                log::warn!("tcp start: expecting port number, got {}", arg);
                 None
             }
         }
-        Some(s @ "http start") | Some(s @ "streaming http start") => {
+        Some("http start") => {
             if let Ok(port) = arg.parse::<u16>() {
-                let streaming = s.starts_with("streaming");
-                Some(PolicyRequest::StartHttp(HttpConfig {
-                    port,
-                    request_streaming: streaming,
-                    response_streaming: streaming,
-                }))
+                Some(PolicyRequest::StartHttp(HttpConfig { port }))
             } else {
-                log::warn!("{}: expecting port number, got {}", s, arg);
+                log::warn!("http start: expecting port number, got {}", arg);
                 None
             }
         }

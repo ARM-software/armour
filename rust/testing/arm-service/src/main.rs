@@ -3,7 +3,8 @@
 #[macro_use]
 extern crate log;
 
-use actix_web::{client, middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer};
+// use actix_web::middleware;
+use actix_web::{client, web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use clap::{crate_version, App as ClapApp, AppSettings, Arg};
 use futures::stream::Stream;
 use futures::{future, lazy, Future};
@@ -80,7 +81,7 @@ fn main() -> std::io::Result<()> {
         let server = HttpServer::new(move || {
             App::new()
                 .data(port)
-                .wrap(middleware::Logger::default())
+                // .wrap(middleware::Logger::default())
                 .default_service(web::route().to_async(service))
         })
         .bind(socket.clone())

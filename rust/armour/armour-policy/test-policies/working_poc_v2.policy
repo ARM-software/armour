@@ -5,8 +5,9 @@ external logger @ "log_sock" {
 }
 
 // REST request allow/deny
-fn require(req: HttpRequest, from: ID, to: ID) -> bool {
+fn allow_rest_request(req: HttpRequest) -> bool {
   logger::log("request", req);
+  let (from, to) = req.connection().from_to();
   if let Some(date) = req.unique_header("date") {
      logger::connection(str::from_utf8(date), from, to)
   } else {
@@ -16,8 +17,8 @@ fn require(req: HttpRequest, from: ID, to: ID) -> bool {
 }
 
 // TCP connection/deny
-fn allow_connection(from: ID, to: ID) -> bool {
-  logger::log("connection", from, to);
+fn allow_connection(c: Connection) -> bool {
+  logger::log("connection", c);
   true
 }
 

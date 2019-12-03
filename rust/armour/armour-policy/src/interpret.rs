@@ -3,7 +3,7 @@
 use super::expressions::{Block, Error, Expr};
 use super::headers::Headers;
 use super::lang::Program;
-use super::literals::{HttpRequest, HttpResponse, Literal, Method, ToLiteral, VecSet};
+use super::literals::{Connection, HttpRequest, HttpResponse, Literal, Method, Payload, VecSet};
 use super::parser::{As, Infix, Iter, Pat, Prefix};
 use futures::{
     future,
@@ -66,6 +66,7 @@ impl Literal {
             "HttpRequest::PATCH" => Some(Literal::HttpRequest(HttpRequest::new(Method::PATCH))),
             "HttpRequest::TRACE" => Some(Literal::HttpRequest(HttpRequest::new(Method::TRACE))),
             "ID::default" => Some(Literal::ID(Default::default())),
+            "Connection::default" => Some(Literal::Connection(Default::default())),
             "IpAddr::localhost" => Some(Literal::IpAddr(std::net::IpAddr::V4(
                 std::net::Ipv4Addr::new(127, 0, 0, 1),
             ))),
@@ -91,6 +92,7 @@ impl Literal {
             ("str::to_base64", Literal::Str(s)) => Some(Literal::Str(base64::encode(s))),
             ("data::to_base64", Literal::Data(d)) => Some(Literal::Str(base64::encode(d))),
             ("data::len", Literal::Data(d)) => Some(Literal::Int(d.len() as i64)),
+            ("HttpRequest::connection", Literal::HttpRequest(req)) => Some(req.connection()),
             ("HttpRequest::method", Literal::HttpRequest(req)) => Some(req.method()),
             ("HttpRequest::version", Literal::HttpRequest(req)) => Some(req.version()),
             ("HttpRequest::path", Literal::HttpRequest(req)) => Some(req.path()),
@@ -100,6 +102,7 @@ impl Literal {
             ("HttpRequest::header_pairs", Literal::HttpRequest(req)) => Some(req.header_pairs()),
             ("HttpRequest::headers", Literal::HttpRequest(req)) => Some(req.headers()),
             ("HttpResponse::new", Literal::Int(code)) => Some(HttpResponse::literal(*code as u16)),
+            ("HttpResponse::connection", Literal::HttpResponse(res)) => Some(res.connection()),
             ("HttpResponse::status", Literal::HttpResponse(res)) => Some(res.status()),
             ("HttpResponse::version", Literal::HttpResponse(res)) => Some(res.version()),
             ("HttpResponse::reason", Literal::HttpResponse(res)) => Some(res.reason()),
@@ -117,7 +120,7 @@ impl Literal {
                     Some(Literal::none())
                 }
             }
-            ("IpAddr::octets", Literal::IpAddr(ip)) => Some(ip.to_literal()),
+            ("IpAddr::octets", Literal::IpAddr(ip)) => Some(Literal::from(ip)),
             ("ID::hosts", Literal::ID(id)) => Some(id.hosts()),
             ("ID::ips", Literal::ID(id)) => Some(id.ips()),
             ("ID::port", Literal::ID(id)) => Some(id.port()),
@@ -128,6 +131,12 @@ impl Literal {
                     None
                 }
             }
+            ("Connection::from_to", Literal::Connection(c)) => Some(c.from_to()),
+            ("Connection::from", Literal::Connection(c)) => Some(c.from_lit()),
+            ("Connection::to", Literal::Connection(c)) => Some(c.to_lit()),
+            ("Connection::number", Literal::Connection(c)) => Some(c.number()),
+            ("Payload::data", Literal::Payload(p)) => Some(p.data()),
+            ("Payload::connection", Literal::Payload(p)) => Some(p.connection()),
             _ => None,
         }
     }
@@ -165,6 +174,9 @@ impl Literal {
             ("HttpRequest::unique_header", Literal::HttpRequest(req), Literal::Str(h)) => {
                 Some(req.unique_header(&h))
             }
+            ("HttpRequest::set_connection", Literal::HttpRequest(req), Literal::Connection(c)) => {
+                Some(Literal::HttpRequest(req.set_connection(c)))
+            }
             ("HttpResponse::header", Literal::HttpResponse(res), Literal::Str(h)) => {
                 Some(res.header(&h))
             }
@@ -174,6 +186,11 @@ impl Literal {
             ("HttpResponse::set_reason", Literal::HttpResponse(req), Literal::Str(q)) => {
                 Some(Literal::HttpResponse(req.set_reason(q)))
             }
+            (
+                "HttpResponse::set_connection",
+                Literal::HttpResponse(res),
+                Literal::Connection(c),
+            ) => Some(Literal::HttpResponse(res.set_connection(c))),
             ("ID::add_host", Literal::ID(id), Literal::Str(q)) => Some(Literal::ID(id.add_host(q))),
             ("ID::add_ip", Literal::ID(id), Literal::IpAddr(q)) => Some(Literal::ID(id.add_ip(*q))),
             ("ID::set_port", Literal::ID(id), Literal::Int(q)) => {
@@ -190,6 +207,18 @@ impl Literal {
             }
             ("list::intersection", Literal::List(i), Literal::List(j)) => {
                 Some(VecSet::intersection(i, j))
+            }
+            ("Connection::set_from", Literal::Connection(c), Literal::ID(f)) => {
+                Some(c.set_from(f).into())
+            }
+            ("Connection::set_to", Literal::Connection(c), Literal::ID(f)) => {
+                Some(c.set_to(f).into())
+            }
+            ("Connection::set_number", Literal::Connection(c), Literal::Int(n)) => {
+                Some(c.set_number(*n).into())
+            }
+            ("Payload::new", Literal::Data(d), Literal::Connection(c)) => {
+                Some(Payload::literal(d, c))
             }
             _ => None,
         }
@@ -208,6 +237,9 @@ impl Literal {
                 Literal::Str(h),
                 Literal::Data(v),
             ) => Some(Literal::HttpResponse(res.set_header(h, v))),
+            ("Connection::new", Literal::ID(from), Literal::ID(to), Literal::Int(number)) => {
+                Some(Connection::literal(from, to, *number))
+            }
             _ => None,
         }
     }
@@ -476,7 +508,7 @@ impl Expr {
                                         Iter::Map => {
                                             future::ok(Expr::LitExpr(Literal::List(iter_lits)))
                                         }
-                                        Iter::ForEach => future::ok(Expr::unit()),
+                                        Iter::ForEach => future::ok(Expr::from(())),
                                         Iter::Filter => {
                                             let filtered_lits = lits
                                                 .into_iter()
@@ -498,10 +530,10 @@ impl Expr {
                                                 .collect();
                                             future::ok(Expr::LitExpr(Literal::List(filtered_lits)))
                                         }
-                                        Iter::All => future::ok(Expr::bool(
+                                        Iter::All => future::ok(Expr::from(
                                             iter_lits.iter().all(|l| l.is_true()),
                                         )),
-                                        Iter::Any => future::ok(Expr::bool(
+                                        Iter::Any => future::ok(Expr::from(
                                             iter_lits.iter().any(|l| l.is_true()),
                                         )),
                                     },
@@ -613,8 +645,8 @@ impl Expr {
                                                 captures.insert(
                                                     s,
                                                     match a {
-                                                        As::I64 => match match_str.parse() {
-                                                            Ok(i) => Expr::i64(i),
+                                                        As::I64 => match match_str.parse::<i64>() {
+                                                            Ok(i) => Expr::from(i),
                                                             _ => {
                                                                 is_match = false;
                                                                 break;
@@ -623,7 +655,7 @@ impl Expr {
                                                         As::Base64 => {
                                                             match base64::decode(match_str) {
                                                                 Ok(bytes) => {
-                                                                    Expr::data(bytes.as_slice())
+                                                                    Expr::from(bytes.as_slice())
                                                                 }
                                                                 _ => {
                                                                     is_match = false;
@@ -631,7 +663,7 @@ impl Expr {
                                                                 }
                                                             }
                                                         }
-                                                        _ => Expr::string(match_str),
+                                                        _ => Expr::from(match_str),
                                                     },
                                                 );
                                             }
@@ -831,7 +863,7 @@ impl Expr {
                                                 };
                                                 future::ok(())
                                             }));
-                                            future::Either::A(future::ok(Expr::unit()))
+                                            future::Either::A(future::ok(Expr::from(())))
                                         } else {
                                             future::Either::B(future::Either::A(fut))
                                         }

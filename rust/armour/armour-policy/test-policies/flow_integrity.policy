@@ -3,14 +3,14 @@ external logger @ "log_sock" {
 }
 
 // REST request allow/deny
-fn allow_rest_request(req: HttpRequest, from: ID, to: ID, n: i64) -> bool {
+fn allow_rest_request(req: HttpRequest) -> bool {
   // logger::log(req);
   let date = if let Some(date) = req.unique_header("date") {
      str::from_utf8(date)
   } else {
      "-"
   };
-  flow(from, to)
+  flow(req.connection())
 }
 
 //information flow Labels
@@ -27,7 +27,7 @@ fn label(from: ID) -> str {
 }
 
 //integrity, can't store in a trusted container
-fn flow(from: ID, to: ID) -> bool {
-  label(from) == "trusted" ||
-  label(to) == "untrusted"
+fn flow(c: Connection) -> bool {
+  let (from, to) = c.from_to();
+  label(from) == "trusted" || label(to) == "untrusted"
 }

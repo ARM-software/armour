@@ -2,5 +2,7 @@
 
 members = [
     "arm-service",
+    "actix-server",
+    "hyper-server",
     "tcp-echo",
 ]

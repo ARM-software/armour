@@ -98,6 +98,7 @@ impl Headers {
             "HttpRequest::CONNECT" => sig(vec![], Typ::HttpRequest),
             "HttpRequest::PATCH" => sig(vec![], Typ::HttpRequest),
             "HttpRequest::TRACE" => sig(vec![], Typ::HttpRequest),
+            "HttpRequest::connection" => sig(vec![Typ::HttpRequest], Typ::Connection),
             "HttpRequest::method" => sig(vec![Typ::HttpRequest], Typ::Str),
             "HttpRequest::version" => sig(vec![Typ::HttpRequest], Typ::Str),
             "HttpRequest::path" => sig(vec![Typ::HttpRequest], Typ::Str),
@@ -125,7 +126,11 @@ impl Headers {
                 vec![Typ::HttpRequest, Typ::Str, Typ::Data],
                 Typ::HttpRequest,
             ),
+            "HttpRequest::set_connection" => {
+                sig(vec![Typ::HttpRequest, Typ::Connection], Typ::HttpRequest)
+            }
             "HttpResponse::new" => sig(vec![Typ::I64], Typ::HttpResponse),
+            "HttpResponse::connection" => sig(vec![Typ::HttpResponse], Typ::Connection),
             "HttpResponse::status" => sig(vec![Typ::HttpResponse], Typ::I64),
             "HttpResponse::version" => sig(vec![Typ::HttpResponse], Typ::Str),
             "HttpResponse::reason" => sig(vec![Typ::HttpResponse], Typ::Str.option()),
@@ -146,6 +151,9 @@ impl Headers {
                 vec![Typ::HttpResponse, Typ::Str, Typ::Data],
                 Typ::HttpResponse,
             ),
+            "HttpResponse::set_connection" => {
+                sig(vec![Typ::HttpResponse, Typ::Connection], Typ::HttpResponse)
+            }
             "IpAddr::lookup" => sig(
                 vec![Typ::Str],
                 Typ::Tuple(vec![Typ::List(Box::new(Typ::IpAddr))]),
@@ -167,6 +175,18 @@ impl Headers {
             "ID::add_host" => sig(vec![Typ::ID, Typ::Str], Typ::ID),
             "ID::add_ip" => sig(vec![Typ::ID, Typ::IpAddr], Typ::ID),
             "ID::set_port" => sig(vec![Typ::ID, Typ::I64], Typ::ID),
+            "Connection::default" => sig(vec![], Typ::Connection),
+            "Connection::new" => sig(vec![Typ::ID, Typ::ID, Typ::I64], Typ::Connection),
+            "Connection::from_to" => sig(vec![Typ::Connection], Typ::Tuple(vec![Typ::ID, Typ::ID])),
+            "Connection::from" => sig(vec![Typ::Connection], Typ::ID),
+            "Connection::to" => sig(vec![Typ::Connection], Typ::ID),
+            "Connection::number" => sig(vec![Typ::Connection], Typ::I64),
+            "Connection::set_from" => sig(vec![Typ::Connection, Typ::ID], Typ::Connection),
+            "Connection::set_to" => sig(vec![Typ::Connection, Typ::ID], Typ::Connection),
+            "Connection::set_number" => sig(vec![Typ::Connection, Typ::I64], Typ::Connection),
+            "Payload::new" => sig(vec![Typ::Data, Typ::Connection], Typ::Payload),
+            "Payload::data" => sig(vec![Typ::Payload], Typ::Data),
+            "Payload::connection" => sig(vec![Typ::Payload], Typ::Connection),
             _ => None,
         }
     }

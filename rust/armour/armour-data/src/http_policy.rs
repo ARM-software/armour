@@ -1,8 +1,8 @@
 //! actix-web support for Armour policies
-use super::policy::{Policy, PolicyActor};
+use super::policy::{Policy, PolicyActor, ID};
 use actix::prelude::*;
 use armour_data_interface::{codec, policy};
-use armour_policy::{expressions, lang};
+use armour_policy::{expressions, lang, literals};
 use futures::Future;
 use std::sync::Arc;
 
@@ -15,7 +15,6 @@ pub struct RestPolicyStatus {
     pub client_payload: lang::Policy,
     pub server_payload: lang::Policy,
     pub response: lang::Policy,
-    pub connection_number: usize,
 }
 
 impl RestPolicyStatus {
@@ -36,7 +35,6 @@ impl Default for RestPolicyStatus {
             client_payload: lang::Policy::default(),
             server_payload: lang::Policy::default(),
             response: lang::Policy::default(),
-            connection_number: 0,
         }
     }
 }
@@ -105,22 +103,30 @@ impl RestPolicy {
     }
 }
 
+/// Information about REST policies
+#[derive(Clone, MessageResponse)]
+pub struct RestPolicyResponse {
+    pub status: RestPolicyStatus,
+    pub connection: literals::Connection,
+}
+
 /// Request REST policy information
-pub struct GetRestPolicy;
+pub struct GetRestPolicy(pub (ID, ID));
 
 impl Message for GetRestPolicy {
-    type Result = RestPolicyStatus;
+    type Result = RestPolicyResponse;
 }
 
 // handle request to get current policy status information
 impl Handler<GetRestPolicy> for PolicyActor {
-    type Result = RestPolicyStatus;
+    type Result = RestPolicyResponse;
 
-    fn handle(&mut self, _msg: GetRestPolicy, _ctx: &mut Context<Self>) -> Self::Result {
-        let mut status = self.http.get();
-        status.connection_number = self.connection_number;
-        self.connection_number += 1;
-        status
+    fn handle(&mut self, msg: GetRestPolicy, _ctx: &mut Context<Self>) -> Self::Result {
+        let from_to = msg.0;
+        RestPolicyResponse {
+            status: self.http.get(),
+            connection: self.connection(from_to.0, from_to.1),
+        }
     }
 }
 

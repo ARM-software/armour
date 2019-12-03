@@ -1,73 +1,11 @@
 version: "3.0"
 services:
-  sozu:
-    container_name: sozu
-    hostname: sozu
-    image: "clevercloud/sozu"
-    ports:
-      - 8000:80
-    networks:
-      sozu-net:
-        ipv4_address: 172.25.0.2
-    extra_hosts:
-      - "srv-nginx:172.19.0.2"
-      - "srv-arm:172.20.0.2"
-      - "client-1:172.21.0.2"
-      - "client-2:172.22.0.2"
-    depends_on:
-      - srv-nginx
-      - srv-arm
-    volumes:
-      - ./sozu/socket:/var/run/sozu
-      - ./sozu:/usr/local/etc/sozu/
-    command: start -c /usr/local/etc/sozu/config.toml
-
-  envoy:
-    container_name: envoy
-    hostname: envoy
-    image: "envoy"
-    build: ./envoy
-    ports:
-      - 8000:10000
-      - 9901:9901
-    extra_hosts:
-      - "srv-nginx:172.19.0.2"
-      - "srv-arm:172.20.0.2"
-      - "client-1:172.21.0.2"
-      - "client-2:172.22.0.2"
-    networks:
-      envoy-net:
-        ipv4_address: 172.23.0.2
-    depends_on:
-      - srv-nginx
-      - srv-arm
-    volumes:
-      - ./envoy/:/etc/envoy/
-
-  nginx-proxy:
-    container_name: nginx-proxy
-    hostname: nginx-proxy
-    build: ./nginx
-    ports:
-      - 8080:8080
-    extra_hosts:
-      - "srv-nginx:172.19.0.2"
-      - "srv-arm:172.20.0.2"
-      - "client-1:172.21.0.2"
-      - "client-2:172.22.0.2"
-    networks:
-      nginx-net:
-        ipv4_address: 172.24.0.2
-
   srv-nginx:
     container_name: srv-nginx
     hostname: srv-nginx
     image: nginx
     extra_hosts:
-      - "sozu:172.25.0.2"
-      - "localho.st:172.25.0.2"
-      - "nginx-proxy:172.24.0.2"
-      - "envoy:172.23.0.2"
+      - "localho.st:private-ip"
       - "srv-arm:172.20.0.2"
       - "client-1:172.21.0.2"
       - "client-2:172.22.0.2"
@@ -79,10 +17,7 @@ services:
     container_name: srv-arm
     hostname: srv-arm
     extra_hosts:
-      - "sozu:172.25.0.2"
-      - "localho.st:172.25.0.2"
-      - "nginx-proxy:172.24.0.2"
-      - "envoy:172.23.0.2"
+      - "localho.st:private-ip"
       - "srv-nginx:172.19.0.2"
       - "client-1:172.21.0.2"
       - "client-2:172.22.0.2"
@@ -99,10 +34,7 @@ services:
     container_name: client-1
     hostname: client-1
     extra_hosts:
-      - "sozu:172.25.0.2"
-      - "localho.st:172.25.0.2"
-      - "nginx-proxy:172.24.0.2"
-      - "envoy:172.23.0.2"
+      - "localho.st:private-ip"
       - "srv-nginx:172.19.0.2"
       - "srv-arm:172.20.0.2"
       - "client-2:172.22.0.2"
@@ -118,10 +50,7 @@ services:
     container_name: client-2
     hostname: client-2
     extra_hosts:
-      - "sozu:172.25.0.2"
-      - "localho.st:172.25.0.2"
-      - "nginx-proxy:172.24.0.2"
-      - "envoy:172.23.0.2"
+      - "localho.st:private-ip"
       - "srv-nginx:172.19.0.2"
       - "client-1:172.21.0.2"
       - "srv-arm:172.20.0.2"
@@ -132,6 +61,7 @@ services:
     networks:
       cl-net-2:
         ipv4_address: 172.22.0.2
+
 networks:
   srv-net-1:
     driver: bridge
@@ -168,30 +98,3 @@ networks:
     ipam:
       config:
         - subnet: 172.22.0.0/28
-
-  envoy-net:
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.name: envoy-net
-    internal: true
-    ipam:
-      config:
-        - subnet: 172.23.0.0/28
-
-  nginx-net:
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.name: nginx-net
-    internal: true
-    ipam:
-      config:
-        - subnet: 172.24.0.0/28
-
-  sozu-net:
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.name: sozu-net
-    internal: true
-    ipam:
-      config:
-        - subnet: 172.25.0.0/28

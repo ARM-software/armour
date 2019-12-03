@@ -1,5 +1,0 @@
-launch
-wait 1
-tcp start 6002
-wait 1
-allow all

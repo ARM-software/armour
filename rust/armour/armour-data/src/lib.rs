@@ -22,106 +22,38 @@ pub trait ToArmourExpression {
     fn to_expression(&self) -> expressions::Expr;
 }
 
-// convert payloads into Armour-language expressions
-impl ToArmourExpression for usize {
-    fn to_expression(&self) -> expressions::Expr {
-        expressions::Expr::i64(*self as i64)
-    }
-}
-
 /// Convert an actix-web HttpRequest into an equivalent Armour language literal
-impl ToArmourExpression for web::HttpRequest {
+impl ToArmourExpression for (&web::HttpRequest, &literals::Connection) {
     fn to_expression(&self) -> expressions::Expr {
-        expressions::Expr::http_request(literals::HttpRequest::from((
-            self.method().as_str(),
-            format!("{:?}", self.version()).as_str(),
-            self.path(),
-            self.query_string(),
-            self.headers()
+        let (req, connection) = *self;
+        expressions::Expr::from(literals::HttpRequest::from((
+            req.method().as_str(),
+            format!("{:?}", req.version()).as_str(),
+            req.path(),
+            req.query_string(),
+            req.headers()
                 .iter()
                 .map(|(k, v)| (k.as_str(), v.as_bytes()))
                 .collect(),
+            connection.clone(),
         )))
     }
 }
 
 /// Convert an actix-web HttpResponse into an equivalent Armour language literal
-impl ToArmourExpression for web::HttpResponse {
+impl ToArmourExpression for (&web::HttpResponse, &literals::Connection) {
     fn to_expression(&self) -> expressions::Expr {
-        let head = self.head();
-        expressions::Expr::http_response(literals::HttpResponse::from((
+        let (req, connection) = *self;
+        let head = req.head();
+        expressions::Expr::from(literals::HttpResponse::from((
             format!("{:?}", head.version).as_str(),
-            self.status().as_u16(),
+            req.status().as_u16(),
             head.reason,
-            self.headers()
+            req.headers()
                 .iter()
                 .map(|(k, v)| (k.as_str(), v.as_bytes()))
                 .collect(),
+            connection.clone(),
         )))
-    }
-}
-
-// convert payloads into Armour-language expressions
-impl ToArmourExpression for web::Bytes {
-    fn to_expression(&self) -> expressions::Expr {
-        expressions::Expr::data(self)
-    }
-}
-
-// convert payloads into Armour-language expressions
-impl ToArmourExpression for web::BytesMut {
-    fn to_expression(&self) -> expressions::Expr {
-        expressions::Expr::data(self)
-    }
-}
-
-// convert socket addresses into Armour-language expressions (of type ID)
-impl ToArmourExpression for std::net::SocketAddr {
-    fn to_expression(&self) -> expressions::Expr {
-        let mut id = literals::ID::default();
-        let ip = self.ip();
-        if ip.is_ipv4() {
-            id = id.add_ip(ip)
-        };
-        id = id.set_port(self.port());
-        if let Ok(host) = dns_lookup::lookup_addr(&ip) {
-            id = id.add_host(&host)
-        }
-        expressions::Expr::id(id)
-    }
-}
-
-impl ToArmourExpression for Option<std::net::SocketAddr> {
-    fn to_expression(&self) -> expressions::Expr {
-        if let Some(addr) = self {
-            addr.to_expression()
-        } else {
-            expressions::Expr::id(literals::ID::default())
-        }
-    }
-}
-
-// convert URLs into Armour-language expressions (of type ID)
-impl ToArmourExpression for url::Url {
-    fn to_expression(&self) -> expressions::Expr {
-        let mut id = literals::ID::default();
-        if let Some(host) = self.host_str() {
-            id = id.add_host(host);
-            if let Ok(ips) = dns_lookup::lookup_host(host) {
-                for ip in ips.iter().filter(|ip| ip.is_ipv4()) {
-                    id = id.add_ip(*ip)
-                }
-            }
-        }
-        if let Some(port) = self.port() {
-            id = id.set_port(port)
-        } else {
-            match self.scheme() {
-                "https" => id = id.set_port(443),
-                "http" => id = id.set_port(80),
-                s => log::debug!("scheme is: {}", s),
-            }
-        }
-        expressions::Expr::id(id)
     }
 }

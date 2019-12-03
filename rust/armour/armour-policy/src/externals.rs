@@ -1,4 +1,4 @@
-use super::literals::{Literal, ToLiteral};
+use super::literals::Literal;
 use crate::external_capnp::external;
 use capnp::capability::Promise;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
@@ -181,13 +181,15 @@ impl Externals {
     fn build_value(mut v: external::value::Builder<'_>, lit: &Literal) -> Result<(), Error> {
         match lit {
             Literal::Bool(b) => v.set_bool(*b),
+            Literal::Connection(conn) => Externals::build_value(v, &Literal::from(conn))?,
             Literal::Data(d) => v.set_data(d),
             Literal::Float(f) => v.set_float64(*f),
-            Literal::HttpRequest(req) => Externals::build_value(v, &req.to_literal())?,
-            Literal::HttpResponse(res) => Externals::build_value(v, &res.to_literal())?,
-            Literal::ID(id) => Externals::build_value(v, &id.to_literal())?,
+            Literal::HttpRequest(req) => Externals::build_value(v, &Literal::from(req))?,
+            Literal::HttpResponse(res) => Externals::build_value(v, &Literal::from(res))?,
+            Literal::ID(id) => Externals::build_value(v, &Literal::from(id))?,
             Literal::Int(i) => v.set_int64(*i),
-            Literal::IpAddr(ip) => Externals::build_value(v, &ip.to_literal())?,
+            Literal::IpAddr(ip) => Externals::build_value(v, &Literal::from(ip))?,
+            Literal::Payload(pld) => Externals::build_value(v, &Literal::from(pld))?,
             Literal::Regex(r) => v.set_text(&r.to_string()),
             Literal::Str(s) => v.set_text(s),
             Literal::Unit => v.set_unit(()),

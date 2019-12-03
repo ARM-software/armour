@@ -24,25 +24,6 @@ static_resources:
           http_filters:
           - name: envoy.router
 
-  - name: listener_http2
-    address:
-      socket_address: { address: 0.0.0.0, port_value: 8081 }
-    filter_chains:
-    - filters:
-      - name: envoy.http_connection_manager
-        config:
-          stat_prefix: ingress_http
-          route_config:
-            name: local_route
-            virtual_hosts:
-            - name: local_service
-              domains: ["*"]
-              routes:
-              - match: { prefix: "/" }
-                route: { cluster: backend-arm }
-          http_filters:
-          - name: envoy.router
-
   - name: listener_tcp1
     address:
       socket_address: { address: 0.0.0.0 , port_value: 1998 }
@@ -53,15 +34,6 @@ static_resources:
           stat_prefix: ingress_tcp
           cluster: backend-nginx
 
-  - name: listener_tcp2
-    address:
-      socket_address: { address: 0.0.0.0 , port_value: 1999 }
-    filter_chains:
-    - filters:
-      - name: envoy.tcp_proxy
-        config:
-          stat_prefix: ingress_tcp
-          cluster: backend-arm
   clusters:
   - name: backend-nginx
     connect_timeout: 0.25s
@@ -69,10 +41,3 @@ static_resources:
     dns_lookup_family: V4_ONLY
     lb_policy: ROUND_ROBIN
     hosts: [{ socket_address: { address: srv-nginx , port_value: 80 }}]
-
-  - name: backend-arm
-    connect_timeout: 0.25s
-    type: LOGICAL_DNS
-    dns_lookup_family: V4_ONLY
-    lb_policy: ROUND_ROBIN
-    hosts: [{ socket_address: { address: srv-arm , port_value: 81 }}]

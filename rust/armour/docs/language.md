@@ -42,12 +42,13 @@ $ cargo run [input file]
 
     `Regex("a" | "b".*)`
 
-- **`HttpRequest`**, **`HttpResponse`**
-
 - **`ID`**
+
+- **`Connection`**
 
 - **`IpAddr`**
 
+- **`HttpRequest`**, **`HttpResponse`**, **`Payload`**
 
 ### Composite
 
@@ -290,6 +291,7 @@ function               | type
 | CONNECT              | `() -> HttpRequest`                       |
 | PATCH                | `() -> HttpRequest`                       |
 | TRACE                | `() -> HttpRequest`                       |
+| connection           | `HttpRequest -> Connection`               |
 | method               | `HttpRequest -> str`                      |
 | version              | `HttpRequest -> str`                      |
 | path                 | `HttpRequest -> str`                      |
@@ -300,6 +302,7 @@ function               | type
 | headers              | `HttpRequest -> List<str>`                |
 | query_pairs          | `HttpRequest -> List<(str, str)>`         |
 | header_pairs         | `HttpRequest -> List<(str, data)>`        |
+| set_connection       | `(HttpRequest, Connection) -> HttpRequest`|
 | set_path             | `(HttpRequest, str) -> HttpRequest`       |
 | set_query            | `(HttpRequest, str) -> HttpRequest`       |
 | set_header           | `(HttpRequest, str, data) -> HttpRequest` |
@@ -309,6 +312,7 @@ function               | type
 function               | type
 ---------------------- | ----------------------------------------------
 | new                  | `i64 -> HttpResponse`                        |
+| connection           | `HttpResponse -> Connection`                 |
 | status               | `HttpResponse -> i64`                        |
 | version              | `HttpResponse -> str`                        |
 | reason               | `HttpResponse -> Option<str>`                |
@@ -316,18 +320,31 @@ function               | type
 | unique_header        | `(HttpResponse, str) -> Option<data>`        |
 | headers              | `HttpResponse -> List<str>`                  |
 | header_pairs         | `HttpResponse -> List<(str, data)>`          |
+| set_connection       | `(HttpResponse, Connection) -> HttpResponse` |
 | set_reason           | `(HttpResponse, str) -> HttpResponse `       |
 | set_header           | `(HttpResponse, str, data) -> HttpResponse ` |
 
-### IpAddr::
+### Payload::
+
+function               | type
+---------------------- | --------------------------------------
+| new                  | `(data, Connection) -> Payload`      |
+| data                 | `Payload -> data`                    |
+| connection           | `Payload -> Connection`              |
+
+### Connection::
 
 function               | type
 ---------------------- | ----------------------------------------
-| from                 | `(i64, i64, i64, i64) -> IpAddr`       |
-| octets               | `IpAddr -> (i64, i64, i64, i64)`       |
-| localhost            | `() -> IpAddr`                         |
-| reverse_lookup       | `IpAddr -> Option<List<str>>`          |
-| lookup               | `str -> Option<List<IpAddr>>`          |
+| default              | `() -> Connection`                     |
+| new                  | `(ID, ID, i64) -> Connection`          |
+| from_to              | `Connection -> (ID, ID)`               |
+| from                 | `Connection -> ID`                     |
+| to                   | `Connection -> ID`                     |
+| number               | `Connection -> i64`                    |
+| set_from             | `(Connection, ID) -> Connection`       |
+| set_to               | `(Connection, ID) -> Connection`       |
+| set_number           | `(Connection, ID) -> Connection`       |
 
 ### ID::
 
@@ -340,6 +357,16 @@ function               | type
 | add_host             | `(ID, str) -> ID`                      |
 | add_ip               | `(ID, IpAddr) -> ID`                   |
 | set_port             | `(ID, i64) -> ID`                      |
+
+### IpAddr::
+
+function               | type
+---------------------- | ----------------------------------------
+| from                 | `(i64, i64, i64, i64) -> IpAddr`       |
+| octets               | `IpAddr -> (i64, i64, i64, i64)`       |
+| localhost            | `() -> IpAddr`                         |
+| reverse_lookup       | `IpAddr -> Option<List<str>>`          |
+| lookup               | `str -> Option<List<IpAddr>>`          |
 
 ### i64::
 

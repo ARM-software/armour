@@ -71,11 +71,7 @@ fn main() -> std::io::Result<()> {
 
     // start a proxy server
     if let Some(port) = proxy_port {
-        policy.do_send(PolicyRequest::StartHttp(HttpConfig {
-            port,
-            request_streaming: false,
-            response_streaming: false,
-        }))
+        policy.do_send(PolicyRequest::StartHttp(HttpConfig { port }))
     };
 
     // handle Control-C

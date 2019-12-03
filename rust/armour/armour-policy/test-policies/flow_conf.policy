@@ -3,14 +3,14 @@ external logger @ "log_sock" {
 }
 
 // REST request allow/deny
-fn allow_rest_request(req: HttpRequest, from: ID, to: ID, n: i64) -> bool {
+fn allow_rest_request(req: HttpRequest) -> bool {
   // logger::log(req);
   let date = if let Some(date) = req.unique_header("date") {
      str::from_utf8(date)
   } else {
      "-"
   };
-  flow(req, from, to)
+  flow(req)
 }
 
 
@@ -28,8 +28,9 @@ fn label(from: ID) -> str {
 }
 
 //confidentiality, can't read from secret, can't store secret in public
-fn flow(req: HttpRequest, from: ID, to: ID) -> bool {
+fn flow(req: HttpRequest) -> bool {
   let method = req.method();
+  let (from, to) = req.connection().from_to();
   let to_label = to.label();
   method == "GET" && to_label == "public" ||
   method == "POST" &&  (from.label() != "secret" || to_label == "secret")

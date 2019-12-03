@@ -26,15 +26,7 @@ frontends = [
 backends = [
     { address = "172.19.0.2:80" }
 ]
-[applications.http-app1]
-protocol = "http"
-frontends = [
-    { address = "0.0.0.0:81", hostname = "localho.st", path_begin = "/" }
-]
 
-backends = [
-    { address = "172.20.0.2:81" }
-]
 [applications.tcp-app]
 protocol = "tcp"
 frontends = [
@@ -44,12 +36,4 @@ frontends = [
 backends = [
     { address = "172.19.0.2:80" }
 ]
-[applications.tcp-app1]
-protocol = "tcp"
-frontends = [
-    { address = "0.0.0.0:8081" }
-]
 
-backends = [
-    { address = "172.20.0.2:81" }
-]

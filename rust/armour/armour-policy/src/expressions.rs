@@ -205,36 +205,15 @@ impl Default for Expr {
     }
 }
 
+impl<T: Into<Literal>> From<T> for Expr {
+    fn from(t: T) -> Self {
+        Expr::LitExpr(t.into())
+    }
+}
+
 impl Expr {
     pub fn var(v: &str) -> Expr {
         Expr::Var(parser::Ident(v.to_string()))
-    }
-    pub fn unit() -> Expr {
-        Expr::LitExpr(Literal::Unit)
-    }
-    pub fn i64(i: i64) -> Expr {
-        Expr::LitExpr(Literal::Int(i))
-    }
-    pub fn f64(f: f64) -> Expr {
-        Expr::LitExpr(Literal::Float(f))
-    }
-    pub fn bool(b: bool) -> Expr {
-        Expr::LitExpr(Literal::Bool(b))
-    }
-    pub fn string(s: &str) -> Expr {
-        Expr::LitExpr(Literal::Str(s.to_string()))
-    }
-    pub fn data(d: &[u8]) -> Expr {
-        Expr::LitExpr(Literal::Data(d.to_vec()))
-    }
-    pub fn http_request(r: literals::HttpRequest) -> Expr {
-        Expr::LitExpr(Literal::HttpRequest(r))
-    }
-    pub fn http_response(r: literals::HttpResponse) -> Expr {
-        Expr::LitExpr(Literal::HttpResponse(r))
-    }
-    pub fn id(id: literals::ID) -> Expr {
-        Expr::LitExpr(Literal::ID(id))
     }
     pub fn host(&self) -> Option<String> {
         match self {
