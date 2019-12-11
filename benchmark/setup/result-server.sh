@@ -8,17 +8,65 @@ for f in $loc
 do
 file=`echo $f| cut -f4-5 -d"/" | sed "s/\///"`
 if [[ $f == *"srv-nginx"* ]]; then
-  cp $f ../results/server/nginx/$file-$i
+  if [[ $f != *"_"* ]]; then
+    cp $f ../results/server/nginx/$file-$i
+  elif [[ $f == *"scalability_log"* ]]; then
+    echo $f | cut -f5-6 -d"/" >> ../results/server/nginx/scalability_log
+    cat $f >> ../results/server/nginx/scalability_log
+  elif [[ $f == *"throughput_log"* ]]; then
+    echo $f | cut -f5-6 -d"/" >> ../results/server/nginx/throughput_log
+    cat $f >> ../results/server/nginx/throughput_log
+  fi
 elif [[ $f == *"apache"* ]]; then
-cp $f ../results/server/apache/$file-$i
+  if [[ $f != *"_"* ]]; then
+    cp $f ../results/server/apache/$file-$i
+  elif [[ $f == *"scalability_log"* ]]; then
+    echo $f | cut -f5-6 -d"/" >> ../results/server/apache/scalability_log
+    cat $f >> ../results/server/apache/scalability_log
+  elif [[ $f == *"throughput_log"* ]]; then
+    echo $f | cut -f5-6 -d"/" >> ../results/server/apache/throughput_log
+    cat $f >> ../results/server/apache/throughput_log
+  fi
 elif [[ $f == *"cherokee"* ]]; then
-cp $f ../results/server/cherokee/$file-$i
+  if [[ $f != *"_"* ]]; then
+    cp $f ../results/server/cherokee/$file-$i
+  elif [[ $f == *"scalability_log"* ]]; then
+    echo $f | cut -f5-6 -d"/" >> ../results/server/cherokee/scalability_log
+    cat $f >> ../results/server/cherokee/scalability_log
+  elif [[ $f == *"throughput_log"* ]]; then
+    echo $f | cut -f5-6 -d"/" >> ../results/server/cherokee/throughput_log
+    cat $f >> ../results/server/cherokee/throughput_log
+  fi
 elif [[ $f == *"lighttpd"* ]]; then
-cp $f ../results/server/lighttpd/$file-$i
+  if [[ $f != *"_"* ]]; then
+    cp $f ../results/server/lighttpd/$file-$i
+  elif [[ $f == *"scalability_log"* ]]; then
+    echo $f | cut -f5-6 -d"/" >> ../results/server/lighttpd/scalability_log
+    cat $f >> ../results/server/lighttpd/scalability_log
+  elif [[ $f == *"throughput_log"* ]]; then
+    echo $f | cut -f5-6 -d"/" >> ../results/server/lighttpd/throughput_log
+    cat $f >> ../results/server/lighttpd/throughput_log
+  fi
 elif [[ $f == *"srv-actix"* ]]; then
-cp $f ../results/server/actix/$file-$i
+  if [[ $f != *"_"* ]]; then
+    cp $f ../results/server/actix/$file-$i
+  elif [[ $f == *"scalability_log"* ]]; then
+    echo $f | cut -f5-6 -d"/" >> ../results/server/actix/scalability_log
+    cat $f >> ../results/server/actix/scalability_log
+  elif [[ $f == *"throughput_log"* ]]; then
+    echo $f | cut -f5-6 -d"/" >> ../results/server/actix/throughput_log
+    cat $f >> ../results/server/actix/throughput_log
+  fi
 elif [[ $f == *"srv-hyper"* ]]; then
-cp $f ../results/server/hyper/$file-$i
+  if [[ $f != *"_"* ]]; then
+    cp $f ../results/server/hyper/$file-$i
+  elif [[ $f == *"scalability_log"* ]]; then
+    echo $f | cut -f5-6 -d"/" >> ../results/server/hyper/scalability_log
+    cat $f >> ../results/server/hyper/scalability_log
+  elif [[ $f == *"throughput_log"* ]]; then
+    echo $f | cut -f5-6 -d"/" >> ../results/server/hyper/throughput_log
+    cat $f >> ../results/server/hyper/throughput_log
+  fi
 fi
 i=$((i+1))
 done
