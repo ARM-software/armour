@@ -52,20 +52,13 @@ fn main() -> std::io::Result<()> {
         )
         .get_matches();
 
-    // enable logging
-    env::set_var("RUST_LOG", "actix_server=debug,actix_web=debug");
-    env::set_var("RUST_BACKTRACE", "0");
-    pretty_env_logger::init();
-
-    // start the actix system
-    let sys = actix::System::new("actix-server");
-
     // start up the service server
     let port = matches
         .value_of("port")
         .map(|p| p.parse().unwrap_or(80))
         .unwrap_or(80);
     let socket = format!("0.0.0.0:{}", port);
+    println!("starting server at {}", socket);
     let mut server = HttpServer::new(|| {
         App::new()
             // .wrap(actix_web::middleware::Logger::default())
@@ -87,7 +80,5 @@ fn main() -> std::io::Result<()> {
         server = server.maxconnrate(m);
     }
 
-    server.start();
-
-    sys.run()
+    server.run()
 }
