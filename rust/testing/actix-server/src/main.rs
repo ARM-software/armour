@@ -17,31 +17,68 @@ fn main() -> std::io::Result<()> {
                 .takes_value(true)
                 .help("port"),
         )
+        .arg(
+            Arg::with_name("workers")
+                .required(false)
+                .short("w")
+                .takes_value(true)
+                .help("number of workers"),
+        )
+        .arg(
+            Arg::with_name("backlog")
+                .required(false)
+                .short("b")
+                .takes_value(true)
+                .next_line_help(true)
+                .help("maximum number of pending connections\n(default is 2048)"),
+        )
+        .arg(
+            Arg::with_name("maxconn")
+                .required(false)
+                .short("m")
+                .takes_value(true)
+                .next_line_help(true)
+                .help("maximum per-worker number of concurrent connections\n(default is 25k)"),
+        )
+        .arg(
+            Arg::with_name("maxconnrate")
+                .required(false)
+                .short("r")
+                .takes_value(true)
+                .next_line_help(true)
+                .help(
+                    "maximum per-worker concurrent connection establish process\n(default is 256)",
+                ),
+        )
         .get_matches();
 
+    // start up the service server
     let port = matches
         .value_of("port")
         .map(|p| p.parse().unwrap_or(80))
         .unwrap_or(80);
-
-    // enable logging
-    env::set_var("RUST_LOG", "actix_server=debug,actix_web=debug");
-    env::set_var("RUST_BACKTRACE", "0");
-    pretty_env_logger::init();
-
-    // start the actix system
-    let sys = actix::System::new("actix-server");
-
-    // start up the service server
     let socket = format!("0.0.0.0:{}", port);
-    HttpServer::new(|| {
+    println!("starting server at {}", socket);
+    let mut server = HttpServer::new(|| {
         App::new()
             // .wrap(actix_web::middleware::Logger::default())
             .default_service(web::route().to(|| HttpResponse::Ok().body(MESSAGE)))
     })
     .bind(socket.clone())
-    .unwrap_or_else(|_| panic!("failed to bind to http://{}", socket))
-    .start();
+    .unwrap_or_else(|_| panic!("failed to bind to http://{}", socket));
 
-    sys.run()
+    if let Some(Ok(w)) = matches.value_of("workers").map(|w| w.parse::<usize>()) {
+        server = server.workers(w);
+    }
+    if let Some(Ok(b)) = matches.value_of("backlog").map(|w| w.parse::<i32>()) {
+        server = server.backlog(b);
+    }
+    if let Some(Ok(m)) = matches.value_of("maxconn").map(|w| w.parse::<usize>()) {
+        server = server.maxconn(m);
+    }
+    if let Some(Ok(m)) = matches.value_of("maxconnrate").map(|w| w.parse::<usize>()) {
+        server = server.maxconnrate(m);
+    }
+
+    server.run()
 }
