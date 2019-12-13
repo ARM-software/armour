@@ -7,11 +7,6 @@ use serde::{Deserialize, Serialize};
 use tokio_io::codec::{Decoder, Encoder};
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct HttpConfig {
-    pub port: u16,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
 pub enum Protocol {
     All,
     Rest,
@@ -24,7 +19,7 @@ pub enum PolicyRequest {
     Debug(Protocol, bool),
     SetPolicy(Protocol, Program),
     Shutdown,
-    StartHttp(HttpConfig),
+    StartHttp(u16),
     StartTcp(u16),
     Status,
     Stop(Protocol),

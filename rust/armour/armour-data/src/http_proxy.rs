@@ -1,6 +1,6 @@
 //! HTTP proxy with Armour policies
 
-use super::http_policy::{EvalRestFn, GetRestPolicy, RestFn, RestPolicyResponse, RestPolicyStatus};
+use super::http_policy::{EvalRestFn, GetRestPolicy, PolicyStatus, RestFn, RestPolicyResponse};
 use super::policy::{PolicyActor, ID};
 use super::ToArmourExpression;
 use actix_web::{
@@ -10,21 +10,21 @@ use actix_web::{
     http::uri,
     middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
-use armour_data_interface::{codec::HttpConfig, own_ip};
+use armour_data_interface::own_ip;
 use armour_policy::{lang::Policy, literals};
 use futures::{future, stream::Stream, Future};
 use std::collections::HashSet;
 
 pub fn start_proxy(
     policy: actix::Addr<PolicyActor>,
-    config: HttpConfig,
+    port: u16,
 ) -> std::io::Result<actix_web::dev::Server> {
-    let socket_address = format!("0.0.0.0:{}", config.port);
+    let socket_address = format!("0.0.0.0:{}", port);
     let server = HttpServer::new(move || {
         App::new()
             .data(policy.clone())
             .data(Client::new())
-            .data(config.port)
+            .data(port)
             .wrap(middleware::Logger::default())
             .wrap(middleware::Compress::new(ContentEncoding::Identity))
             .default_service(web::route().to_async(request))
@@ -55,7 +55,7 @@ fn request(
                         // we succeeded in getting a policy
                         future::Either::A(match p.status {
                             // check request
-                            RestPolicyStatus {
+                            PolicyStatus {
                                 request: Policy::Args(count),
                                 ..
                             } => {
@@ -89,14 +89,14 @@ fn request(
                                 }))
                             }
                             // allow
-                            RestPolicyStatus {
+                            PolicyStatus {
                                 request: Policy::Allow,
                                 ..
                             } => future::Either::B(future::Either::A(client_payload(
                                 p, req, connection, payload, policy, client,
                             ))),
                             // deny
-                            RestPolicyStatus {
+                            PolicyStatus {
                                 request: Policy::Deny,
                                 ..
                             } => future::Either::B(future::Either::B(future::ok(unauthorized(
@@ -129,7 +129,7 @@ fn client_payload(
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match p.status {
         // check client payload
-        RestPolicyStatus {
+        PolicyStatus {
             client_payload: Policy::Args(_arg_count),
             debug,
             timeout,
@@ -184,7 +184,7 @@ fn client_payload(
                 }),
         )),
         // allow
-        RestPolicyStatus {
+        PolicyStatus {
             client_payload: Policy::Allow,
             debug,
             timeout,
@@ -215,7 +215,7 @@ fn client_payload(
             )
         }
         // deny
-        RestPolicyStatus {
+        PolicyStatus {
             client_payload: Policy::Deny,
             ..
         } => future::Either::A(future::Either::A(future::ok(unauthorized(
@@ -250,7 +250,7 @@ fn response(
             }
             match p.status {
                 // check server response
-                RestPolicyStatus {
+                PolicyStatus {
                     response: Policy::Args(count),
                     ..
                 } => {
@@ -280,12 +280,12 @@ fn response(
                     }))
                 }
                 // allow
-                RestPolicyStatus {
+                PolicyStatus {
                     response: Policy::Allow,
                     ..
                 } => future::Either::B(future::Either::A(server_payload(p, policy, response, res))),
                 // deny
-                RestPolicyStatus {
+                PolicyStatus {
                     response: Policy::Deny,
                     ..
                 } => future::Either::B(future::Either::B(future::ok(unauthorized(
@@ -309,7 +309,7 @@ fn server_payload(
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     match p.status {
         // check server payload
-        RestPolicyStatus {
+        PolicyStatus {
             server_payload: Policy::Args(_arg_count),
             // connection_number,
             // debug,
@@ -355,7 +355,7 @@ fn server_payload(
             )
         }
         // allow
-        RestPolicyStatus {
+        PolicyStatus {
             server_payload: Policy::Allow,
             ..
         } => future::Either::B(future::Either::B(
@@ -369,7 +369,7 @@ fn server_payload(
                 }),
         )),
         // deny
-        RestPolicyStatus {
+        PolicyStatus {
             server_payload: Policy::Deny,
             ..
         } => future::Either::B(future::Either::A(future::ok(unauthorized(

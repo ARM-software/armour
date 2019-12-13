@@ -2,7 +2,6 @@ use super::expressions::{Error, Expr};
 /// policy language
 use super::{externals, headers, lexer, literals, parser, types};
 use blake2_rfc::blake2b::blake2b;
-use futures::{future, Future};
 use headers::Headers;
 use literals::Literal;
 use petgraph::graph;
@@ -64,7 +63,7 @@ impl CallGraph {
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Program {
-    externals: externals::Externals,
+    pub externals: externals::Externals,
     pub code: Code,
     pub headers: Headers,
     pub policies: Policies,
@@ -76,35 +75,7 @@ impl Program {
             .map(|bytes| Hash(blake2b(24, b"armour", &bytes).as_bytes()).to_string())
             .ok()
     }
-    pub fn external(
-        &self,
-        external: &str,
-        method: &str,
-        args: Vec<Expr>,
-    ) -> Box<dyn Future<Item = Expr, Error = Error>> {
-        if let Some(socket) = self.externals.get_socket(external) {
-            match Literal::literal_vector(args) {
-                Ok(lits) => Box::new(
-                    externals::Externals::request(
-                        external.to_string(),
-                        method.to_string(),
-                        lits,
-                        socket,
-                        self.externals.timeout(),
-                    )
-                    .and_then(|r| future::ok(Expr::LitExpr(r)))
-                    .from_err(),
-                ),
-                Err(err) => Box::new(future::err(err)),
-            }
-        } else {
-            Box::new(future::err(Error::new(format!(
-                "missing exteral: {}",
-                external
-            ))))
-        }
-    }
-    pub fn internal(&self, s: &str) -> Option<&Expr> {
+    fn internal(&self, s: &str) -> Option<&Expr> {
         self.code.0.get(s)
     }
     pub fn set_timeout(&mut self, t: std::time::Duration) {

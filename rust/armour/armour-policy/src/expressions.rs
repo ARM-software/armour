@@ -1,5 +1,5 @@
 /// policy language
-use super::{externals, headers, lexer, literals, parser, types};
+use super::{headers, lexer, literals, parser, types};
 use headers::Headers;
 use literals::Literal;
 use parser::{Infix, Prefix};
@@ -49,12 +49,6 @@ impl From<regex::Error> for Error {
 impl<'a> From<types::Error<'a>> for Error {
     fn from(err: types::Error<'a>) -> Error {
         Error::new(err)
-    }
-}
-
-impl From<externals::Error> for Error {
-    fn from(err: externals::Error) -> Error {
-        Error::from_display(err)
     }
 }
 
