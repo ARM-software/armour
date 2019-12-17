@@ -22,9 +22,9 @@ For the test setups:
 - t2.micro: the client, server and the proxy are running on the same VM.
 - t2.large: 
 
-	First setup             |  Second setup
-:-------------------------:|:-------------------------:
-the client, server and the proxy are running on the same VM![the client, server and the proxy are running on the same VM](proxy/same-host.png) |  the client, server and the proxy, each is running on a separate VM![](proxy/multi-host.png)
+| the client, server and the proxy are running on the same VM | the client, server and the proxy, each is running on a separate VM |
+| :---------------------------------------------------------: | :----------------------------------------------------------------: |
+| ![](proxy/same-host.png) | ![](proxy/multi-host.png) |
 
 The Proxies and server tested versions: 
 
@@ -245,23 +245,24 @@ For the second set of policies that use oracles:
           http_filters:
           - name: envoy.router
 
-  - name: listener_tcp1
-    address:
-      socket_address: { address: 0.0.0.0 , port_value: 1998 }
-    filter_chains:
-    - filters:
-      - name: envoy.tcp_proxy
-        config:
-          stat_prefix: ingress_tcp
-          cluster: backend-hyper
+        - name: listener_tcp1
+            address:
+                socket_address: { address: 0.0.0.0 , port_value: 1998 }
+            filter_chains:
+            - filters:
+                - name: envoy.tcp_proxy
+                    config:
+                        stat_prefix: ingress_tcp
+                        cluster: backend-hyper
 
-  clusters:
-  - name: backend-hyper
-    connect_timeout: 0.40s
-    type: LOGICAL_DNS
-    dns_lookup_family: V4_ONLY
-    lb_policy: ROUND_ROBIN
-    hosts: [{ socket_address: { address: srv-hyper , port_value: 80 }}]
+        clusters:
+        - name: backend-hyper
+            connect_timeout: 0.40s
+            type: LOGICAL_DNS
+            dns_lookup_family: V4_ONLY
+            lb_policy: ROUND_ROBIN
+            hosts: [{ socket_address: { address: srv-hyper , port_value: 80 }}]
+            
 ### Linkerd policies
 		
 ## Results
