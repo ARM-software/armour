@@ -1,26 +1,18 @@
 
 
-# Performance analysis
 
-Micro-benchmark of Armour data-plan
+
+##Micro-benchmark of Armour data-plan
 
 ### Contents
 
-- `containers/`: configuration files of the containers: clients running `wrk2` tool, `nginx` servers and configuration files for the proxies used `armour`, `envoy`, `nginx` and `sozu`.
-- `scripts/`: scripts to run the analysis
-- `setup/`: scripts to setup the environment (start multiple aws instances and start the benchmark)
-- `results/`: raw data, processed data (has only the info needed) and plots for different benchmark setups and a benchmark of several web servers (`hyper`, `actix-web`, `apache`, `nginx`, `cherokee`, `lighttpd`).
-
-### Environment
-
-- Aws t2.micro, Amazon Linux 2 AMI (Linux kernel 4.14), 1GB memory, 1 vCPU, 50GB storage.
-- nginx version: 1.16.1
-- envoy version: 1.12.1
-- sozu version: 0.11.0
-- linkerd version: 1.7.0
-- amrour version: (20Nov)
+- `containers/`: configuration files of the containers: clients running `wrk2` tool, `hyper` server and configuration files for the proxies used `armour`, `envoy`, `nginx`, `linkerd` and `sozu`.
+- `scripts/`: scripts to run the performance analysis.
+- `setup/`: scripts to setup the environment (start multiple aws instances and launch the benchmark).
+- `results/`: raw data, processed data (has only the info needed) and plots for different benchmark setups and a benchmark of several web servers (`hyper`, `actix-web`, `apache`, `nginx web server`, `cherokee`, `lighttpd`).
 
 ### Usage
 
 - Run `./start.sh` in the setup dir.
 - After the test are done, run `./get-results.sh` to get the results and produce the graphs.
+

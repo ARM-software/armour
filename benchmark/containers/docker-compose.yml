@@ -1,42 +1,25 @@
 version: "3.0"
 services:
-  srv-nginx:
-    container_name: srv-nginx
-    hostname: srv-nginx
-    image: nginx
+  srv-hyper:
+    container_name: srv-hyper
+    hostname: srv-hyper
     extra_hosts:
-      - "localho.st:private-ip"
-      - "srv-arm:172.20.0.2"
       - "client-1:172.21.0.2"
-      - "client-2:172.22.0.2"
-    networks:
-      srv-net-1:
-        ipv4_address: 172.19.0.2
-
-  srv-arm:
-    container_name: srv-arm
-    hostname: srv-arm
-    extra_hosts:
-      - "localho.st:private-ip"
-      - "srv-nginx:172.19.0.2"
-      - "client-1:172.21.0.2"
-      - "client-2:172.22.0.2"
     build:
       context: .
       dockerfile: Dockerfile
     image: client-python
-    command: ./arm-service -o 81
+    command: ./hyper-server
     networks:
-      srv-net-2:
-        ipv4_address: 172.20.0.2
+      srv-net-6:
+        ipv4_address: 172.19.0.2
 
   client-1:
     container_name: client-1
     hostname: client-1
     extra_hosts:
       - "localho.st:private-ip"
-      - "srv-nginx:172.19.0.2"
-      - "srv-arm:172.20.0.2"
+      - "srv-hyper:172.19.0.2"
       - "client-2:172.22.0.2"
     build:
       context: .
@@ -51,9 +34,8 @@ services:
     hostname: client-2
     extra_hosts:
       - "localho.st:private-ip"
-      - "srv-nginx:172.19.0.2"
+      - "srv-hyper:172.19.0.2"
       - "client-1:172.21.0.2"
-      - "srv-arm:172.20.0.2"
     build:
       context: .
       dockerfile: Dockerfile
@@ -71,15 +53,6 @@ networks:
     ipam:
       config:
         - subnet: 172.19.0.0/28
-
-  srv-net-2:
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.name: srv-net-2
-    internal: true
-    ipam:
-      config:
-        - subnet: 172.20.0.0/28
 
   cl-net-1:
     driver: bridge

@@ -15,7 +15,7 @@ An optional LuaJIT script can perform HTTP request generation, response processi
 To measure CPU usage and memory, [psrecord](https://github.com/astrofrog/psrecord) was used, it's a small utility that uses the [psutil](https://github.com/giampaolo/psutil/) library to record the CPU and memory activity of a process. 
 
 ### Test environment
-All tests were done in a AWS EC2 t2.large instance with 2 vCPUs and 8 GiB of memory, running Amazon Linux 2 AMI - Linux kernel 4.14. The client and the servers were all containerised, each in a separate container. This is a comparison for only static content, where after each requests all servers output the same static content.
+All tests were done in a AWS EC2 t2.large instance with 2 vCPUs and 8 GiB of memory, running Amazon Linux 2 AMI - Linux kernel 4.14. The client and the servers were all containerised, each in a separate container in a different bridge network. This is a comparison for only static content, where after each request all servers output the same static content.
 
 The web servers tested versions:
 

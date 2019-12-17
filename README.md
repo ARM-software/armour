@@ -4,6 +4,7 @@ Armour: dynamic authentication and authorisation for "services", using a custom 
 
 ### Contents
 
+- `benchmark/`: Armour performance analysis
 - `design/`: Armour design documents (markdown and keynote)
 - `proposal/`: project proposal (LaTeX)
 - `rust/`: Armour source code

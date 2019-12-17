@@ -2,43 +2,45 @@
 
 function latency {
 echo Latency >> $1
-echo -e "\nLatency and Throughput using wrk2, each test is run for 60s" >> $1
-j=20000
+echo -e "\nLatency and Throughput using wrk2, each test is run for 90s" >> $1
+j=25000
+if [ $3 != "baseline" ]; then
+screen -d -m -S memory psrecord --interval 1 --log $1_log --plot $1_mem.png $4
+fi
 while [ $j -ge 100 ]
 do
-if [ $3 != "baseline" ]; then
-screen -d -m -S memory psrecord --interval 1 --log $1_log$j --plot $1_mem$j.png $4
-fi
   echo test$j >> $1
   if [ $3 = "linkerd" ]; then
-    echo ./wrk2/wrk -c1 -t1 -R$j -d60s -H "Host: srv-nginx" --latency http://$2 >> $1
-    docker exec -it client-1 ./wrk2/wrk -c1 -t1 -R$j -d60s -H "Host: srv-nginx" --latency  http://$2 >> $1
+    echo ./wrk2/wrk -c1 -t1 -R$j -d90s -H "Host: srv-hyper" --latency http://$2 >> $1
+    docker exec -it client-1 ./wrk2/wrk -c1 -t1 -R$j -d90s -H "Host: srv-hyper" --latency  http://$2 >> $1
   else 
-    echo ./wrk2/wrk -c1 -t1 -R$j -d60s --latency http://$2 >> $1
-    docker exec -it client-1 ./wrk2/wrk -c1 -t1 -R$j -d60s --latency  http://$2 >> $1
+    echo ./wrk2/wrk -c1 -t1 -R$j -d90s --latency http://$2 >> $1
+    docker exec -it client-1 ./wrk2/wrk -c1 -t1 -R$j -d90s --latency  http://$2 >> $1
   fi
-  docker restart srv-nginx
+  docker restart srv-hyper
   docker restart client-1
-  let "j-=500"
+  let "j-=1000"
 done
 }
 
 function Scalability {
-echo Scalability >> $1
-echo -e "\n\nScalability using wrk2 but with n clients per a single server" >> $1
-for j in {1..10}
-do
+j=2501
 if [ $3 != "baseline" ]; then
-screen -d -m -S memory psrecord --interval 1 --log $1_log$j --plot $1_mem$j.png $4
+screen -d -m -S memory psrecord --interval 1 --log $1_log --plot $1_mem.png $4
 fi
+while [ $j -ge 1 ]
+do
   echo test$j >> $1
   if [ $3 = "linkerd" ]; then
-    echo  ./wrk2/wrk -c$((j*100)) -t1 -d60s -H "Host: srv-nginx" -R2000 --latency http://$2 >> $1
-    docker exec -it client-1 ./wrk2/wrk -c$((j*100)) -t1 -d60s -H "Host: srv-nginx" -R2000 --latency http://$2 >> $1
-  else
-    echo  ./wrk2/wrk -c$((j*100)) -t1 -d60s -R2000 --latency http://$2 >> $1
-    docker exec -it client-1 ./wrk2/wrk -c$((j*100)) -t1 -d60s -R2000 --latency http://$2 >> $1
+    echo ./wrk2/wrk -c$j -t1 -R15000 -d90s -H "Host: srv-hyper" --latency http://$2 >> $1
+    docker exec -it client-1 ./wrk2/wrk -c$j -t1 -R15000 -d90s -H "Host: srv-hyper" --latency  http://$2 >> $1
+  else 
+    echo ./wrk2/wrk -c$j -t1 -R15000 -d90s --latency http://$2 >> $1
+    docker exec -it client-1 ./wrk2/wrk -c$j -t1 -R15000 -d90s --latency  http://$2 >> $1
   fi
+  docker restart srv-hyper
+  docker restart client-1
+  let "j-=100"
 done
 }
 
