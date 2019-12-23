@@ -1,9 +1,9 @@
 //! actix-web support for Armour policies
-use super::{http_policy::RestPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_proxy};
+use super::{http_policy::RestPolicy, tcp_policy::TcpPolicy};
 use actix::prelude::*;
 use actix_web::http::uri;
 use armour_data_interface::codec::{PolicyCodec, PolicyRequest, PolicyResponse, Protocol, Status};
-use armour_policy::{expressions, lang, literals};
+use armour_policy::{expressions, externals::Disconnector, interpret::Env, lang, literals};
 use futures::{future, Future};
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -49,12 +49,13 @@ fn scheme_port(u: &uri::Uri) -> Option<u16> {
 }
 
 pub trait Policy<P> {
-    fn start(&mut self, port: u16, proxy: P);
-    fn stop(&mut self) -> bool;
+    fn start(&mut self, env: Env, port: u16, addr: Addr<PolicyActor>) -> Option<Disconnector>;
+    fn stop(&mut self);
     fn set_debug(&mut self, _: bool);
     fn set_policy(&mut self, p: lang::Program);
     fn port(&self) -> Option<u16>;
     fn policy(&self) -> Arc<lang::Program>;
+    fn env(&self) -> Arc<Env>;
     fn debug(&self) -> bool;
     fn status(&self) -> Box<Status>;
     fn evaluate<T: std::convert::TryFrom<literals::Literal> + 'static>(
@@ -70,7 +71,7 @@ pub trait Policy<P> {
         };
         Box::new(
             expressions::Expr::call(function, args)
-                .evaluate(self.policy())
+                .evaluate(self.env())
                 .and_then(move |result| {
                     if let Some(elapsed) = now.map(|t| t.elapsed()) {
                         info!("result: {}", result);
@@ -92,13 +93,6 @@ pub trait Policy<P> {
 }
 
 /// Armour policy actor
-///
-/// Currently, a "policy" is an Armour program with a set of standard functions:
-/// - `allow_rest_request`
-/// - `allow_client_payload`
-/// - `allow_server_payload`
-/// - `allow_tcp_connection`
-/// - `on_tcp_disconnect`
 pub struct PolicyActor {
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, PolicyCodec>,
@@ -106,8 +100,10 @@ pub struct PolicyActor {
     // proxies
     pub http: RestPolicy,
     pub tcp: TcpPolicy,
-    ids_uri: HashMap<actix_web::http::uri::Uri, literals::ID>,
-    ids_ip: HashMap<std::net::IpAddr, literals::ID>,
+    http_disconnect: Vec<Disconnector>,
+    tcp_disconnect: Vec<Disconnector>,
+    id_uri_cache: HashMap<actix_web::http::uri::Uri, literals::ID>,
+    id_ip_cache: HashMap<std::net::IpAddr, literals::ID>,
 }
 
 // implement Actor trait for PolicyActor
@@ -137,8 +133,10 @@ impl PolicyActor {
                         uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
                         http: RestPolicy::default(),
                         tcp: TcpPolicy::default(),
-                        ids_uri: HashMap::new(),
-                        ids_ip: HashMap::new(),
+                        http_disconnect: Vec::new(),
+                        tcp_disconnect: Vec::new(),
+                        id_uri_cache: HashMap::new(),
+                        id_ip_cache: HashMap::new(),
                     }
                 });
                 future::ok(addr)
@@ -148,23 +146,23 @@ impl PolicyActor {
     fn id(&mut self, id: ID) -> literals::ID {
         match id {
             ID::Anonymous => literals::ID::default(),
-            ID::Uri(u) => self.ids_uri.get(&u).cloned().unwrap_or_else(|| {
+            ID::Uri(u) => self.id_uri_cache.get(&u).cloned().unwrap_or_else(|| {
                 let mut port = u.port_u16();
                 if port.is_none() {
                     port = scheme_port(&u)
                 }
                 let id = literals::ID::from((u.host(), port));
-                self.ids_uri.insert(u, id.clone());
+                self.id_uri_cache.insert(u, id.clone());
                 id
             }),
             ID::SocketAddr(s) => {
                 let ip = s.ip();
-                self.ids_ip
+                self.id_ip_cache
                     .get(&ip)
                     .map(|id| id.set_port(s.port()))
                     .unwrap_or_else(|| {
                         let id = literals::ID::from(s);
-                        self.ids_ip.insert(ip, id.clone());
+                        self.id_ip_cache.insert(ip, id.clone());
                         id
                     })
             }
@@ -221,59 +219,128 @@ impl Handler<PolicyRequest> for PolicyActor {
                 tcp: self.tcp.status(),
             }),
             PolicyRequest::Stop(Protocol::Rest) => {
-                if self.http.stop() {
-                    self.uds_framed.write(PolicyResponse::Stopped);
-                    info!("stopped REST proxy")
+                if self.http.port().is_none() {
+                    self.uds_framed.write(PolicyResponse::RequestFailed)
                 } else {
-                    self.uds_framed.write(PolicyResponse::RequestFailed);
-                    warn!("there is no REST proxy to stop")
+                    ctx.notify(PolicyRequest::StartHttp(0))
                 }
             }
             PolicyRequest::Stop(Protocol::TCP) => {
-                if self.tcp.stop() {
-                    self.uds_framed.write(PolicyResponse::Stopped);
-                    info!("stopped TCP proxy on port")
+                if self.tcp.port().is_none() {
+                    self.uds_framed.write(PolicyResponse::RequestFailed)
                 } else {
-                    self.uds_framed.write(PolicyResponse::RequestFailed);
-                    warn!("there is no TCP proxy to stop")
+                    ctx.notify(PolicyRequest::StartTcp(0))
                 }
             }
             PolicyRequest::Stop(Protocol::All) => {
                 ctx.notify(PolicyRequest::Stop(Protocol::Rest));
                 ctx.notify(PolicyRequest::Stop(Protocol::TCP))
             }
-            PolicyRequest::StartHttp(config) => {
-                let port = config.port;
-                match http_proxy::start_proxy(ctx.address(), config) {
-                    Ok(server) => {
-                        self.http.start(port, server);
-                        self.uds_framed.write(PolicyResponse::Started)
+            PolicyRequest::StartHttp(port) => {
+                // shut down any running proxies
+                if let Some(disconnector) = self.http_disconnect.pop() {
+                    disconnector
+                        .into_actor(self)
+                        .then(move |_, _act, ctx| {
+                            // try again
+                            ctx.notify(PolicyRequest::StartHttp(port));
+                            actix::fut::ok(())
+                        })
+                        .wait(ctx)
+                } else {
+                    if self.http.port().is_some() {
+                        self.uds_framed.write(PolicyResponse::Stopped);
+                        self.http.stop()
                     }
-                    Err(err) => {
-                        self.uds_framed.write(PolicyResponse::RequestFailed);
-                        warn!("failed to start REST proxy on port {}: {}", port, err)
+                    if port != 0 {
+                        Env::new(self.http.policy())
+                            .into_actor(self)
+                            .then(move |res, act, ctx| {
+                                match res {
+                                    Ok((env, mut disconnectors)) => {
+                                        if let Some(disconnect) =
+                                            act.http.start(env, port, ctx.address())
+                                        {
+                                            disconnectors.push(disconnect);
+                                            act.http_disconnect = disconnectors;
+                                            act.uds_framed.write(PolicyResponse::Started)
+                                        } else {
+                                            act.uds_framed.write(PolicyResponse::RequestFailed)
+                                        }
+                                    }
+                                    Err(err) => {
+                                        // failed to connect to an oracle?
+                                        warn!("{}", err);
+                                        act.uds_framed.write(PolicyResponse::RequestFailed);
+                                    }
+                                };
+                                actix::fut::ok(())
+                            })
+                            .wait(ctx)
                     }
                 }
             }
-            PolicyRequest::StartTcp(port) => match tcp_proxy::start_proxy(port, ctx.address()) {
-                Ok(server) => {
-                    self.tcp.start(port, server);
-                    self.uds_framed.write(PolicyResponse::Started)
+            PolicyRequest::StartTcp(port) => {
+                // shut down any running proxies
+                if let Some(disconnector) = self.tcp_disconnect.pop() {
+                    disconnector
+                        .into_actor(self)
+                        .then(move |_, _act, ctx| {
+                            // try again
+                            ctx.notify(PolicyRequest::StartTcp(port));
+                            actix::fut::ok(())
+                        })
+                        .wait(ctx)
+                } else {
+                    if self.tcp.port().is_some() {
+                        self.uds_framed.write(PolicyResponse::Stopped);
+                        self.tcp.stop()
+                    }
+                    if port != 0 {
+                        Env::new(self.tcp.policy())
+                            .into_actor(self)
+                            .then(move |res, act, ctx| {
+                                match res {
+                                    Ok((env, mut disconnectors)) => {
+                                        if let Some(disconnect) =
+                                            act.tcp.start(env, port, ctx.address())
+                                        {
+                                            disconnectors.push(disconnect);
+                                            act.tcp_disconnect = disconnectors;
+                                            act.uds_framed.write(PolicyResponse::Started)
+                                        } else {
+                                            act.uds_framed.write(PolicyResponse::RequestFailed)
+                                        }
+                                    }
+                                    Err(err) => {
+                                        // failed to connect to an oracle?
+                                        warn!("{}", err);
+                                        act.uds_framed.write(PolicyResponse::RequestFailed);
+                                    }
+                                };
+                                actix::fut::ok(())
+                            })
+                            .wait(ctx)
+                    }
                 }
-                Err(err) => {
-                    self.uds_framed.write(PolicyResponse::RequestFailed);
-                    warn!("failed to start TCP proxy on port {}: {}", port, err)
-                }
-            },
+            }
             PolicyRequest::SetPolicy(Protocol::Rest, prog) => {
                 self.http.set_policy(prog);
                 self.uds_framed.write(PolicyResponse::UpdatedPolicy);
-                info!("installed REST policy")
+                info!("installed HTTP policy");
+                // restart server if already running
+                if let Some(port) = self.http.port() {
+                    ctx.notify(PolicyRequest::StartHttp(port))
+                }
             }
             PolicyRequest::SetPolicy(Protocol::TCP, prog) => {
                 self.tcp.set_policy(prog);
                 self.uds_framed.write(PolicyResponse::UpdatedPolicy);
-                info!("installed TCP policy")
+                info!("installed TCP policy");
+                // restart server if already running
+                if let Some(port) = self.tcp.port() {
+                    ctx.notify(PolicyRequest::StartTcp(port))
+                }
             }
             PolicyRequest::SetPolicy(Protocol::All, prog) => {
                 ctx.notify(PolicyRequest::SetPolicy(Protocol::Rest, prog.clone()));

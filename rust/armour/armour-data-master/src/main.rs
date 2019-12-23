@@ -2,7 +2,7 @@
 //!
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
-use armour_data_interface::codec::{HttpConfig, PolicyRequest, Protocol};
+use armour_data_interface::codec::{PolicyRequest, Protocol};
 use armour_data_interface::policy::TCP_REST_POLICY;
 use armour_data_master as master;
 use armour_policy::lang;
@@ -210,6 +210,7 @@ fn master_command(
             } else {
                 "-l error"
             };
+            // sudo ~/.cargo/bin/flamegraph ~/rust/target/debug/armour-data
             match std::process::Command::new(armour_data())
                 .arg(log)
                 .arg(socket)
@@ -218,6 +219,17 @@ fn master_command(
                 Ok(child) => log::info!("started processs: {}", child.id()),
                 Err(err) => log::warn!("failed to spawn data plane instance: {}", err),
             }
+            // let mut command = std::process::Command::new("sudo");
+            // let command = command
+            //     .arg("/Users/antfox02/.cargo/bin/flamegraph")
+            //     .arg("/Users/antfox02/rust/target/release/armour-data")
+            //     .arg("armour")
+            //     .arg(log);
+            // log::info!("command: {:?}", command);
+            // match command.spawn() {
+            //     Ok(child) => log::info!("started processs: {}", child.id()),
+            //     Err(err) => log::warn!("failed to spawn data plane instance: {}", err),
+            // }
         }
         Some("help") => println!(
             "COMMANDS:
@@ -316,7 +328,7 @@ fn instance1_command(
         }
         Some("http start") => {
             if let Ok(port) = arg.parse::<u16>() {
-                Some(PolicyRequest::StartHttp(HttpConfig { port }))
+                Some(PolicyRequest::StartHttp(port))
             } else {
                 log::warn!("http start: expecting port number, got {}", arg);
                 None

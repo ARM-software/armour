@@ -1,0 +1,105 @@
+test2501
+./wrk2/wrk -c2501 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+Running 2m test @ http://172.31.25.123:8080
+  1 threads and 2501 connections
+  Thread calibration: mean lat.: 106.282ms, rate sampling interval: 519ms
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     -nanus    -nanus   0.00us    0.00%
+    Req/Sec     0.00      0.00     0.00    100.00%
+  Latency Distribution (HdrHistogram - Recorded Latency)
+ 50.000%    0.00us
+ 75.000%    0.00us
+ 90.000%    0.00us
+ 99.000%    0.00us
+ 99.900%    0.00us
+ 99.990%    0.00us
+ 99.999%    0.00us
+100.000%    0.00us
+
+  Detailed Percentile spectrum:
+       Value   Percentile   TotalCount 1/(1-Percentile)
+
+       0.000     1.000000            0          inf
+#[Mean    =         -nan, StdDeviation   =         -nan]
+#[Max     =        0.000, Total count    =            0]
+#[Buckets =           27, SubBuckets     =         2048]
+----------------------------------------------------------
+  5362 requests in 1.51m, 3.78MB read
+  Socket errors: connect 1481, read 0, write 2309905, timeout 82680
+Requests/sec:     59.08
+Transfer/sec:     42.60KB
+test2401
+./wrk2/wrk -c2401 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test2301
+./wrk2/wrk -c2301 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test2201
+./wrk2/wrk -c2201 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test2101
+./wrk2/wrk -c2101 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test2001
+./wrk2/wrk -c2001 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test1901
+./wrk2/wrk -c1901 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test1801
+./wrk2/wrk -c1801 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test1701
+./wrk2/wrk -c1701 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test1601
+./wrk2/wrk -c1601 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test1501
+./wrk2/wrk -c1501 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test1401
+./wrk2/wrk -c1401 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test1301
+./wrk2/wrk -c1301 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test1201
+./wrk2/wrk -c1201 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test1101
+./wrk2/wrk -c1101 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test1001
+./wrk2/wrk -c1001 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test901
+./wrk2/wrk -c901 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test801
+./wrk2/wrk -c801 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test701
+./wrk2/wrk -c701 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test601
+./wrk2/wrk -c601 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test501
+./wrk2/wrk -c501 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test401
+./wrk2/wrk -c401 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test301
+./wrk2/wrk -c301 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test201
+./wrk2/wrk -c201 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test101
+./wrk2/wrk -c101 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused
+test1
+./wrk2/wrk -c1 -t1 -R15000 -d90s --latency http://172.31.25.123:8080
+unable to connect to 172.31.25.123:8080 Connection refused

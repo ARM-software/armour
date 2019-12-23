@@ -1,0 +1,3 @@
+fn allow_server_payload(payload: Payload) -> bool {
+    payload.data().len() < 3000
+}

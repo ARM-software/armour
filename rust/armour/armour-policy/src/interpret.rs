@@ -1,8 +1,9 @@
 /// policy language interpreter
 // NOTE: no optimization
 use super::expressions::{Block, Error, Expr};
+use super::externals::{Call, Disconnector, ExternalClients};
 use super::headers::Headers;
-use super::lang::Program;
+use super::lang::{Code, Program};
 use super::literals::{Connection, HttpRequest, HttpResponse, Literal, Method, Payload, VecSet};
 use super::parser::{As, Infix, Iter, Pat, Prefix};
 use futures::{
@@ -14,6 +15,48 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
 use trust_dns_resolver::AsyncResolver;
+
+#[derive(Default)]
+pub struct Env {
+    internal: Code,
+    external: ExternalClients,
+    timeout: std::time::Duration,
+}
+
+impl Env {
+    pub fn new(
+        prog: Arc<Program>,
+    ) -> Box<dyn Future<Item = (Self, Vec<Disconnector>), Error = std::io::Error>> {
+        Box::new(ExternalClients::connect(prog.externals.clone()).and_then(
+            move |(external, disconnectors)| {
+                future::ok((
+                    Env {
+                        internal: prog.code.clone(),
+                        external,
+                        timeout: prog.timeout(),
+                    },
+                    disconnectors,
+                ))
+            },
+        ))
+    }
+    fn get(&self, name: &str) -> Option<&Expr> {
+        self.internal.0.get(name)
+    }
+    fn call(
+        &self,
+        external: &str,
+        method: &str,
+        args: Vec<Expr>,
+    ) -> Box<dyn Future<Item = Expr, Error = Error>> {
+        match Literal::literal_vector(args) {
+            Ok(args) => self
+                .external
+                .call(Call::new(external, method, args, self.timeout)),
+            Err(err) => Box::new(future::err(err)),
+        }
+    }
+}
 
 impl Literal {
     fn eval_prefix(&self, p: &Prefix) -> Option<Self> {
@@ -301,7 +344,7 @@ impl Expr {
             (resolver, Box::new(fut))
         }
     }
-    fn eval(self, env: Arc<Program>) -> Box<dyn Future<Item = Expr, Error = self::Error>> {
+    fn eval(self, env: Arc<Env>) -> Box<dyn Future<Item = Expr, Error = self::Error>> {
         match self {
             Expr::Var(_) | Expr::BVar(_, _) => Box::new(future::err(Error::new("eval variable"))),
             Expr::LitExpr(_) => Box::new(future::ok(self)),
@@ -764,7 +807,7 @@ impl Expr {
                             Some(r) => future::Either::A(future::ok(r.clone())),
                             None => {
                                 // user defined function
-                                if let Some(e) = env.internal(&function) {
+                                if let Some(e) = env.get(&function) {
                                     let mut r = e.clone();
                                     let mut error = None;
                                     for a in args {
@@ -855,9 +898,8 @@ impl Expr {
                                 } else {
                                     // external function (RPC)
                                     if let Some((external, method)) = Headers::split(&function) {
-                                        let fut = env.external(external, method, args);
                                         if is_async {
-                                            actix::spawn(fut.then(move |res| {
+                                            actix::spawn(env.call(external, method, args).then(move |res| {
                                                 if let Err(e) = res {
                                                     log::warn!(r#"async call to "{}": {}"#, function, e.to_string())
                                                 };
@@ -865,7 +907,7 @@ impl Expr {
                                             }));
                                             future::Either::A(future::ok(Expr::from(())))
                                         } else {
-                                            future::Either::B(future::Either::A(fut))
+                                            future::Either::B(future::Either::A(env.call(external, method, args)))
                                         }
                                     } else {
                                         future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, args))))
@@ -877,7 +919,7 @@ impl Expr {
             }
         }
     }
-    pub fn evaluate(self, env: Arc<Program>) -> Box<dyn Future<Item = Expr, Error = self::Error>> {
+    pub fn evaluate(self, env: Arc<Env>) -> Box<dyn Future<Item = Expr, Error = self::Error>> {
         Box::new(
             self.eval(env)
                 .and_then(|e| Box::new(future::ok(e.strip_return()))),

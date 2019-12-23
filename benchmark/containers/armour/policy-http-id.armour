@@ -1,9 +1,0 @@
-fn allow_rest_request(req: HttpRequest, from: ID, to: ID) -> bool {
-  let to_hosts = to.hosts();
-  let from_hosts = from.hosts();
-  let to_port = to.port();
-  if "srv-nginx" in to_hosts {
-    "client-1" in from_hosts || to_port == Some(80)
- } else {false}
-
-}

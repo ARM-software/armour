@@ -11,6 +11,7 @@ pub struct LoggerService(pub Arc<Mutex<connections::Connections>>);
 impl policy_service::rpc::Dispatcher for LoggerService {
     fn dispatch(&mut self, name: &str, args: &[Literal]) -> Result<Literal, capnp::Error> {
         match (name, args) {
+            ("ping", _) => Ok(Literal::Unit),
             ("log", _) => {
                 self.log(name, args);
                 Ok(Literal::Unit)

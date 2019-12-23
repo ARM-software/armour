@@ -6,3 +6,6 @@ members = [
     "armour-data-master",
     "armour-policy",
 ]
+
+#[profile.release]
+#debug = true

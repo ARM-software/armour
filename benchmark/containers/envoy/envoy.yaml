@@ -20,7 +20,7 @@ static_resources:
               domains: ["*"]
               routes:
               - match: { prefix: "/" }
-                route: { cluster: backend-nginx }
+                route: { cluster: backend-hyper }
           http_filters:
           - name: envoy.router
 
@@ -32,12 +32,12 @@ static_resources:
       - name: envoy.tcp_proxy
         config:
           stat_prefix: ingress_tcp
-          cluster: backend-nginx
+          cluster: backend-hyper
 
   clusters:
-  - name: backend-nginx
-    connect_timeout: 0.25s
+  - name: backend-hyper
+    connect_timeout: 0.40s
     type: LOGICAL_DNS
     dns_lookup_family: V4_ONLY
     lb_policy: ROUND_ROBIN
-    hosts: [{ socket_address: { address: srv-nginx , port_value: 80 }}]
+    hosts: [{ socket_address: { address: srv-hyper , port_value: 80 }}]

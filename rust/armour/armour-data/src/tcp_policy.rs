@@ -1,34 +1,46 @@
 //! actix-web support for Armour policies
-use super::policy::{Policy, PolicyActor};
+use super::policy::{Policy, PolicyActor, ID};
 use super::{tcp_proxy, Stop};
 use actix::prelude::*;
 use armour_data_interface::{codec, policy};
-use armour_policy::{expressions, lang};
+use armour_policy::{expressions, externals::Disconnector, interpret::Env, lang};
 use expressions::Expr;
 use futures::{future, Future};
 use std::sync::Arc;
+
+struct Proxy {
+    env: Arc<Env>,
+    port: u16,
+}
 
 pub struct TcpPolicy {
     connect: lang::Policy,
     disconnect: lang::Policy,
     debug: bool,
     program: Arc<lang::Program>,
-    proxy: Option<(u16, Addr<tcp_proxy::TcpDataServer>)>,
+    proxy: Option<Proxy>,
 }
 
 impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
-    fn start(&mut self, port: u16, server: Addr<tcp_proxy::TcpDataServer>) {
-        self.stop();
-        self.proxy = Some((port, server))
-    }
-    fn stop(&mut self) -> bool {
-        if let Some((_, ref server)) = self.proxy {
-            server.do_send(Stop);
-            self.proxy = None;
-            true
-        } else {
-            false
+    fn start(&mut self, env: Env, port: u16, addr: Addr<PolicyActor>) -> Option<Disconnector> {
+        match tcp_proxy::start_proxy(port, addr) {
+            Ok(server) => {
+                let server_clone = server.clone();
+                let fut = futures::lazy(move || server_clone.send(Stop).then(|_| future::ok(())));
+                self.proxy = Some(Proxy {
+                    env: Arc::new(env),
+                    port,
+                });
+                Some(Box::new(fut))
+            }
+            Err(err) => {
+                warn!("failed to start TCP proxy on port {}: {}", port, err);
+                None
+            }
         }
+    }
+    fn stop(&mut self) {
+        self.proxy = None
     }
     fn set_debug(&mut self, b: bool) {
         self.debug = b
@@ -39,10 +51,16 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
         self.program = Arc::new(p)
     }
     fn port(&self) -> Option<u16> {
-        self.proxy.as_ref().map(|(p, _)| *p)
+        self.proxy.as_ref().map(|p| p.port)
     }
     fn policy(&self) -> Arc<lang::Program> {
         self.program.clone()
+    }
+    fn env(&self) -> Arc<Env> {
+        self.proxy
+            .as_ref()
+            .map(|p| p.env.clone())
+            .unwrap_or_default()
     }
     fn debug(&self) -> bool {
         self.debug
@@ -84,7 +102,6 @@ impl Handler<GetTcpPolicy> for PolicyActor {
     type Result = Box<dyn Future<Item = TcpPolicyStatus, Error = expressions::Error>>;
 
     fn handle(&mut self, msg: GetTcpPolicy, _ctx: &mut Context<Self>) -> Self::Result {
-        let GetTcpPolicy(from, to) = msg;
         match self.tcp.connect {
             lang::Policy::Allow => {
                 self.connection_number += 1;
@@ -94,27 +111,17 @@ impl Handler<GetTcpPolicy> for PolicyActor {
                 info!("deny");
                 Box::new(future::ok(TcpPolicyStatus::Block))
             }
-            lang::Policy::Args(n) if n == 0 || n == 2 || n == 3 => {
-                let connection_number = self.connection_number;
-                self.connection_number += 1;
-                let from = Expr::from(from);
-                let to = Expr::from(to);
-                let number = Expr::from(connection_number);
-                if let (Some(from), Some(to)) = (from.host(), to.host()) {
-                    info!(r#"checking connection from "{}" to "{}""#, from, to)
-                }
-                let connection = ConnectionStats::new(&from, &to, &number);
-                let args = match n {
-                    0 => Vec::new(),
-                    2 => vec![from, to],
-                    _ => vec![from, to, number],
-                };
+            lang::Policy::Args(n) if n == 1 => {
+                let connection = self
+                    .connection(ID::SocketAddr(msg.0), ID::SocketAddr(msg.1))
+                    .into();
+                let stats = ConnectionStats::new(&connection);
                 Box::new(
                     self.tcp
-                        .evaluate(policy::ALLOW_TCP_CONNECTION, args)
+                        .evaluate(policy::ALLOW_TCP_CONNECTION, vec![connection])
                         .and_then(move |res| {
                             future::ok(if res {
-                                TcpPolicyStatus::Allow(Box::new(Some(connection)))
+                                TcpPolicyStatus::Allow(Box::new(Some(stats)))
                             } else {
                                 TcpPolicyStatus::Block
                             })
@@ -130,23 +137,15 @@ impl Handler<GetTcpPolicy> for PolicyActor {
 pub struct ConnectionStats {
     pub sent: usize,
     pub received: usize,
-    pub from: expressions::Expr,
-    pub to: expressions::Expr,
-    pub number: expressions::Expr,
+    pub connection: expressions::Expr,
 }
 
 impl ConnectionStats {
-    pub fn new(
-        from: &expressions::Expr,
-        to: &expressions::Expr,
-        number: &expressions::Expr,
-    ) -> ConnectionStats {
+    pub fn new(connection: &expressions::Expr) -> ConnectionStats {
         ConnectionStats {
             sent: 0,
             received: 0,
-            from: from.clone(),
-            to: to.clone(),
-            number: number.clone(),
+            connection: connection.clone(),
         }
     }
 }
@@ -162,12 +161,8 @@ impl Handler<ConnectionStats> for PolicyActor {
     fn handle(&mut self, msg: ConnectionStats, _ctx: &mut Context<Self>) -> Self::Result {
         if let lang::Policy::Args(arg_count) = self.tcp.disconnect {
             let args = match arg_count {
-                2 => vec![msg.from, msg.to],
-                3 => vec![msg.from, msg.to, msg.number],
-                5 => vec![
-                    msg.from,
-                    msg.to,
-                    msg.number,
+                3 => vec![
+                    msg.connection,
                     Expr::from(msg.sent),
                     Expr::from(msg.received),
                 ],

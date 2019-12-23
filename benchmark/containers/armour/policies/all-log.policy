@@ -1,0 +1,35 @@
+external logger @ "log_sock" {
+    fn log(_) -> ()
+    fn rest(i64, str, str, str, ID, ID) -> ()
+    fn client_payload(i64, i64) -> ()
+    fn server_payload(i64, i64) -> ()
+}
+    
+fn allow_rest_request(req: HttpRequest) -> bool {
+    let c = req.connection();
+    let (from, to) = c.from_to();
+    let date = if let Some(date) = req.unique_header("date") {
+        str::from_utf8(date)
+     } else {
+        "-"
+     };
+    logger::rest(c.number(), date, req.method(), req.path(), from, to);
+    if "srv-hyper" in to.hosts() {
+        "client-1" in from.hosts() || to.port() == Some(80)
+     } else {false}
+}
+
+fn allow_client_payload(payload: Payload) -> bool {
+    logger::client_payload(payload.connection().number(), payload.data().len());
+    payload.data().len() < 3000
+}
+
+fn allow_server_payload(payload: Payload) -> bool {
+    logger::server_payload(payload.connection().number(), payload.data().len());
+    payload.data().len() < 3000
+}
+
+fn allow_rest_response(res: HttpResponse) -> bool {
+    logger::log(res.header("date"));
+    res.status() == 200
+}

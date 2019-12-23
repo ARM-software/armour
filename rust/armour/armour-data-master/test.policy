@@ -1,6 +1,7 @@
 external logger @ "log_sock" {
 //external logger @ "localhost:8081" {
   fn log(_) -> ()
+  fn ping(_) -> ()
   fn rest(i64, str, str, str, ID, ID) -> ()
   fn client_payload(i64, i64) -> ()
   fn server_payload(i64, i64) -> ()
@@ -10,6 +11,7 @@ external logger @ "log_sock" {
 
 // REST request allow/deny
 fn allow_rest_request(req: HttpRequest) -> bool {
+  // logger::ping();
   // logger::log(req);
   let date = if let Some(date) = req.unique_header("date") {
      str::from_utf8(date)
