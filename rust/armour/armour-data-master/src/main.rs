@@ -7,12 +7,14 @@ use armour_data_interface::policy::TCP_REST_POLICY;
 use armour_data_master as master;
 use armour_policy::lang;
 use clap::{crate_version, App, Arg};
+use futures::StreamExt;
 use master::{commands, MasterCommand};
-use rustyline::{completion, error::ReadlineError, hint, Editor};
+use rustyline::{completion, error::ReadlineError, hint, validate::Validator, Editor};
 use std::io::{self, BufRead};
 use std::path::PathBuf;
 
-fn main() -> io::Result<()> {
+#[actix_rt::main]
+async fn main() -> io::Result<()> {
     const SOCKET: &str = "armour";
 
     // CLI
@@ -41,28 +43,28 @@ fn main() -> io::Result<()> {
         "RUST_LOG",
         "armour_data_master=debug,armour_policy=debug,actix=debug",
     );
-    std::env::set_var("RUST_BACKTRACE", "0");
+    std::env::set_var("RUST_BACKTRACE", "1");
     pretty_env_logger::init();
-
-    // start Actix system
-    let sys = actix::System::new("armour-data-master");
 
     // start server, listening for connections on a Unix socket
     let socket = matches
         .value_of("master socket")
         .unwrap_or(SOCKET)
         .to_string();
-    let listener = tokio_uds::UnixListener::bind(&socket)?;
+    let listener = Box::new(tokio::net::UnixListener::bind(&socket)?);
     let socket =
         std::fs::canonicalize(&socket).unwrap_or_else(|_| std::path::PathBuf::from(socket));
     log::info!("started Data Master on socket: {}", socket.display());
     let socket_clone = socket.clone();
     let master = master::ArmourDataMaster::create(|ctx| {
-        ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(master::UdsConnect));
+        ctx.add_message_stream(
+            Box::leak(listener)
+                .incoming()
+                .map(|st| master::UdsConnect(st.unwrap())),
+        );
         master::ArmourDataMaster::new(socket_clone)
     });
 
-    // issue commands based on user input
     std::thread::spawn(move || {
         if let Some(script) = matches.value_of("script") {
             run_script(script, &master, &socket)
@@ -88,13 +90,19 @@ fn main() -> io::Result<()> {
             }
         }
         rl.save_history("armour-master.txt")
-            .expect("failed to save history")
+            .expect("failed to save history");
+        println!("Ctrl-C to exit")
     });
 
-    sys.run()
+    // handle Control-C
+    tokio::signal::ctrl_c().await.unwrap();
+    println!("Ctrl-C received, shutting down");
+    Ok(())
 }
 
 struct Helper(completion::FilenameCompleter, hint::HistoryHinter);
+
+impl Validator for Helper {}
 
 impl Helper {
     fn new() -> Self {
@@ -199,7 +207,10 @@ fn master_command(
 ) -> bool {
     let command = caps.name("command").map(|s| s.as_str().to_lowercase());
     match command.as_ref().map(String::as_str) {
-        Some("list") => master.do_send(MasterCommand::ListActive),
+        Some("list") => {
+            log::info!("sending list");
+            master.do_send(MasterCommand::ListActive);
+        }
         Some("quit") => {
             master.do_send(MasterCommand::Quit);
             return true;

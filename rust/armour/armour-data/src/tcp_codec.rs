@@ -1,7 +1,7 @@
 pub mod client {
     use bytes::{Bytes, BytesMut};
     use std::io;
-    use tokio_io::codec::Decoder;
+    use tokio_util::codec::Decoder;
 
     /// A simple `Codec` implementation that just ships bytes around.
     #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
@@ -26,7 +26,7 @@ pub mod client {
 pub mod server {
     use bytes::{Bytes, BytesMut};
     use std::io;
-    use tokio_io::codec::Decoder;
+    use tokio_util::codec::Decoder;
 
     /// A simple `Codec` implementation that just ships bytes around.
     #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]

@@ -8,6 +8,7 @@ use actix_web::web;
 use armour_policy::{expressions, literals};
 
 #[derive(Message)]
+#[rtype("()")]
 pub struct Stop;
 
 pub mod http_policy;
