@@ -144,10 +144,10 @@ impl From<Vec<(&str, &[u8])>> for Headers {
     fn from(h: Vec<(&str, &[u8])>) -> Self {
         let mut headers: BTreeMap<String, Vec<Vec<u8>>> = BTreeMap::new();
         for (k, v) in h.iter() {
-            if let Some(l) = headers.get_mut(&k.to_string()) {
+            if let Some(l) = headers.get_mut(&(*k).to_string()) {
                 l.push(v.to_vec())
             } else {
-                headers.insert(k.to_string(), vec![v.to_vec()]);
+                headers.insert((*k).to_string(), vec![v.to_vec()]);
             }
         }
         Headers { headers }

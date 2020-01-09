@@ -13,7 +13,7 @@ lazy_static! {
     pub static ref INTERFACE_IPS: HashSet<IpAddr> = {
         let set: HashSet<String> = ["lo", "lo0", "en0", "eth0"]
             .iter()
-            .map(|s| s.to_string())
+            .map(|s| (*s).to_string())
             .collect();
         if let Ok(interfaces) = get_if_addrs::get_if_addrs() {
             interfaces

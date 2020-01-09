@@ -6,8 +6,8 @@ extern crate log;
 use actix::prelude::*;
 use armour_data_interface::codec::{MasterCodec, PolicyRequest, PolicyResponse};
 use std::collections::HashMap;
-use tokio_codec::FramedRead;
-use tokio_io::{io::WriteHalf, AsyncRead};
+use tokio::io::WriteHalf;
+use tokio_util::codec::FramedRead;
 
 #[derive(PartialEq)]
 pub enum Instances {
@@ -37,7 +37,8 @@ impl Actor for ArmourDataMaster {
 
 /// Notification of new Unix socket connection
 #[derive(Message)]
-pub struct UdsConnect(pub tokio_uds::UnixStream);
+#[rtype("()")]
+pub struct UdsConnect(pub tokio::net::UnixStream);
 
 impl Handler<UdsConnect> for ArmourDataMaster {
     type Result = ();
@@ -46,8 +47,8 @@ impl Handler<UdsConnect> for ArmourDataMaster {
         // For each incoming connection we create `ArmourDataInstance` actor
         let master = ctx.address();
         ArmourDataInstance::create(move |ctx| {
-            let (r, w) = msg.0.split();
-            ArmourDataInstance::add_stream(FramedRead::new(r, MasterCodec), ctx);
+            let (r, w) = tokio::io::split(msg.0);
+            ctx.add_stream(FramedRead::new(r, MasterCodec));
             ArmourDataInstance {
                 id: 0,
                 master,
@@ -119,6 +120,7 @@ impl Handler<Connect> for ArmourDataMaster {
 
 /// Disconnect notification (from Instance to Master)
 #[derive(Message)]
+#[rtype("()")]
 pub struct Disconnect(usize);
 
 impl Handler<Disconnect> for ArmourDataMaster {
@@ -133,6 +135,7 @@ impl Handler<Disconnect> for ArmourDataMaster {
 ///
 /// Policy update request are forwarded on to the appropriate instance actor.
 #[derive(Message)]
+#[rtype("()")]
 pub enum MasterCommand {
     ListActive,
     Quit,
@@ -143,7 +146,7 @@ impl Handler<MasterCommand> for ArmourDataMaster {
     type Result = ();
     fn handle(&mut self, msg: MasterCommand, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
-            MasterCommand::Quit => System::current().stop(),
+            MasterCommand::Quit => System::current().stop(), // Not working in actix 0.9!
             MasterCommand::ListActive => {
                 if self.instances.is_empty() {
                     info!("there are no active instances")
@@ -169,7 +172,7 @@ impl Handler<MasterCommand> for ArmourDataMaster {
 pub struct ArmourDataInstance {
     id: usize,
     master: Addr<ArmourDataMaster>,
-    uds_framed: actix::io::FramedWrite<WriteHalf<tokio_uds::UnixStream>, MasterCodec>,
+    uds_framed: actix::io::FramedWrite<WriteHalf<tokio::net::UnixStream>, MasterCodec>,
 }
 
 impl Actor for ArmourDataInstance {
@@ -184,7 +187,7 @@ impl Actor for ArmourDataInstance {
                     Ok(res) => act.id = res,
                     _ => ctx.stop(),
                 };
-                actix::fut::ok(())
+                async {}.into_actor(act)
             })
             .wait(ctx);
     }
@@ -192,21 +195,25 @@ impl Actor for ArmourDataInstance {
 
 impl actix::io::WriteHandler<std::io::Error> for ArmourDataInstance {}
 
-impl StreamHandler<PolicyResponse, std::io::Error> for ArmourDataInstance {
-    fn handle(&mut self, msg: PolicyResponse, ctx: &mut Self::Context) {
-        match msg {
-            PolicyResponse::Started => info!("{}: started a proxy", self.id),
-            PolicyResponse::Stopped => info!("{}: stopped a proxy", self.id),
-            PolicyResponse::UpdatedPolicy => info!("{}: updated policy", self.id),
-            PolicyResponse::RequestFailed => info!("{}: request failed", self.id),
-            PolicyResponse::ShuttingDown => {
-                info!("{}: received shutdown", self.id);
-                self.master.do_send(Disconnect(self.id));
-                ctx.stop()
+impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstance {
+    fn handle(&mut self, msg: Result<PolicyResponse, std::io::Error>, ctx: &mut Self::Context) {
+        if let Ok(msg) = msg {
+            match msg {
+                PolicyResponse::Started => info!("{}: started a proxy", self.id),
+                PolicyResponse::Stopped => info!("{}: stopped a proxy", self.id),
+                PolicyResponse::UpdatedPolicy => info!("{}: updated policy", self.id),
+                PolicyResponse::RequestFailed => info!("{}: request failed", self.id),
+                PolicyResponse::ShuttingDown => {
+                    info!("{}: received shutdown", self.id);
+                    self.master.do_send(Disconnect(self.id));
+                    ctx.stop()
+                }
+                PolicyResponse::Status { http, tcp } => {
+                    info!("{}:\n=== HTTP ===\n{}=== TCP ===\n{}", self.id, http, tcp)
+                }
             }
-            PolicyResponse::Status { http, tcp } => {
-                info!("{}:\n=== HTTP ===\n{}=== TCP ===\n{}", self.id, http, tcp)
-            }
+        } else {
+            log::warn!("response error: {}", msg.err().unwrap())
         }
     }
 }

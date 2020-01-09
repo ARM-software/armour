@@ -1,60 +1,42 @@
 /// policy language interpreter
 // NOTE: no optimization
 use super::expressions::{Block, Error, Expr};
-use super::externals::{Call, Disconnector, ExternalClients};
+use super::externals::{Call, ExternalActor};
 use super::headers::Headers;
 use super::lang::{Code, Program};
 use super::literals::{Connection, HttpRequest, HttpResponse, Literal, Method, Payload, VecSet};
-use super::parser::{As, Infix, Iter, Pat, Prefix};
-use futures::{
-    future,
-    stream::{self, Stream},
-    Future,
-};
+use super::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
+use actix::prelude::*;
+use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
-use trust_dns_resolver::AsyncResolver;
 
-#[derive(Default)]
 pub struct Env {
     internal: Code,
-    external: ExternalClients,
-    timeout: std::time::Duration,
+    external: Addr<ExternalActor>,
+}
+
+impl Default for Env {
+    fn default() -> Self {
+        Env::new(Arc::new(Program::default()))
+    }
 }
 
 impl Env {
-    pub fn new(
-        prog: Arc<Program>,
-    ) -> Box<dyn Future<Item = (Self, Vec<Disconnector>), Error = std::io::Error>> {
-        Box::new(ExternalClients::connect(prog.externals.clone()).and_then(
-            move |(external, disconnectors)| {
-                future::ok((
-                    Env {
-                        internal: prog.code.clone(),
-                        external,
-                        timeout: prog.timeout(),
-                    },
-                    disconnectors,
-                ))
-            },
-        ))
-    }
-    fn get(&self, name: &str) -> Option<&Expr> {
-        self.internal.0.get(name)
-    }
-    fn call(
-        &self,
-        external: &str,
-        method: &str,
-        args: Vec<Expr>,
-    ) -> Box<dyn Future<Item = Expr, Error = Error>> {
-        match Literal::literal_vector(args) {
-            Ok(args) => self
-                .external
-                .call(Call::new(external, method, args, self.timeout)),
-            Err(err) => Box::new(future::err(err)),
+    pub fn new(prog: Arc<Program>) -> Self {
+        Env {
+            internal: prog.code.clone(),
+            external: ExternalActor::new(prog).start(),
         }
+    }
+    fn get(&self, name: &str) -> Option<Expr> {
+        self.internal.0.get(name).cloned()
+    }
+}
+
+impl From<trust_dns_resolver::error::ResolveError> for Error {
+    fn from(err: trust_dns_resolver::error::ResolveError) -> Error {
+        err.to_string().into()
     }
 }
 
@@ -332,597 +314,398 @@ impl Expr {
             _ => self,
         }
     }
-    fn async_resolver() -> (
-        trust_dns_resolver::AsyncResolver,
-        Box<dyn Future<Item = (), Error = ()>>,
-    ) {
-        if let Ok((resolver, fut)) = AsyncResolver::from_system_conf() {
-            (resolver, Box::new(fut))
-        } else {
-            let (resolver, fut) =
-                AsyncResolver::new(ResolverConfig::default(), ResolverOpts::default());
-            (resolver, Box::new(fut))
-        }
-    }
-    fn eval(self, env: Arc<Env>) -> Box<dyn Future<Item = Expr, Error = self::Error>> {
-        match self {
-            Expr::Var(_) | Expr::BVar(_, _) => Box::new(future::err(Error::new("eval variable"))),
-            Expr::LitExpr(_) => Box::new(future::ok(self)),
-            Expr::Closure(_, _) => Box::new(future::err(Error::new("eval, closure"))),
-            Expr::ReturnExpr(e) => Box::new(
-                e.eval(env)
-                    .and_then(|res| future::ok(Expr::return_expr(res))),
-            ),
-            Expr::PrefixExpr(p, e) => Box::new(e.eval(env).and_then(move |res| match res {
-                r @ Expr::ReturnExpr(_) => future::ok(r),
-                Expr::LitExpr(l) => match l.eval_prefix(&p) {
-                    Some(r) => future::ok(Expr::LitExpr(r)),
-                    None => future::err(Error::new("eval prefix: type error")),
-                },
-                _ => future::err(Error::new("eval, prefix")),
-            })),
-            // short circuit for &&
-            Expr::InfixExpr(Infix::And, e1, e2) => {
-                Box::new(e1.eval(env.clone()).and_then(move |res1| match res1 {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(false)) => {
-                        future::Either::A(future::ok(r))
-                    }
-                    Expr::LitExpr(Literal::Bool(true)) => {
-                        future::Either::B(e2.eval(env).and_then(move |res2| match res2 {
-                            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(_)) => {
-                                future::ok(r)
-                            }
-                            _ => future::err(Error::new("eval, infix")),
-                        }))
-                    }
-                    _ => future::Either::A(future::err(Error::new("eval, infix"))),
-                }))
-            }
-            // short circuit for ||
-            Expr::InfixExpr(Infix::Or, e1, e2) => {
-                Box::new(e1.eval(env.clone()).and_then(|res1| match res1 {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(true)) => {
-                        future::Either::A(future::ok(r))
-                    }
-                    Expr::LitExpr(Literal::Bool(false)) => {
-                        future::Either::B(e2.eval(env).and_then(|res2| match res2 {
-                            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(_)) => {
-                                future::ok(r)
-                            }
-                            _ => future::err(Error::new("eval, infix")),
-                        }))
-                    }
-                    _ => future::Either::A(future::err(Error::new("eval, infix"))),
-                }))
-            }
-            Expr::InfixExpr(op, e1, e2) => {
-                Box::new(e1.eval(env.clone()).and_then(move |res1| match res1 {
-                    r @ Expr::ReturnExpr(_) => future::Either::A(future::ok(r)),
-                    Expr::LitExpr(l1) => {
-                        future::Either::B(e2.eval(env).and_then(move |res2| match res2 {
-                            r @ Expr::ReturnExpr(_) => future::ok(r),
-                            Expr::LitExpr(l2) => match l1.eval_infix(&op, &l2) {
-                                Some(r) => future::ok(Expr::LitExpr(r)),
-                                None => future::err(Error::new("eval, infix: type error")),
-                            },
-                            _ => future::err(Error::new("eval, infix: failed")),
-                        }))
-                    }
-                    _ => future::Either::A(future::err(Error::new("eval, infix: failed"))),
-                }))
-            }
-            Expr::BlockExpr(b, mut es) => {
-                if es.is_empty() {
-                    Box::new(future::ok(Expr::LitExpr(if b == Block::List {
-                        Literal::List(Vec::new())
+    fn perform_match(e: Expr, re: PolicyRegex) -> Option<(Expr, Option<BTreeMap<String, Expr>>)> {
+        match e {
+            Expr::ReturnExpr(_) => Some((e, None)),
+            Expr::LitExpr(Literal::Str(ref s)) => {
+                let names: Vec<&str> = re.capture_names().filter_map(|s| s).collect();
+                // if there are no bindings then do a simple "is_match", otherwise collect
+                // variable captures
+                if names.is_empty() {
+                    if re.is_match(s) {
+                        Some((e, Some(BTreeMap::new())))
                     } else {
-                        Literal::Unit
-                    })))
-                } else if b == Block::Block {
-                    let e = es.remove(0);
-                    Box::new(e.eval(env.clone()).and_then(move |res| {
-                        if res.is_return() || es.is_empty() {
-                            future::Either::A(future::ok(res))
-                        } else {
-                            future::Either::B(Expr::BlockExpr(b, es).eval(env))
-                        }
-                    }))
+                        Some((e, None))
+                    }
                 } else {
-                    Box::new(
-                        stream::futures_ordered(es.into_iter().map(|e| e.eval(env.clone())))
-                            .collect()
-                            .and_then(move |rs| match rs.iter().find(|r| r.is_return()) {
-                                Some(r) => future::ok(r.clone()),
-                                _ => match Literal::literal_vector(rs) {
-                                    Ok(lits) => future::ok(Expr::LitExpr(if b == Block::List {
-                                        Literal::List(lits)
-                                    } else {
-                                        Literal::Tuple(lits)
-                                    })),
-                                    Err(err) => future::err(err),
-                                },
-                            }),
-                    )
+                    match re.captures(s) {
+                        // matches
+                        Some(cap) => {
+                            let mut is_match = true;
+                            let mut captures: BTreeMap<String, Expr> = BTreeMap::new();
+                            for name in names {
+                                let match_str = cap.name(name).unwrap().as_str();
+                                let (s, a) = Pat::strip_as(name);
+                                captures.insert(
+                                    s,
+                                    match a {
+                                        As::I64 => match match_str.parse::<i64>() {
+                                            Ok(i) => Expr::from(i),
+                                            _ => {
+                                                is_match = false;
+                                                break;
+                                            }
+                                        },
+                                        As::Base64 => match base64::decode(match_str) {
+                                            Ok(bytes) => Expr::from(bytes.as_slice()),
+                                            _ => {
+                                                is_match = false;
+                                                break;
+                                            }
+                                        },
+                                        _ => Expr::from(match_str),
+                                    },
+                                );
+                            }
+                            if is_match {
+                                Some((e, Some(captures)))
+                            } else {
+                                Some((e, None))
+                            }
+                        }
+                        // not a match
+                        None => Some((e, None)),
+                    }
                 }
             }
-            Expr::Let(vs, e1, e2) => {
-                Box::new(e1.eval(env.clone()).and_then(move |res1| match res1 {
-                    r @ Expr::ReturnExpr(_) => Box::new(future::ok(r)),
+            _ => None,
+        }
+    }
+    #[allow(clippy::cognitive_complexity)]
+    fn eval(self, env: Arc<Env>) -> BoxFuture<'static, Result<Expr, self::Error>> {
+        async {
+            match self {
+                Expr::Var(_) | Expr::BVar(_, _) => Err(Error::new("eval variable")),
+                Expr::LitExpr(_) => Ok(self),
+                Expr::Closure(_, _) => Err(Error::new("eval, closure")),
+                Expr::ReturnExpr(e) => Ok(Expr::return_expr(e.eval(env).await?)),
+                Expr::PrefixExpr(p, e) => match e.eval(env).await? {
+                    r @ Expr::ReturnExpr(_) => Ok(r),
+                    Expr::LitExpr(l) => match l.eval_prefix(&p) {
+                        Some(r) => Ok(r.into()),
+                        None => Err(Error::new("eval prefix: type error")),
+                    },
+                    _ => Err(Error::new("eval, prefix")),
+                },
+                // short circuit for &&
+                Expr::InfixExpr(Infix::And, e1, e2) => match e1.eval(env.clone()).await? {
+                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(false)) => Ok(r),
+                    Expr::LitExpr(Literal::Bool(true)) => match e2.eval(env).await? {
+                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(_)) => Ok(r),
+                        _ => Err(Error::new("eval, infix")),
+                    },
+                    _ => Err(Error::new("eval, infix")),
+                },
+                // short circuit for ||
+                Expr::InfixExpr(Infix::Or, e1, e2) => match e1.eval(env.clone()).await? {
+                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(true)) => Ok(r),
+                    Expr::LitExpr(Literal::Bool(false)) => match e2.eval(env).await? {
+                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(_)) => Ok(r),
+                        _ => Err(Error::new("eval, infix")),
+                    },
+                    _ => Err(Error::new("eval, infix")),
+                },
+                Expr::InfixExpr(op, e1, e2) => match (e1.eval(env.clone()).await?, e2.eval(env.clone()).await?) {
+                    (r @ Expr::ReturnExpr(_), _) => Ok(r),
+                    (_, r @ Expr::ReturnExpr(_)) => Ok(r),
+                    (Expr::LitExpr(l1), Expr::LitExpr(l2)) => match l1.eval_infix(&op, &l2) {
+                        Some(r) => Ok(r.into()),
+                        None => Err(Error::new("eval, infix: type error")),
+                    },
+                    _ => Err(Error::new("eval, infix: failed")),
+                },
+                Expr::BlockExpr(b, mut es) => {
+                    if es.is_empty() {
+                        Ok(Expr::LitExpr(if b == Block::List { Literal::List(Vec::new()) } else { Literal::Unit }))
+                    } else if b == Block::Block {
+                        let e = es.remove(0);
+                        let res = e.eval(env.clone()).await?;
+                        if res.is_return() || es.is_empty() {
+                            Ok(res)
+                        } else {
+                            Expr::BlockExpr(b, es).eval(env).await
+                        }
+                    } else {
+                        // list or tuple
+                        let mut rs = Vec::new();
+                        for e in es.into_iter() {
+                            rs.push(e.eval(env.clone()).await?)
+                        }
+                        match rs.iter().find(|r| r.is_return()) {
+                            Some(r) => Ok(r.clone()),
+                            _ => match Literal::literal_vector(rs) {
+                                Ok(lits) => Ok((if b == Block::List { Literal::List(lits) } else { Literal::Tuple(lits) }).into()),
+                                Err(err) => Err(err),
+                            },
+                        }
+                    }
+                }
+                Expr::Let(vs, e1, e2) => match e1.eval(env.clone()).await? {
+                    r @ Expr::ReturnExpr(_) => Ok(r),
                     Expr::LitExpr(Literal::Tuple(lits)) => {
                         let lits_len = lits.len();
                         if 1 < lits_len && vs.len() == lits_len {
                             let mut e2a = *e2.clone();
-                            let mut apply_err = None;
                             for (v, lit) in vs.iter().zip(lits) {
                                 if v != "_" {
-                                    match e2a.clone().apply(&Expr::LitExpr(lit)) {
-                                        Ok(ea) => e2a = ea,
-                                        Err(err) => {
-                                            apply_err = Some(err);
-                                            break;
-                                        }
-                                    }
+                                    e2a = e2a.apply(&Expr::LitExpr(lit))?
                                 }
                             }
-                            match apply_err {
-                                Some(err) => Box::new(future::err(err)),
-                                None => e2a.eval(env),
-                            }
+                            e2a.eval(env).await
                         } else if vs.len() == 1 {
-                            match e2.apply(&Expr::LitExpr(Literal::Tuple(lits))) {
-                                Ok(e2a) => e2a.eval(env),
-                                Err(err) => Box::new(future::err(err)),
-                            }
+                            e2.apply(&Expr::LitExpr(Literal::Tuple(lits)))?.eval(env).await
                         } else {
-                            Box::new(future::err(Error::new(
-                                "eval, let-expression (tuple length mismatch)",
-                            )))
+                            Err(Error::new("eval, let-expression (tuple length mismatch)"))
                         }
                     }
                     l @ Expr::LitExpr(_) => {
                         if vs.len() == 1 {
-                            match e2.apply(&l) {
-                                Ok(e2a) => e2a.eval(env),
-                                Err(err) => Box::new(future::err(err)),
+                            e2.apply(&l)?.eval(env).await
+                        } else {
+                            Err(Error::new("eval, let-expression (literal not a tuple)"))
+                        }
+                    }
+                    _ => Err(Error::new("eval, let-expression")),
+                },
+                Expr::Iter(op, vs, e1, e2) => match e1.eval(env.clone()).await? {
+                    r @ Expr::ReturnExpr(_) => Ok(r),
+                    Expr::LitExpr(Literal::List(lits)) => {
+                        let mut res = Vec::new();
+                        for l in lits.iter() {
+                            match l {
+                                Literal::Tuple(ref ts) if vs.len() != 1 => {
+                                    if vs.len() == ts.len() {
+                                        let mut e = *e2.clone();
+                                        for (v, lit) in vs.iter().zip(ts) {
+                                            if v != "_" {
+                                                e = e.apply(&Expr::LitExpr(lit.clone()))?
+                                            }
+                                        }
+                                        res.push(e.eval(env.clone()).await?)
+                                    } else {
+                                        return Err(Error::new("eval, iter-expression (tuple length mismatch)"));
+                                    }
+                                }
+                                _ => {
+                                    if vs.len() == 1 {
+                                        let mut e = *e2.clone();
+                                        if vs[0] != "_" {
+                                            e = e.clone().apply(&Expr::LitExpr(l.clone()))?
+                                        }
+                                        res.push(e.eval(env.clone()).await?)
+                                    } else {
+                                        return Err(Error::new("eval, iter-expression (not a tuple list)"));
+                                    }
+                                }
+                            }
+                        }
+                        match res.iter().find(|r| r.is_return()) {
+                            Some(r) => Ok(r.clone()),
+                            None => match Literal::literal_vector(res) {
+                                Ok(iter_lits) => match op {
+                                    Iter::Map => Ok(Literal::List(iter_lits).into()),
+                                    Iter::ForEach => Ok(Expr::from(())),
+                                    Iter::Filter => {
+                                        let filtered_lits = lits
+                                            .into_iter()
+                                            .zip(iter_lits.into_iter())
+                                            .filter_map(|(l, b)| if b.is_true() { Some(l) } else { None })
+                                            .collect();
+                                        Ok(Literal::List(filtered_lits).into())
+                                    }
+                                    Iter::FilterMap => {
+                                        let filtered_lits = iter_lits.iter().filter_map(Literal::dest_some).collect();
+                                        Ok(Literal::List(filtered_lits).into())
+                                    }
+                                    Iter::All => Ok(iter_lits.iter().all(|l| l.is_true()).into()),
+                                    Iter::Any => Ok(iter_lits.iter().any(|l| l.is_true()).into()),
+                                },
+                                Err(err) => Err(err),
+                            },
+                        }
+                    }
+                    _ => Err(Error::new("eval, map-expression")),
+                },
+                Expr::IfExpr {
+                    cond,
+                    consequence,
+                    alternative,
+                } => match cond.eval(env.clone()).await? {
+                    r @ Expr::ReturnExpr(_) => Ok(r),
+                    Expr::LitExpr(Literal::Bool(true)) => consequence.eval(env).await,
+                    Expr::LitExpr(Literal::Bool(false)) => match alternative {
+                        Some(alt) => alt.eval(env).await,
+                        None => Ok(Expr::from(())),
+                    },
+                    _ => Err(Error::new("eval, if-expression")),
+                },
+                Expr::IfSomeMatchExpr {
+                    expr,
+                    consequence,
+                    alternative,
+                } => match expr.eval(env.clone()).await? {
+                    r @ Expr::ReturnExpr(_) => Ok(r),
+                    Expr::LitExpr(Literal::Tuple(t)) => {
+                        if t.len() == 1 {
+                            match consequence.apply(&Expr::LitExpr(t[0].clone())) {
+                                Ok(consequence_apply) => consequence_apply.eval(env).await,
+                                Err(e) => Err(e),
                             }
                         } else {
-                            Box::new(future::err(Error::new(
-                                "eval, let-expression (literal not a tuple)",
-                            )))
+                            match alternative {
+                                Some(alt) => alt.eval(env).await,
+                                None => Ok(Expr::from(())),
+                            }
                         }
                     }
-                    _ => Box::new(future::err(Error::new("eval, let-expression"))),
-                }))
-            }
-            Expr::Iter(op, vs, e1, e2) => Box::new(e1.eval(env.clone()).and_then(move |res1| {
-                match res1 {
-                    r @ Expr::ReturnExpr(_) => future::Either::A(future::ok(r)),
-                    Expr::LitExpr(Literal::List(lits)) => future::Either::B(
-                        stream::futures_ordered(lits.clone().into_iter().map(move |l| match l {
-                            Literal::Tuple(ref ts) if vs.len() != 1 => {
-                                if vs.len() == ts.len() {
-                                    let mut e = *e2.clone();
-                                    for (v, lit) in vs.iter().zip(ts) {
-                                        if v != "_" {
-                                            match e.clone().apply(&Expr::LitExpr(lit.clone())) {
-                                                Ok(ea) => e = ea,
-                                                Err(_) => {
-                                                    return future::Either::A(future::err(
-                                                        Error::new("eval, iter-expression"),
-                                                    ))
-                                                }
-                                            }
-                                        }
-                                    }
-                                    future::Either::B(e.eval(env.clone()))
-                                } else {
-                                    future::Either::A(future::err(Error::new(
-                                        "eval, iter-expression (tuple length mismatch)",
-                                    )))
-                                }
-                            }
-                            _ => {
-                                if vs.len() == 1 {
-                                    let mut e = *e2.clone();
-                                    if vs[0] != "_" {
-                                        match e.clone().apply(&Expr::LitExpr(l.clone())) {
-                                            Ok(ea) => e = ea,
-                                            Err(_) => {
-                                                return future::Either::A(future::err(Error::new(
-                                                    "eval, iter-expression",
-                                                )))
-                                            }
-                                        }
-                                    }
-                                    future::Either::B(e.eval(env.clone()))
-                                } else {
-                                    future::Either::A(future::err(Error::new(
-                                        "eval, iter-expression (not a tuple list)",
-                                    )))
-                                }
-                            }
-                        }))
-                        .collect()
-                        .and_then(move |res| {
-                            match res.iter().find(|r| r.is_return()) {
-                                Some(r) => future::ok(r.clone()),
-                                None => match Literal::literal_vector(res) {
-                                    Ok(iter_lits) => match op {
-                                        Iter::Map => {
-                                            future::ok(Expr::LitExpr(Literal::List(iter_lits)))
-                                        }
-                                        Iter::ForEach => future::ok(Expr::from(())),
-                                        Iter::Filter => {
-                                            let filtered_lits = lits
-                                                .into_iter()
-                                                .zip(iter_lits.into_iter())
-                                                .filter_map(|(l, b)| {
-                                                    if b.is_true() {
-                                                        Some(l)
-                                                    } else {
-                                                        None
-                                                    }
-                                                })
-                                                .collect();
-                                            future::ok(Expr::LitExpr(Literal::List(filtered_lits)))
-                                        }
-                                        Iter::FilterMap => {
-                                            let filtered_lits = iter_lits
-                                                .iter()
-                                                .filter_map(Literal::dest_some)
-                                                .collect();
-                                            future::ok(Expr::LitExpr(Literal::List(filtered_lits)))
-                                        }
-                                        Iter::All => future::ok(Expr::from(
-                                            iter_lits.iter().all(|l| l.is_true()),
-                                        )),
-                                        Iter::Any => future::ok(Expr::from(
-                                            iter_lits.iter().any(|l| l.is_true()),
-                                        )),
-                                    },
-                                    Err(err) => future::err(err),
-                                },
-                            }
-                        }),
-                    ),
-                    _ => future::Either::A(future::err(Error::new("eval, map-expression"))),
-                }
-            })),
-            Expr::IfExpr {
-                cond,
-                consequence,
-                alternative,
-            } => Box::new(cond.eval(env.clone()).and_then(|res1| match res1 {
-                r @ Expr::ReturnExpr(_) => future::Either::A(future::ok(r)),
-                Expr::LitExpr(Literal::Bool(b)) => {
-                    if b {
-                        future::Either::B(future::Either::B(consequence.eval(env).and_then(
-                            |res2| match res2 {
-                                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => future::ok(r),
-                                _ => future::err(Error::new("eval, if-expression")),
-                            },
-                        )))
-                    } else {
-                        future::Either::B(match alternative {
-                            None => future::Either::A(future::Either::A(future::ok(
-                                Expr::LitExpr(Literal::Unit),
-                            ))),
-                            Some(alt) => future::Either::A(future::Either::B(
-                                alt.eval(env).and_then(|res2| match res2 {
-                                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => future::ok(r),
-                                    _ => future::err(Error::new("eval, if-expression")),
-                                }),
-                            )),
-                        })
-                    }
-                }
-                _ => future::Either::A(future::err(Error::new("eval, if-expression"))),
-            })),
-            Expr::IfSomeMatchExpr {
-                expr,
-                consequence,
-                alternative,
-            } => Box::new(expr.eval(env.clone()).and_then(|res1| match res1 {
-                r @ Expr::ReturnExpr(_) => future::Either::A(future::ok(r)),
-                Expr::LitExpr(Literal::Tuple(t)) => {
-                    if t.len() == 1 {
-                        match consequence.apply(&Expr::LitExpr(t[0].clone())) {
-                            Ok(consequence_apply) => future::Either::B(future::Either::B(
-                                consequence_apply.eval(env).and_then(|res2| match res2 {
-                                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => future::ok(r),
-                                    _ => future::err(Error::new("eval, if-let-expression")),
-                                }),
-                            )),
-                            Err(e) => future::Either::A(future::err(e)),
+                    r => Err(Error::new(format!("eval, if-let-expression: {:#?}", r))),
+                },
+                Expr::IfMatchExpr {
+                    variables,
+                    matches,
+                    consequence,
+                    alternative,
+                } => {
+                    let mut rs = Vec::new();
+                    for (e, re) in matches.into_iter() {
+                        if let Some(r) = Expr::perform_match(e.eval(env.clone()).await?, re) {
+                            rs.push(r)
+                        } else {
+                            return Err(Error::new("eval, if-match-expression: type error"));
                         }
-                    } else {
-                        future::Either::B(match alternative {
-                            None => future::Either::A(future::Either::A(future::ok(
-                                Expr::LitExpr(Literal::Unit),
-                            ))),
-                            Some(alt) => future::Either::A(future::Either::B(
-                                alt.eval(env).and_then(|res2| match res2 {
-                                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => future::ok(r),
-                                    _ => future::err(Error::new("eval, if-let-expression")),
-                                }),
-                            )),
-                        })
                     }
-                }
-                _ => future::Either::A(future::err(Error::new(format!(
-                    "eval, if-let-expression: {:#?}",
-                    res1
-                )))),
-            })),
-            Expr::IfMatchExpr {
-                variables,
-                matches,
-                consequence,
-                alternative,
-            } => {
-                Box::new(
-                    stream::futures_ordered(matches.into_iter().map(|(e, re)| {
-                        e.eval(env.clone()).and_then(move |f| match f {
-                            Expr::ReturnExpr(_) => future::ok((f, None)),
-                            Expr::LitExpr(Literal::Str(ref s)) => {
-                                let names: Vec<&str> =
-                                    re.capture_names().filter_map(|s| s).collect();
-                                // if there are no bindings then do a simple "is_match", otherwise collect
-                                // variable captures
-                                if names.is_empty() {
-                                    if re.is_match(s) {
-                                        future::ok((f, Some(BTreeMap::new())))
-                                    } else {
-                                        future::ok((f, None))
-                                    }
-                                } else {
-                                    match re.captures(s) {
-                                        // matches
-                                        Some(cap) => {
-                                            let mut is_match = true;
-                                            let mut captures: BTreeMap<String, Expr> =
-                                                BTreeMap::new();
-                                            for name in names {
-                                                let match_str = cap.name(name).unwrap().as_str();
-                                                let (s, a) = Pat::strip_as(name);
-                                                captures.insert(
-                                                    s,
-                                                    match a {
-                                                        As::I64 => match match_str.parse::<i64>() {
-                                                            Ok(i) => Expr::from(i),
-                                                            _ => {
-                                                                is_match = false;
-                                                                break;
-                                                            }
-                                                        },
-                                                        As::Base64 => {
-                                                            match base64::decode(match_str) {
-                                                                Ok(bytes) => {
-                                                                    Expr::from(bytes.as_slice())
-                                                                }
-                                                                _ => {
-                                                                    is_match = false;
-                                                                    break;
-                                                                }
-                                                            }
-                                                        }
-                                                        _ => Expr::from(match_str),
-                                                    },
-                                                );
-                                            }
-                                            if is_match {
-                                                future::ok((f, Some(captures)))
-                                            } else {
-                                                future::ok((f, None))
-                                            }
-                                        }
-                                        // not a match
-                                        None => future::ok((f, None)),
-                                    }
-                                }
-                            }
-                            _ => future::err(Error::new("eval, if-match-expression: type error")),
-                        })
-                    }))
-                    .collect()
-                    .and_then(move |rs| {
-                        match rs.iter().find(|(r, _captures)| r.is_return()) {
-                            // early exit
-                            Some((r, _captures)) => {
-                                future::Either::A(future::Either::A(future::ok(r.clone())))
-                            }
-                            None => match rs.iter().find(|(_r, captures)| captures.is_none()) {
+                    match rs.iter().find(|(r, _captures)| r.is_return()) {
+                        // early exit
+                        Some((r, _captures)) => Ok(r.clone()),
+                        None => {
+                            if rs.iter().any(|(_r, captures)| captures.is_none()) {
                                 // failed match
-                                Some(_) => match alternative {
-                                    None => future::Either::A(future::Either::A(future::ok(
-                                        Expr::LitExpr(Literal::Unit),
-                                    ))),
-                                    Some(alt) => future::Either::A(future::Either::B(
-                                        alt.eval(env).and_then(|res1| match res1 {
-                                            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => {
-                                                future::ok(r)
-                                            }
-                                            _ => {
-                                                future::err(Error::new("eval, if-match-expression"))
-                                            }
-                                        }),
-                                    )),
-                                },
-                                // match
-                                _ => {
-                                    let mut all_captures: BTreeMap<String, Expr> = BTreeMap::new();
-                                    for (_r, captures) in rs {
-                                        if let Some(caps) = captures {
-                                            all_captures.extend(caps)
-                                        }
-                                    }
-                                    let mut c = *consequence;
-                                    let mut error_occured = false;
-                                    for v in variables {
-                                        match all_captures.get(&v) {
-                                            Some(e) => match c.clone().apply(e) {
-                                                Ok(ce) => c = ce,
-                                                Err(_) => {
-                                                    error_occured = true;
-                                                    break;
-                                                }
-                                            },
-                                            None => {
-                                                error_occured = true;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    future::Either::B(if error_occured {
-                                        future::Either::A(future::err(Error::new(
-                                            "eval, if-match-expression: missing bind",
-                                        )))
-                                    } else {
-                                        future::Either::B(c.eval(env).and_then(move |res1| {
-                                            match res1 {
-                                                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => {
-                                                    future::ok(r)
-                                                }
-                                                _ => future::err(Error::new(
-                                                    "eval, if-match-expression",
-                                                )),
-                                            }
-                                        }))
-                                    })
+                                match alternative {
+                                    None => Ok(Expr::from(())),
+                                    Some(alt) => match alt.eval(env).await? {
+                                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => Ok(r),
+                                        _ => Err(Error::new("eval, if-match-expression")),
+                                    },
                                 }
-                            },
-                        }
-                    }),
-                )
-            }
-            Expr::CallExpr {
-                function,
-                arguments,
-                is_async,
-            } => {
-                Box::new(
-                    stream::futures_ordered(arguments.into_iter().map(|e| e.eval(env.clone())))
-                        .collect()
-                        .and_then(move |args| match args.iter().find(|r| r.is_return()) {
-                            Some(r) => future::Either::A(future::ok(r.clone())),
-                            None => {
-                                // user defined function
-                                if let Some(e) = env.get(&function) {
-                                    let mut r = e.clone();
-                                    let mut error = None;
-                                    for a in args {
-                                        match r.clone().apply(&a) {
-                                            Ok(ra) => r = ra,
-                                            Err(err) => {
-                                                error = Some(err);
-                                                break;
-                                            }
-                                        }
+                            } else {
+                                // match
+                                let mut all_captures: BTreeMap<String, Expr> = BTreeMap::new();
+                                for (_r, captures) in rs {
+                                    if let Some(caps) = captures {
+                                        all_captures.extend(caps)
                                     }
-                                    match error {
-                                        Some(err) => future::Either::A(future::err(err)),
-                                        None => future::Either::B(future::Either::A(r.evaluate(env.clone()))),
-                                    }
-                                // builtin function
-                                } else if Headers::is_builtin(&function) {
-                                    match args.as_slice() {
-                                        &[] => match Literal::eval_call0(&function) {
-                                            Some(r) => future::Either::A(future::ok(Expr::LitExpr(r))),
-                                            None => future::Either::A(future::err(Error::new("eval, call(0): type error"))),
-                                        },
-                                        &[Expr::LitExpr(ref l)] => {
-                                            if function == "IpAddr::reverse_lookup" {
-                                                // needs to be evaluated with future (async resolver)
-                                                match l {
-                                                    Literal::IpAddr(ip) => {
-                                                        let (res, background_fut) = Expr::async_resolver();
-                                                        let fut = res.reverse_lookup(*ip);
-                                                        future::Either::B(future::Either::B(future::Either::A(
-                                                            background_fut.map_err(|()| Error::new("IpAddr::reverse_lookup: no background")).and_then(|()| {
-                                                                fut.and_then(|res| {
-                                                                    future::ok(Expr::LitExpr(
-                                                                        Literal::List(res.iter().map(|s| Literal::Str(s.to_utf8())).collect()).some(),
-                                                                    ))
-                                                                })
-                                                                .or_else(|_| future::ok(Expr::LitExpr(Literal::none())))
-                                                            }),
-                                                        )))
-                                                    }
-                                                    x => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, x)))),
-                                                }
-                                            } else if function == "IpAddr::lookup" {
-                                                // needs to be evaluated with future (async resolver)
-                                                match l {
-                                                    Literal::Str(ref name) => {
-                                                        let (res, background_fut) = Expr::async_resolver();
-                                                        let fut = res.ipv4_lookup(name.clone());
-                                                        future::Either::B(future::Either::B(future::Either::B(
-                                                            background_fut.map_err(|()| Error::new("IpAddr::lookup: no background")).and_then(|()| {
-                                                                fut.and_then(|res| {
-                                                                    future::ok(Expr::LitExpr(
-                                                                        Literal::List(
-                                                                            res.iter().map(|ip| Literal::IpAddr(std::net::IpAddr::V4(*ip))).collect(),
-                                                                        )
-                                                                        .some(),
-                                                                    ))
-                                                                })
-                                                                .or_else(|_| future::ok(Expr::LitExpr(Literal::none())))
-                                                            }),
-                                                        )))
-                                                    }
-                                                    x => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, x)))),
-                                                }
-                                            } else {
-                                                match l.eval_call1(&function) {
-                                                    Some(r) => future::Either::A(future::ok(Expr::LitExpr(r))),
-                                                    None => future::Either::A(future::err(Error::new("eval, call(1): type error"))),
-                                                }
-                                            }
-                                        }
-                                        &[Expr::LitExpr(ref l1), Expr::LitExpr(ref l2)] => match l1.eval_call2(&function, l2) {
-                                            Some(r) => future::Either::A(future::ok(Expr::LitExpr(r))),
-                                            None => future::Either::A(future::err(Error::new("eval, call(2): type error"))),
-                                        },
-                                        &[Expr::LitExpr(ref l1), Expr::LitExpr(ref l2), Expr::LitExpr(ref l3)] => match l1.eval_call3(&function, l2, l3) {
-                                            Some(r) => future::Either::A(future::ok(Expr::LitExpr(r))),
-                                            None => future::Either::A(future::err(Error::new("eval, call(3): type error"))),
-                                        },
-                                        &[Expr::LitExpr(ref l1), Expr::LitExpr(ref l2), Expr::LitExpr(ref l3), Expr::LitExpr(ref l4)] => {
-                                            match l1.eval_call4(&function, l2, l3, l4) {
-                                                Some(r) => future::Either::A(future::ok(Expr::LitExpr(r))),
-                                                None => future::Either::A(future::err(Error::new("eval, call(4): type error"))),
-                                            }
-                                        }
-                                        x => future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, x)))),
-                                    }
-                                } else {
-                                    // external function (RPC)
-                                    if let Some((external, method)) = Headers::split(&function) {
-                                        if is_async {
-                                            actix::spawn(env.call(external, method, args).then(move |res| {
-                                                if let Err(e) = res {
-                                                    log::warn!(r#"async call to "{}": {}"#, function, e.to_string())
-                                                };
-                                                future::ok(())
-                                            }));
-                                            future::Either::A(future::ok(Expr::from(())))
-                                        } else {
-                                            future::Either::B(future::Either::A(env.call(external, method, args)))
-                                        }
+                                }
+                                let mut c = *consequence;
+                                for v in variables {
+                                    if let Some(e) = all_captures.get(&v) {
+                                        c = c.apply(e)?
                                     } else {
-                                        future::Either::A(future::err(Error::new(&format!("eval, call: {}: {:?}", function, args))))
+                                        return Err(Error::new("eval, if-match-expression: missing bind"));
                                     }
+                                }
+                                match c.eval(env).await? {
+                                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => Ok(r),
+                                    _ => Err(Error::new("eval, if-match-expression")),
                                 }
                             }
-                        }),
-                )
+                        }
+                    }
+                }
+                Expr::CallExpr { function, arguments, is_async } => {
+                    let mut args = Vec::new();
+                    for e in arguments.into_iter() {
+                        args.push(e.eval(env.clone()).await?)
+                    }
+                    match args.iter().find(|r| r.is_return()) {
+                        Some(r) => Ok(r.clone()),
+                        None => {
+                            if let Some(mut r) = env.get(&function) {
+                                // user defined function
+                                for a in args {
+                                    r = r.apply(&a)?
+                                }
+                                r.evaluate(env.clone()).await
+                            } else if Headers::is_builtin(&function) {
+                                // builtin function
+                                match args.as_slice() {
+                                    [] => match Literal::eval_call0(&function) {
+                                        Some(r) => Ok(r.into()),
+                                        None => Err(Error::new("eval, call(0): type error")),
+                                    },
+                                    [Expr::LitExpr(l1)] => match function.as_str() {
+                                        // reverse lookup can be slow
+                                        "IpAddr::reverse_lookup" => match l1 {
+                                            Literal::IpAddr(ip) => {
+                                                let (resolver, fut) = trust_dns_resolver::AsyncResolver::from_system_conf()?;
+                                                actix::spawn(fut);
+                                                if let Ok(res) = resolver.reverse_lookup(*ip).await {
+                                                    Ok(Literal::List(res.iter().map(|s| Literal::Str(s.to_utf8())).collect()).some().into())
+                                                } else {
+                                                    Ok(Literal::none().into())
+                                                }
+                                            }
+                                            x => Err(Error::new(format!("eval, call: {}: {:?}", function, x))),
+                                        },
+                                        // lookup can be very slow
+                                        "IpAddr::lookup" => match l1 {
+                                            Literal::Str(name) => {
+                                                let (resolver, fut) = trust_dns_resolver::AsyncResolver::from_system_conf()?;
+                                                actix::spawn(fut);
+                                                if let Ok(res) = resolver.ipv4_lookup(name.as_str()).await {
+                                                    Ok(Literal::List(res.iter().map(|ip| Literal::IpAddr(std::net::IpAddr::V4(*ip))).collect())
+                                                        .some()
+                                                        .into())
+                                                } else {
+                                                    Ok(Literal::none().into())
+                                                }
+                                            }
+                                            x => Err(Error::new(format!("eval, call: {}: {:?}", function, x))),
+                                        },
+                                        _ => match l1.eval_call1(&function) {
+                                            Some(r) => Ok(r.into()),
+                                            None => Err(Error::new("eval, call(1): type error")),
+                                        },
+                                    },
+                                    [Expr::LitExpr(l1), Expr::LitExpr(l2)] => match l1.eval_call2(&function, l2) {
+                                        Some(r) => Ok(r.into()),
+                                        None => Err(Error::new("eval, call(2): type error")),
+                                    },
+                                    [Expr::LitExpr(l1), Expr::LitExpr(l2), Expr::LitExpr(l3)] => match l1.eval_call3(&function, l2, l3) {
+                                        Some(r) => Ok(r.into()),
+                                        None => Err(Error::new("eval, call(3): type error")),
+                                    },
+                                    [Expr::LitExpr(l1), Expr::LitExpr(l2), Expr::LitExpr(l3), Expr::LitExpr(l4)] => {
+                                        match l1.eval_call4(&function, l2, l3, l4) {
+                                            Some(r) => Ok(r.into()),
+                                            None => Err(Error::new("eval, call(4): type error")),
+                                        }
+                                    }
+                                    x => Err(Error::new(format!("eval, call: {}: {:?}", function, x))),
+                                }
+                            } else if let Some((external, method)) = Headers::split(&function) {
+                                let args = Literal::literal_vector(args)?;
+                                // external function (RPC)
+                                if is_async {
+                                    let call = Call::new(external, method, args);
+                                    Arbiter::spawn(env.external.send(call).then(|_| async {}));
+                                    Ok(Expr::from(()))
+                                } else {
+                                    env.external
+                                        .send(Call::new(external, method, args))
+                                        .await
+                                        .map_err(|_| Error::from("capnp error".to_string()))?
+                                }
+                            } else {
+                                Err(Error::new(format!("eval, call: {}: {:?}", function, args)))
+                            }
+                        }
+                    }
+                }
             }
         }
+        .boxed()
     }
-    pub fn evaluate(self, env: Arc<Env>) -> Box<dyn Future<Item = Expr, Error = self::Error>> {
-        Box::new(
-            self.eval(env)
-                .and_then(|e| Box::new(future::ok(e.strip_return()))),
-        )
+    pub async fn evaluate(self, env: Arc<Env>) -> Result<Expr, self::Error> {
+        Ok(self.eval(env).await?.strip_return())
     }
 }

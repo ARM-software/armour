@@ -457,12 +457,12 @@ named!(not_escaped<Span, Span>,
 named!(lex_string<Span, LocToken>,
     do_parse!(
         b: alt!(tag!("b\"") | tag!("\"")) >>
-        t: escaped!(call!(not_escaped), '\\', one_of!("\\\"")) >>
+        t: opt!(escaped!(call!(not_escaped), '\\', one_of!("\\\""))) >>
         tag!("\"") >>
         (LocToken::new(
-            t,
+            b,
             {
-                let s = t.to_string().replace("\\\"", "\"").replace("\\\\", "\\");
+                let s = t.map(|s| s.to_string().replace("\\\"", "\"").replace("\\\\", "\\")).unwrap_or_default();
                 if b.to_string().starts_with('b') {
                     Token::DataLiteral(s.as_bytes().to_vec())
                 } else {

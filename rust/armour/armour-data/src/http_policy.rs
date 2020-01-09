@@ -2,8 +2,7 @@
 use super::policy::{Policy, PolicyActor, ID};
 use actix::prelude::*;
 use armour_data_interface::{codec, policy};
-use armour_policy::{expressions, externals::Disconnector, interpret::Env, lang, literals};
-use futures::Future;
+use armour_policy::{expressions, interpret::Env, lang, literals};
 use std::sync::Arc;
 
 /// Information about REST policies
@@ -41,27 +40,21 @@ impl Default for PolicyStatus {
 
 pub struct RestPolicy {
     program: Arc<lang::Program>,
-    proxy: Option<(Arc<Env>, u16)>,
+    env: Arc<Env>,
+    proxy: Option<(actix_web::dev::Server, u16)>,
     status: PolicyStatus,
 }
 
 impl Policy<actix_web::dev::Server> for RestPolicy {
-    fn start(&mut self, env: Env, port: u16, addr: Addr<PolicyActor>) -> Option<Disconnector> {
-        match super::http_proxy::start_proxy(addr, port) {
-            Ok(server) => {
-                self.proxy = Some((Arc::new(env), port));
-                Some(Box::new(futures::lazy(move || {
-                    info!("stopping HTTP server");
-                    server.stop(true)
-                })))
-            }
-            Err(err) => {
-                warn!("failed to start REST proxy on port {}: {}", port, err);
-                None
-            }
-        }
+    fn start(&mut self, server: actix_web::dev::Server, port: u16) {
+        self.proxy = Some((server, port))
     }
+    #[allow(unused_must_use)]
     fn stop(&mut self) {
+        if let Some((server, port)) = &self.proxy {
+            info!("stopping HTTP proxy on port {}", port);
+            server.stop(true);
+        };
         self.proxy = None
     }
     fn set_debug(&mut self, b: bool) {
@@ -70,6 +63,7 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
     fn set_policy(&mut self, p: lang::Program) {
         self.status.update_for_policy(&p);
         self.program = Arc::new(p);
+        self.env = Arc::new(Env::new(self.program.clone()))
     }
     fn port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|p| p.1)
@@ -78,7 +72,7 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
         self.program.clone()
     }
     fn env(&self) -> Arc<Env> {
-        self.proxy.as_ref().map(|p| p.0.clone()).unwrap_or_default()
+        self.env.clone()
     }
     fn debug(&self) -> bool {
         self.status.debug
@@ -94,8 +88,10 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
 
 impl Default for RestPolicy {
     fn default() -> Self {
+        let program = Arc::new(lang::Program::default());
         RestPolicy {
-            program: Arc::new(lang::Program::default()),
+            program: program.clone(),
+            env: Arc::new(Env::new(program)),
             proxy: None,
             status: PolicyStatus::default(),
         }
@@ -147,15 +143,13 @@ pub enum RestFn {
 }
 
 /// Request evaluation of a (REST) policy function
+#[derive(Message)]
+#[rtype(result = "Result<bool, expressions::Error>")]
 pub struct EvalRestFn(pub RestFn, pub Vec<expressions::Expr>);
-
-impl Message for EvalRestFn {
-    type Result = Result<bool, expressions::Error>;
-}
 
 // handle requests to evaluate the Armour policy
 impl Handler<EvalRestFn> for PolicyActor {
-    type Result = Box<dyn Future<Item = bool, Error = expressions::Error>>;
+    type Result = ResponseFuture<Result<bool, expressions::Error>>;
 
     fn handle(&mut self, msg: EvalRestFn, _ctx: &mut Context<Self>) -> Self::Result {
         let function = match msg.0 {
