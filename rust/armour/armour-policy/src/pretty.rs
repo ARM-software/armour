@@ -5,24 +5,22 @@ use super::literals::Literal;
 use super::parser::{As, Assoc, Infix, Pat, PolicyRegex, Precedence};
 use super::types::Typ;
 use pretty::termcolor::{Color, ColorChoice, ColorSpec, StandardStream};
-use pretty::{BoxDoc, Doc};
+use pretty::RcDoc;
 use std::fmt;
 
-fn bracket<'a>(
-    doc: Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec>,
-) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
-    Doc::text("(").append(doc.nest(1)).append(")")
+fn bracket(doc: RcDoc<'_, ColorSpec>) -> RcDoc<'_, ColorSpec> {
+    RcDoc::text("(").append(doc.nest(1)).append(")")
 }
 
 impl Expr {
-    fn vec_str_to_doc<'a, 'b>(l: &'b [String]) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
+    fn vec_str_to_doc<'a, 'b>(l: &'b [String]) -> RcDoc<'a, ColorSpec> {
         if l.len() == 1 {
-            Doc::as_string(l.get(0).unwrap())
+            RcDoc::as_string(l.get(0).unwrap())
         } else {
             bracket(
-                Doc::intersperse(
-                    l.iter().map(Doc::as_string),
-                    Doc::text(",").append(Doc::space()),
+                RcDoc::intersperse(
+                    l.iter().map(RcDoc::as_string),
+                    RcDoc::text(",").append(RcDoc::space()),
                 )
                 .group(),
             )
@@ -54,7 +52,7 @@ impl Expr {
             _ => false,
         }
     }
-    fn key<'a, 'b>(data: &'a str) -> Doc<'b, BoxDoc<'b, ColorSpec>, ColorSpec> {
+    fn key<'a, 'b>(data: &'a str) -> RcDoc<'b, ColorSpec> {
         enum Class {
             Keyword,
             Control,
@@ -76,16 +74,15 @@ impl Expr {
         };
         match class {
             Class::Keyword => {
-                Doc::as_string(data).annotate(ColorSpec::new().set_fg(Some(Color::Cyan)).clone())
+                RcDoc::as_string(data).annotate(ColorSpec::new().set_fg(Some(Color::Cyan)).clone())
             }
-            Class::Control => {
-                Doc::as_string(data).annotate(ColorSpec::new().set_fg(Some(Color::Magenta)).clone())
-            }
-            Class::Other => Doc::as_string(data),
+            Class::Control => RcDoc::as_string(data)
+                .annotate(ColorSpec::new().set_fg(Some(Color::Magenta)).clone()),
+            Class::Other => RcDoc::as_string(data),
         }
     }
-    fn method<'a, 'b>(name: &'a str) -> Doc<'b, BoxDoc<'b, ColorSpec>, ColorSpec> {
-        Doc::as_string(name).annotate(ColorSpec::new().set_fg(Some(Color::Yellow)).clone())
+    fn method<'a, 'b>(name: &'a str) -> RcDoc<'b, ColorSpec> {
+        RcDoc::as_string(name).annotate(ColorSpec::new().set_fg(Some(Color::Yellow)).clone())
     }
     fn precedence(&self) -> (Precedence, Assoc) {
         if let Expr::InfixExpr(op, _, _) = self {
@@ -94,33 +91,33 @@ impl Expr {
             (Precedence::PDot, Assoc::Left)
         }
     }
-    pub fn to_doc<'a>(&self) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
+    pub fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         match self {
-            Expr::Var(id) => Doc::as_string(id.0.clone()),
-            Expr::BVar(id, _) => Doc::as_string(id.0.clone()),
+            Expr::Var(id) => RcDoc::as_string(id.0.clone()),
+            Expr::BVar(id, _) => RcDoc::as_string(id.0.clone()),
             Expr::LitExpr(lit) => lit.to_doc(),
             Expr::Let(vs, e, b) => Expr::key("let")
                 .append(
-                    Doc::space()
+                    RcDoc::space()
                         .append(Expr::vec_str_to_doc(&vs))
                         .append(" =")
                         .nest(2),
                 )
-                .append(Doc::space().append(e.to_doc()).nest(4))
-                .append(Doc::text(";"))
-                .append(Doc::newline())
+                .append(RcDoc::space().append(e.to_doc()).nest(4))
+                .append(RcDoc::text(";"))
+                .append(RcDoc::line())
                 .append(b.closure_body().to_doc())
                 .group(),
-            Expr::Closure(v, e) => Doc::text("\\")
-                .append(Doc::text(v.0.clone()))
-                .append(Doc::text("."))
-                .append(Doc::space().append(e.to_doc()).nest(2))
+            Expr::Closure(v, e) => RcDoc::text("\\")
+                .append(RcDoc::text(v.0.clone()))
+                .append(RcDoc::text("."))
+                .append(RcDoc::space().append(e.to_doc()).nest(2))
                 .group(),
             Expr::ReturnExpr(e) => Expr::key("return")
-                .append(Doc::space())
+                .append(RcDoc::space())
                 .append(e.to_doc())
                 .group(),
-            Expr::PrefixExpr(p, e) => Doc::as_string(p).append(e.to_doc()).group(),
+            Expr::PrefixExpr(p, e) => RcDoc::as_string(p).append(e.to_doc()).group(),
             Expr::InfixExpr(op, l, r) => {
                 let left = l.precedence();
                 let right = r.precedence();
@@ -135,46 +132,46 @@ impl Expr {
                 } else {
                     r.to_doc()
                 };
-                left.append(Doc::space())
-                    .append(Doc::as_string(op))
-                    .append(Doc::space())
+                left.append(RcDoc::space())
+                    .append(RcDoc::as_string(op))
+                    .append(RcDoc::space())
                     .append(right)
                     .group()
             }
-            Expr::Iter(op, vs, e, b) => Doc::as_string(op)
+            Expr::Iter(op, vs, e, b) => RcDoc::as_string(op)
                 .annotate(ColorSpec::new().set_fg(Some(Color::Cyan)).clone())
                 .append(
-                    Doc::space()
+                    RcDoc::space()
                         .append(Expr::vec_str_to_doc(&vs))
-                        .append(Doc::space())
+                        .append(RcDoc::space())
                         .append(Expr::key("in"))
                         .nest(2),
                 )
-                .append(Doc::space().append(e.to_doc()).nest(4))
-                .append(Doc::space())
+                .append(RcDoc::space().append(e.to_doc()).nest(4))
+                .append(RcDoc::space())
                 .append("{")
-                .append(Doc::newline().append(b.closure_body().to_doc()).nest(2))
-                .append(Doc::newline())
+                .append(RcDoc::line().append(b.closure_body().to_doc()).nest(2))
+                .append(RcDoc::line())
                 .append("}")
                 .group(),
-            Expr::BlockExpr(Block::Block, es) => Doc::intersperse(
+            Expr::BlockExpr(Block::Block, es) => RcDoc::intersperse(
                 es.iter().map(|e| e.to_doc()),
-                Doc::text(";").append(Doc::newline()),
+                RcDoc::text(";").append(RcDoc::line()),
             ),
-            Expr::BlockExpr(Block::List, es) => Doc::text("[")
+            Expr::BlockExpr(Block::List, es) => RcDoc::text("[")
                 .append(
-                    Doc::intersperse(
+                    RcDoc::intersperse(
                         es.iter().map(|e| e.to_doc()),
-                        Doc::text(",").append(Doc::space()),
+                        RcDoc::text(",").append(RcDoc::space()),
                     )
                     .nest(1)
                     .group(),
                 )
                 .append("]"),
             Expr::BlockExpr(Block::Tuple, es) => bracket(
-                Doc::intersperse(
+                RcDoc::intersperse(
                     es.iter().map(|e| e.to_doc()),
-                    Doc::text(",").append(Doc::space()),
+                    RcDoc::text(",").append(RcDoc::space()),
                 )
                 .group(),
             ),
@@ -184,24 +181,24 @@ impl Expr {
                 alternative,
             } => {
                 let doc = Expr::key("if")
-                    .append(Doc::space())
+                    .append(RcDoc::space())
                     .append(cond.to_doc())
-                    .append(Doc::space())
+                    .append(RcDoc::space())
                     .append("{")
-                    .append(Doc::newline().append(consequence.to_doc()).nest(2))
-                    .append(Doc::newline())
+                    .append(RcDoc::line().append(consequence.to_doc()).nest(2))
+                    .append(RcDoc::line())
                     .append("}");
                 if let Some(alt) = alternative {
                     let doc = doc
-                        .append(Doc::space())
+                        .append(RcDoc::space())
                         .append(Expr::key("else"))
                         .append(" ");
                     if alt.is_if() {
                         doc.append(alt.to_doc()).group()
                     } else {
                         doc.append("{")
-                            .append(Doc::newline().append(alt.to_doc()).nest(2))
-                            .append(Doc::newline())
+                            .append(RcDoc::line().append(alt.to_doc()).nest(2))
+                            .append(RcDoc::line())
                             .append("}")
                             .group()
                     }
@@ -218,30 +215,30 @@ impl Expr {
                     .append(" ")
                     .append(Expr::key("let"))
                     .append(" Some(")
-                    .append(Doc::as_string(consequence.closure_var().unwrap()))
-                    .append(Doc::text(") ="))
-                    .append(Doc::space())
+                    .append(RcDoc::as_string(consequence.closure_var().unwrap()))
+                    .append(RcDoc::text(") ="))
+                    .append(RcDoc::space())
                     .append(expr.to_doc())
-                    .append(Doc::space())
+                    .append(RcDoc::space())
                     .append("{")
                     .append(
-                        Doc::newline()
+                        RcDoc::line()
                             .append(consequence.closure_body().to_doc())
                             .nest(2),
                     )
-                    .append(Doc::newline())
+                    .append(RcDoc::line())
                     .append("}");
                 if let Some(alt) = alternative {
                     let doc = doc
-                        .append(Doc::space())
+                        .append(RcDoc::space())
                         .append(Expr::key("else"))
                         .append(" ");
                     if alt.is_if() {
                         doc.append(alt.to_doc()).group()
                     } else {
                         doc.append("{")
-                            .append(Doc::newline().append(alt.to_doc()).nest(2))
-                            .append(Doc::newline())
+                            .append(RcDoc::line().append(alt.to_doc()).nest(2))
+                            .append(RcDoc::line())
                             .append("}")
                             .group()
                     }
@@ -257,39 +254,39 @@ impl Expr {
             } => {
                 let doc = Expr::key("if")
                     .append(
-                        Doc::space()
-                            .append(Doc::intersperse(
+                        RcDoc::space()
+                            .append(RcDoc::intersperse(
                                 matches.iter().map(|(e, re)| {
                                     e.to_doc()
-                                        .append(Doc::space())
+                                        .append(RcDoc::space())
                                         .append(Expr::key("matches"))
-                                        .append(Doc::space())
+                                        .append(RcDoc::space())
                                         .append(re.to_doc())
                                 }),
-                                Doc::space().append("&&").append(Doc::space()),
+                                RcDoc::space().append("&&").append(RcDoc::space()),
                             ))
                             .nest(2),
                     )
-                    .append(Doc::space())
+                    .append(RcDoc::space())
                     .append("{")
                     .append(
-                        Doc::newline()
+                        RcDoc::line()
                             .append(consequence.closure_body().to_doc())
                             .nest(2),
                     )
-                    .append(Doc::newline())
+                    .append(RcDoc::line())
                     .append("}");
                 if let Some(alt) = alternative {
                     let doc = doc
-                        .append(Doc::space())
+                        .append(RcDoc::space())
                         .append(Expr::key("else"))
                         .append(" ");
                     if alt.is_if() {
                         doc.append(alt.to_doc()).group()
                     } else {
                         doc.append("{")
-                            .append(Doc::newline().append(alt.to_doc()).nest(2))
-                            .append(Doc::newline())
+                            .append(RcDoc::line().append(alt.to_doc()).nest(2))
+                            .append(RcDoc::line())
                             .append("}")
                             .group()
                     }
@@ -303,9 +300,9 @@ impl Expr {
                 is_async,
             } => {
                 let doc = if *is_async {
-                    Expr::key("async").append(Doc::space())
+                    Expr::key("async").append(RcDoc::space())
                 } else {
-                    Doc::nil()
+                    RcDoc::nil()
                 };
                 if let Some(method) = Headers::method(&function) {
                     let mut args = arguments.iter();
@@ -313,26 +310,26 @@ impl Expr {
                         .append(".")
                         .append(Expr::method(method))
                         .append(bracket(
-                            Doc::intersperse(
+                            RcDoc::intersperse(
                                 args.map(|e| e.to_doc()),
-                                Doc::text(",").append(Doc::space()),
+                                RcDoc::text(",").append(RcDoc::space()),
                             )
                             .group(),
                         ))
                 } else {
                     let f = if function == "option::Some" {
-                        Doc::text("Some")
+                        RcDoc::text("Some")
                     } else if let Some((module, name)) = Headers::split(&function) {
-                        Doc::as_string(module)
+                        RcDoc::as_string(module)
                             .append("::")
                             .append(Expr::method(name))
                     } else {
                         Expr::method(&function)
                     };
                     doc.append(f).append(bracket(
-                        Doc::intersperse(
+                        RcDoc::intersperse(
                             arguments.iter().map(|e| e.to_doc()),
-                            Doc::text(",").append(Doc::space()),
+                            RcDoc::text(",").append(RcDoc::space()),
                         )
                         .group(),
                     ))
@@ -397,7 +394,7 @@ impl Pat {
             _ => false,
         }
     }
-    fn postfix<'a>(&self, s: &'static str) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
+    fn postfix<'a>(&self, s: &'static str) -> RcDoc<'a, ColorSpec> {
         (if self.is_alt_or_seq() {
             bracket(self.to_doc())
         } else {
@@ -405,21 +402,23 @@ impl Pat {
         })
         .append(s)
     }
-    fn to_doc<'a>(&self) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
+    fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         match self {
-            Pat::Any => Doc::text("."),
-            Pat::Lit(s) => Doc::text("\"")
-                .append(Doc::as_string(s))
+            Pat::Any => RcDoc::text("."),
+            Pat::Lit(s) => RcDoc::text("\"")
+                .append(RcDoc::as_string(s))
                 .append("\"")
                 .annotate(ColorSpec::new().set_fg(Some(Color::Green)).clone()),
-            Pat::Class(s) => Doc::as_string(format!(":{}:", s))
+            Pat::Class(s) => RcDoc::as_string(format!(":{}:", s))
                 .annotate(ColorSpec::new().set_fg(Some(Color::Green)).clone()),
-            Pat::Alt(ps) => Doc::intersperse(
+            Pat::Alt(ps) => RcDoc::intersperse(
                 ps.iter().map(|p| p.to_doc()),
-                Doc::space().append(Doc::text("|")).append(Doc::space()),
+                RcDoc::space()
+                    .append(RcDoc::text("|"))
+                    .append(RcDoc::space()),
             )
             .group(),
-            Pat::Seq(ps) => Doc::intersperse(
+            Pat::Seq(ps) => RcDoc::intersperse(
                 ps.iter().map(|p| {
                     if p.is_alt() {
                         bracket(p.to_doc())
@@ -427,19 +426,19 @@ impl Pat {
                         p.to_doc()
                     }
                 }),
-                Doc::space(),
+                RcDoc::space(),
             )
             .group(),
-            Pat::As(id, As::Str) => Doc::text("[")
-                .append(Doc::as_string(id.0.clone()))
+            Pat::As(id, As::Str) => RcDoc::text("[")
+                .append(RcDoc::as_string(id.0.clone()))
                 .append("]"),
-            Pat::As(id, As::I64) => Doc::text("[")
-                .append(Doc::as_string(id.0.clone()))
+            Pat::As(id, As::I64) => RcDoc::text("[")
+                .append(RcDoc::as_string(id.0.clone()))
                 .append(" ")
                 .append(Expr::key("as"))
                 .append(" i64]"),
-            Pat::As(id, As::Base64) => Doc::text("[")
-                .append(Doc::as_string(id.0.clone()))
+            Pat::As(id, As::Base64) => RcDoc::text("[")
+                .append(RcDoc::as_string(id.0.clone()))
                 .append(" ")
                 .append(Expr::key("as"))
                 .append(" base64]"),
@@ -453,7 +452,7 @@ impl Pat {
 }
 
 impl PolicyRegex {
-    fn to_doc<'a>(&self) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
+    fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         self.0.to_doc()
     }
     fn to_pretty(&self, width: usize) -> String {
@@ -470,13 +469,13 @@ impl fmt::Display for PolicyRegex {
 }
 
 impl Literal {
-    fn literal<'a, 'b>(&'a self) -> Doc<'b, BoxDoc<'b, ColorSpec>, ColorSpec> {
-        Doc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Green)).clone())
+    fn literal<'a, 'b>(&'a self) -> RcDoc<'b, ColorSpec> {
+        RcDoc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Green)).clone())
     }
-    fn non_parse_literal<'a, 'b>(&'a self) -> Doc<'b, BoxDoc<'b, ColorSpec>, ColorSpec> {
-        Doc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Blue)).clone())
+    fn non_parse_literal<'a, 'b>(&'a self) -> RcDoc<'b, ColorSpec> {
+        RcDoc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Blue)).clone())
     }
-    fn to_doc<'a>(&self) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
+    fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         match self {
             Literal::Bool(b) => Expr::key(&b.to_string()),
             Literal::Data(d) => {
@@ -486,25 +485,25 @@ impl Literal {
                     self.non_parse_literal()
                 }
             }
-            Literal::Regex(r) => Doc::text("Regex(").append(r.to_doc()).append(")"),
-            Literal::Unit => Doc::text("()"),
-            Literal::List(lits) => Doc::text("[")
+            Literal::Regex(r) => RcDoc::text("Regex(").append(r.to_doc()).append(")"),
+            Literal::Unit => RcDoc::text("()"),
+            Literal::List(lits) => RcDoc::text("[")
                 .append(
-                    Doc::intersperse(
+                    RcDoc::intersperse(
                         lits.iter().map(|l| l.to_doc()),
-                        Doc::text(",").append(Doc::space()),
+                        RcDoc::text(",").append(RcDoc::space()),
                     )
                     .nest(1)
                     .group(),
                 )
                 .append("]"),
             Literal::Tuple(lits) => match lits.len() {
-                0 => Doc::text("None"),
-                1 => Doc::text("Some(").append(lits[0].to_doc()).append(")"),
+                0 => RcDoc::text("None"),
+                1 => RcDoc::text("Some(").append(lits[0].to_doc()).append(")"),
                 _ => bracket(
-                    Doc::intersperse(
+                    RcDoc::intersperse(
                         lits.iter().map(|l| l.to_doc()),
-                        Doc::text(",").append(Doc::space()),
+                        RcDoc::text(",").append(RcDoc::space()),
                     )
                     .group(),
                 ),
@@ -520,74 +519,68 @@ impl Literal {
 }
 
 impl Typ {
-    fn internal<'a>(
-        doc: Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec>,
-    ) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
+    fn internal(doc: RcDoc<'_, ColorSpec>) -> RcDoc<'_, ColorSpec> {
         doc.annotate(ColorSpec::new().set_fg(Some(Color::Cyan)).clone())
     }
-    fn to_doc<'a>(&self) -> Doc<'a, BoxDoc<'a, ColorSpec>, ColorSpec> {
+    fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         match self {
-            Typ::List(t) => Typ::internal(Doc::text("List"))
+            Typ::List(t) => Typ::internal(RcDoc::text("List"))
                 .append("<")
                 .append(t.to_doc())
                 .append(">"),
             Typ::Tuple(ts) => match ts.len() {
-                0 => Typ::internal(Doc::text("Option")).append("<?>"),
-                1 => Typ::internal(Doc::text("Option"))
+                0 => Typ::internal(RcDoc::text("Option")).append("<?>"),
+                1 => Typ::internal(RcDoc::text("Option"))
                     .append("<")
                     .append(ts[0].to_doc())
                     .append(">"),
                 _ => bracket(
-                    Doc::intersperse(
+                    RcDoc::intersperse(
                         ts.iter().map(|t| t.to_doc()),
-                        Doc::text(",").append(Doc::space()),
+                        RcDoc::text(",").append(RcDoc::space()),
                     )
                     .group(),
                 ),
             },
-            _ => Typ::internal(Doc::as_string(self)),
+            _ => Typ::internal(RcDoc::as_string(self)),
         }
     }
 }
 
 impl Program {
-    fn decl_to_doc<'a>(
-        &self,
-        name: &'a str,
-        e: &'a Expr,
-    ) -> pretty::Doc<'a, pretty::BoxDoc<'a, ColorSpec>, ColorSpec> {
+    fn decl_to_doc<'a>(&self, name: &'a str, e: &'a Expr) -> RcDoc<'a, ColorSpec> {
         let mut args = Vec::new();
         e.closure_vars(&mut args);
         let (tys, ty) = self.typ(name).unwrap_or_default().split();
         let tys = tys.unwrap_or_default();
         let ret = if ty == Typ::Unit {
-            Doc::nil()
+            RcDoc::nil()
         } else {
-            Doc::space()
-                .append(Doc::text("->"))
-                .append(Doc::space().append(ty.to_doc()).nest(2))
+            RcDoc::space()
+                .append(RcDoc::text("->"))
+                .append(RcDoc::space().append(ty.to_doc()).nest(2))
         };
         Expr::key("fn")
-            .append(Doc::space())
+            .append(RcDoc::space())
             .append(Expr::method(name))
-            .append(Doc::text("("))
-            .append(Doc::intersperse(
-                args.into_iter()
-                    .zip(tys)
-                    .map(|(arg, ty)| Doc::text(arg).append(Doc::text(": ").append(ty.to_doc()))),
-                Doc::text(",").append(Doc::space()),
+            .append(RcDoc::text("("))
+            .append(RcDoc::intersperse(
+                args.into_iter().zip(tys).map(|(arg, ty)| {
+                    RcDoc::text(arg).append(RcDoc::text(": ").append(ty.to_doc()))
+                }),
+                RcDoc::text(",").append(RcDoc::space()),
             ))
-            .append(Doc::text(")"))
+            .append(RcDoc::text(")"))
             .append(ret)
-            .append(Doc::space())
-            .append(Doc::text("{"))
+            .append(RcDoc::space())
+            .append(RcDoc::text("{"))
             .append(
-                Doc::newline()
+                RcDoc::line()
                     .append(e.to_owned().closure_body().to_doc())
                     .nest(2),
             )
-            .append(Doc::newline())
-            .append(Doc::text("}"))
+            .append(RcDoc::line())
+            .append(RcDoc::text("}"))
             .group()
     }
     pub fn pretty<'a>(&self, name: &'a str, e: &'a Expr, width: usize) -> String {
