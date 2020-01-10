@@ -1,16 +1,17 @@
-//! A simple REST client
+//! A simple REST server and client
 
 #[macro_use]
 extern crate log;
 
 // use actix_web::middleware;
 use actix_web::{client, web, App, Error, HttpRequest, HttpResponse, HttpServer};
+use bytes::BytesMut;
 use clap::{crate_version, App as ClapApp, AppSettings, Arg};
-use futures::stream::Stream;
-use futures::{future, lazy, Future};
+use futures::StreamExt;
 use std::env;
 
-fn main() -> std::io::Result<()> {
+#[actix_rt::main]
+async fn main() -> std::io::Result<()> {
     // CLI
     let matches = ClapApp::new("arm-service")
         .version(crate_version!())
@@ -72,26 +73,6 @@ fn main() -> std::io::Result<()> {
     env::set_var("RUST_BACKTRACE", "0");
     pretty_env_logger::init();
 
-    // start the actix system
-    let sys = actix::System::new("arm-service");
-
-    // start up the service server
-    if let Some(port) = own_port {
-        let socket = format!("0.0.0.0:{}", port);
-        let server = HttpServer::new(move || {
-            App::new()
-                .data(port)
-                // .wrap(middleware::Logger::default())
-                .default_service(web::route().to_async(service))
-        })
-        .bind(socket.clone())
-        .unwrap_or_else(|_| panic!("failed to bind to http://{}", socket));
-        info!("starting service: {}", socket);
-        server.start();
-    }
-
-    let done = own_port.is_none();
-
     // send a message
     if let Some(destination) = destination {
         let uri = format!(
@@ -108,44 +89,42 @@ fn main() -> std::io::Result<()> {
             client = client.header("host", host)
         };
         // let bytes = include_bytes!("");
-        actix::Arbiter::spawn(lazy(move || {
-            client
-                .send_body(message)
-                // .send_json(&bytes.to_vec())
-                .map_err(move |err| stop(done, Some(("send: ", err))))
-                .and_then(move |resp| {
-                    debug!("{:?}", resp);
-                    resp.from_err::<Error>()
-                        .fold(web::BytesMut::new(), |mut body, chunk| {
-                            body.extend_from_slice(&chunk);
-                            Ok::<_, Error>(body)
-                        })
-                        .map_err(move |err| stop(done, Some(("response: ", err))))
-                        .and_then(move |body| {
-                            stop(done, None::<(_, bool)>);
-                            if let Ok(text) = String::from_utf8(body.as_ref().to_vec()) {
-                                info!("{}", text);
-                            } else {
-                                info!("{:?}", body);
-                            }
-                            future::ok(())
-                        })
-                })
-        }));
-    } else if own_port.is_none() {
-        actix::System::current().stop()
-    };
-
-    sys.run()
-}
-
-fn stop<E: std::fmt::Display>(b: bool, m: Option<(&str, E)>) {
-    if let Some((s, e)) = m {
-        warn!("{}{}", s, e);
+        match client.send_body(message).await {
+            Ok(mut resp) => {
+                let mut data = BytesMut::new();
+                while let Some(chunk) = resp.next().await {
+                    let chunk = chunk.map_err(|e| {
+                        std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+                    })?;
+                    data.extend_from_slice(&chunk)
+                }
+                if let Ok(text) = String::from_utf8(data.as_ref().to_vec()) {
+                    info!("{}", text)
+                } else {
+                    info!("{:?}", data)
+                }
+            }
+            Err(e) => warn!("{}", e),
+        }
     }
-    if b {
-        actix::System::current().stop()
+    // start up the service server
+    if let Some(port) = own_port {
+        let socket = format!("0.0.0.0:{}", port);
+        HttpServer::new(move || {
+            App::new()
+                .data(port)
+                // .wrap(middleware::Logger::default())
+                .default_service(web::route().to(service))
+        })
+        .bind(socket.clone())
+        .unwrap_or_else(|_| panic!("failed to bind to http://{}", socket))
+        .run();
+        info!("started listening on: {}", socket);
+        tokio::signal::ctrl_c().await.unwrap();
+        println!("Ctrl-C received, shutting down")
     }
+
+    Ok(())
 }
 
 fn parse_port(s: &str) -> u16 {
@@ -161,32 +140,30 @@ fn host(s: &str) -> String {
 }
 
 /// Respond to requests
-fn service(
+async fn service(
     req: HttpRequest,
-    body: web::Payload,
+    mut payload: web::Payload,
     port: web::Data<u16>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
-    body.map_err(Error::from)
-        .fold(web::BytesMut::new(), |mut body, chunk| {
-            body.extend_from_slice(&chunk);
-            Ok::<_, Error>(body)
-        })
-        .and_then(move |data| {
-            // Ok(HttpResponse::NotFound().body("not here!"))
-            // Ok(HttpResponse::Ok().body("hello"))
-            debug!("{:?}", req);
-            let info = req.connection_info();
-            Ok(HttpResponse::Ok().body(format!(
-                r#"port {} received request {} with body {:?}; host {}; remote {}"#,
-                port.get_ref(),
-                req.uri(),
-                if data.len() < 4096 {
-                    data
-                } else {
-                    bytes::BytesMut::from(format!("<{} bytes>", data.len()))
-                },
-                info.host(),
-                info.remote().unwrap_or("<unknown>"),
-            )))
-        })
+) -> Result<HttpResponse, Error> {
+    let mut data = BytesMut::new();
+    while let Some(chunk) = payload.next().await {
+        let chunk = chunk?;
+        data.extend_from_slice(&chunk)
+    }
+    // Ok(HttpResponse::NotFound().body("not here!"))
+    // Ok(HttpResponse::Ok().body("hello"))
+    debug!("{:?}", req);
+    let info = req.connection_info();
+    Ok(HttpResponse::Ok().body(format!(
+        r#"port {} received request {} with body {:?}; host {}; remote {}"#,
+        port.get_ref(),
+        req.uri(),
+        if data.len() < 4096 {
+            data
+        } else {
+            BytesMut::from(format!("<{} bytes>", data.len()).as_str())
+        },
+        info.host(),
+        info.remote().unwrap_or("<unknown>"),
+    )))
 }

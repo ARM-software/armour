@@ -4,7 +4,8 @@ use armour_data_interface::codec::PolicyRequest;
 use clap::{crate_version, App as ClapApp, Arg};
 use std::env;
 
-fn main() -> std::io::Result<()> {
+#[actix_rt::main]
+async fn main() -> std::io::Result<()> {
     // CLI
     let matches = ClapApp::new("armour-data")
         .version(crate_version!())
@@ -45,14 +46,11 @@ fn main() -> std::io::Result<()> {
 
     // process the command line arguments
     let proxy_port = matches.value_of("proxy port").map(|port| {
-        port.parse()
+        port.parse::<u16>()
             .unwrap_or_else(|_| panic!("bad port: {}", port))
     });
 
     log::info!("local host names are: {:?}", *http_proxy::LOCAL_HOST_NAMES);
-
-    // start Actix system
-    let sys = actix::System::new("armour-data");
 
     // start up policy actor
     // (should possibly use actix::sync::SyncArbiter)
@@ -60,14 +58,16 @@ fn main() -> std::io::Result<()> {
     // install the CLI policy
     let master_socket = matches.value_of("master socket").unwrap();
 
-    let policy = PolicyActor::create_policy(master_socket).unwrap_or_else(|e| {
-        log::warn!(
-            r#"failed to connect to data master "{}": {}"#,
-            master_socket,
-            e
-        );
-        std::process::exit(1)
-    });
+    let policy = PolicyActor::create_policy(master_socket)
+        .await
+        .unwrap_or_else(|e| {
+            log::warn!(
+                r#"failed to connect to data master "{}": {}"#,
+                master_socket,
+                e
+            );
+            std::process::exit(1)
+        });
 
     // start a proxy server
     if let Some(port) = proxy_port {
@@ -75,15 +75,8 @@ fn main() -> std::io::Result<()> {
     };
 
     // handle Control-C
-    let ctrl_c = tokio_signal::ctrl_c().flatten_stream();
-    let handle_shutdown = ctrl_c
-        .for_each(|()| {
-            println!("Ctrl-C received, shutting down");
-            System::current().stop();
-            Ok(())
-        })
-        .map_err(|_| ());
-    actix::spawn(handle_shutdown);
-
-    sys.run()
+    tokio::signal::ctrl_c().await.unwrap();
+    println!("Ctrl-C received, shutting down");
+    System::current().stop();
+    Ok(())
 }

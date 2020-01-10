@@ -159,7 +159,7 @@ impl BlockStmt {
         }
     }
     pub fn loc(&self, default: Loc) -> Loc {
-        self.statements.get(0).map_or(default, |s| s.loc().clone())
+        self.statements.get(0).map_or(default, |s| s.loc())
     }
 }
 
@@ -1015,19 +1015,18 @@ fn parse_infix_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr> {
 
 // fn parse_dot_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr> {
 fn parse_dot_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr> {
-    let left_clone1 = left.clone();
-    let left_clone2 = left.clone();
+    let left_clone = left.clone();
     alt!(
         input,
         complete!(do_parse!(
             tag_token!(Token::Dot)
                 >> i: parse_int_literal!()
                 >> (LocExpr(
-                    left_clone1.loc(),
+                    left_clone.loc(),
                     Expr::CallExpr {
                         loc: i.0,
                         function: i.1.to_string(),
-                        arguments: vec![left_clone1.clone()],
+                        arguments: vec![left_clone.clone()],
                     }
                 ))
         )) | complete!(do_parse!(
@@ -1040,12 +1039,12 @@ fn parse_dot_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr> {
                         function,
                         arguments,
                     } => LocExpr(
-                        left_clone2.loc(),
+                        left.loc(),
                         Expr::CallExpr {
                             loc: loc.clone(),
                             function: format!(".::{}", function),
                             // arguments: vec![],
-                            arguments: [&vec!(left_clone2.clone())[..], &arguments[..]].concat(),
+                            arguments: [&vec!(left.clone())[..], &arguments[..]].concat(),
                         }
                     ),
                     _ => unreachable!(),
@@ -1067,7 +1066,7 @@ fn parse_call_expr(input: Tokens, fn_handle: LocExpr) -> IResult<Tokens, LocExpr
                     function: match fn_handle.expr().eval_call_function() {
                         Some(s) => s,
                         None => {
-                            return Err(nom::Err::Error(error_position!(input, ErrorKind::Tag)))
+                            return Err(nom::Err::Error(error_position!(input, ErrorKind::Tag)));
                         }
                     },
                     arguments: arguments.unwrap_or_default()

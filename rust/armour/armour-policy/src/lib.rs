@@ -1,7 +1,7 @@
 //! Armour policy language
 
+#[cfg(unix)]
 extern crate capnp;
-#[macro_use]
 extern crate capnp_rpc;
 #[macro_use]
 extern crate enum_display_derive;
@@ -14,6 +14,8 @@ pub mod external_capnp {
     include!(concat!(env!("OUT_DIR"), "/external_capnp.rs"));
 }
 
+/// Language AST
+pub mod expressions;
 /// Make calls to external security services
 ///
 /// For example, external services can be used for logging and session management
@@ -22,8 +24,6 @@ pub mod externals;
 pub mod headers;
 /// Policy language interpreter
 pub mod interpret;
-/// Language AST
-pub mod expressions;
 /// Language interface
 pub mod lang;
 /// Lexer implemented using [nom](../nom/index.html)

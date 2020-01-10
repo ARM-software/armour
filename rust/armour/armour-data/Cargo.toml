@@ -1,6 +1,6 @@
 [package]
 name = "armour-data"
-version = "0.1.9"
+version = "0.2.0"
 authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
@@ -8,25 +8,21 @@ edition = "2018"
 armour-policy = { path = "../armour-policy" }
 armour-data-interface = { path = "../armour-data-interface" }
 
-actix = "0.8"
-actix-service = "0.4"
-actix-web = {version = "1.0", features = ["client", "ssl"]}
-bytes = "0.4"
+actix = "0.9"
+actix-rt = "1.0"
+actix-web = "2.0"
+bytes = "0.5"
 clap = "2.33"
 dns-lookup = "1.0"
-futures = "0.1"
+futures = "0.3"
 get_if_addrs = "0.5.3"
-http = "0.1"
+http = "0.2"
 lazy_static = "1.4"
 log = "0.4"
-nix = "0.15"
+nix = "0.16"
 pretty_env_logger = "0.3"
-tokio = "0.1"
-tokio-codec = "0.1"
-tokio-io = "0.1"
-tokio-signal = "0.2"
-tokio-tcp = "0.1"
-tokio-uds = "0.2"
-trust-dns-resolver = "0.12"
+tokio = { version = "0.2", features = ["uds","tcp"] }
+tokio-util = "0.2"
+trust-dns-resolver = { version = "=0.18.0-alpha.2", default-features = false }
 tokio-timer = "0.2"
 url = "2.1"

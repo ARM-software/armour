@@ -1,8 +1,7 @@
 /// Armour policy language
 use actix::prelude::*;
-use armour_policy::{expressions, externals::Disconnector, interpret::Env, lang};
+use armour_policy::{expressions, interpret::Env, lang};
 use clap::{crate_version, App, Arg};
-use futures::Future;
 use rustyline::{error::ReadlineError, Editor};
 use std::io;
 use std::sync::Arc;
@@ -10,16 +9,13 @@ use std::time::Duration;
 
 struct Eval {
     env: Arc<Env>,
-    disconnectors: Vec<Disconnector>,
 }
 
 impl Eval {
-    fn new(prog: lang::Program) -> Result<Self, std::io::Error> {
-        let (env, disconnectors) = Env::new(Arc::new(prog)).wait()?;
-        Ok(Eval {
-            env: Arc::new(env),
-            disconnectors,
-        })
+    fn new(prog: lang::Program) -> Self {
+        Eval {
+            env: Arc::new(Env::new(Arc::new(prog))),
+        }
     }
 }
 
@@ -27,48 +23,32 @@ impl Actor for Eval {
     type Context = Context<Self>;
 }
 
+#[derive(Message)]
+#[rtype(result = "Result<expressions::Expr, expressions::Error>")]
 struct Evaluate(expressions::Expr);
 
-impl Message for Evaluate {
-    type Result = Result<expressions::Expr, expressions::Error>;
-}
-
 impl Handler<Evaluate> for Eval {
-    type Result = Box<dyn Future<Item = expressions::Expr, Error = expressions::Error>>;
+    type Result = ResponseFuture<Result<expressions::Expr, expressions::Error>>;
     fn handle(&mut self, msg: Evaluate, _ctx: &mut Context<Self>) -> Self::Result {
-        msg.0.evaluate(self.env.clone())
+        Box::pin(msg.0.evaluate(self.env.clone()))
     }
 }
 
-#[derive(Message)]
 struct Stop;
+
+impl Message for Stop {
+    type Result = ();
+}
 
 impl Handler<Stop> for Eval {
     type Result = ();
-    fn handle(&mut self, _msg: Stop, ctx: &mut Context<Self>) {
-        ctx.notify(Disconnect);
+    fn handle(&mut self, _msg: Stop, _ctx: &mut Context<Self>) {
         System::current().stop()
     }
 }
 
-#[derive(Message)]
-struct Disconnect;
-
-impl Handler<Disconnect> for Eval {
-    type Result = ();
-    fn handle(&mut self, _msg: Disconnect, ctx: &mut Context<Self>) -> Self::Result {
-        if let Some(fut) = self.disconnectors.pop() {
-            fut.into_actor(self)
-                .then(|_, _act, ctx| {
-                    ctx.notify(Disconnect);
-                    actix::fut::ok(())
-                })
-                .wait(ctx)
-        }
-    }
-}
-
-fn main() -> io::Result<()> {
+#[actix_rt::main]
+async fn main() -> std::io::Result<()> {
     // command line interface
     let matches = App::new("Armour")
         .version(crate_version!())
@@ -121,55 +101,52 @@ fn main() -> io::Result<()> {
     // println!("{:?}", bytes);
     // prog = lang::Program::from_bytes(&bytes)?;
 
-    let sys = actix::System::new("armour-policy");
-
     // start eval actor
     let headers = prog.headers.clone();
-    let eval = Eval::new(prog)?.start();
+    let eval = Eval::new(prog).start();
 
-    std::thread::spawn(move || {
-        // evaluate expressions (REPL)
-        let mut rl = Editor::<()>::new();
-        if rl.load_history("armour-policy.txt").is_err() {
-            log::info!("no previous history");
-        };
-        loop {
-            match rl.readline("armour:> ") {
-                Ok(line) => {
-                    let line = line.trim();
-                    if line != "" {
-                        rl.add_history_entry(line);
-                        match expressions::Expr::from_string(line, &headers) {
-                            Ok(e) => {
-                                // println!("{:#?}", e);
-                                let now = std::time::Instant::now();
-                                match eval.send(Evaluate(e)).wait() {
-                                    Ok(Ok(r)) => {
-                                        log::info!("eval time: {:?}", now.elapsed());
-                                        r.print()
-                                    }
-                                    Ok(Err(e)) => log::warn!("{}", e),
-                                    Err(_e) => (),
+    // evaluate expressions (REPL)
+    let mut rl = Editor::<()>::new();
+    if rl.load_history("armour-policy.txt").is_err() {
+        log::info!("no previous history");
+    };
+    loop {
+        match rl.readline("armour:> ") {
+            Ok(line) => {
+                let line = line.trim();
+                if line != "" {
+                    rl.add_history_entry(line);
+                    match expressions::Expr::from_string(line, &headers) {
+                        Ok(e) => {
+                            // println!("{:#?}", e);
+                            let now = std::time::Instant::now();
+                            match eval.send(Evaluate(e)).await {
+                                Ok(Ok(r)) => {
+                                    log::info!("eval time: {:?}", now.elapsed());
+                                    r.print()
                                 }
+                                Ok(Err(e)) => log::warn!("{}", e),
+                                Err(_e) => (),
                             }
-                            Err(err) => log::warn!("{}", err),
                         }
+                        Err(err) => log::warn!("{}", err),
                     }
                 }
-                Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
-                    eval.do_send(Stop);
-                    break;
-                }
-                Err(err) => log::warn!("{}", err),
             }
+            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+                eval.do_send(Stop);
+                break;
+            }
+            Err(err) => log::warn!("{}", err),
         }
-        // done
-        if let Err(e) = rl
-            .save_history("armour-policy.txt")
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-        {
-            log::warn!("{}", e)
-        }
-    });
-    sys.run()
+    }
+    // done
+    if let Err(e) = rl
+        .save_history("armour-policy.txt")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    {
+        log::warn!("{}", e)
+    };
+
+    Ok(())
 }

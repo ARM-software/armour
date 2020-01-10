@@ -1,45 +1,32 @@
 //! actix-web support for Armour policies
 use super::policy::{Policy, PolicyActor, ID};
-use super::{tcp_proxy, Stop};
+use super::tcp_proxy;
+use super::Stop;
 use actix::prelude::*;
 use armour_data_interface::{codec, policy};
-use armour_policy::{expressions, externals::Disconnector, interpret::Env, lang};
+use armour_policy::{expressions, interpret::Env, lang};
 use expressions::Expr;
-use futures::{future, Future};
+use futures::future::{self, TryFutureExt};
 use std::sync::Arc;
-
-struct Proxy {
-    env: Arc<Env>,
-    port: u16,
-}
 
 pub struct TcpPolicy {
     connect: lang::Policy,
     disconnect: lang::Policy,
     debug: bool,
     program: Arc<lang::Program>,
-    proxy: Option<Proxy>,
+    env: Arc<Env>,
+    proxy: Option<(Addr<tcp_proxy::TcpDataServer>, u16)>,
 }
 
 impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
-    fn start(&mut self, env: Env, port: u16, addr: Addr<PolicyActor>) -> Option<Disconnector> {
-        match tcp_proxy::start_proxy(port, addr) {
-            Ok(server) => {
-                let server_clone = server.clone();
-                let fut = futures::lazy(move || server_clone.send(Stop).then(|_| future::ok(())));
-                self.proxy = Some(Proxy {
-                    env: Arc::new(env),
-                    port,
-                });
-                Some(Box::new(fut))
-            }
-            Err(err) => {
-                warn!("failed to start TCP proxy on port {}: {}", port, err);
-                None
-            }
-        }
+    fn start(&mut self, server: Addr<tcp_proxy::TcpDataServer>, port: u16) {
+        self.proxy = Some((server, port))
     }
     fn stop(&mut self) {
+        if let Some((server, port)) = &self.proxy {
+            info!("stopping TCP proxy on port {}", port);
+            server.do_send(Stop);
+        }
         self.proxy = None
     }
     fn set_debug(&mut self, b: bool) {
@@ -48,19 +35,17 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
     fn set_policy(&mut self, p: lang::Program) {
         self.connect = p.policy(policy::ALLOW_TCP_CONNECTION);
         self.disconnect = p.policy(policy::ON_TCP_DISCONNECT);
-        self.program = Arc::new(p)
+        self.program = Arc::new(p);
+        self.env = Arc::new(Env::new(self.program.clone()))
     }
     fn port(&self) -> Option<u16> {
-        self.proxy.as_ref().map(|p| p.port)
+        self.proxy.as_ref().map(|p| p.1)
     }
     fn policy(&self) -> Arc<lang::Program> {
         self.program.clone()
     }
     fn env(&self) -> Arc<Env> {
-        self.proxy
-            .as_ref()
-            .map(|p| p.env.clone())
-            .unwrap_or_default()
+        self.env.clone()
     }
     fn debug(&self) -> bool {
         self.debug
@@ -76,17 +61,21 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
 
 impl Default for TcpPolicy {
     fn default() -> Self {
+        let program = Arc::new(lang::Program::default());
         TcpPolicy {
             connect: lang::Policy::default(),
             disconnect: lang::Policy::default(),
             debug: false,
-            program: Arc::new(lang::Program::default()),
+            program: program.clone(),
+            env: Arc::new(Env::new(program)),
             proxy: None,
         }
     }
 }
 
 // TCP connection policies
+#[derive(Message)]
+#[rtype("Result<TcpPolicyStatus, expressions::Error>")]
 pub struct GetTcpPolicy(pub std::net::SocketAddr, pub std::net::SocketAddr);
 
 pub enum TcpPolicyStatus {
@@ -94,29 +83,25 @@ pub enum TcpPolicyStatus {
     Block,
 }
 
-impl Message for GetTcpPolicy {
-    type Result = Result<TcpPolicyStatus, expressions::Error>;
-}
-
 impl Handler<GetTcpPolicy> for PolicyActor {
-    type Result = Box<dyn Future<Item = TcpPolicyStatus, Error = expressions::Error>>;
+    type Result = ResponseFuture<Result<TcpPolicyStatus, expressions::Error>>;
 
     fn handle(&mut self, msg: GetTcpPolicy, _ctx: &mut Context<Self>) -> Self::Result {
         match self.tcp.connect {
             lang::Policy::Allow => {
                 self.connection_number += 1;
-                Box::new(future::ok(TcpPolicyStatus::Allow(Box::new(None))))
+                Box::pin(future::ok(TcpPolicyStatus::Allow(Box::new(None))))
             }
             lang::Policy::Deny => {
                 info!("deny");
-                Box::new(future::ok(TcpPolicyStatus::Block))
+                Box::pin(future::ok(TcpPolicyStatus::Block))
             }
             lang::Policy::Args(n) if n == 1 => {
                 let connection = self
                     .connection(ID::SocketAddr(msg.0), ID::SocketAddr(msg.1))
                     .into();
                 let stats = ConnectionStats::new(&connection);
-                Box::new(
+                Box::pin(
                     self.tcp
                         .evaluate(policy::ALLOW_TCP_CONNECTION, vec![connection])
                         .and_then(move |res| {
@@ -133,6 +118,8 @@ impl Handler<GetTcpPolicy> for PolicyActor {
     }
 }
 
+#[derive(Message)]
+#[rtype("Result<(),()>")]
 #[derive(Clone)]
 pub struct ConnectionStats {
     pub sent: usize,
@@ -150,13 +137,9 @@ impl ConnectionStats {
     }
 }
 
-impl Message for ConnectionStats {
-    type Result = Result<(), ()>;
-}
-
 // sent by the TCP proxy when the TCP connection finishes
 impl Handler<ConnectionStats> for PolicyActor {
-    type Result = Box<dyn Future<Item = (), Error = ()>>;
+    type Result = ResponseFuture<Result<(), ()>>;
 
     fn handle(&mut self, msg: ConnectionStats, _ctx: &mut Context<Self>) -> Self::Result {
         if let lang::Policy::Args(arg_count) = self.tcp.disconnect {
@@ -168,13 +151,13 @@ impl Handler<ConnectionStats> for PolicyActor {
                 ],
                 _ => unreachable!(), // policy is checked beforehand
             };
-            Box::new(
+            Box::pin(
                 self.tcp
                     .evaluate(policy::ON_TCP_DISCONNECT, args)
                     .map_err(|e| log::warn!("error: {}", e)),
             )
         } else {
-            Box::new(future::ok(()))
+            Box::pin(future::ok(()))
         }
     }
 }

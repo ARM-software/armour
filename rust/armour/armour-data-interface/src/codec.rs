@@ -2,9 +2,9 @@
 use actix::prelude::*;
 use armour_policy::lang::Program;
 use byteorder::{BigEndian, ByteOrder};
-use bytes::{BufMut, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
-use tokio_io::codec::{Decoder, Encoder};
+use tokio_util::codec::{Decoder, Encoder};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Protocol {
@@ -15,6 +15,7 @@ pub enum Protocol {
 
 /// Message from master to proxy instance
 #[derive(Serialize, Deserialize, Message, Clone)]
+#[rtype("()")]
 pub enum PolicyRequest {
     Debug(Protocol, bool),
     SetPolicy(Protocol, Program),
@@ -49,6 +50,7 @@ impl std::fmt::Display for Status {
 
 /// Messages from proxy instance to master
 #[derive(Serialize, Deserialize, Message)]
+#[rtype("()")]
 pub enum PolicyResponse {
     Started,
     Stopped,
@@ -73,7 +75,7 @@ trait DeserializeDecoder<T: serde::de::DeserializeOwned, E: std::convert::From<s
             BigEndian::read_u16(src.as_ref()) as usize
         };
         if src.len() >= size + 2 {
-            src.split_to(2);
+            src.advance(2);
             let buf = src.split_to(size);
             Ok(Some(bincode::deserialize::<T>(&buf).map_err(|e| {
                 std::io::Error::new(std::io::ErrorKind::Other, e)
@@ -89,7 +91,7 @@ trait SerializeEncoder<T: serde::Serialize, E: std::convert::From<std::io::Error
         let msg = bincode::serialize(&msg).unwrap();
         let msg_ref: &[u8] = msg.as_ref();
         dst.reserve(msg_ref.len() + 2);
-        dst.put_u16_be(msg_ref.len() as u16);
+        dst.put_u16(msg_ref.len() as u16);
         dst.put(msg_ref);
         Ok(())
     }

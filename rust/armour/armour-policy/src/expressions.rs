@@ -4,6 +4,7 @@ use headers::Headers;
 use literals::Literal;
 use parser::{Infix, Prefix};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use types::Typ;
@@ -326,7 +327,7 @@ impl Expr {
             c = c.closure_expr(s)
         }
         Expr::Let(
-            v.iter().map(|s| s.to_string()).collect(),
+            v.iter().map(|s| (*s).to_string()).collect(),
             Box::new(e),
             Box::new(c),
         )
@@ -338,7 +339,7 @@ impl Expr {
         }
         Expr::Iter(
             op.clone(),
-            v.iter().map(|s| s.to_string()).collect(),
+            v.iter().map(|s| (*s).to_string()).collect(),
             Box::new(e),
             Box::new(c),
         )
@@ -417,15 +418,11 @@ impl Expr {
     fn subst(self, i: usize, u: &Expr) -> Expr {
         match self {
             Expr::Var(_) | Expr::LitExpr(_) => self,
-            Expr::BVar(ref id, j) => {
-                if j < i {
-                    self
-                } else if j == i {
-                    u.clone().shift(i, 0)
-                } else {
-                    Expr::BVar(id.to_owned(), j - 1)
-                }
-            }
+            Expr::BVar(ref id, j) => match j.cmp(&i) {
+                Ordering::Less => self,
+                Ordering::Equal => u.clone().shift(i, 0),
+                _ => Expr::BVar(id.to_owned(), j - 1),
+            },
             Expr::Let(l, e1, e2) => {
                 Expr::Let(l, Box::new(e1.subst(i, u)), Box::new(e2.subst(i, u)))
             }
@@ -749,8 +746,8 @@ impl Expr {
                 let (mut expr1, calls1, typ1) =
                     Expr::from_block_stmt(consequence.as_ref(), headers, ret, &extend_vars)?
                         .split();
-                let vs: Vec<String> = vs.into_iter().map(|x| x.0).collect();
-                for v in vs.iter().rev() {
+                let variables: Vec<String> = vs.into_iter().map(|x| x.0).collect();
+                for v in variables.iter().rev() {
                     expr1 = expr1.closure_expr(v)
                 }
                 calls.push(calls1);
@@ -763,7 +760,7 @@ impl Expr {
                         )?;
                         ExprAndMeta::new(
                             Expr::IfMatchExpr {
-                                variables: vs.clone(),
+                                variables,
                                 matches: expressions.into_iter().zip(matches?).collect(),
                                 consequence: { Box::new(expr1) },
                                 alternative: None,
@@ -783,7 +780,7 @@ impl Expr {
                         calls.push(calls2);
                         ExprAndMeta::new(
                             Expr::IfMatchExpr {
-                                variables: vs.clone(),
+                                variables,
                                 matches: expressions.into_iter().zip(matches?).collect(),
                                 consequence: { Box::new(expr1) },
                                 alternative: Some(Box::new(expr2)),
