@@ -16,12 +16,14 @@ pub fn start_web_server(connections: Arc<Mutex<Connections>>, port: u16) -> std:
             .default_service(web::route().to(|| HttpResponse::NotFound().body("nothing here")))
     })
     .bind(&socket_address)?
-    .start();
+    .run();
     log::info!("starting web server: http://{}", socket_address);
     Ok(())
 }
 
-fn service_graph(connections: web::Data<Arc<Mutex<Connections>>>) -> std::io::Result<NamedFile> {
+async fn service_graph(
+    connections: web::Data<Arc<Mutex<Connections>>>,
+) -> std::io::Result<NamedFile> {
     connections
         .lock()
         .unwrap()
@@ -29,7 +31,7 @@ fn service_graph(connections: web::Data<Arc<Mutex<Connections>>>) -> std::io::Re
     Ok(NamedFile::open("connections_service.svg")?)
 }
 
-fn graph(connections: web::Data<Arc<Mutex<Connections>>>) -> std::io::Result<NamedFile> {
+async fn graph(connections: web::Data<Arc<Mutex<Connections>>>) -> std::io::Result<NamedFile> {
     connections
         .lock()
         .unwrap()

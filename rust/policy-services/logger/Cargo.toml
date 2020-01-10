@@ -1,6 +1,6 @@
 [package]
 name = "logger"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
@@ -10,17 +10,18 @@ edition = "2018"
 dot = { path = "../dot-rust" }
 policy-service = { path = "../policy-service" }
 
-actix = "0.8"
-actix-files = "0.1"
-actix-web = "1.0"
-capnp = "0.10"
+actix = "0.9"
+actix-files = "0.2"
+actix-rt = "1.0"
+actix-web = "2.0"
+capnp = "0.11"
 chrono = {version = "0.4", features = ["serde"] }
 chrono-tz = "0.5"
-futures = "0.1"
+futures = "0.3"
 log = "0.4"
-petgraph = "0.4"
+petgraph = "0.5"
 pretty_env_logger = "0.3"
-rustyline = "5.0"
+rustyline = "6.0"
 serde = { version = "1.0",  features = ["derive"] }
 serde_yaml = "0.8"
 v_htmlescape = "0.4"

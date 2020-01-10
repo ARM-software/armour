@@ -10,18 +10,21 @@ fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "0");
     pretty_env_logger::init();
 
-    let args: Vec<String> = std::env::args().collect();
+    let args: Box<Vec<String>> = Box::new(std::env::args().collect());
     if args.len() == 2 {
         // start Actix system
-        let sys = actix::System::new("logger");
+        let mut sys = actix::System::new("logger");
         // start policy service actor
         let connections = Arc::new(Mutex::new(Connections::default()));
         let logger = LoggerService(connections.clone());
-        let socket = args[1].as_str();
+        let socket = Box::leak(args)[1].as_str();
         let policy_service = if socket.to_socket_addrs().is_ok() {
-            policy_service::start_tcp_policy_service(logger, socket)?
+            sys.block_on(policy_service::start_tcp_policy_service(logger, socket))?
         } else {
-            policy_service::start_uds_policy_service(logger, std::path::PathBuf::from(socket))?
+            sys.block_on(policy_service::start_uds_policy_service(
+                logger,
+                std::path::PathBuf::from(socket),
+            ))?
         };
         // start web server
         web::start_web_server(connections.clone(), 8080)?;
@@ -114,3 +117,4 @@ impl hint::Hinter for Helper {
 impl rustyline::highlight::Highlighter for Helper {}
 
 impl rustyline::Helper for Helper {}
+impl rustyline::validate::Validator for Helper {}
