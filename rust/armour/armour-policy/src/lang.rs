@@ -121,6 +121,17 @@ impl Program {
             "hash failed!".to_string()
         }
     }
+    pub fn from_file_option<P: AsRef<std::path::Path>>(
+        path: Option<P>,
+    ) -> Result<Self, std::io::Error> {
+        Ok(if let Some(path) = path {
+            Module::from_file(path, None)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                .program
+        } else {
+            Self::default()
+        })
+    }
 }
 
 struct Hash<'a>(&'a [u8]);

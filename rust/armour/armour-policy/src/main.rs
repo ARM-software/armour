@@ -73,17 +73,8 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "0");
     pretty_env_logger::init();
 
-    // declare program
-    let module: lang::Module;
-
     // try to load code from an input file
-    if let Some(filename) = matches.value_of("input file") {
-        module = lang::Module::from_file(filename, None)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
-    } else {
-        module = lang::Module::default()
-    }
-    let mut prog = module.program;
+    let mut prog = lang::Program::from_file_option(matches.value_of("input file"))?;
     prog.print();
 
     if let Some(timeout) = matches.value_of("timeout") {

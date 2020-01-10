@@ -1,19 +1,15 @@
-use armour_policy::lang;
-use clap::{crate_version, App, Arg};
-use std::io;
-use serde::{Serialize, Deserialize};
-
 use armour_policy::lang::Program;
+use clap::{crate_version, App, Arg};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-struct OnboardingData {
-    label: String,
+struct OnboardingData<'a> {
+    label: &'a str,
     policy: Program,
 }
 
-
 #[actix_rt::main]
-async fn main() -> io::Result<()> {
+async fn main() -> std::io::Result<()> {
     let matches = App::new("Armour Control Plane CLI")
         .version(crate_version!())
         .arg(
@@ -45,44 +41,29 @@ async fn main() -> io::Result<()> {
         )
         .get_matches();
 
-    let module: lang::Module;
-    
-    // try to load code from an input file
-    if let Some(filename) = matches.value_of("policy") {
-        module = lang::Module::from_file(filename, None)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
-    } else {
-        module = lang::Module::default()
-    }
-    let prog = module.program;
-    prog.print();
-    
-    let url : &str;
+    let policy = Program::from_file_option(matches.value_of("input file"))?;
+    policy.print();
 
-    // control plane url is optional, default is localhost:8088
-    if let Some(addr) = matches.value_of("cplaneurl") {
-	url = addr
-    } else {
-	url = "http://localhost:8088/controlplane/onboarding"
-    }
+    let url = matches
+        .value_of("cplaneurl")
+        .unwrap_or("http://localhost:8088/controlplane/onboarding");
 
     // label is compulsory, no request is made if there is no label
     if let Some(label) = matches.value_of("label") {
-	println!("{:?}", url.to_string() + "/" + label);
-	let response = awc::Client::new()
-	    // .get((url.to_string() + "/" + label)) // <- Create request builder
-	    .post(url.to_string()) // <- Create request builder
-	    .header("User-Agent", "Actix-web")
-	    .send_json(&OnboardingData { label : label.to_string(), policy : prog.clone() } )                          // <- Send http request
-	    .await;
-
-	let _ = response.and_then(|response| {   // <- server http response
-	    println!("Response: {:?}", response);
-	    Ok(())
-	});
+        println!("{}/{}", url, label);
+        awc::Client::new()
+            // .get((url.to_string() + "/" + label)) // <- Create request builder
+            .post(url) // <- Create request builder
+            .header("User-Agent", "Actix-web")
+            .send_json(&OnboardingData { label, policy }) // <- Send http request
+            .await
+            .map(|response| {
+                println!("Response: {:?}", response);
+            })
+            .unwrap_or_default()
     } else {
-	eprintln!("No label provided");	
+        eprintln!("No label provided")
     }
 
-    return io::Result::Ok(());
+    Ok(())
 }
