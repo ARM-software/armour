@@ -1,32 +1,37 @@
-#+BEGIN_SRC http :pretty
+#+BEGIN_SRC http :result output
 POST http://127.0.0.1:8088/controlplane/onboard-master
 User-Agent: ob-http
 Content-Type: application/json
+
 {
   "host": "localhost",
+  "label": "armour::master-one",
   "credentials": "no-creds"
 }
 #+END_SRC
 
 #+RESULTS:
+: HTTP/1.1 200 OK
+: content-length: 7
+: date: Fri, 10 Jan 2020 15:35:24 GMT
+: 
+: success
 
-#+BEGIN_SRC http :pretty
+#+BEGIN_SRC http :result output
 POST http://127.0.0.1:8088/controlplane/onboard-service
 User-Agent: ob-http
 Content-Type: application/json
+
 {
-  "label": "service",
-  "master": "no-master"
+  "label": "armour::service-1",
+  "master": "armour::master-one"
 }
 #+END_SRC
 
 #+RESULTS:
-
-#+BEGIN_SRC http :pretty
-GET http://127.0.0.1:8088/controlplane/index
-User-Agent: ob-http
-#+END_SRC
-
-#+RESULTS:
-: {"host":"localhost","credentials":"no-creds"}
+: HTTP/1.1 200 OK
+: content-length: 18
+: date: Fri, 10 Jan 2020 15:35:25 GMT
+: 
+: {result : success}
 
