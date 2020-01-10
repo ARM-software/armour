@@ -1,11 +1,9 @@
-use actix::prelude::*;
 use armour_data::{http_proxy, policy::PolicyActor};
 use armour_data_interface::codec::PolicyRequest;
 use clap::{crate_version, App as ClapApp, Arg};
 use std::env;
 
-#[actix_rt::main]
-async fn main() -> std::io::Result<()> {
+fn main() -> std::io::Result<()> {
     // CLI
     let matches = ClapApp::new("armour-data")
         .version(crate_version!())
@@ -44,6 +42,9 @@ async fn main() -> std::io::Result<()> {
     env::set_var("RUST_BACKTRACE", "0");
     pretty_env_logger::init();
 
+    // start Actix system
+    let mut sys = actix_rt::System::new("armour_data_master");
+
     // process the command line arguments
     let proxy_port = matches.value_of("proxy port").map(|port| {
         port.parse::<u16>()
@@ -54,12 +55,11 @@ async fn main() -> std::io::Result<()> {
 
     // start up policy actor
     // (should possibly use actix::sync::SyncArbiter)
-
     // install the CLI policy
     let master_socket = matches.value_of("master socket").unwrap();
 
-    let policy = PolicyActor::create_policy(master_socket)
-        .await
+    let policy = sys
+        .block_on(PolicyActor::create_policy(master_socket.to_string()))
         .unwrap_or_else(|e| {
             log::warn!(
                 r#"failed to connect to data master "{}": {}"#,
@@ -74,9 +74,5 @@ async fn main() -> std::io::Result<()> {
         policy.do_send(PolicyRequest::StartHttp(port))
     };
 
-    // handle Control-C
-    tokio::signal::ctrl_c().await.unwrap();
-    println!("Ctrl-C received, shutting down");
-    System::current().stop();
-    Ok(())
+    sys.run()
 }

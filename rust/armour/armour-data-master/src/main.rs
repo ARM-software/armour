@@ -13,8 +13,7 @@ use rustyline::{completion, error::ReadlineError, hint, validate::Validator, Edi
 use std::io::{self, BufRead};
 use std::path::PathBuf;
 
-#[actix_rt::main]
-async fn main() -> io::Result<()> {
+fn main() -> io::Result<()> {
     const SOCKET: &str = "armour";
 
     // CLI
@@ -46,12 +45,17 @@ async fn main() -> io::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "1");
     pretty_env_logger::init();
 
+    // start Actix system
+    let mut sys = actix_rt::System::new("armour_data_master");
+
     // start server, listening for connections on a Unix socket
     let socket = matches
         .value_of("master socket")
         .unwrap_or(SOCKET)
         .to_string();
-    let listener = Box::new(tokio::net::UnixListener::bind(&socket)?);
+    let socket_clone = socket.clone();
+    let listener =
+        Box::new(sys.block_on(async move { tokio::net::UnixListener::bind(socket_clone) })?);
     let socket =
         std::fs::canonicalize(&socket).unwrap_or_else(|_| std::path::PathBuf::from(socket));
     log::info!("started Data Master on socket: {}", socket.display());
@@ -90,14 +94,10 @@ async fn main() -> io::Result<()> {
             }
         }
         rl.save_history("armour-master.txt")
-            .expect("failed to save history");
-        println!("Ctrl-C to exit")
+            .expect("failed to save history")
     });
 
-    // handle Control-C
-    tokio::signal::ctrl_c().await.unwrap();
-    println!("Ctrl-C received, shutting down");
-    Ok(())
+    sys.run()
 }
 
 struct Helper(completion::FilenameCompleter, hint::HistoryHinter);
