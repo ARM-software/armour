@@ -1,0 +1,19 @@
+[package]
+name = "armour-ctl"
+version = "0.1.0"
+authors = ["guspet02 <gpetri@irif.fr>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+futures = "0.3.1"
+actix-http = "1.0.0"
+actix-web = "1.0"
+actix = "0.9"
+actix-rt = "1.0.0"
+awc = "1.0.1"
+clap = "2.33"
+serde = "1.0.104"
+armour-policy = { path = "../../armour/armour-policy" }
+armour-data-interface = { path = "../../armour/armour-data-interface" }
