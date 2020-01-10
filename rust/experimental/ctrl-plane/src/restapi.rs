@@ -17,10 +17,10 @@ pub struct OnboardMasterRequest {
 }
 
 #[post("/onboard-master")]
-pub fn onboard_master(
+pub async fn onboard_master(
 	state: web::Data<ControlPlaneState>,
 	request: Json<OnboardMasterRequest>,
-) -> impl Responder {
+) -> Result<HttpResponse, actix_web::Error> {
 	info!("Onboarding master {:?}", request.host);
 
 	// TODO Perform appropriate checks if necessary
@@ -35,9 +35,11 @@ pub fn onboard_master(
 
 	let result: Vec<Result<bson::Document, mongodb::error::Error>> =
 		col.find(filter, None).unwrap().collect();
-	if result.len() != 0 {
-		error!("Master already preseent in {:?}", &request.host);
-		// FIXME raise an error
+	if !result.is_empty() {
+		return Err(actix_web::Error::from(
+			HttpResponse::InternalServerError()
+				.body(format!("Master already present in {:?}", &request.host)),
+		));
 	}
 
 	if let bson::Bson::Document(document) = bson::to_bson(&request.into_inner()).unwrap() {
@@ -46,7 +48,7 @@ pub fn onboard_master(
 		println!("Error converting the BSON object into a MongoDB document");
 	}
 
-	HttpResponse::Ok().body("success".to_string())
+	Ok(HttpResponse::Ok().body("success".to_string()))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -56,7 +58,7 @@ pub struct OnboardServiceRequest {
 }
 
 #[post("/onboard-service")]
-pub fn onboard_service(
+pub async fn onboard_service(
 	state: web::Data<ControlPlaneState>,
 	request: Json<OnboardServiceRequest>,
 ) -> impl Responder {
@@ -68,11 +70,12 @@ pub fn onboard_service(
 	let col = db.collection("services");
 
 	if let bson::Bson::Document(document) = bson::to_bson(&request.into_inner()).unwrap() {
-	    let res = col.insert_one(document, None).unwrap(); // Insert into a MongoDB collection
-	    info!("Result of insertion is: {:?}", res.inserted_id );
-	    let doc = col.find_one(Some(doc! {"_id" : res.inserted_id}), None)
-		.expect("Document not found");
-	    info!("Is it there? {:?}", doc);
+		let res = col.insert_one(document, None).unwrap(); // Insert into a MongoDB collection
+		info!("Result of insertion is: {:?}", res.inserted_id);
+		let doc = col
+			.find_one(Some(doc! {"_id" : res.inserted_id}), None)
+			.expect("Document not found");
+		info!("Is it there? {:?}", doc);
 	} else {
 		println!("Error converting the BSON object into a MongoDB document");
 	}
@@ -88,7 +91,7 @@ pub struct PolicyUpdateRequest {
 
 // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
 #[post("/update-policy")]
-fn update_policy(
+async fn update_policy(
 	_state: web::Data<ControlPlaneState>,
 	request: Json<PolicyUpdateRequest>,
 ) -> impl Responder {
@@ -104,7 +107,7 @@ pub struct PolicyQuery {
 
 // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
 #[get("/query-policy")]
-fn query_policy(
+async fn query_policy(
 	_state: web::Data<ControlPlaneState>,
 	request: Json<PolicyQuery>,
 ) -> impl Responder {
