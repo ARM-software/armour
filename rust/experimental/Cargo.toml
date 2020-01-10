@@ -1,0 +1,11 @@
+[workspace]
+
+members = [
+    "ctrl-plane",
+    "armour-ctl",
+    # "arm-pubsub",
+    "armour-fake-master",
+]
+
+#[profile.release]
+#debug = true
