@@ -12,24 +12,23 @@ type Version = i32;
 
 #[derive(Serialize, Deserialize)]
 pub struct MasterMetadata {
-        pub hostURL: String,
-        pub localID: LocalID,
-        pub globalID: GlobalID,
+        pub host_url: String,
+        pub local_id: LocalID,
+        pub global_id: GlobalID,
         pub credentials: Credentials,
         pub uid: UID,
         pub labels: Vec<Label>,
         pub services: Vec<UID>, // FIXME: This type might need to be refined
 }
 
-
 #[derive(Serialize, Deserialize)]
 pub struct ServiceMetadata {
-        pub localID: LocalID,
-        pub globalID: GlobalID,
+        pub local_id: LocalID,
+        pub global_id: GlobalID,
         pub credentials: Credentials,
         pub uid: UID,
         pub labels: Vec<Label>,
-        pub masterID: Option<UID>,      // FIXME: This type might need to be refined
+        pub master_id: Option<UID>,      // FIXME: This type might need to be refined
         pub policy: Option<Program>,
 }
 
@@ -39,4 +38,3 @@ pub struct Policy {
         pub policy: Option<Program>,
         pub version: Option<Version>,
 }
-
