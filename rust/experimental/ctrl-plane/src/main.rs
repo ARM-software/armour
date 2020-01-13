@@ -1,6 +1,6 @@
 // see: https://docs.mongodb.com/manual/tutorial/install-mongodb-on-os-x
 
-use actix_web::{web, App, HttpServer};
+use actix_web::{middleware, web, App, HttpServer};
 use ctrl_plane::restapi::*;
 use ctrl_plane::ControlPlaneState;
 use listenfd::ListenFd;
@@ -30,19 +30,27 @@ async fn main() -> std::io::Result<()> {
 	});
 
 	let mut server = HttpServer::new(move || {
-		App::new().data(state.clone()).service(
-			web::scope("/controlplane")
-				.service(onboard_master)
-				.service(onboard_service)
-				.service(update_policy)
-				.service(query_policy), // .service(index),
-		)
+		App::new()
+			.data(state.clone())
+			.wrap(middleware::Logger::default())
+			.service(
+				web::scope("/controlplane")
+					.service(onboard_master)
+					.service(onboard_service)
+					.service(update_policy)
+					.service(query_policy), // .service(index),
+			)
 	});
 
 	server = if let Some(l) = listenfd.take_tcp_listener(0).unwrap() {
+		if let Ok(addr) = l.local_addr() {
+			log::info!("listening on: {} [via systemfd]", addr)
+		}
 		server.listen(l).unwrap()
 	} else {
-		server.bind("127.0.0.1:8088").unwrap()
+		const ADDR: &str = "127.0.0.1:8088";
+		log::info!("listening on: {}", ADDR);
+		server.bind(ADDR).unwrap()
 	};
 
 	server.run();
