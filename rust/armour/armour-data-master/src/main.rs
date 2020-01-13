@@ -358,7 +358,7 @@ fn instance1_command(
             match lang::Module::from_file(&path, Some(&TCP_REST_POLICY)) {
                 Ok(module) => {
                     let prog = module.program;
-                    log::info!("sending policy: {}", prog.blake2_hash().unwrap());
+                    log::info!("sending policy: {}", prog.blake3_hash().unwrap());
                     Some(PolicyRequest::SetPolicy(Protocol::All, prog))
                 }
                 Err(err) => {

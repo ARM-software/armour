@@ -1,7 +1,6 @@
 use super::expressions::{Error, Expr};
 /// policy language
 use super::{externals, headers, lexer, literals, parser, types};
-use blake2_rfc::blake2b::blake2b;
 use headers::Headers;
 use literals::Literal;
 use petgraph::graph;
@@ -70,9 +69,9 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn blake2_hash(&self) -> Option<String> {
+    pub fn blake3_hash(&self) -> Option<arrayvec::ArrayString<[u8; 64]>> {
         bincode::serialize(self)
-            .map(|bytes| Hash(blake2b(24, b"armour", &bytes).as_bytes()).to_string())
+            .map(|bytes| blake3::hash(&bytes).to_hex())
             .ok()
     }
     fn internal(&self, s: &str) -> Option<&Expr> {
@@ -115,8 +114,8 @@ impl Program {
             "allow all".to_string()
         } else if self.is_deny_all() {
             "deny all".to_string()
-        } else if let Some(hash) = self.blake2_hash() {
-            hash
+        } else if let Some(hash) = self.blake3_hash() {
+            hash.to_string()
         } else {
             "hash failed!".to_string()
         }
@@ -131,17 +130,6 @@ impl Program {
         } else {
             Self::default()
         })
-    }
-}
-
-struct Hash<'a>(&'a [u8]);
-
-impl<'a> std::fmt::Display for Hash<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        for byte in self.0 {
-            std::fmt::LowerHex::fmt(byte, f)?
-        }
-        write!(f, "")
     }
 }
 
