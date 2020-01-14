@@ -133,7 +133,8 @@ impl StreamHandler<TcpConnect> for TcpDataServer {
                     "TCP {}: received from {}, forwarding to {}",
                     self.port, peer_addr, socket
                 );
-                if socket.port() == self.port && armour_api::INTERFACE_IPS.contains(&socket.ip()) {
+                if socket.port() == self.port && armour_utils::INTERFACE_IPS.contains(&socket.ip())
+                {
                     warn!("TCP {}: trying to forward to self", self.port);
                     if let Err(e) = msg.0.shutdown(std::net::Shutdown::Both) {
                         warn!("{}", e);

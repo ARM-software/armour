@@ -1,7 +1,7 @@
 //! actix-web support for Armour policies
 use super::policy::{Policy, PolicyActor, ID};
 use actix::prelude::*;
-use armour_api::{codec, policy};
+use armour_api::master_proxy;
 use armour_lang::{expressions, interpret::Env, lang, literals};
 use std::sync::Arc;
 
@@ -18,10 +18,10 @@ pub struct PolicyStatus {
 
 impl PolicyStatus {
     fn update_for_policy(&mut self, prog: &lang::Program) {
-        self.request = prog.policy(policy::ALLOW_REST_REQUEST);
-        self.client_payload = prog.policy(policy::ALLOW_CLIENT_PAYLOAD);
-        self.server_payload = prog.policy(policy::ALLOW_SERVER_PAYLOAD);
-        self.response = prog.policy(policy::ALLOW_REST_RESPONSE)
+        self.request = prog.policy(lang::ALLOW_REST_REQUEST);
+        self.client_payload = prog.policy(lang::ALLOW_CLIENT_PAYLOAD);
+        self.server_payload = prog.policy(lang::ALLOW_SERVER_PAYLOAD);
+        self.response = prog.policy(lang::ALLOW_REST_RESPONSE)
     }
 }
 
@@ -77,8 +77,8 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
     fn debug(&self) -> bool {
         self.status.debug
     }
-    fn status(&self) -> Box<codec::Status> {
-        Box::new(codec::Status {
+    fn status(&self) -> Box<master_proxy::Status> {
+        Box::new(master_proxy::Status {
             port: self.port(),
             debug: self.debug(),
             policy: (*self.policy()).clone(),
@@ -153,10 +153,10 @@ impl Handler<EvalRestFn> for PolicyActor {
 
     fn handle(&mut self, msg: EvalRestFn, _ctx: &mut Context<Self>) -> Self::Result {
         let function = match msg.0 {
-            RestFn::Request => policy::ALLOW_REST_REQUEST,
-            RestFn::ClientPayload => policy::ALLOW_CLIENT_PAYLOAD,
-            RestFn::ServerPayload => policy::ALLOW_SERVER_PAYLOAD,
-            RestFn::Response => policy::ALLOW_REST_RESPONSE,
+            RestFn::Request => lang::ALLOW_REST_REQUEST,
+            RestFn::ClientPayload => lang::ALLOW_CLIENT_PAYLOAD,
+            RestFn::ServerPayload => lang::ALLOW_SERVER_PAYLOAD,
+            RestFn::Response => lang::ALLOW_REST_RESPONSE,
         };
         self.http.evaluate(function, msg.1)
     }

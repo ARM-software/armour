@@ -3,7 +3,7 @@ use super::policy::{Policy, PolicyActor, ID};
 use super::tcp_proxy;
 use super::Stop;
 use actix::prelude::*;
-use armour_api::{codec, policy};
+use armour_api::master_proxy;
 use armour_lang::{
     expressions::{Error, Expr},
     interpret::Env,
@@ -36,8 +36,8 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
         self.debug = b
     }
     fn set_policy(&mut self, p: lang::Program) {
-        self.connect = p.policy(policy::ALLOW_TCP_CONNECTION);
-        self.disconnect = p.policy(policy::ON_TCP_DISCONNECT);
+        self.connect = p.policy(lang::ALLOW_TCP_CONNECTION);
+        self.disconnect = p.policy(lang::ON_TCP_DISCONNECT);
         self.program = Arc::new(p);
         self.env = Arc::new(Env::new(self.program.clone()))
     }
@@ -53,8 +53,8 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
     fn debug(&self) -> bool {
         self.debug
     }
-    fn status(&self) -> Box<codec::Status> {
-        Box::new(codec::Status {
+    fn status(&self) -> Box<master_proxy::Status> {
+        Box::new(master_proxy::Status {
             port: self.port(),
             debug: self.debug(),
             policy: (*self.policy()).clone(),
@@ -106,7 +106,7 @@ impl Handler<GetTcpPolicy> for PolicyActor {
                 let stats = ConnectionStats::new(&connection);
                 Box::pin(
                     self.tcp
-                        .evaluate(policy::ALLOW_TCP_CONNECTION, vec![connection])
+                        .evaluate(lang::ALLOW_TCP_CONNECTION, vec![connection])
                         .and_then(move |res| {
                             future::ok(if res {
                                 TcpPolicyStatus::Allow(Box::new(Some(stats)))
@@ -156,7 +156,7 @@ impl Handler<ConnectionStats> for PolicyActor {
             };
             Box::pin(
                 self.tcp
-                    .evaluate(policy::ON_TCP_DISCONNECT, args)
+                    .evaluate(lang::ON_TCP_DISCONNECT, args)
                     .map_err(|e| log::warn!("error: {}", e)),
             )
         } else {

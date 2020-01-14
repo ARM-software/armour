@@ -10,8 +10,8 @@ use actix_web::{
     http::uri,
     middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
-use armour_api::own_ip;
 use armour_lang::{lang::Policy, literals};
+use armour_utils::own_ip;
 use bytes::BytesMut;
 use futures::{stream::Stream, StreamExt};
 use std::collections::HashSet;
@@ -412,7 +412,7 @@ impl ForwardUri for HttpRequest {
 lazy_static! {
     pub static ref LOCAL_HOST_NAMES: HashSet<String> = {
         let mut names = HashSet::new();
-        for ip in armour_api::INTERFACE_IPS.iter() {
+        for ip in armour_utils::INTERFACE_IPS.iter() {
             if let Ok(name) = dns_lookup::lookup_addr(ip) {
                 names.insert(name);
             }

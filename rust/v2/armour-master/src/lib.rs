@@ -4,7 +4,7 @@ extern crate lazy_static;
 extern crate log;
 
 use actix::prelude::*;
-use armour_api::codec::{MasterCodec, PolicyRequest, PolicyResponse};
+use armour_api::master_proxy::{MasterCodec, PolicyRequest, PolicyResponse};
 use std::collections::HashMap;
 use tokio::io::WriteHalf;
 use tokio_util::codec::FramedRead;

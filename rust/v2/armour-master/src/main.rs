@@ -2,8 +2,7 @@
 //!
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
-use armour_api::codec::{PolicyRequest, Protocol};
-use armour_api::policy::TCP_REST_POLICY;
+use armour_api::master_proxy::{PolicyRequest, Protocol};
 use armour_lang::lang;
 use armour_master::{commands, ArmourDataMaster, Instances, MasterCommand, UdsConnect};
 use clap::{crate_version, App, Arg};
@@ -285,13 +284,17 @@ fn instance0_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) {
         Some(s @ "allow all") | Some(s @ "http allow all") | Some(s @ "tcp allow all") => {
             Some(PolicyRequest::SetPolicy(
                 protocol(s),
-                lang::Module::allow_all(&TCP_REST_POLICY).unwrap().program,
+                lang::Module::allow_all(&lang::TCP_REST_POLICY)
+                    .unwrap()
+                    .program,
             ))
         }
         Some(s @ "deny all") | Some(s @ "http deny all") | Some(s @ "tcp deny all") => {
             Some(PolicyRequest::SetPolicy(
                 protocol(s),
-                lang::Module::deny_all(&TCP_REST_POLICY).unwrap().program,
+                lang::Module::deny_all(&lang::TCP_REST_POLICY)
+                    .unwrap()
+                    .program,
             ))
         }
         Some(s @ "debug off") | Some(s @ "http debug off") | Some(s @ "tcp debug off") => {
@@ -352,7 +355,7 @@ fn instance1_command(
         }
         Some("policy") => {
             let path = pathbuf(arg);
-            match lang::Module::from_file(&path, Some(&TCP_REST_POLICY)) {
+            match lang::Module::from_file(&path, Some(&lang::TCP_REST_POLICY)) {
                 Ok(module) => {
                     let prog = module.program;
                     log::info!("sending policy: {}", prog.blake3_hash().unwrap());

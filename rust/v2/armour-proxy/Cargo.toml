@@ -5,8 +5,9 @@ authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
 [dependencies]
-armour-lang = { path = "../armour-lang" }
 armour-api = { path = "../armour-api" }
+armour-lang = { path = "../armour-lang" }
+armour-utils = { path = "../armour-utils" }
 
 actix = "0.9"
 actix-rt = "1.0"

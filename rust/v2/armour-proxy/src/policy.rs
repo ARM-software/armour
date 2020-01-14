@@ -2,7 +2,7 @@
 use super::{http_policy::RestPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_proxy};
 use actix::prelude::*;
 use actix_web::http::uri;
-use armour_api::codec::{PolicyCodec, PolicyRequest, PolicyResponse, Protocol, Status};
+use armour_api::master_proxy::{PolicyCodec, PolicyRequest, PolicyResponse, Protocol, Status};
 use armour_lang::{expressions, interpret::Env, lang, literals};
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::HashMap;
