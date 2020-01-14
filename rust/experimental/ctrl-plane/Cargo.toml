@@ -7,11 +7,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# url_serde = "0.2"
 actix-rt = "1.0"
 actix-web = "2.0"
-armour-data-interface = { path = "../../armour/armour-data-interface" }
-armour-policy = { path = "../../armour/armour-policy" }
+armour-data-interface = { path = "../../v1/armour-data-interface" }
+armour-policy = { path = "../../v1/armour-policy" }
 bson = "0.14"
 env_logger = "0.7"
 listenfd = "0.3"
@@ -20,7 +19,7 @@ mongodb = "0.9"
 serde = "1.0"
 serde_json = "1.0"
 tokio = "0.2"
-url = "2.1"
+url = {version = "2.1", features = ["serde"]}
 
 [dependencies.redis]
 version = "*"

@@ -1,7 +1,6 @@
-// use url_serde::SerdeUrl;
-// use url::Url;
 use armour_policy::lang::Program;
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 type Credentials = String;
 type LocalID = String;
@@ -13,7 +12,7 @@ type Version = i32;
 #[derive(Serialize, Deserialize)]
 #[allow(non_snake_case)]
 pub struct MasterMetadata {
-        pub hostURL: String,
+        pub hostURL: Url,
         pub localID: LocalID,
         pub globalID: GlobalID,
         pub credentials: Credentials,

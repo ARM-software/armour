@@ -16,9 +16,11 @@ pub struct OnboardMasterRequest {
 	pub credentials: String, // FIXME change types as needed
 }
 
+type State = web::Data<std::sync::Arc<ControlPlaneState>>;
+
 #[post("/onboard-master")]
 pub async fn onboard_master(
-	state: web::Data<ControlPlaneState>,
+	state: State,
 	request: Json<OnboardMasterRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
 	info!("Onboarding master {:?}", request.host);
@@ -58,10 +60,7 @@ pub struct OnboardServiceRequest {
 }
 
 #[post("/onboard-service")]
-pub async fn onboard_service(
-	state: web::Data<ControlPlaneState>,
-	request: Json<OnboardServiceRequest>,
-) -> impl Responder {
+pub async fn onboard_service(state: State, request: Json<OnboardServiceRequest>) -> impl Responder {
 	info!("Onboarding service {:?}", request.label);
 
 	let connection = &state.db_con;
@@ -91,10 +90,7 @@ pub struct PolicyUpdateRequest {
 
 // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
 #[post("/update-policy")]
-async fn update_policy(
-	_state: web::Data<ControlPlaneState>,
-	request: Json<PolicyUpdateRequest>,
-) -> impl Responder {
+async fn update_policy(_state: State, request: Json<PolicyUpdateRequest>) -> impl Responder {
 	info!("Updating policy for {:?}", request.service);
 
 	HttpResponse::Ok().body("Policy updater")
@@ -107,10 +103,7 @@ pub struct PolicyQuery {
 
 // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
 #[get("/query-policy")]
-async fn query_policy(
-	_state: web::Data<ControlPlaneState>,
-	request: Json<PolicyQuery>,
-) -> impl Responder {
+async fn query_policy(_state: State, request: Json<PolicyQuery>) -> impl Responder {
 	info!("Querying policy for {:?}", request.service);
 
 	HttpResponse::Ok().body("Policy updater")
