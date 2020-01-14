@@ -10,12 +10,6 @@ Content-Type: application/json
 }
 #+END_SRC
 
-#+RESULTS:
-: HTTP/1.1 200 OK
-: content-length: 7
-: date: Fri, 10 Jan 2020 16:47:56 GMT
-: 
-: success
 
 #+BEGIN_SRC http :result output
 POST http://127.0.0.1:8088/controlplane/onboard-service
@@ -27,11 +21,3 @@ Content-Type: application/json
   "master": "armour::master-one"
 }
 #+END_SRC
-
-#+RESULTS:
-: HTTP/1.1 200 OK
-: content-length: 18
-: date: Fri, 10 Jan 2020 16:47:57 GMT
-: 
-: {result : success}
-

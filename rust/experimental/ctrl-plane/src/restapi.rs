@@ -21,7 +21,7 @@ pub struct OnboardMasterRequest {
 
 #[post("/onboard-master")]
 pub async fn onboard_master(
-    state: web::Data<ControlPlaneState>,
+    state: web::Data<std::sync::Arc<ControlPlaneState>>,
     request: Json<OnboardMasterRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
     info!("Onboarding master {:?}", request.host);
@@ -60,7 +60,7 @@ pub struct OnboardServiceRequest {
 
 #[post("/onboard-service")]
 pub async fn onboard_service(
-    state: web::Data<ControlPlaneState>,
+    state: web::Data<std::sync::Arc<ControlPlaneState>>,
     request: Json<OnboardServiceRequest>,
 ) -> impl Responder {
     info!("Onboarding service {:?}", request.label);
