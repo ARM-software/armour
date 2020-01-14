@@ -14,105 +14,105 @@ use super::ControlPlaneState;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct OnboardMasterRequest {
-        pub host: String,        // FIXME change types as needed
-        pub label: Label,        // FIXME change types as needed
-        pub credentials: String, // FIXME change types as needed
+    pub host: String,        // FIXME change types as needed
+    pub label: Label,        // FIXME change types as needed
+    pub credentials: String, // FIXME change types as needed
 }
 
 #[post("/onboard-master")]
 pub async fn onboard_master(
-	state: web::Data<ControlPlaneState>,
-	request: Json<OnboardMasterRequest>,
+    state: web::Data<ControlPlaneState>,
+    request: Json<OnboardMasterRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
-	info!("Onboarding master {:?}", request.host);
-        // TODO Perform appropriate checks if necessary
+    info!("Onboarding master {:?}", request.host);
+    // TODO Perform appropriate checks if necessary
 
-        let connection = &state.db_con;
+    let connection = &state.db_con;
 
-        let db = connection.database("armour");
-        let col = db.collection("masters");
+    let db = connection.database("armour");
+    let col = db.collection("masters");
 
-        // Check if the master is already there
-        let filter = doc! { "host" : &request.host };
+    // Check if the master is already there
+    let filter = doc! { "host" : &request.host };
 
-	let result: Vec<Result<bson::Document, mongodb::error::Error>> =
-		col.find(filter, None).unwrap().collect();
-	if !result.is_empty() {
-		return Err(actix_web::Error::from(
-			HttpResponse::InternalServerError()
-				.body(format!("Master already present in {:?}", &request.host)),
-		));
-	}
-        if let bson::Bson::Document(document) = bson::to_bson(&request.into_inner()).unwrap() {
-                col.insert_one(document, None).unwrap(); // Insert into a MongoDB collection
-        } else {
-                println!("Error converting the BSON object into a MongoDB document");
-        }
+    let result: Vec<Result<bson::Document, mongodb::error::Error>> =
+        col.find(filter, None).unwrap().collect();
+    if !result.is_empty() {
+        return Err(actix_web::Error::from(
+            HttpResponse::InternalServerError()
+                .body(format!("Master already present in {:?}", &request.host)),
+        ));
+    }
+    if let bson::Bson::Document(document) = bson::to_bson(&request.into_inner()).unwrap() {
+        col.insert_one(document, None).unwrap(); // Insert into a MongoDB collection
+    } else {
+        println!("Error converting the BSON object into a MongoDB document");
+    }
 
-	Ok(HttpResponse::Ok().body("success".to_string()))
+    Ok(HttpResponse::Ok().body("success".to_string()))
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct OnboardServiceRequest {
-        pub label: String,  // FIXME
-        pub master: String, // FIXME
+    pub label: String,  // FIXME
+    pub master: String, // FIXME
 }
 
 #[post("/onboard-service")]
 pub async fn onboard_service(
-	state: web::Data<ControlPlaneState>,
-	request: Json<OnboardServiceRequest>,
+    state: web::Data<ControlPlaneState>,
+    request: Json<OnboardServiceRequest>,
 ) -> impl Responder {
-        info!("Onboarding service {:?}", request.label);
+    info!("Onboarding service {:?}", request.label);
 
-        let connection = &state.db_con;
+    let connection = &state.db_con;
 
-        let db = connection.database("armour");
-        let col = db.collection("services");
+    let db = connection.database("armour");
+    let col = db.collection("services");
 
-	if let bson::Bson::Document(document) = bson::to_bson(&request.into_inner()).unwrap() {
-		let res = col.insert_one(document, None).unwrap(); // Insert into a MongoDB collection
-		info!("Result of insertion is: {:?}", res.inserted_id);
-		let doc = col
-			.find_one(Some(doc! {"_id" : res.inserted_id}), None)
-			.expect("Document not found");
-		info!("Is it there? {:?}", doc);
-	} else {
-		println!("Error converting the BSON object into a MongoDB document");
-	}
+    if let bson::Bson::Document(document) = bson::to_bson(&request.into_inner()).unwrap() {
+        let res = col.insert_one(document, None).unwrap(); // Insert into a MongoDB collection
+        info!("Result of insertion is: {:?}", res.inserted_id);
+        let doc = col
+            .find_one(Some(doc! {"_id" : res.inserted_id}), None)
+            .expect("Document not found");
+        info!("Is it there? {:?}", doc);
+    } else {
+        println!("Error converting the BSON object into a MongoDB document");
+    }
 
     HttpResponse::Ok().body("{result : success}".to_string())
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct PolicyUpdateRequest {
-        pub service: String, // FIXME
-        pub policy: Program,
+    pub service: String, // FIXME
+    pub policy: Program,
 }
 
 // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
 #[post("/update-policy")]
 async fn update_policy(
-	_state: web::Data<ControlPlaneState>,
-	request: Json<PolicyUpdateRequest>,
+    _state: web::Data<ControlPlaneState>,
+    request: Json<PolicyUpdateRequest>,
 ) -> impl Responder {
-        info!("Updating policy for {:?}", request.service);
+    info!("Updating policy for {:?}", request.service);
 
-        HttpResponse::Ok().body("Policy updater")
+    HttpResponse::Ok().body("Policy updater")
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct PolicyQuery {
-        pub service: String, // FIXME
+    pub service: String, // FIXME
 }
 
 // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
 #[get("/query-policy")]
 async fn query_policy(
-	_state: web::Data<ControlPlaneState>,
-	request: Json<PolicyQuery>,
+    _state: web::Data<ControlPlaneState>,
+    request: Json<PolicyQuery>,
 ) -> impl Responder {
-        info!("Querying policy for {:?}", request.service);
+    info!("Querying policy for {:?}", request.service);
 
-        HttpResponse::Ok().body("Policy updater")
+    HttpResponse::Ok().body("Policy updater")
 }
