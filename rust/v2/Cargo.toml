@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "armour-lang",
+    "armour-api",
+    "armour-proxy",
+    "armour-master",
+]
