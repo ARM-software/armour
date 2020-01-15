@@ -16,10 +16,12 @@ pub struct OnboardMasterRequest {
   pub credentials: String, // FIXME change types as needed
 }
 
+type State = web::Data<std::sync::Arc<ControlPlaneState>>;
+
 #[post("/onboard-master")]
 pub async fn onboard_master(
-  state: web::Data<std::sync::Arc<ControlPlaneState>>,
-  request: Json<OnboardMasterRequest>,
+	state: State,
+	request: Json<OnboardMasterRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
   info!("Onboarding master {:?}", request.host);
   // TODO Perform appropriate checks if necessary
@@ -56,11 +58,8 @@ pub struct OnboardServiceRequest {
 }
 
 #[post("/onboard-service")]
-pub async fn onboard_service(
-  state: web::Data<std::sync::Arc<ControlPlaneState>>,
-  request: Json<OnboardServiceRequest>,
-) -> impl Responder {
-  info!("Onboarding service {:?}", request.label);
+pub async fn onboard_service(state: State, request: Json<OnboardServiceRequest>) -> impl Responder {
+	info!("Onboarding service {:?}", request.label);
 
   let connection = &state.db_con;
 
@@ -89,13 +88,10 @@ pub struct PolicyUpdateRequest {
 
 // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
 #[post("/update-policy")]
-async fn update_policy(
-  state: web::Data<std::sync::Arc<ControlPlaneState>>,
-  request: Json<PolicyUpdateRequest>,
-) -> impl Responder {
-  info!("Updating policy for {:?}", request.service);
+async fn update_policy(_state: State, request: Json<PolicyUpdateRequest>) -> impl Responder {
+	info!("Updating policy for {:?}", request.service);
 
-  HttpResponse::Ok().body("Policy updater")
+    HttpResponse::Ok().body("Policy updater")
 }
 
 #[derive(Serialize, Deserialize)]
@@ -105,11 +101,8 @@ pub struct PolicyQuery {
 
 // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
 #[get("/query-policy")]
-async fn query_policy(
-  _state: web::Data<ControlPlaneState>,
-  request: Json<PolicyQuery>,
-) -> impl Responder {
-  info!("Querying policy for {:?}", request.service);
+async fn query_policy(_state: State, request: Json<PolicyQuery>) -> impl Responder {
+	info!("Querying policy for {:?}", request.service);
 
   HttpResponse::Ok().body("Policy updater")
 }

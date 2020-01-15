@@ -1,0 +1,4 @@
+launch log
+wait 1
+policy test.policy
+http start 6000

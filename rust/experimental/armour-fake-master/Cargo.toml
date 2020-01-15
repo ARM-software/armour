@@ -15,5 +15,5 @@ actix-rt = "1.0.0"
 awc = "1.0.1"
 clap = "2.33"
 serde = "1.0.104"
-armour-policy = { path = "../../armour/armour-policy" }
-armour-data-interface = { path = "../../armour/armour-data-interface" }
+armour-policy = { path = "../../v1/armour-policy" }
+armour-data-interface = { path = "../../v1/armour-data-interface" }
