@@ -2,7 +2,9 @@
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{Buf, BufMut, BytesMut};
 
-pub mod master_proxy;
+pub mod control;
+pub mod master;
+pub mod proxy;
 
 trait DeserializeDecoder<T: serde::de::DeserializeOwned, E: std::convert::From<std::io::Error>> {
     fn deserialize_decode(&mut self, src: &mut BytesMut) -> Result<Option<T>, E> {

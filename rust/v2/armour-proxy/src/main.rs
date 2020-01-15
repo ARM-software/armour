@@ -1,4 +1,4 @@
-use armour_api::master_proxy::PolicyRequest;
+use armour_api::proxy::PolicyRequest;
 use armour_proxy::{http_proxy, policy::PolicyActor};
 use clap::{crate_version, App as ClapApp, Arg};
 use std::env;

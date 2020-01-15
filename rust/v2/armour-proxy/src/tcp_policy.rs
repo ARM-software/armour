@@ -3,7 +3,7 @@ use super::policy::{Policy, PolicyActor, ID};
 use super::tcp_proxy;
 use super::Stop;
 use actix::prelude::*;
-use armour_api::master_proxy;
+use armour_api::master::Status;
 use armour_lang::{
     expressions::{Error, Expr},
     interpret::Env,
@@ -53,8 +53,8 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
     fn debug(&self) -> bool {
         self.debug
     }
-    fn status(&self) -> Box<master_proxy::Status> {
-        Box::new(master_proxy::Status {
+    fn status(&self) -> Box<Status> {
+        Box::new(Status {
             port: self.port(),
             debug: self.debug(),
             policy: (*self.policy()).clone(),

@@ -1,7 +1,7 @@
 //! actix-web support for Armour policies
 use super::policy::{Policy, PolicyActor, ID};
 use actix::prelude::*;
-use armour_api::master_proxy;
+use armour_api::master::Status;
 use armour_lang::{expressions, interpret::Env, lang, literals};
 use std::sync::Arc;
 
@@ -77,8 +77,8 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
     fn debug(&self) -> bool {
         self.status.debug
     }
-    fn status(&self) -> Box<master_proxy::Status> {
-        Box::new(master_proxy::Status {
+    fn status(&self) -> Box<Status> {
+        Box::new(Status {
             port: self.port(),
             debug: self.debug(),
             policy: (*self.policy()).clone(),

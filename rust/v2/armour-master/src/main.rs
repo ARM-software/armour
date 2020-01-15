@@ -2,7 +2,7 @@
 //!
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
-use armour_api::master_proxy::{PolicyRequest, Protocol};
+use armour_api::proxy::{PolicyRequest, Protocol};
 use armour_lang::lang;
 use armour_master::{commands, ArmourDataMaster, Instances, MasterCommand, UdsConnect};
 use clap::{crate_version, App, Arg};
