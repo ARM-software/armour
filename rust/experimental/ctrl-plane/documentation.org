@@ -29,18 +29,7 @@ User-Agent: ob-http
 Content-Type: application/json
 
 {
-   "service": "armour-service-1",
-   "policy": "{\"externals\":{\"sockets\":{},\"timeout\":{\"secs\":3,\"nanos\":0}},\"code\":{},\"headers\":{},\"policies\":{}}"
+"service": "armour-service-1",
+"policy": {"externals":{"sockets":{"test":"localhost:9000"},"timeout":{"secs":3,"nanos":0}},"code":{},"headers":{"test::inc":[[],"I64"],"test::rev":[[{"List":{"Tuple":["Str","F64"]}}],{"List":{"Tuple":["F64","Str"]}}],"test::set":[["I64"],"Unit"]},"policies":{}}
 }
 #+END_SRC
-
-#+RESULTS:
-: HTTP/1.1 500 Internal Server Error
-: content-length: 56
-: content-type: text/plain; charset=utf-8
-: date: Wed, 15 Jan 2020 10:07:06 GMT
-: 
-: App data is not configured, to configure use App::data()
-
-
-

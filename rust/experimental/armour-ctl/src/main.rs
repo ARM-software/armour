@@ -42,9 +42,9 @@ async fn main() -> std::io::Result<()> {
         )
         .get_matches();
 
-    let policy = Program::from_file_option(matches.value_of("input file"))?;
-    println!("{:?}", serde_json::to_string(&policy).unwrap());
-    // policy.print();
+    let policy = Program::from_file_option(matches.value_of("policy"))?;
+    println!("{}", serde_json::to_string(&policy).unwrap());
+    policy.print();
 
     let url = matches
         .value_of("cplaneurl")
