@@ -15,5 +15,6 @@ actix-rt = "1.0"
 awc = "1.0"
 clap = "2.33"
 serde = "1.0"
+serde_json = "1.0.44"
 armour-policy = { path = "../../armour/armour-policy" }
 armour-data-interface = { path = "../../armour/armour-data-interface" }
