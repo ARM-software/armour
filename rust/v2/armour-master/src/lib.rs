@@ -19,6 +19,7 @@ pub enum Instances {
 }
 
 pub mod commands;
+pub mod rest_policy;
 
 /// Actor that handles Unix socket connections
 pub struct ArmourDataMaster {

@@ -1,0 +1,8 @@
+### update: TCP protocol with "hello.policy"
+POST http://127.0.0.1:8090/policy/update HTTP/1.1
+content-type: application/json
+
+{
+    "protocol": "TCP",
+    "policy": "AAAAAAAAAAADAAAAAAAAAAAAAAABAAAAAAAAAAUAAAAAAAAAaGVsbG8CAAAADAAAAA0AAAAAAAAAaGVsbG8sIHdvcmxkIQEAAAAAAAAABQAAAAAAAABoZWxsbwEAAAAAAAAAAAwAAAAAAAAAAAAAAA=="
+}

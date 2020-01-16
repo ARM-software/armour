@@ -601,9 +601,8 @@ impl Program {
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         for (name, e) in self.code.0.iter() {
-            writeln!(f, "{}", self.pretty(name, e, 80))?;
-            writeln!(f)?;
+            write!(f, "{}", self.pretty(name, e, 80))?;
         }
-        write!(f, "")
+        Ok(())
     }
 }

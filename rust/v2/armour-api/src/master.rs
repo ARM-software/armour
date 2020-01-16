@@ -1,4 +1,5 @@
-/// Communication interface between data plane master and proxy instances
+/// API of data plane master
+use super::proxy::Protocol;
 use super::{DeserializeDecoder, SerializeEncoder};
 use actix::prelude::*;
 use armour_lang::lang::Program;
@@ -6,7 +7,14 @@ use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use tokio_util::codec::{Decoder, Encoder};
 
-/// Messages to master
+/// Control plane messages to master
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PolicyUpdate {
+    pub protocol: Protocol,
+    pub policy: String,
+}
+
+/// Proxy messages to master
 #[derive(Serialize, Deserialize, Message)]
 #[rtype("()")]
 pub enum PolicyResponse {
