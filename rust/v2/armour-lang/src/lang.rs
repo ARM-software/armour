@@ -74,6 +74,16 @@ impl Program {
             .map(|bytes| blake3::hash(&bytes).to_hex())
             .ok()
     }
+    pub fn to_bincode(&self) -> Result<String, std::io::Error> {
+        bincode::serialize(self)
+            .map(|a| base64::encode(&a))
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    }
+    pub fn from_bincode<T: ?Sized + AsRef<[u8]>>(s: &T) -> Result<Self, std::io::Error> {
+        let bytes =
+            base64::decode(s).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        bincode::deserialize(&bytes).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    }
     fn internal(&self, s: &str) -> Option<&Expr> {
         self.code.0.get(s)
     }
@@ -121,15 +131,24 @@ impl Program {
         }
     }
     pub fn from_file_option<P: AsRef<std::path::Path>>(
+        bincode: bool,
         path: Option<P>,
     ) -> Result<Self, std::io::Error> {
-        Ok(if let Some(path) = path {
-            Module::from_file(path, None)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
-                .program
+        if let Some(path) = path {
+            if bincode {
+                use std::io::prelude::Read;
+                let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
+                let mut buf = String::new();
+                reader.read_to_string(&mut buf)?;
+                Program::from_bincode(buf.as_bytes())
+            } else {
+                Ok(Module::from_file(path, None)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                    .program)
+            }
         } else {
-            Self::default()
-        })
+            Ok(Self::default())
+        }
     }
 }
 

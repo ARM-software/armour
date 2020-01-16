@@ -1,7 +1,7 @@
 /// Armour policy language
 use actix::prelude::*;
 use armour_lang::{expressions, interpret::Env, lang};
-use clap::{crate_version, App, Arg};
+use clap::{crate_version, App, Arg, SubCommand};
 use rustyline::{error::ReadlineError, Editor};
 use std::io;
 use std::sync::Arc;
@@ -55,6 +55,12 @@ async fn main() -> std::io::Result<()> {
         .author("Anthony Fox <anthony.fox@arm.com>")
         .about("Armour policy language REPL")
         .arg(
+            Arg::with_name("bincode")
+                .long("bincode")
+                .required(false)
+                .help("load program from bincode file"),
+        )
+        .arg(
             Arg::with_name("input file")
                 .index(1)
                 .required(false)
@@ -66,6 +72,23 @@ async fn main() -> std::io::Result<()> {
                 .takes_value(true)
                 .help("Timeout (seconds) for external RPCs\n(default: 3s)"),
         )
+        .subcommand(
+            SubCommand::with_name("export")
+                .about("serialise programs")
+                .arg(
+                    Arg::with_name("format")
+                        .index(1)
+                        .required(true)
+                        .possible_values(&[
+                            "armour",
+                            "bincode",
+                            "blake3",
+                            "json",
+                            "pretty-json",
+                            "yaml",
+                        ]),
+                ),
+        )
         .get_matches();
 
     // enable logging
@@ -74,9 +97,10 @@ async fn main() -> std::io::Result<()> {
     pretty_env_logger::init();
 
     // try to load code from an input file
-    let mut prog = lang::Program::from_file_option(matches.value_of("input file"))?;
-    prog.print();
-
+    let mut prog = lang::Program::from_file_option(
+        matches.is_present("bincode"),
+        matches.value_of("input file"),
+    )?;
     if let Some(timeout) = matches.value_of("timeout") {
         let d = Duration::from_secs(timeout.parse().map_err(|_| {
             io::Error::new(
@@ -87,57 +111,68 @@ async fn main() -> std::io::Result<()> {
         prog.set_timeout(d)
     }
 
-    // test: serialize then deserialize program (using bincode)
-    // let bytes = prog.to_bytes()?;
-    // println!("{:?}", bytes);
-    // prog = lang::Program::from_bytes(&bytes)?;
+    if let Some(matches) = matches.subcommand_matches("export") {
+        let s = match matches.value_of("format").unwrap() {
+            "armour" => prog.to_string(),
+            "bincode" => prog.to_bincode().unwrap_or_else(|e| e.to_string()),
+            "blake3" => prog
+                .blake3_hash()
+                .map(|a| a.to_string())
+                .unwrap_or_else(|| "<failed to hash>".to_string()),
+            "json" => serde_json::to_string(&prog).unwrap_or_else(|e| e.to_string()),
+            "pretty-json" => serde_json::to_string_pretty(&prog).unwrap_or_else(|e| e.to_string()),
+            "yaml" => serde_yaml::to_string(&prog).unwrap_or_else(|e| e.to_string()),
+            _ => unreachable!(),
+        };
+        print!("{}", s)
+    } else {
+        // start eval actor
+        let headers = prog.headers.clone();
+        let eval = Eval::new(prog).start();
 
-    // start eval actor
-    let headers = prog.headers.clone();
-    let eval = Eval::new(prog).start();
-
-    // evaluate expressions (REPL)
-    let mut rl = Editor::<()>::new();
-    if rl.load_history(".armour-lang.txt").is_err() {
-        log::info!("no previous history");
-    };
-    loop {
-        match rl.readline("armour:> ") {
-            Ok(line) => {
-                let line = line.trim();
-                if line != "" {
-                    rl.add_history_entry(line);
-                    match expressions::Expr::from_string(line, &headers) {
-                        Ok(e) => {
-                            // println!("{:#?}", e);
-                            let now = std::time::Instant::now();
-                            match eval.send(Evaluate(e)).await {
-                                Ok(Ok(r)) => {
-                                    log::info!("eval time: {:?}", now.elapsed());
-                                    r.print()
+        // evaluate expressions (REPL)
+        let mut rl = Editor::<()>::new();
+        if rl.load_history(".armour-lang.txt").is_err() {
+            log::info!("no previous history");
+        };
+        loop {
+            match rl.readline("armour:> ") {
+                Ok(line) => {
+                    let line = line.trim();
+                    if line != "" {
+                        rl.add_history_entry(line);
+                        match expressions::Expr::from_string(line, &headers) {
+                            Ok(e) => {
+                                // println!("{:#?}", e);
+                                let now = std::time::Instant::now();
+                                match eval.send(Evaluate(e)).await {
+                                    Ok(Ok(r)) => {
+                                        log::info!("eval time: {:?}", now.elapsed());
+                                        r.print()
+                                    }
+                                    Ok(Err(e)) => log::warn!("{}", e),
+                                    Err(_e) => (),
                                 }
-                                Ok(Err(e)) => log::warn!("{}", e),
-                                Err(_e) => (),
                             }
+                            Err(err) => log::warn!("{}", err),
                         }
-                        Err(err) => log::warn!("{}", err),
                     }
                 }
+                Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+                    eval.do_send(Stop);
+                    break;
+                }
+                Err(err) => log::warn!("{}", err),
             }
-            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
-                eval.do_send(Stop);
-                break;
-            }
-            Err(err) => log::warn!("{}", err),
+        }
+        // done
+        if let Err(e) = rl
+            .save_history("armour-lang.txt")
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        {
+            log::warn!("{}", e)
         }
     }
-    // done
-    if let Err(e) = rl
-        .save_history("armour-lang.txt")
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-    {
-        log::warn!("{}", e)
-    };
 
     Ok(())
 }
