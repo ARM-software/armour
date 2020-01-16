@@ -687,7 +687,14 @@ impl Expr {
                                 // external function (RPC)
                                 if is_async {
                                     let call = Call::new(external, method, args);
-                                    Arbiter::spawn(env.external.send(call).then(|_| async {}));
+                                    Arbiter::spawn(env.external.send(call).then(|res| {
+                                        match res {
+                                            Ok(Err(e)) => log::warn!("{}", e),
+                                            Err(e) => log::warn!("{}", e),
+                                            _ => (),
+                                        };
+                                        async {}
+                                    }));
                                     Ok(Expr::from(()))
                                 } else {
                                     env.external
