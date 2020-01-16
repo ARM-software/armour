@@ -12,6 +12,7 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "0");
     env_logger::init();
 
+
     let mut listenfd = ListenFd::from_env();
 
     let mut db_options = ClientOptions::parse("mongodb://localhost:27017").map_err(|e| {
