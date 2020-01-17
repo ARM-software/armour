@@ -26,6 +26,6 @@ pub struct PolicyUpdateRequest {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct PolicyQuery {
+pub struct PolicyQueryRequest {
     pub service: String, // FIXME
 }

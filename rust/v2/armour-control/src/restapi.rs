@@ -1,5 +1,5 @@
 use super::ControlPlaneState;
-use actix_web::{get, post, web, web::Json, HttpResponse, Responder};
+use actix_web::{get, post, web, web::Json, HttpResponse};
 use armour_api::control::*;
 use bson::{bson, doc};
 
@@ -114,7 +114,10 @@ async fn update_policy(
 
 // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
 #[get("/query-policy")]
-async fn query_policy(state: State, request: Json<PolicyQuery>) -> impl Responder {
+async fn query_policy(
+    state: State,
+    request: Json<PolicyQueryRequest>
+) -> Result<HttpResponse, actix_web::Error> {
     info!("Querying policy for {:?}", request.service);
 
     let connection = &state.db_con;
@@ -126,9 +129,8 @@ async fn query_policy(state: State, request: Json<PolicyQuery>) -> impl Responde
     let service_clone = request.service.clone();
 
     if let Ok(Some(doc)) = col.find_one(Some(doc! {"service": service}), None) {
-        let current =
-            bson::from_bson::<PolicyUpdateRequest>(bson::Bson::Document(doc)).unwrap();
-        Ok(HttpResponse::Ok().body(current.policy))
+        let current = bson::from_bson::<PolicyUpdateRequest>(bson::Bson::Document(doc)).unwrap();
+        Ok(HttpResponse::Ok().json(current.policy))
     } else {
         Err(actix_web::Error::from(
             HttpResponse::InternalServerError().body(format!("No policy for {}", service_clone)),
