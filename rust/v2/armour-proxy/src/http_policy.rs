@@ -10,6 +10,7 @@ use std::sync::Arc;
 pub struct PolicyStatus {
     pub debug: bool,
     pub timeout: std::time::Duration,
+    pub allow_all: bool,
     pub request: lang::Policy,
     pub client_payload: lang::Policy,
     pub server_payload: lang::Policy,
@@ -21,7 +22,11 @@ impl PolicyStatus {
         self.request = prog.policy(lang::ALLOW_REST_REQUEST);
         self.client_payload = prog.policy(lang::ALLOW_CLIENT_PAYLOAD);
         self.server_payload = prog.policy(lang::ALLOW_SERVER_PAYLOAD);
-        self.response = prog.policy(lang::ALLOW_REST_RESPONSE)
+        self.response = prog.policy(lang::ALLOW_REST_RESPONSE);
+        self.allow_all = self.request == lang::Policy::Allow
+            && self.client_payload == lang::Policy::Allow
+            && self.server_payload == lang::Policy::Allow
+            && self.response == lang::Policy::Allow
     }
 }
 
@@ -30,6 +35,7 @@ impl Default for PolicyStatus {
         PolicyStatus {
             debug: false,
             timeout: std::time::Duration::from_secs(5),
+            allow_all: false,
             request: lang::Policy::default(),
             client_payload: lang::Policy::default(),
             server_payload: lang::Policy::default(),
@@ -126,10 +132,18 @@ impl Handler<GetRestPolicy> for PolicyActor {
     type Result = RestPolicyResponse;
 
     fn handle(&mut self, msg: GetRestPolicy, _ctx: &mut Context<Self>) -> Self::Result {
-        let from_to = msg.0;
-        RestPolicyResponse {
-            status: self.http.get(),
-            connection: self.connection(from_to.0, from_to.1),
+        let status = self.http.get();
+        if status.allow_all {
+            RestPolicyResponse {
+                status,
+                connection: literals::Connection::default(),
+            }
+        } else {
+            let from_to = msg.0;
+            RestPolicyResponse {
+                status,
+                connection: self.connection(from_to.0, from_to.1),
+            }
         }
     }
 }

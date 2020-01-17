@@ -53,12 +53,10 @@ async fn request(
             match p.status {
                 // allow all
                 PolicyStatus {
-                    request: Policy::Allow,
-                    client_payload: Policy::Allow,
-                    response: Policy::Allow,
-                    server_payload: Policy::Allow,
+                    allow_all: true,
                     debug,
                     timeout,
+                    ..
                 } => allow_all(req, connection, payload, client, debug, timeout).await,
                 // check request
                 PolicyStatus {
