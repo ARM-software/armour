@@ -72,15 +72,6 @@ fn main() -> io::Result<()> {
         ArmourDataMaster::new(socket_clone)
     });
 
-    println!(
-        "{}",
-        serde_json::to_string(&armour_api::master::PolicyUpdate {
-            protocol: Protocol::TCP,
-            policy: lang::Program::default().to_bincode()?,
-        })
-        .unwrap()
-    );
-
     // REST interface
     let master_data = Arc::new(master.clone());
     HttpServer::new(move || {
