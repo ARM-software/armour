@@ -199,7 +199,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                     .set_timeout(std::time::Duration::from_secs(secs.into()));
                 info!("timeout: {:?}", secs)
             }
-            PolicyRequest::Debug(Protocol::Rest, debug) => {
+            PolicyRequest::Debug(Protocol::REST, debug) => {
                 self.http.set_debug(debug);
                 info!("REST debug: {}", debug)
             }
@@ -208,7 +208,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                 info!("TCP debug: {}", debug)
             }
             PolicyRequest::Debug(Protocol::All, debug) => {
-                ctx.notify(PolicyRequest::Debug(Protocol::Rest, debug));
+                ctx.notify(PolicyRequest::Debug(Protocol::REST, debug));
                 ctx.notify(PolicyRequest::Debug(Protocol::TCP, debug))
             }
             PolicyRequest::Status => {
@@ -217,7 +217,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                     tcp: self.tcp.status(),
                 });
             }
-            PolicyRequest::Stop(Protocol::Rest) => {
+            PolicyRequest::Stop(Protocol::REST) => {
                 if self.http.port().is_none() {
                     self.uds_framed.write(PolicyResponse::RequestFailed)
                 } else {
@@ -232,7 +232,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                 }
             }
             PolicyRequest::Stop(Protocol::All) => {
-                ctx.notify(PolicyRequest::Stop(Protocol::Rest));
+                ctx.notify(PolicyRequest::Stop(Protocol::REST));
                 ctx.notify(PolicyRequest::Stop(Protocol::TCP))
             }
             PolicyRequest::StartHttp(port) => {
@@ -265,7 +265,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                     })
                     .wait(ctx)
             }
-            PolicyRequest::SetPolicy(Protocol::Rest, prog) => {
+            PolicyRequest::SetPolicy(Protocol::REST, prog) => {
                 self.http.set_policy(prog);
                 self.uds_framed.write(PolicyResponse::UpdatedPolicy);
                 info!("installed HTTP policy")
@@ -276,7 +276,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                 info!("installed TCP policy")
             }
             PolicyRequest::SetPolicy(Protocol::All, prog) => {
-                ctx.notify(PolicyRequest::SetPolicy(Protocol::Rest, prog.clone()));
+                ctx.notify(PolicyRequest::SetPolicy(Protocol::REST, prog.clone()));
                 ctx.notify(PolicyRequest::SetPolicy(Protocol::TCP, prog))
             }
             PolicyRequest::Shutdown => {

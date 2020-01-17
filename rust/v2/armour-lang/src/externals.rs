@@ -199,7 +199,7 @@ impl Externals {
     }
     pub async fn call(externals: Arc<Externals>, call: Call) -> Result<Expr, expressions::Error> {
         if let Some(socket) = externals.sockets.get(&call.external) {
-            let (client, _disconnector) = Externals::client(socket).await?;
+            let (client, disconnector) = Externals::client(socket).await?;
             // prepare the RPC
             let mut req = client.call_request();
             let mut call_builder = req.get();
@@ -212,7 +212,7 @@ impl Externals {
             }
             let response =
                 async_std::future::timeout(externals.timeout, req.send().promise).await?;
-            // disconnector.await?;
+            disconnector.await?;
             match Externals::read_value(response?.get()?.get_result()?) {
                 Ok(lit) => Ok(lit.into()),
                 Err(err) => Err(err.into()),

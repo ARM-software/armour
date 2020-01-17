@@ -2,20 +2,25 @@
 //!
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
+use actix_web::{middleware, web, App, HttpServer};
 use armour_api::proxy::{PolicyRequest, Protocol};
 use armour_lang::lang;
-use armour_master::{commands, ArmourDataMaster, Instances, MasterCommand, UdsConnect};
-use clap::{crate_version, App, Arg};
+use armour_master::{
+    commands, rest_policy, ArmourDataMaster, Instances, MasterCommand, UdsConnect,
+};
+use clap::{crate_version, App as ClapApp, Arg};
 use futures::StreamExt;
 use rustyline::{completion, error::ReadlineError, hint, validate::Validator, Editor};
 use std::io::{self, BufRead};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 fn main() -> io::Result<()> {
-    const SOCKET: &str = "armour";
+    const UDS_SOCKET: &str = "armour";
+    const TCP_SOCKET: &str = "127.0.0.1:8090";
 
-    // CLI
-    let matches = App::new("armour-master")
+    // Command Line Interface
+    let matches = ClapApp::new("armour-master")
         .version(crate_version!())
         .author("Anthony Fox <anthony.fox@arm.com>")
         .about("Armour Data Plane Master")
@@ -49,7 +54,7 @@ fn main() -> io::Result<()> {
     // start server, listening for connections on a Unix socket
     let socket = matches
         .value_of("master socket")
-        .unwrap_or(SOCKET)
+        .unwrap_or(UDS_SOCKET)
         .to_string();
     let socket_clone = socket.clone();
     let listener =
@@ -67,6 +72,18 @@ fn main() -> io::Result<()> {
         ArmourDataMaster::new(socket_clone)
     });
 
+    // REST interface
+    let master_data = Arc::new(master.clone());
+    HttpServer::new(move || {
+        App::new()
+            .data(master_data.clone())
+            .wrap(middleware::Logger::default())
+            .service(web::scope("/policy").service(rest_policy::update))
+    })
+    .bind(TCP_SOCKET)?
+    .run();
+
+    // Interactive shell interface
     std::thread::spawn(move || {
         if let Some(script) = matches.value_of("script") {
             run_script(script, &master, &socket)
@@ -270,7 +287,7 @@ fn master_command(
 
 fn protocol(s: &str) -> Protocol {
     if s.starts_with("http") {
-        Protocol::Rest
+        Protocol::REST
     } else if s.starts_with("tcp") {
         Protocol::TCP
     } else {

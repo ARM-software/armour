@@ -48,10 +48,18 @@ async fn request(
     proxy_port: web::Data<u16>,
 ) -> Result<HttpResponse, Error> {
     if let Some(connection) = Connection::new(&req, **proxy_port) {
-        let p = policy.send(GetRestPolicy(connection.from_to())).await;
-        if let Ok(p) = p {
+        if let Ok(p) = policy.send(GetRestPolicy(connection.from_to())).await {
             // we succeeded in getting a policy
             match p.status {
+                // allow all
+                PolicyStatus {
+                    request: Policy::Allow,
+                    client_payload: Policy::Allow,
+                    response: Policy::Allow,
+                    server_payload: Policy::Allow,
+                    debug,
+                    timeout,
+                } => allow_all(req, connection, payload, client, debug, timeout).await,
                 // check request
                 PolicyStatus {
                     request: Policy::Args(count),
@@ -98,12 +106,57 @@ async fn request(
             }
         } else {
             // we failed to get a policy
-            warn!("{}", p.err().unwrap());
+            warn!("failed to get HTTP policy");
             Ok(internal())
         }
     } else {
         // could not obtain forwarding URL
         Ok(internal())
+    }
+}
+
+// Streamlined processing of "allow all" policy
+async fn allow_all(
+    req: HttpRequest,
+    connection: Connection,
+    mut payload: web::Payload,
+    client: web::Data<Client>,
+    debug: bool,
+    timeout: std::time::Duration,
+) -> Result<HttpResponse, Error> {
+    let mut client_payload = BytesMut::new();
+    while let Some(chunk) = payload.next().await {
+        let chunk = chunk?;
+        client_payload.extend_from_slice(&chunk)
+    }
+    let client_request = client
+        .request_from(connection.uri(), req.head())
+        .process_headers(req.peer_addr())
+        .timeout(timeout);
+    if debug {
+        debug!("{:?}", client_request)
+    };
+    // forward the request (with the original client payload)
+    match client_request.send_body(client_payload).await {
+        Ok(mut res) => {
+            let mut server_payload = BytesMut::new();
+            while let Some(chunk) = res.next().await {
+                let chunk = chunk?;
+                server_payload.extend_from_slice(&chunk)
+            }
+            let mut response_builder = HttpResponse::build(res.status());
+            for (header_name, header_value) in res.headers().iter().filter(|(h, _)| {
+                *h != "connection" && *h != "content-length" && *h != "content-encoding"
+            }) {
+                response_builder.header(header_name.clone(), header_value.clone());
+            }
+            let response = response_builder.body(server_payload);
+            if debug {
+                debug!("{:?}", response)
+            }
+            Ok(response)
+        }
+        Err(err) => Ok(err.error_response()),
     }
 }
 
