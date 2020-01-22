@@ -1,11 +1,11 @@
-## Micro-benchmark of Armour data-plan
+## Micro-benchmark of Armour data-plane
 
 ### Contents
 
 - `containers/`: configuration files of the containers: clients running `wrk2` tool, `hyper` server and configuration files for the proxies used `armour`, `envoy`, `nginx`, `linkerd` and `sozu`.
 - `scripts/`: scripts to run the performance analysis.
 - `setup/`: scripts to setup the environment (start multiple aws instances and launch the benchmark).
-- `results/`: raw data, processed data (has only the info needed) and plots for different benchmark setups and a benchmark of several web servers (`hyper`, `actix-web`, `apache`, `nginx web server`, `cherokee`, `lighttpd`).
+- `results/`: raw data, plots for different benchmark setups and a benchmark of several web servers (`hyper`, `actix-web`, `apache`, `nginx web server`, `cherokee`, `lighttpd`).
 
 ### Usage
 
