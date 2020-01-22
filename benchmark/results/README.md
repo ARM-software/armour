@@ -28,14 +28,14 @@ For the test setups:
 
 The Proxies and server tested versions: 
 
-> It is important to keep in mind, that while running each test, `armour` and the `logger` keep changing, before talking about the results, the version (git commit hash) used in each test will be mentioned along with the versions of the libraries used in both of them.
+> It is important to keep in mind, that while running each test, `armour` and the `logger` keep changing, before talking about the results, the version (git commit hash) used in each test will be mentioned along with the versions of the libraries used in both of them. In the `proxy` directory there are all the results of different `armour` versions.
 
 - `nginx proxy 1.16.1`
 - `envoy 1.12.1`
 - `sozu 0.11.0`
 - `linkerd 1.7.0`
-- `armour 11 Dec` commit hash: 0f674ee3a1540c6b2168dbd55241b701645a3de8
-- `logger oracle 11 Dec` commit hash: 0f674ee3a1540c6b2168dbd55241b701645a3de8
+- `armour 17 Jan` commit hash: b4bcdc20
+- `logger oracle 17 Jan` commit hash: b4bcdc20
 - `hyper web server 0.12.35`
 
 ### Tools used
@@ -51,8 +51,16 @@ There were 12 different policy setups test during this benchmark, they can be sp
 
 For the first set of policies:
 
-- `allow`: run the proxy with an allow all.
-- `all`: uses all 4 functions in the policy, `allow_rest_request`, `allow_rest_response`, `allow_client_payload` and `allow_server_payzload`
+<details>
+<summary> `allow`: run the proxy with an allow all. </summary>
+<br>
+
+	allow all
+
+</details>
+<details>
+<summary> `all`: uses all 4 entry points in the policy, `allow_rest_request`, `allow_rest_response`, `allow_client_payload` and `allow_server_payload`</summary>
+<br>
 
 		fn allow_rest_request(req: HttpRequest) -> bool {
     		let c = req.connection();
@@ -73,7 +81,12 @@ For the first set of policies:
 		fn allow_rest_response(res: HttpResponse) -> bool {
     		res.status() == 200
 		}
-- `req-res`: uses `allow_rest_request` and `allow_rest_response`
+		
+</details>
+
+<details>
+<summary> `req-res`: uses `allow_rest_request` and `allow_rest_response` </summary>
+<br>
 
 		fn allow_rest_request(req: HttpRequest) -> bool {
     		let c = req.connection();
@@ -86,7 +99,10 @@ For the first set of policies:
 		fn allow_rest_response(res: HttpResponse) -> bool {
     		res.status() == 200
 		}
-- `req`: uses `allow_rest_request`, a policy that talks about IDs (hosts names and ports)
+</details>
+<details>
+<summary> `req`: uses `allow_rest_request`, a policy that talks about IDs (hosts names and ports) </summary>
+<br>
 		
 		fn allow_rest_request(req: HttpRequest) -> bool {
     		let c = req.connection();
@@ -95,47 +111,62 @@ For the first set of policies:
         		"client-1" in from.hosts() || to.port() == Some(80)
      		} else {false}
 		}
-- `req-method`: uses `allow_rest_request`, a policy that talks about the request's method
+</details>
+<details>
+<summary> `req-method`: uses `allow_rest_request`, a policy that talks about the request's method </summary>
+<br>
 
 		fn allow_rest_request(req: HttpRequest) -> bool {
   			return req.method() == "GET"
 		}
-
-- `res`: uses `allow_rest_response`
+</details>
+<details>
+<summary> `res`: uses `allow_rest_response` </summary>
+<br>
 
 		fn allow_rest_response(res: HttpResponse) -> bool {
     		res.status() == 200
 		}
-- `srv-payload`: uses `allow_server_payload`
+</details>
+<details>
+<summary> `srv-payload`: uses `allow_server_payload` 
+</summary>
+<br>
 
-		fn allow_server_payload(payload: Payload) -> bool {
-    		payload.data().len() < 3000
-		}
-		
+	fn allow_server_payload(payload: Payload) -> bool {
+    	payload.data().len() < 3000
+	}
+</details>
+
 For the second set of policies that use oracles:
 
-- `log`: uses the log function in the logger with an allow all policy
+<details>
+<summary> `log`: uses the log function in the logger with an allow all policy </summary>
+<br>
 
-		external logger @ "log_sock" {
-  			fn log(_) -> ()
-		}
-		fn allow_rest_request(req: HttpRequest) -> bool {
-  			logger::log(req);
-  			true
-		}
-- `all-log`: uses the logger in all 4 policy functions, all calls to various functions in the logger are sync
+	external logger @ "log_sock" {
+  		fn log(_) -> ()
+	}
+	fn allow_rest_request(req: HttpRequest) -> bool {
+  		logger::log(req);
+  		true
+	}
+</details>
+<details>
+<summary> `all-log`: uses the logger in all 4 policy functions, all calls to various functions in the logger are sync </summary>
+<br>
 
-		external logger @ "log_sock" {
-    		fn log(_) -> ()
-    		fn rest(i64, str, str, str, ID, ID) -> ()
-    		fn client_payload(i64, i64) -> ()
-    		fn server_payload(i64, i64) -> ()
-		}
+	external logger @ "log_sock" {
+   		fn log(_) -> ()
+    	fn rest(i64, str, str, str, ID, ID) -> ()
+    	fn client_payload(i64, i64) -> ()
+    	fn server_payload(i64, i64) -> ()
+	}
     
-		fn allow_rest_request(req: HttpRequest) -> bool {
-    		let c = req.connection();
-    		let (from, to) = c.from_to();
-    		let date = if let Some(date) = req.unique_header("date") {
+	fn allow_rest_request(req: HttpRequest) -> bool {
+   		let c = req.connection();
+   		let (from, to) = c.from_to();
+   		let date = if let Some(date) = req.unique_header("date") {
         		str::from_utf8(date)
      		} else {"-"};
     		logger::rest(c.number(), date, req.method(), req.path(), from, to);
@@ -158,10 +189,16 @@ For the second set of policies that use oracles:
     		logger::log(res.header("date"));
     		res.status() == 200
 		}
-- `all-async-log`: the same policy as before but all calls to functions in the logger are async, for example:
+</details>
+<details>
+<summary> `all-async-log`: the same policy as before but all calls to functions in the logger are async, for example: </summary>
+<br>
 
 		async logger::log(res.header("date"));
-- `async log`: uses the log function with an allow all, the call to log is async
+</details>
+<details>
+<summary> `async log`: uses the log function with an allow all, the call to log is async </summary>
+<br>
 
 		external logger @ "log_sock" {
   			fn log(_) -> ()
@@ -170,7 +207,10 @@ For the second set of policies that use oracles:
   			async logger::log(req);
   			true
 		}
-- `req-log`: uses `allow_rest_request` with the logger
+</details>
+<details>
+<summary> `req-log`: uses `allow_rest_request` with the logger </summary>
+<br>
 
 		external logger @ "log_sock" {
     		fn rest(i64, str, str, str, ID, ID) -> ()
@@ -187,7 +227,7 @@ For the second set of policies that use oracles:
         		"client-1" in from.hosts() || to.port() == Some(80)
      		} else {false}
 		}
-		
+</details>
 ### NGINX policies
 
 	worker_processes 1;
@@ -269,8 +309,8 @@ For the second set of policies that use oracles:
 
 ### t2.large: client, server and proxies are running in the same VM
 
-- `armour 11 Dec` commit hash: 0f674ee3a1540c6b2168dbd55241b701645a3de8
-- `logger oracle 11 Dec` commit hash: 0f674ee3a1540c6b2168dbd55241b701645a3de8
+- `armour 17 Jan` commit hash: b4bcdc20
+- `logger oracle 17 Jan` commit hash: b4bcdc20
 
 #### Latency & Throughput
 
@@ -293,29 +333,23 @@ where the number of concurrent connections is always 1 and we vary the requests 
 For the results, the higher the curve is more responses the client gets from the server.
 
 The first graph represents the latency for all of the different (12) armour setups, Linkerd, envoy, nginx and the baseline. These two graphs are a bit overwhelming, the following graphs are more clearer.
-![proxy latency](proxy/stable/all_latency.png)
-![proxy latency](proxy/stable/all_throughput.png)
+![proxy latency](proxy/17jan-b4bcdc20/all_latency.png)
+![proxy latency](proxy/17jan-b4bcdc20/all_throughput.png)
 
 The graph above has a lot of info, to split it a bit, the following graph shows the latency of basic setups for `nginx`, `linkerd`, `envoy`, `armour` with an allow all policy, `armour` with an all policy and the baseline.
-![proxy latency](proxy/stable/basic_latency.png)
-![proxy latency](proxy/stable/basic_throughput.png)
+![proxy latency](proxy/17jan-b4bcdc20/basic_latency.png)
+![proxy latency](proxy/17jan-b4bcdc20/basic_throughput.png)
 
 The following graphs shows how all different setups of armour are compared against one another.
-![proxy latency](proxy/stable/armour_latency.png)
-![proxy latency](proxy/stable/armour_throughput.png)
+![proxy latency](proxy/17jan-b4bcdc20/armour_latency.png)
+![proxy latency](proxy/17jan-b4bcdc20/armour_throughput.png)
 The following graphs shows how using different sets of policies in armour without any calls to an oracle compare against one another.
-![proxy latency](proxy/stable/armour-policy_latency.png)
-![proxy latency](proxy/stable/armour-policy_throughput.png)
+![proxy latency](proxy/17jan-b4bcdc20/armour-policy_latency.png)
+![proxy latency](proxy/17jan-b4bcdc20/armour-policy_throughput.png)
 
 The following graphs shows how using different sets of policies in armour with calls to an oracle, in this case the logger, compared against one another.
-![proxy latency](proxy/stable/armour-log_latency.png)
-![proxy latency](proxy/stable/armour-log_throughput.png)
-
-The following graphs were produced using a different version of the logger where UDS connections are kept alive, however, there is not a difference in latency between this version and the previous one, therefor establishing a UDS connection every time there is a call to the logger is not the bottleneck.
-> commit hash: 64c7894f5063fd5a39d6dece24df488ce38b8d7e
-
-![proxy latency](proxy/log-uds-alive/armour-log_latency.png)
-![proxy latency](proxy/log-uds-alive/armour-log_throughput.png)
+![proxy latency](proxy/17jan-b4bcdc20/armour-log_latency.png)
+![proxy latency](proxy/17jan-b4bcdc20/armour-log_throughput.png)
 
 
 #### Scalability
@@ -326,21 +360,28 @@ This is to measure the number of responses per second the server serves while go
 PS: the number of Requests per second each client sends is 15k / number of clients.
 
 For the results, the higher the curve is more requests made by more clients can be served by the server.
-![proxy scalability](proxy/stable/plot_scalability.png)
+![proxy scalability](proxy/17jan-b4bcdc20/plot_scalability.png)
 
 #### Memory usage
 The memory usage was measured while running the throughput and latency test, the number or requests per second decreases with time, from 25k request per second to 1k request per second while the number of connection is always 1.
 
-![proxy memory](proxy/stable/memory.png)
-![proxy memory](proxy/stable/armour_memory.png)
+![proxy memory](proxy/11Dec-0f674ee3a1540c6b2168dbd55241b701645a3de8/memory.png)
+![proxy memory](proxy/11Dec-0f674ee3a1540c6b2168dbd55241b701645a3de8/armour_memory.png)
 #### CPU usage
-![proxy memory](proxy/stable/cpu.png)
-![proxy memory](proxy/stable/armour_cpu.png)
+![proxy memory](proxy/11Dec-0f674ee3a1540c6b2168dbd55241b701645a3de8/cpu.png)
+![proxy memory](proxy/11Dec-0f674ee3a1540c6b2168dbd55241b701645a3de8/armour_cpu.png)
 
 ### t2.large: client, server and the proxy, each is running on a separate VM
 
-`TO DO`
+- `armour 17 Jan` commit hash: b4bcdc20
+- `logger oracle 17 Jan` commit hash: b4bcdc20
 
+##### Latency
+
+![proxy latency](proxy/multi-17jan-b4bcdc20/all_latency.png)
+##### Throughput
+
+![proxy latency](proxy/multi-17jan-b4bcdc20/all_throughput.png)
 #### Takeaway
 
 - Current version of armour is doing much better 

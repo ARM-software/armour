@@ -12,7 +12,7 @@ elif [ $1 = "baseline" ]; then
   ./http-perf.sh $1 $2 $ip
 elif [ $1 = "nginx" ]; then
   ./clean.sh
-  ./proxy.sh $1
+  sudo ./proxy.sh $1
   ./http-perf.sh $1 $2 $ip
 elif [ $1 = "sozu" ]; then
   ./clean.sh

@@ -1,8 +1,4 @@
-
-
-
-
-##Micro-benchmark of Armour data-plan
+## Micro-benchmark of Armour data-plan
 
 ### Contents
 

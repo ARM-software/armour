@@ -1,6 +1,7 @@
 #!/bin/bash
-mkdir ../results/new/
-mkdir ../results/new/linkerd ../results/new/armour-all-async-log ../results/new/armour-all-log ../results/new/armour-all ../results/new/armour-async-log ../results/new/envoy ../results/new/nginx ../results/new/baseline ../results/new/armour-log ../results/new/armour-req-log ../results/new/armour-req-method ../results/new/armour-req-res ../results/new/armour-req  ../results/new/armour-res  ../results/new/armour-srv-payload  ../results/new/armour-allow
+
+mkdir ../results/proxy/new/
+mkdir ../results/proxy/new/linkerd ../results/proxy/new/armour-all-async-log ../results/proxy/new/armour-all-log ../results/proxy/new/armour-all ../results/proxy/new/armour-async-log ../results/proxy/new/envoy ../results/proxy/new/nginx ../results/proxy/new/baseline ../results/proxy/new/armour-log ../results/proxy/new/armour-req-log ../results/proxy/new/armour-req-method ../results/proxy/new/armour-req-res ../results/proxy/new/armour-req  ../results/proxy/new/armour-res  ../results/proxy/new/armour-srv-payload  ../results/proxy/new/armour-allow
 cd ../raw-data/
 loc=`find . -type f -print0 | xargs -0 ls -t`
 i=1
@@ -9,45 +10,45 @@ do
 file=`echo $f| cut -f4-5 -d"/" | sed "s/\///"`
 
     if [[ $f == *"armour-allow"* ]]; then
-        cp $f ../results/new/armour-allow/$file-$i
+        cp $f ../reuslts/proxy/new/armour-allow/$file-$i
     elif [[ $f == *"nginx"* ]]; then
-        cp $f ../results/new/nginx/$file-$i
+        cp $f ../reuslts/proxy/new/nginx/$file-$i
     elif [[ $f == *"linkerd"* ]]; then
-        cp $f ../results/new/linkerd/$file-$i
+        cp $f ../reuslts/proxy/new/linkerd/$file-$i
     elif [[ $f == *"envoy"* ]]; then
-        cp $f ../results/new/envoy/$file-$i
+        cp $f ../reuslts/proxy/new/envoy/$file-$i
     elif [[ $f == *"baseline"* ]]; then
-        cp $f ../results/new/baseline/$file-$i
+        cp $f ../reuslts/proxy/new/baseline/$file-$i
     elif [[ $f == *"armour-all-async-log"* ]]; then
-        cp $f ../results/new/armour-all-async-log/$file-$i
+        cp $f ../reuslts/proxy/new/armour-all-async-log/$file-$i
     elif [[ $f == *"armour-all-log"* ]]; then
-        cp $f ../results/new/armour-all-log/$file-$i
+        cp $f ../reuslts/proxy/new/armour-all-log/$file-$i
     elif [[ $f == *"armour-allow"* ]]; then
-        cp $f ../results/new/armour-allow/$file-$i
+        cp $f ../reuslts/proxy/new/armour-allow/$file-$i
     elif [[ $f == *"armour-all"* ]]; then
-        cp $f ../results/new/armour-all/$file-$i
+        cp $f ../reuslts/proxy/new/armour-all/$file-$i
     elif [[ $f == *"armour-req-res"* ]]; then
-        cp $f ../results/new/armour-req-res/$file-$i
+        cp $f ../reuslts/proxy/new/armour-req-res/$file-$i
     elif [[ $f == *"armour-req-method"* ]]; then
-        cp $f ../results/new/armour-req-method/$file-$i
+        cp $f ../reuslts/proxy/new/armour-req-method/$file-$i
     elif [[ $f == *"armour-req-log"* ]]; then
-        cp $f ../results/new/armour-req-log/$file-$i
+        cp $f ../reuslts/proxy/new/armour-req-log/$file-$i
     elif [[ $f == *"armour-req"* ]]; then
-        cp $f ../results/new/armour-req/$file-$i
+        cp $f ../reuslts/proxy/new/armour-req/$file-$i
     elif [[ $f == *"armour-res"* ]]; then
-        cp $f ../results/new/armour-res/$file-$i
+        cp $f ../reuslts/proxy/new/armour-res/$file-$i
     elif [[ $f == *"armour-srv-payload"* ]]; then
-        cp $f ../results/new/armour-srv-payload/$file-$i
+        cp $f ../reuslts/proxy/new/armour-srv-payload/$file-$i
     elif [[ $f == *"armour-log"* ]]; then
-        cp $f ../results/new/armour-log/$file-$i
+        cp $f ../reuslts/proxy/new/armour-log/$file-$i
     elif [[ $f == *"armour-async-log"* ]]; then
-        cp $f ../results/new/armour-async-log/$file-$i
+        cp $f ../reuslts/proxy/new/armour-async-log/$file-$i
     fi
 
 i=$((i+1))
 done
 
-cd ../results/new/
+cd ../results/proxy/new/
 dir=`ls -d -- */`
 for path in $dir
 do
