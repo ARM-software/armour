@@ -10,3 +10,7 @@ members = [
     "armour-master",
     "armour-control",
 ]
+
+[profile.release]
+opt-level = "s"
+lto = true

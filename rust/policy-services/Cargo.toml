@@ -4,3 +4,7 @@ members = [
     "policy-service",
     "logger",
 ]
+
+[profile.release]
+opt-level = "s"
+lto = true
