@@ -1,4 +1,4 @@
-aws ec2 describe-instances --filters "Name=image-id,Values=ami-07263d8579fa30a5e"  --region eu-west-2 --query 'Reservations[*].Instances[*].NetworkInterfaces[*].PrivateIpAddresses[*].[Association.PublicIp]' --output text > ips
+aws ec2 describe-instances --filters "Name=image-id,Values=ami-0e3f765791acb05e8"  --region eu-west-2 --query 'Reservations[*].Instances[*].NetworkInterfaces[*].PrivateIpAddresses[*].[Association.PublicIp]' --output text > ips
 
 ARRAY=( $( cat ips ) )
 i=1

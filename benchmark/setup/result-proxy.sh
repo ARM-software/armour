@@ -10,39 +10,39 @@ do
 file=`echo $f| cut -f4-5 -d"/" | sed "s/\///"`
 
     if [[ $f == *"armour-allow"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-allow/$file-$i
+        cp $f ../results/proxy/new/armour-allow/$file-$i
     elif [[ $f == *"nginx"* ]]; then
-        cp $f ../reuslts/proxy/new/nginx/$file-$i
+        cp $f ../results/proxy/new/nginx/$file-$i
     elif [[ $f == *"linkerd"* ]]; then
-        cp $f ../reuslts/proxy/new/linkerd/$file-$i
+        cp $f ../results/proxy/new/linkerd/$file-$i
     elif [[ $f == *"envoy"* ]]; then
-        cp $f ../reuslts/proxy/new/envoy/$file-$i
+        cp $f ../results/proxy/new/envoy/$file-$i
     elif [[ $f == *"baseline"* ]]; then
-        cp $f ../reuslts/proxy/new/baseline/$file-$i
+        cp $f ../results/proxy/new/baseline/$file-$i
     elif [[ $f == *"armour-all-async-log"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-all-async-log/$file-$i
+        cp $f ../results/proxy/new/armour-all-async-log/$file-$i
     elif [[ $f == *"armour-all-log"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-all-log/$file-$i
+        cp $f ../results/proxy/new/armour-all-log/$file-$i
     elif [[ $f == *"armour-allow"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-allow/$file-$i
+        cp $f ../results/proxy/new/armour-allow/$file-$i
     elif [[ $f == *"armour-all"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-all/$file-$i
+        cp $f ../results/proxy/new/armour-all/$file-$i
     elif [[ $f == *"armour-req-res"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-req-res/$file-$i
+        cp $f ../results/proxy/new/armour-req-res/$file-$i
     elif [[ $f == *"armour-req-method"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-req-method/$file-$i
+        cp $f ../results/proxy/new/armour-req-method/$file-$i
     elif [[ $f == *"armour-req-log"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-req-log/$file-$i
+        cp $f ../results/proxy/new/armour-req-log/$file-$i
     elif [[ $f == *"armour-req"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-req/$file-$i
+        cp $f ../results/proxy/new/armour-req/$file-$i
     elif [[ $f == *"armour-res"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-res/$file-$i
+        cp $f ../results/proxy/new/armour-res/$file-$i
     elif [[ $f == *"armour-srv-payload"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-srv-payload/$file-$i
+        cp $f ../results/proxy/new/armour-srv-payload/$file-$i
     elif [[ $f == *"armour-log"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-log/$file-$i
+        cp $f ../results/proxy/new/armour-log/$file-$i
     elif [[ $f == *"armour-async-log"* ]]; then
-        cp $f ../reuslts/proxy/new/armour-async-log/$file-$i
+        cp $f ../results/proxy/new/armour-async-log/$file-$i
     fi
 
 i=$((i+1))

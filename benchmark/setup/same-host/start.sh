@@ -1,8 +1,8 @@
 #!/bin/bash
 cd ~/Downloads
-aws ec2 run-instances --image-id ami-0efd65ed5f7be010a --count 60 --instance-type t2.large --key-name some-key --security-groups arm-default --region eu-west-2
+aws ec2 run-instances --image-id ami-0e3f765791acb05e8 --count 60 --instance-type t2.large --key-name some-key --security-groups arm-default --region eu-west-2
 sleep 120s
-aws ec2 describe-instances --filters "Name=image-id,Values=ami-0efd65ed5f7be010a"  --region eu-west-2 --query 'Reservations[*].Instances[*].NetworkInterfaces[*].PrivateIpAddresses[*].[Association.PublicIp]' --output text > ips
+aws ec2 describe-instances --filters "Name=image-id,Values=ami-0e3f765791acb05e8"  --region eu-west-2 --query 'Reservations[*].Instances[*].NetworkInterfaces[*].PrivateIpAddresses[*].[Association.PublicIp]' --output text > ips
 
 ARRAY=( $( cat ips ) )
 i=1
