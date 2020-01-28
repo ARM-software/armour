@@ -1,6 +1,0 @@
-launch
-wait 1
-debug on
-allow all
-streaming http start 8443
-status
