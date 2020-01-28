@@ -56,18 +56,10 @@ fn main() -> std::io::Result<()> {
     // start up policy actor
     // (should possibly use actix::sync::SyncArbiter)
     // install the CLI policy
-    let master_socket = matches.value_of("master socket").unwrap();
-
-    let policy = sys
-        .block_on(PolicyActor::create_policy(master_socket.to_string()))
-        .unwrap_or_else(|e| {
-            log::warn!(
-                r#"failed to connect to data master "{}": {}"#,
-                master_socket,
-                e
-            );
-            std::process::exit(1)
-        });
+    let master_socket = matches.value_of("master socket").unwrap().to_string();
+    log::info!("connecting to: {}", master_socket);
+    let stream = sys.block_on(tokio::net::UnixStream::connect(master_socket))?;
+    let policy = PolicyActor::create_policy(stream);
 
     // start a proxy server
     if let Some(port) = proxy_port {

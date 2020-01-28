@@ -6,14 +6,13 @@ use actix_web::{middleware, web, App, HttpServer};
 use armour_api::proxy::{PolicyRequest, Protocol};
 use armour_lang::lang;
 use armour_master::{
-    commands, rest_policy, ArmourDataMaster, Instances, MasterCommand, UdsConnect,
+    commands, rest_policy, AddChild, ArmourDataMaster, InstanceSelector, MasterCommand, UdsConnect,
 };
 use clap::{crate_version, App as ClapApp, Arg};
 use futures::StreamExt;
 use rustyline::{completion, error::ReadlineError, hint, validate::Validator, Editor};
 use std::io::{self, BufRead};
 use std::path::PathBuf;
-use std::sync::Arc;
 
 fn main() -> io::Result<()> {
     const UDS_SOCKET: &str = "armour";
@@ -73,10 +72,10 @@ fn main() -> io::Result<()> {
     });
 
     // REST interface
-    let master_data = Arc::new(master.clone());
+    let master_clone = master.clone();
     HttpServer::new(move || {
         App::new()
-            .data(master_data.clone())
+            .data(master_clone.clone())
             .wrap(middleware::Logger::default())
             .service(web::scope("/policy").service(rest_policy::update))
     })
@@ -114,37 +113,6 @@ fn main() -> io::Result<()> {
 
     sys.run()
 }
-
-struct Helper(completion::FilenameCompleter, hint::HistoryHinter);
-
-impl Validator for Helper {}
-
-impl Helper {
-    fn new() -> Self {
-        Helper(completion::FilenameCompleter::new(), hint::HistoryHinter {})
-    }
-}
-
-impl completion::Completer for Helper {
-    type Candidate = completion::Pair;
-    fn complete(
-        &self,
-        line: &str,
-        pos: usize,
-        ctx: &rustyline::Context<'_>,
-    ) -> Result<(usize, Vec<completion::Pair>), ReadlineError> {
-        self.0.complete(line, pos, ctx)
-    }
-}
-impl hint::Hinter for Helper {
-    fn hint(&self, line: &str, pos: usize, ctx: &rustyline::Context<'_>) -> Option<String> {
-        self.1.hint(line, pos, ctx)
-    }
-}
-
-impl rustyline::highlight::Highlighter for Helper {}
-
-impl rustyline::Helper for Helper {}
 
 fn armour_proxy() -> std::path::PathBuf {
     if let Ok(Some(path)) =
@@ -198,12 +166,8 @@ fn run_script(script: &str, master: &Addr<ArmourDataMaster>, socket: &std::path:
 fn run_command(master: &Addr<ArmourDataMaster>, cmd: &str, socket: &std::path::PathBuf) -> bool {
     let cmd = cmd.trim();
     if cmd != "" {
-        if let Some(caps) = commands::MASTER.captures(&cmd) {
+        if let Some(caps) = commands::COMMAND.captures(&cmd) {
             return master_command(&master, caps, socket);
-        } else if let Some(caps) = commands::INSTANCE0.captures(&cmd) {
-            instance0_command(&master, caps)
-        } else if let Some(caps) = commands::INSTANCE1.captures(&cmd) {
-            return instance1_command(&master, caps, socket);
         } else {
             log::info!("unknown command <none>")
         }
@@ -216,17 +180,50 @@ fn master_command(
     caps: regex::Captures,
     socket: &std::path::PathBuf,
 ) -> bool {
-    let command = caps.name("command").map(|s| s.as_str().to_lowercase());
-    match command.as_ref().map(String::as_str) {
-        Some("list") => {
-            log::info!("sending list");
+    let (instance, command, args) = commands::command(&caps);
+    let command = command.map(|s| s.to_lowercase());
+    match (
+        instance == InstanceSelector::All,
+        command.as_ref().map(String::as_str),
+        args,
+    ) {
+        (true, Some("help"), None) => println!(
+            "COMMANDS:
+    help                      list commands
+    list                      list connected instances
+    quit                      shutdown master and all instances
+    run <file>                run commands from <file>
+    wait <seconds>            wait for <seconds> to elapse (up to 10s)
+    <id> launch [log]         start a new slave instance
+
+    [<id>] shutdown                   request slave shutdown
+    [<id>] status                     retrieve and print status
+    [<id>] [http|tcp] start <port>    start HTTP/TCP proxy on <port>
+    [<id>] [http|tcp] stop            stop HTTP/TCP proxy
+    [<id>] [http|tcp] allow all       request allow all policy
+    [<id>] [http|tcp] deny all        request deny all policy
+    [<id>] [http|tcp] policy <file>   read policy <file> and send to instance
+    [<id>] [http|tcp] debug [on|off]  enable/disable display of HTTP requests
+    [<id>] http timeout <seconds>     server response timeout
+    
+    <id>  instance ID number"
+        ),
+        (true, Some("list"), None) => {
             master.do_send(MasterCommand::ListActive);
         }
-        Some("quit") => {
+        (true, Some("quit"), None) => {
             master.do_send(MasterCommand::Quit);
             return true;
         }
-        Some(s @ "launch log") | Some(s @ "launch") => {
+        (true, Some("run"), Some(file)) => run_script(file, master, socket),
+        (true, Some("wait"), Some(secs)) => {
+            if let Ok(delay) = secs.parse::<u8>() {
+                std::thread::sleep(std::time::Duration::from_secs(delay.min(10).into()))
+            } else {
+                log::warn!("wait <seconds>: expecting u8, got {}", secs);
+            }
+        }
+        (true, Some(s @ "launch log"), None) | (true, Some(s @ "launch"), None) => {
             let log = if s.ends_with("log") {
                 "-l info"
             } else {
@@ -240,13 +237,17 @@ fn master_command(
                 .arg(socket)
                 .spawn()
             {
-                Ok(child) => log::info!("started processs: {}", child.id()),
+                Ok(child) => {
+                    let pid = child.id();
+                    master.do_send(AddChild(pid, child));
+                    log::info!("started processs: {}", pid)
+                }
                 Err(err) => log::warn!("failed to spawn data plane instance: {}", err),
             }
             // let mut command = std::process::Command::new("sudo");
             // let command = command
             //     .arg("/Users/antfox02/.cargo/bin/flamegraph")
-            //     .arg("/Users/antfox02/rust/target/release/armour-data")
+            //     .arg("/Users/antfox02/rust/target/release/armour-proxy")
             //     .arg("armour")
             //     .arg(log);
             // log::info!("command: {:?}", command);
@@ -255,164 +256,177 @@ fn master_command(
             //     Err(err) => log::warn!("failed to spawn data plane instance: {}", err),
             // }
         }
-        Some("help") => println!(
-            "COMMANDS:
-    help                      list commands
-    list                      list connected instances
-    quit                      shutdown master and all instances
-    run <file>                run commands from <file>
-    wait <seconds>            wait for <seconds> to elapse (up to 10s)
-
-    launch [log]              start a new slave instance
-    [<id>|all] shutdown       request slave shutdown
-
-    [<id>|all] [http|tcp] allow all       request allow all policy
-    [<id>|all] [http|tcp] deny all        request deny all policy
-    [<id>|all] [http|tcp] policy <path>   read policy from <path> and send to instance
-    [<id>|all] [http|tcp] debug [on|off]  enable/disable display of HTTP requests
-    [<id>|all] http timeout <secs>        server response timeout
-    [<id>|all] status                     retrieve and print status
-    [<id>|all] [http|tcp] stop            stop listening on all ports
-
-    [<id>|all] [streaming http|http|tcp] start <port>
-        start listening for HTTP/TCP requests on <port>
-
-    <id>  instance ID number
-    all   all instances"
-        ),
+        (_, Some("shutdown"), None) => {
+            log::info!("sending shudown");
+            master.do_send(MasterCommand::UpdatePolicy(
+                instance,
+                Box::new(PolicyRequest::Shutdown),
+            ))
+        }
+        (_, Some("status"), None) => master.do_send(MasterCommand::UpdatePolicy(
+            instance,
+            Box::new(PolicyRequest::Status),
+        )),
+        (_, Some(s @ "tcp start"), Some(port)) | (_, Some(s @ "http start"), Some(port)) => {
+            if let Ok(port) = port.parse::<u16>() {
+                let start = if is_rest(s) {
+                    PolicyRequest::StartHttp(port)
+                } else {
+                    PolicyRequest::StartTcp(port)
+                };
+                master.do_send(MasterCommand::UpdatePolicy(instance, Box::new(start)))
+            } else {
+                log::warn!("tcp start <port>: expecting port number, got {}", port);
+            }
+        }
+        (_, Some(s @ "stop"), None)
+        | (_, Some(s @ "http stop"), None)
+        | (_, Some(s @ "tcp stop"), None) => master.do_send(MasterCommand::UpdatePolicy(
+            instance,
+            Box::new(PolicyRequest::Stop(protocol(s))),
+        )),
+        (_, Some(s @ "debug on"), None)
+        | (_, Some(s @ "http debug on"), None)
+        | (_, Some(s @ "tcp debug on"), None) => master.do_send(MasterCommand::UpdatePolicy(
+            instance,
+            Box::new(PolicyRequest::Debug(protocol(s), true)),
+        )),
+        (_, Some(s @ "debug off"), None)
+        | (_, Some(s @ "http debug off"), None)
+        | (_, Some(s @ "tcp debug off"), None) => master.do_send(MasterCommand::UpdatePolicy(
+            instance,
+            Box::new(PolicyRequest::Debug(protocol(s), false)),
+        )),
+        (_, Some("http timeout"), Some(secs)) => {
+            if let Ok(secs) = secs.parse::<u8>() {
+                master.do_send(MasterCommand::UpdatePolicy(
+                    instance,
+                    Box::new(PolicyRequest::Timeout(secs)),
+                ))
+            } else {
+                log::warn!("http timeout <seconds>: expecting u8, got {}", secs);
+            }
+        }
+        (_, Some(s @ "policy"), Some(file))
+        | (_, Some(s @ "http policy"), Some(file))
+        | (_, Some(s @ "tcp policy"), Some(file)) => {
+            let path = pathbuf(file);
+            let protocol = protocol(s);
+            match lang::Module::from_file(&path, Some(policy(&protocol))) {
+                Ok(module) => {
+                    let prog = module.program;
+                    log::info!(
+                        "sending {} policy: {}",
+                        protocol,
+                        prog.blake3_hash().unwrap()
+                    );
+                    master.do_send(MasterCommand::UpdatePolicy(
+                        instance,
+                        Box::new(PolicyRequest::SetPolicy(protocol, prog)),
+                    ))
+                }
+                Err(err) => log::warn!(r#"{:?}: {}"#, path, err),
+            }
+        }
+        (_, Some(s @ "allow all"), None)
+        | (_, Some(s @ "http allow all"), None)
+        | (_, Some(s @ "tcp allow all"), None)
+        | (_, Some(s @ "deny all"), None)
+        | (_, Some(s @ "http deny all"), None)
+        | (_, Some(s @ "tcp deny all"), None) => {
+            let protocol = protocol(s);
+            let allow = s.contains("allow");
+            if protocol == Protocol::All || protocol == Protocol::REST {
+                set_policy(master, instance.clone(), Protocol::REST, allow)
+            }
+            if protocol == Protocol::All || protocol == Protocol::TCP {
+                set_policy(master, instance, Protocol::TCP, allow)
+            }
+        }
         _ => log::info!("unknown command"),
     }
     false
 }
 
+fn is_rest(s: &str) -> bool {
+    s.starts_with("http")
+}
+
+fn is_tcp(s: &str) -> bool {
+    s.starts_with("tcp")
+}
+
 fn protocol(s: &str) -> Protocol {
-    if s.starts_with("http") {
+    if is_rest(s) {
         Protocol::REST
-    } else if s.starts_with("tcp") {
+    } else if is_tcp(s) {
         Protocol::TCP
     } else {
         Protocol::All
     }
 }
 
-fn instance0_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) {
-    let command = caps.name("command").map(|s| s.as_str().to_lowercase());
-    if let Some(request) = match command.as_ref().map(String::as_str) {
-        Some(s @ "allow all") | Some(s @ "http allow all") | Some(s @ "tcp allow all") => {
-            Some(PolicyRequest::SetPolicy(
-                protocol(s),
-                lang::Module::allow_all(&lang::TCP_REST_POLICY)
-                    .unwrap()
-                    .program,
-            ))
-        }
-        Some(s @ "deny all") | Some(s @ "http deny all") | Some(s @ "tcp deny all") => {
-            Some(PolicyRequest::SetPolicy(
-                protocol(s),
-                lang::Module::deny_all(&lang::TCP_REST_POLICY)
-                    .unwrap()
-                    .program,
-            ))
-        }
-        Some(s @ "debug off") | Some(s @ "http debug off") | Some(s @ "tcp debug off") => {
-            Some(PolicyRequest::Debug(protocol(s), false))
-        }
-        Some(s @ "debug on") | Some(s @ "http debug on") | Some(s @ "tcp debug on") => {
-            Some(PolicyRequest::Debug(protocol(s), true))
-        }
-        Some("shutdown") => Some(PolicyRequest::Shutdown),
-        Some("status") => Some(PolicyRequest::Status),
-        Some(s @ "stop") | Some(s @ "http stop") | Some(s @ "tcp stop") => {
-            Some(PolicyRequest::Stop(protocol(s)))
-        }
-        _ => {
-            log::info!("unknown command");
-            None
-        }
-    } {
-        master.do_send(MasterCommand::UpdatePolicy(
-            commands::instance(&caps),
-            Box::new(request),
-        ))
+fn set_policy(
+    master: &Addr<ArmourDataMaster>,
+    instance: InstanceSelector,
+    protocol: Protocol,
+    allow: bool,
+) {
+    let policy = policy(&protocol);
+    let module = if allow {
+        lang::Module::allow_all(policy)
+    } else {
+        lang::Module::deny_all(policy)
+    };
+    let prog = module.unwrap().program;
+    log::info!(
+        r#"sending {} "{} all" policy: {}"#,
+        protocol,
+        if allow { "allow" } else { "deny" },
+        prog.blake3_hash().unwrap()
+    );
+    master.do_send(MasterCommand::UpdatePolicy(
+        instance,
+        Box::new(PolicyRequest::SetPolicy(protocol, prog)),
+    ))
+}
+
+fn policy(p: &Protocol) -> &lang::Interface {
+    match p {
+        Protocol::REST => &*lang::REST_POLICY,
+        Protocol::TCP => &*lang::TCP_POLICY,
+        Protocol::All => &*lang::TCP_REST_POLICY,
     }
 }
 
-#[allow(clippy::cognitive_complexity)]
-fn instance1_command(
-    master: &Addr<ArmourDataMaster>,
-    caps: regex::Captures,
-    socket: &std::path::PathBuf,
-) -> bool {
-    let arg = caps.name("arg").unwrap().as_str().trim_matches('"');
-    let command = caps.name("command").map(|s| s.as_str().to_lowercase());
-    if let Some(request) = match command.as_ref().map(String::as_str) {
-        Some("tcp start") => {
-            if let Ok(port) = arg.parse::<u16>() {
-                Some(PolicyRequest::StartTcp(port))
-            } else {
-                log::warn!("tcp start: expecting port number, got {}", arg);
-                None
-            }
-        }
-        Some("http start") => {
-            if let Ok(port) = arg.parse::<u16>() {
-                Some(PolicyRequest::StartHttp(port))
-            } else {
-                log::warn!("http start: expecting port number, got {}", arg);
-                None
-            }
-        }
-        Some("http timeout") => {
-            if let Ok(secs) = arg.parse::<u8>() {
-                Some(PolicyRequest::Timeout(secs))
-            } else {
-                log::warn!("expecting timeout in seconds, got {}", arg);
-                None
-            }
-        }
-        Some("policy") => {
-            let path = pathbuf(arg);
-            match lang::Module::from_file(&path, Some(&lang::TCP_REST_POLICY)) {
-                Ok(module) => {
-                    let prog = module.program;
-                    log::info!("sending policy: {}", prog.blake3_hash().unwrap());
-                    Some(PolicyRequest::SetPolicy(Protocol::All, prog))
-                }
-                Err(err) => {
-                    log::warn!(r#"{:?}: {}"#, path, err);
-                    None
-                }
-            }
-        }
-        Some("wait") => {
-            if commands::instance(&caps) == Instances::SoleInstance {
-                if let Ok(delay) = arg.parse::<u8>() {
-                    std::thread::sleep(std::time::Duration::from_secs(delay.min(10).into()))
-                } else {
-                    log::warn!("expecting u8, got {}", arg);
-                }
-            } else {
-                log::info!("unknown command")
-            };
-            None
-        }
-        Some("run") => {
-            if commands::instance(&caps) == Instances::SoleInstance {
-                run_script(arg, master, socket)
-            } else {
-                log::info!("unknown command")
-            };
-            None
-        }
-        _ => {
-            log::info!("unknown command");
-            None
-        }
-    } {
-        master.do_send(MasterCommand::UpdatePolicy(
-            commands::instance(&caps),
-            Box::new(request),
-        ))
+struct Helper(completion::FilenameCompleter, hint::HistoryHinter);
+
+impl Validator for Helper {}
+
+impl Helper {
+    fn new() -> Self {
+        Helper(completion::FilenameCompleter::new(), hint::HistoryHinter {})
     }
-    false
 }
+
+impl completion::Completer for Helper {
+    type Candidate = completion::Pair;
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        ctx: &rustyline::Context<'_>,
+    ) -> Result<(usize, Vec<completion::Pair>), ReadlineError> {
+        self.0.complete(line, pos, ctx)
+    }
+}
+
+impl hint::Hinter for Helper {
+    fn hint(&self, line: &str, pos: usize, ctx: &rustyline::Context<'_>) -> Option<String> {
+        self.1.hint(line, pos, ctx)
+    }
+}
+
+impl rustyline::highlight::Highlighter for Helper {}
+
+impl rustyline::Helper for Helper {}

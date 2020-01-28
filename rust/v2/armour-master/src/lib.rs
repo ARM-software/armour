@@ -7,23 +7,59 @@ use actix::prelude::*;
 use armour_api::master::{MasterCodec, PolicyResponse};
 use armour_api::proxy::PolicyRequest;
 use std::collections::HashMap;
+use std::fmt;
 use tokio::io::WriteHalf;
 use tokio_util::codec::FramedRead;
 
-#[derive(PartialEq)]
-pub enum Instances {
+#[derive(Clone, PartialEq)]
+pub enum InstanceSelector {
     All,
     Error,
-    SoleInstance,
     ID(usize),
 }
 
 pub mod commands;
 pub mod rest_policy;
 
+struct Instance {
+    pid: Option<u32>,
+    addr: Addr<ArmourDataInstance>,
+}
+
+impl Instance {
+    fn new(addr: Addr<ArmourDataInstance>) -> Self {
+        Instance { pid: None, addr }
+    }
+    fn set_pid(&mut self, pid: u32) {
+        self.pid = Some(pid)
+    }
+}
+
+#[derive(Default)]
+struct Instances(HashMap<usize, Instance>);
+
+impl fmt::Display for Instances {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = self
+            .0
+            .iter()
+            .map(|(n, i)| {
+                if let Some(pid) = i.pid {
+                    format!("{} ({})", n, pid)
+                } else {
+                    n.to_string()
+                }
+            })
+            .collect::<Vec<String>>()
+            .join(",");
+        write!(f, "[{}]", s)
+    }
+}
+
 /// Actor that handles Unix socket connections
 pub struct ArmourDataMaster {
-    instances: HashMap<usize, Addr<ArmourDataInstance>>,
+    instances: Instances,
+    children: HashMap<u32, std::process::Child>,
     count: usize,
     socket: std::path::PathBuf,
 }
@@ -63,41 +99,31 @@ impl Handler<UdsConnect> for ArmourDataMaster {
 impl ArmourDataMaster {
     pub fn new(socket: std::path::PathBuf) -> Self {
         ArmourDataMaster {
-            instances: HashMap::new(),
+            instances: Instances::default(),
+            children: HashMap::new(),
             count: 0,
             socket,
         }
     }
-    fn get_instances(&self, instances: Instances) -> Vec<&Addr<ArmourDataInstance>> {
+    fn get_instances(&self, instances: InstanceSelector) -> Vec<&Instance> {
         match instances {
-            Instances::Error => {
+            InstanceSelector::Error => {
                 warn!("failed to parse instance ID");
                 Vec::new()
             }
-            Instances::ID(id) => match self.instances.get(&id) {
+            InstanceSelector::ID(id) => match self.instances.0.get(&id) {
                 None => {
                     info!("instance {} does not exist", id);
                     Vec::new()
                 }
                 Some(instance) => vec![instance],
             },
-            Instances::All => {
-                if self.instances.is_empty() {
+            InstanceSelector::All => {
+                if self.instances.0.is_empty() {
                     warn!("there are no instances")
                 };
-                self.instances.values().collect()
+                self.instances.0.values().collect()
             }
-            Instances::SoleInstance => match self.instances.len() {
-                0 => {
-                    warn!("there are no instances");
-                    Vec::new()
-                }
-                1 => vec![self.instances.values().next().unwrap()],
-                _ => {
-                    warn!("there is more than one instance");
-                    Vec::new()
-                }
-            },
         }
     }
 }
@@ -114,7 +140,7 @@ impl Handler<Connect> for ArmourDataMaster {
     fn handle(&mut self, msg: Connect, _ctx: &mut Context<Self>) -> Self::Result {
         let count = self.count;
         info!("adding instance: {}", count);
-        self.instances.insert(count, msg.0);
+        self.instances.0.insert(count, Instance::new(msg.0));
         self.count += 1;
         count
     }
@@ -129,7 +155,39 @@ impl Handler<Disconnect> for ArmourDataMaster {
     type Result = ();
     fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) -> Self::Result {
         info!("removing instance: {}", msg.0);
-        self.instances.remove(&msg.0);
+        if let Some(instance) = self.instances.0.remove(&msg.0) {
+            if let Some(pid) = instance.pid {
+                if let Some(mut child) = self.children.remove(&pid) {
+                    if let Ok(code) = child.wait() {
+                        log::info!("{} exited with {}", pid, code)
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Message)]
+#[rtype("()")]
+pub struct RegisterPid(usize, u32);
+
+impl Handler<RegisterPid> for ArmourDataMaster {
+    type Result = ();
+    fn handle(&mut self, msg: RegisterPid, _ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(instance) = self.instances.0.get_mut(&msg.0) {
+            instance.set_pid(msg.1)
+        }
+    }
+}
+
+#[derive(Message)]
+#[rtype("()")]
+pub struct AddChild(pub u32, pub std::process::Child);
+
+impl Handler<AddChild> for ArmourDataMaster {
+    type Result = ();
+    fn handle(&mut self, msg: AddChild, _ctx: &mut Context<Self>) -> Self::Result {
+        self.children.insert(msg.0, msg.1);
     }
 }
 
@@ -141,7 +199,7 @@ impl Handler<Disconnect> for ArmourDataMaster {
 pub enum MasterCommand {
     ListActive,
     Quit,
-    UpdatePolicy(Instances, Box<PolicyRequest>),
+    UpdatePolicy(InstanceSelector, Box<PolicyRequest>),
 }
 
 impl Handler<MasterCommand> for ArmourDataMaster {
@@ -150,18 +208,15 @@ impl Handler<MasterCommand> for ArmourDataMaster {
         match msg {
             MasterCommand::Quit => System::current().stop(), // Not working in actix 0.9!
             MasterCommand::ListActive => {
-                if self.instances.is_empty() {
+                if self.instances.0.is_empty() {
                     info!("there are no active instances")
                 } else {
-                    info!(
-                        "active instances: {:?}",
-                        self.instances.keys().collect::<Vec<&usize>>()
-                    )
+                    info!("active instances: {}", self.instances)
                 }
             }
             MasterCommand::UpdatePolicy(instances, request) => {
                 for instance in self.get_instances(instances) {
-                    instance.do_send(*request.clone())
+                    instance.addr.do_send(*request.clone())
                 }
             }
         }
@@ -201,6 +256,10 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
     fn handle(&mut self, msg: Result<PolicyResponse, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
             match msg {
+                PolicyResponse::Connect(pid) => {
+                    self.master.do_send(RegisterPid(self.id, pid));
+                    info!("{}: connect with process {}", self.id, pid)
+                }
                 PolicyResponse::Started => info!("{}: started a proxy", self.id),
                 PolicyResponse::Stopped => info!("{}: stopped a proxy", self.id),
                 PolicyResponse::UpdatedPolicy => info!("{}: updated policy", self.id),
@@ -217,6 +276,11 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
         } else {
             log::warn!("response error: {}", msg.err().unwrap())
         }
+    }
+    fn finished(&mut self, ctx: &mut Self::Context) {
+        log::warn!("{}: connection to instance has closed", self.id);
+        self.master.do_send(Disconnect(self.id));
+        ctx.stop()
     }
 }
 

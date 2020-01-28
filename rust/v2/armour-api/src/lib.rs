@@ -3,6 +3,7 @@ use byteorder::{BigEndian, ByteOrder};
 use bytes::{Buf, BufMut, BytesMut};
 
 pub mod control;
+pub mod labels;
 pub mod master;
 pub mod proxy;
 

@@ -109,22 +109,19 @@ pub struct PolicyActor {
 impl Actor for PolicyActor {
     type Context = Context<Self>;
     fn started(&mut self, _ctx: &mut Self::Context) {
-        self.uds_framed.write(PolicyResponse::UpdatedPolicy);
-        info!("started Armour policy")
+        self.uds_framed
+            .write(PolicyResponse::Connect(std::process::id()));
+        info!("started Armour policy actor")
     }
     fn stopped(&mut self, _ctx: &mut Self::Context) {
-        self.uds_framed.write(PolicyResponse::ShuttingDown);
         info!("stopped Armour policy")
     }
 }
 
 impl PolicyActor {
     /// Start a new policy actor that connects to a data plane master on a Unix socket.
-    pub async fn create_policy<P: AsRef<std::path::Path>>(
-        master_socket: P,
-    ) -> std::io::Result<Addr<PolicyActor>> {
-        let stream = tokio::net::UnixStream::connect(master_socket).await?;
-        let addr = PolicyActor::create(|ctx| {
+    pub fn create_policy(stream: tokio::net::UnixStream) -> Addr<PolicyActor> {
+        PolicyActor::create(|ctx| {
             let (r, w) = tokio::io::split(stream);
             ctx.add_stream(FramedRead::new(r, PolicyCodec));
             PolicyActor {
@@ -135,8 +132,7 @@ impl PolicyActor {
                 id_uri_cache: HashMap::new(),
                 id_ip_cache: HashMap::new(),
             }
-        });
-        Ok(addr)
+        })
     }
     fn id(&mut self, id: ID) -> literals::ID {
         match id {
@@ -221,14 +217,16 @@ impl Handler<PolicyRequest> for PolicyActor {
                 if self.http.port().is_none() {
                     self.uds_framed.write(PolicyResponse::RequestFailed)
                 } else {
-                    self.http.stop()
+                    self.http.stop();
+                    self.uds_framed.write(PolicyResponse::Stopped)
                 }
             }
             PolicyRequest::Stop(Protocol::TCP) => {
                 if self.tcp.port().is_none() {
                     self.uds_framed.write(PolicyResponse::RequestFailed)
                 } else {
-                    self.tcp.stop()
+                    self.tcp.stop();
+                    self.uds_framed.write(PolicyResponse::Stopped)
                 }
             }
             PolicyRequest::Stop(Protocol::All) => {
@@ -241,7 +239,8 @@ impl Handler<PolicyRequest> for PolicyActor {
                     .into_actor(self)
                     .then(move |server, act, _ctx| {
                         if let Ok(server) = server {
-                            act.http.start(server, port)
+                            act.http.start(server, port);
+                            act.uds_framed.write(PolicyResponse::Started)
                         } else {
                             // TODO: show error and port
                             warn!("failed to start HTTP proxy")
@@ -256,7 +255,8 @@ impl Handler<PolicyRequest> for PolicyActor {
                     .into_actor(self)
                     .then(move |server, act, _ctx| {
                         if let Ok(server) = server {
-                            act.tcp.start(server, port)
+                            act.tcp.start(server, port);
+                            act.uds_framed.write(PolicyResponse::Started)
                         } else {
                             // TODO: show error and port
                             warn!("failed to start TCP proxy")
@@ -281,7 +281,9 @@ impl Handler<PolicyRequest> for PolicyActor {
             }
             PolicyRequest::Shutdown => {
                 log::info!("shutting down");
-                System::current().stop() // not working under actix 0.9
+                self.uds_framed.write(PolicyResponse::ShuttingDown);
+                self.uds_framed.close();
+                System::current().stop()
             }
         }
     }

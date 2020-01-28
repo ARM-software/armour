@@ -1,5 +1,4 @@
 /// API of data plane master
-use super::proxy::Protocol;
 use super::{DeserializeDecoder, SerializeEncoder};
 use actix::prelude::*;
 use armour_lang::lang::Program;
@@ -10,7 +9,7 @@ use tokio_util::codec::{Decoder, Encoder};
 /// Control plane messages to master
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PolicyUpdate {
-    pub protocol: Protocol,
+    pub label: String,
     pub policy: String,
 }
 
@@ -18,6 +17,7 @@ pub struct PolicyUpdate {
 #[derive(Serialize, Deserialize, Message)]
 #[rtype("()")]
 pub enum PolicyResponse {
+    Connect(u32),
     Started,
     Stopped,
     ShuttingDown,
