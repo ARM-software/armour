@@ -7,7 +7,7 @@ edition = "2018"
 build = "build.rs"
 
 [build-dependencies]
-capnpc = "0.11"
+capnpc = "0.12"
 
 [dependencies]
 actix = "0.9"
@@ -17,8 +17,8 @@ async-std = "1.4"
 base64 = "0.11"
 bincode = "1.2"
 blake3 = "0.1"
-capnp = "0.11"
-capnp-rpc = "0.11"
+capnp = "0.12"
+capnp-rpc = "0.12"
 clap = "2.33"
 dns-lookup = "1.0"
 enum-display-derive = "0.1"

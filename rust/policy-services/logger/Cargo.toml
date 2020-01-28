@@ -14,7 +14,7 @@ actix = "0.9"
 actix-files = "0.2"
 actix-rt = "1.0"
 actix-web = "2.0"
-capnp = "0.11"
+capnp = "0.12"
 chrono = {version = "0.4", features = ["serde"] }
 chrono-tz = "0.5"
 futures = "0.3"

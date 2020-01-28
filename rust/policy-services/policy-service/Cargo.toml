@@ -9,14 +9,14 @@ edition = "2018"
 build = "build.rs"
 
 [build-dependencies]
-capnpc = "0.11"
+capnpc = "0.12"
 
 [dependencies]
 actix = "0.9"
 actix-rt = "1.0"
 async-std = "1.4"
-capnp = "0.11"
-capnp-rpc = "0.11"
+capnp = "0.12"
+capnp-rpc = "0.12"
 futures = "0.3"
 log = "0.4"
 tokio = "0.2"
