@@ -17,7 +17,7 @@ pub struct PolicyUpdate {
 #[derive(Serialize, Deserialize, Message)]
 #[rtype("()")]
 pub enum PolicyResponse {
-    Connect(u32),
+    Connect(u32, String), // PID and name of proxy
     Started,
     Stopped,
     ShuttingDown,

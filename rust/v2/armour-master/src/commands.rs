@@ -48,13 +48,14 @@ lazy_static! {
 /// get and parse "instance" block of regular expression capture
 fn instance_selector(caps: &regex::Captures) -> InstanceSelector {
     match caps.name("instance") {
-        Some(x) => x
-            .as_str()
-            .trim_end()
-            .trim_end_matches(':')
-            .parse::<usize>()
-            .map(InstanceSelector::ID)
-            .unwrap_or(InstanceSelector::Error),
+        Some(x) => {
+            let s = x.as_str().trim_end().trim_end_matches(':');
+            if let Ok(id) = s.parse::<usize>() {
+                InstanceSelector::ID(id)
+            } else {
+                InstanceSelector::Name(s.to_string())
+            }
+        }
         None => InstanceSelector::All,
     }
 }
@@ -116,26 +117,32 @@ fn master_command(
                 log::warn!("wait <seconds>: expecting u8, got {}", secs);
             }
         }
-        (true, Some(s @ "launch log"), None) | (true, Some(s @ "launch"), None) => {
-            let log = if s.ends_with("log") {
-                "-l info"
-            } else {
-                "-l error"
-            };
+        (_, Some(s @ "launch"), None) | (_, Some(s @ "launch log"), None) => {
+            let log = if s.ends_with("log") { "info" } else { "warn" };
             let armour_proxy = armour_proxy();
-            log::info!("launching: {}", armour_proxy.display());
-            // sudo ~/.cargo/bin/flamegraph ~/rust/target/debug/armour-data
-            match std::process::Command::new(armour_proxy)
+            let name = match instance {
+                InstanceSelector::Name(name) => name,
+                InstanceSelector::ID(id) => {
+                    log::warn!("{} is not a valid proxy name", id);
+                    return false;
+                }
+                InstanceSelector::All => "proxy".to_string(),
+            };
+            // sudo ~/.cargo/bin/flamegraph ~/rust/target/debug/armour-proxy
+            match std::process::Command::new(&armour_proxy)
+                .arg("-l")
                 .arg(log)
+                .arg("-n")
+                .arg(&name)
                 .arg(socket)
                 .spawn()
             {
                 Ok(child) => {
                     let pid = child.id();
                     master.do_send(AddChild(pid, child));
-                    log::info!("started processs: {}", pid)
+                    log::info!("launched proxy processs: {} {}", name, pid)
                 }
-                Err(err) => log::warn!("failed to spawn data plane instance: {}", err),
+                Err(err) => log::warn!("failed to launch: {}\n{}", armour_proxy.display(), err),
             }
             // let mut command = std::process::Command::new("sudo");
             // let command = command

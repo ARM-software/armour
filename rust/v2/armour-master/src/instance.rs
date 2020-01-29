@@ -1,4 +1,4 @@
-use super::master::{ArmourDataMaster, Connect, Disconnect, RegisterPid};
+use super::master::{ArmourDataMaster, Connect, Disconnect, RegisterProxy};
 use actix::prelude::*;
 use armour_api::master::{MasterCodec, PolicyResponse};
 use armour_api::proxy::PolicyRequest;
@@ -10,21 +10,41 @@ use tokio::io::WriteHalf;
 #[derive(Clone, PartialEq)]
 pub enum InstanceSelector {
     All,
-    Error,
+    Name(String),
     ID(usize),
 }
 
+pub struct Meta {
+    pub pid: u32,
+    pub name: String,
+}
+
+impl Meta {
+    fn new(pid: u32, name: &str) -> Self {
+        Meta {
+            pid,
+            name: name.to_string(),
+        }
+    }
+}
+
+impl fmt::Display for Meta {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, r#""{}" {}"#, self.name, self.pid)
+    }
+}
+
 pub struct Instance {
-    pub pid: Option<u32>,
+    pub meta: Option<Meta>,
     pub addr: Addr<ArmourDataInstance>,
 }
 
 impl Instance {
     pub fn new(addr: Addr<ArmourDataInstance>) -> Self {
-        Instance { pid: None, addr }
+        Instance { meta: None, addr }
     }
-    pub fn set_pid(&mut self, pid: u32) {
-        self.pid = Some(pid)
+    pub fn set_meta(&mut self, pid: u32, name: &str) {
+        self.meta = Some(Meta::new(pid, name))
     }
 }
 
@@ -37,8 +57,8 @@ impl fmt::Display for Instances {
             .0
             .iter()
             .map(|(n, i)| {
-                if let Some(pid) = i.pid {
-                    format!("{} ({})", n, pid)
+                if let Some(ref meta) = i.meta {
+                    format!(r#"{} ({})"#, n, meta)
                 } else {
                     n.to_string()
                 }
@@ -82,9 +102,9 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
     fn handle(&mut self, msg: Result<PolicyResponse, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
             match msg {
-                PolicyResponse::Connect(pid) => {
-                    self.master.do_send(RegisterPid(self.id, pid));
-                    info!("{}: connect with process {}", self.id, pid)
+                PolicyResponse::Connect(pid, name) => {
+                    info!(r#"{}: connect with process "{}" {}"#, self.id, name, pid);
+                    self.master.do_send(RegisterProxy(self.id, pid, name))
                 }
                 PolicyResponse::Started => info!("{}: started a proxy", self.id),
                 PolicyResponse::Stopped => info!("{}: stopped a proxy", self.id),

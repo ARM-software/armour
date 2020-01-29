@@ -1,4 +1,4 @@
-use super::instance::{ArmourDataInstance, Instance, InstanceSelector, Instances};
+use super::instance::{ArmourDataInstance, Instance, InstanceSelector, Instances, Meta};
 use actix::prelude::*;
 use armour_api::master::MasterCodec;
 use armour_api::proxy::PolicyRequest;
@@ -8,10 +8,10 @@ use tokio_util::codec::FramedRead;
 
 /// Actor that handles Unix socket connections
 pub struct ArmourDataMaster {
-    instances: Instances,
-    children: HashMap<u32, std::process::Child>,
-    count: usize,
-    socket: std::path::PathBuf,
+    instances: Instances,                        // instance actor addresses and info
+    children: HashMap<u32, std::process::Child>, // maps PID to child process
+    count: usize,                                // enumerates instances
+    socket: std::path::PathBuf,                  // path to master's UDS socket
 }
 
 impl Actor for ArmourDataMaster {
@@ -20,6 +20,49 @@ impl Actor for ArmourDataMaster {
         info!("removing socket: {}", self.socket.display());
         std::fs::remove_file(self.socket.clone())
             .unwrap_or_else(|e| warn!("failed to remove socket: {}", e))
+    }
+}
+
+impl ArmourDataMaster {
+    pub fn new(socket: std::path::PathBuf) -> Self {
+        ArmourDataMaster {
+            instances: Instances::default(),
+            children: HashMap::new(),
+            count: 0,
+            socket,
+        }
+    }
+    fn get_instances(&self, instances: InstanceSelector) -> Vec<&Instance> {
+        match instances {
+            InstanceSelector::Name(instance_name) => {
+                let v: Vec<&Instance> = self
+                    .instances
+                    .0
+                    .iter()
+                    .filter_map(|i| match &i.1.meta {
+                        Some(Meta { name, .. }) if *name == instance_name => Some(i.1),
+                        _ => None,
+                    })
+                    .collect();
+                if v.is_empty() {
+                    warn!("there are no instances with name: {}", instance_name)
+                };
+                v
+            }
+            InstanceSelector::ID(id) => match self.instances.0.get(&id) {
+                None => {
+                    info!("instance {} does not exist", id);
+                    Vec::new()
+                }
+                Some(instance) => vec![instance],
+            },
+            InstanceSelector::All => {
+                if self.instances.0.is_empty() {
+                    warn!("there are no instances")
+                };
+                self.instances.0.values().collect()
+            }
+        }
     }
 }
 
@@ -43,38 +86,6 @@ impl Handler<UdsConnect> for ArmourDataMaster {
                 uds_framed: actix::io::FramedWrite::new(w, MasterCodec, ctx),
             }
         });
-    }
-}
-
-impl ArmourDataMaster {
-    pub fn new(socket: std::path::PathBuf) -> Self {
-        ArmourDataMaster {
-            instances: Instances::default(),
-            children: HashMap::new(),
-            count: 0,
-            socket,
-        }
-    }
-    fn get_instances(&self, instances: InstanceSelector) -> Vec<&Instance> {
-        match instances {
-            InstanceSelector::Error => {
-                warn!("failed to parse instance ID");
-                Vec::new()
-            }
-            InstanceSelector::ID(id) => match self.instances.0.get(&id) {
-                None => {
-                    info!("instance {} does not exist", id);
-                    Vec::new()
-                }
-                Some(instance) => vec![instance],
-            },
-            InstanceSelector::All => {
-                if self.instances.0.is_empty() {
-                    warn!("there are no instances")
-                };
-                self.instances.0.values().collect()
-            }
-        }
     }
 }
 
@@ -106,10 +117,10 @@ impl Handler<Disconnect> for ArmourDataMaster {
     fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) -> Self::Result {
         info!("removing instance: {}", msg.0);
         if let Some(instance) = self.instances.0.remove(&msg.0) {
-            if let Some(pid) = instance.pid {
-                if let Some(mut child) = self.children.remove(&pid) {
+            if let Some(meta) = instance.meta {
+                if let Some(mut child) = self.children.remove(&meta.pid) {
                     if let Ok(code) = child.wait() {
-                        log::info!("{} exited with {}", pid, code)
+                        log::info!("{} exited with {}", meta, code)
                     }
                 }
             }
@@ -119,17 +130,18 @@ impl Handler<Disconnect> for ArmourDataMaster {
 
 #[derive(Message)]
 #[rtype("()")]
-pub struct RegisterPid(pub usize, pub u32);
+pub struct RegisterProxy(pub usize, pub u32, pub String);
 
-impl Handler<RegisterPid> for ArmourDataMaster {
+impl Handler<RegisterProxy> for ArmourDataMaster {
     type Result = ();
-    fn handle(&mut self, msg: RegisterPid, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: RegisterProxy, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(instance) = self.instances.0.get_mut(&msg.0) {
-            instance.set_pid(msg.1)
+            instance.set_meta(msg.1, &msg.2)
         }
     }
 }
 
+// message sent when new proxy is "launched"
 #[derive(Message)]
 #[rtype("()")]
 pub struct AddChild(pub u32, pub std::process::Child);

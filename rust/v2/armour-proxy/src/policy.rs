@@ -95,6 +95,7 @@ pub trait Policy<P> {
 
 /// Armour policy actor
 pub struct PolicyActor {
+    name: String,
     // connection to master
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio::net::UnixStream>, PolicyCodec>,
     pub connection_number: usize,
@@ -109,8 +110,10 @@ pub struct PolicyActor {
 impl Actor for PolicyActor {
     type Context = Context<Self>;
     fn started(&mut self, _ctx: &mut Self::Context) {
-        self.uds_framed
-            .write(PolicyResponse::Connect(std::process::id()));
+        self.uds_framed.write(PolicyResponse::Connect(
+            std::process::id(),
+            self.name.to_string(),
+        ));
         info!("started Armour policy actor")
     }
     fn stopped(&mut self, _ctx: &mut Self::Context) {
@@ -120,11 +123,12 @@ impl Actor for PolicyActor {
 
 impl PolicyActor {
     /// Start a new policy actor that connects to a data plane master on a Unix socket.
-    pub fn create_policy(stream: tokio::net::UnixStream) -> Addr<PolicyActor> {
+    pub fn create_policy(stream: tokio::net::UnixStream, name: &str) -> Addr<PolicyActor> {
         PolicyActor::create(|ctx| {
             let (r, w) = tokio::io::split(stream);
             ctx.add_stream(FramedRead::new(r, PolicyCodec));
             PolicyActor {
+                name: name.to_string(),
                 connection_number: 0,
                 uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
                 http: RestPolicy::default(),

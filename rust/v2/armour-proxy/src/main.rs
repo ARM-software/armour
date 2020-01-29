@@ -12,8 +12,9 @@ fn main() -> std::io::Result<()> {
         .arg(
             Arg::with_name("proxy port")
                 .short("p")
+                .long("port")
                 .takes_value(true)
-                .help("Proxy port number"),
+                .help("proxy port number"),
         )
         .arg(
             Arg::with_name("master socket")
@@ -22,10 +23,19 @@ fn main() -> std::io::Result<()> {
                 .help("Unix socket of data plane master"),
         )
         .arg(
+            Arg::with_name("name")
+                .short("n")
+                .long("name")
+                .takes_value(true)
+                .required(false)
+                .help("name of proxy instance"),
+        )
+        .arg(
             Arg::with_name("log level")
                 .short("l")
                 .takes_value(true)
-                .help("log level: error, warn, info, debug, trace"),
+                .possible_values(&["error", "warn", "info", "debug", "trace"])
+                .help("log level"),
         )
         .get_matches();
 
@@ -59,7 +69,8 @@ fn main() -> std::io::Result<()> {
     let master_socket = matches.value_of("master socket").unwrap().to_string();
     log::info!("connecting to: {}", master_socket);
     let stream = sys.block_on(tokio::net::UnixStream::connect(master_socket))?;
-    let policy = PolicyActor::create_policy(stream);
+    let name = matches.value_of("name").unwrap_or("proxy");
+    let policy = PolicyActor::create_policy(stream, name);
 
     // start a proxy server
     if let Some(port) = proxy_port {
