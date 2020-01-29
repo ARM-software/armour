@@ -161,14 +161,13 @@ impl Handler<AddChild> for ArmourDataMaster {
 pub enum MasterCommand {
     ListActive,
     Quit,
-    UpdatePolicy(InstanceSelector, Box<PolicyRequest>),
 }
 
 impl Handler<MasterCommand> for ArmourDataMaster {
     type Result = ();
     fn handle(&mut self, msg: MasterCommand, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
-            MasterCommand::Quit => System::current().stop(), // Not working in actix 0.9!
+            MasterCommand::Quit => System::current().stop(),
             MasterCommand::ListActive => {
                 if self.instances.0.is_empty() {
                     info!("there are no active instances")
@@ -176,11 +175,25 @@ impl Handler<MasterCommand> for ArmourDataMaster {
                     info!("active instances: {}", self.instances)
                 }
             }
-            MasterCommand::UpdatePolicy(instances, request) => {
-                for instance in self.get_instances(instances) {
-                    instance.addr.do_send(*request.clone())
-                }
+        }
+    }
+}
+
+#[derive(Message)]
+#[rtype("bool")]
+pub struct PolicyCommand(pub InstanceSelector, pub PolicyRequest);
+
+impl Handler<PolicyCommand> for ArmourDataMaster {
+    type Result = bool;
+    fn handle(&mut self, msg: PolicyCommand, _ctx: &mut Context<Self>) -> Self::Result {
+        let selected = self.get_instances(msg.0);
+        if selected.is_empty() {
+            false
+        } else {
+            for instance in selected {
+                instance.addr.do_send(msg.1.clone())
             }
+            true
         }
     }
 }

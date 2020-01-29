@@ -1,5 +1,5 @@
 use super::instance::InstanceSelector;
-use super::master::{ArmourDataMaster, MasterCommand};
+use super::master::{ArmourDataMaster, PolicyCommand};
 use actix_web::{post, web, HttpResponse};
 use armour_api::{labels::Label, master::PolicyUpdate};
 use armour_lang::lang::Program;
@@ -21,16 +21,20 @@ pub async fn update(
 	if let Ok(label) = request.label.parse::<Label>() {
 		let prog = Program::from_bincode(&request.policy)?;
 		log::info!("sending policy: {} {}", label, prog.blake3_hash().unwrap());
-		master
-			.send(MasterCommand::UpdatePolicy(
-				InstanceSelector::All, // TODO:
-				Box::new(armour_api::proxy::PolicyRequest::SetPolicy(
+		if master
+			.send(PolicyCommand(
+				InstanceSelector::Name("1".to_string()), // TODO:
+				armour_api::proxy::PolicyRequest::SetPolicy(
 					armour_api::proxy::Protocol::All, // TODO
 					prog,
-				)),
+				),
 			))
-			.await?;
-		Ok(HttpResponse::Ok().finish())
+			.await?
+		{
+			Ok(HttpResponse::Ok().finish())
+		} else {
+			Ok(HttpResponse::BadRequest().body("failed to select a proxy"))
+		}
 	} else {
 		Ok(HttpResponse::BadRequest().body("failed to parse label"))
 	}

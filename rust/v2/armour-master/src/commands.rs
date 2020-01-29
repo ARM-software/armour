@@ -9,7 +9,7 @@
 
 use super::{
     instance::InstanceSelector,
-    master::{AddChild, ArmourDataMaster, MasterCommand},
+    master::{AddChild, ArmourDataMaster, MasterCommand, PolicyCommand},
 };
 use actix::Addr;
 use armour_api::proxy::{PolicyRequest, Protocol};
@@ -83,22 +83,22 @@ fn master_command(
     ) {
         (true, Some("help"), None) => println!(
             "COMMANDS:
-    help                      list commands
-    list                      list connected instances
-    quit                      shutdown master and all instances
-    run <file>                run commands from <file>
-    wait <seconds>            wait for <seconds> to elapse (up to 10s)
-    <id> launch [log]         start a new slave instance
+    help               list commands
+    list               list connected instances
+    quit               shutdown master and all instances
+    run <file>         run commands from <file>
+    wait <seconds>     wait for <seconds> to elapse (up to 5s)
 
-    [<id>] shutdown                   request slave shutdown
-    [<id>] status                     retrieve and print status
-    [<id>] [http|tcp] start <port>    start HTTP/TCP proxy on <port>
-    [<id>] [http|tcp] stop            stop HTTP/TCP proxy
-    [<id>] [http|tcp] allow all       request allow all policy
-    [<id>] [http|tcp] deny all        request deny all policy
-    [<id>] [http|tcp] policy <file>   read policy <file> and send to instance
-    [<id>] [http|tcp] debug [on|off]  enable/disable display of HTTP requests
-    [<id>] http timeout <seconds>     server response timeout
+    [<id>:] launch [log]               start a new slave instance
+    [<id>:] shutdown                   request slave shutdown
+    [<id>:] status                     retrieve and print status
+    [<id>:] (http|tcp) start <port>    start HTTP/TCP proxy on <port>
+    [<id>:] [http|tcp] stop            stop HTTP/TCP proxy
+    [<id>:] [http|tcp] allow all       request allow all policy
+    [<id>:] [http|tcp] deny all        request deny all policy
+    [<id>:] [http|tcp] policy <file>   read policy <file> and send to instance
+    [<id>:] [http|tcp] debug [on|off]  enable/disable display of HTTP requests
+    [<id>:] http timeout <seconds>     server response timeout
     
     <id>  instance ID number"
         ),
@@ -112,7 +112,7 @@ fn master_command(
         (true, Some("run"), Some(file)) => run_script(file, master, socket),
         (true, Some("wait"), Some(secs)) => {
             if let Ok(delay) = secs.parse::<u8>() {
-                std::thread::sleep(std::time::Duration::from_secs(delay.min(10).into()))
+                std::thread::sleep(std::time::Duration::from_secs(delay.min(5).into()))
             } else {
                 log::warn!("wait <seconds>: expecting u8, got {}", secs);
             }
@@ -158,15 +158,9 @@ fn master_command(
         }
         (_, Some("shutdown"), None) => {
             log::info!("sending shudown");
-            master.do_send(MasterCommand::UpdatePolicy(
-                instance,
-                Box::new(PolicyRequest::Shutdown),
-            ))
+            master.do_send(PolicyCommand(instance, PolicyRequest::Shutdown))
         }
-        (_, Some("status"), None) => master.do_send(MasterCommand::UpdatePolicy(
-            instance,
-            Box::new(PolicyRequest::Status),
-        )),
+        (_, Some("status"), None) => master.do_send(PolicyCommand(instance, PolicyRequest::Status)),
         (_, Some(s @ "tcp start"), Some(port)) | (_, Some(s @ "http start"), Some(port)) => {
             if let Ok(port) = port.parse::<u16>() {
                 let start = if is_rest(s) {
@@ -174,35 +168,31 @@ fn master_command(
                 } else {
                     PolicyRequest::StartTcp(port)
                 };
-                master.do_send(MasterCommand::UpdatePolicy(instance, Box::new(start)))
+                master.do_send(PolicyCommand(instance, start))
             } else {
                 log::warn!("tcp start <port>: expecting port number, got {}", port);
             }
         }
         (_, Some(s @ "stop"), None)
         | (_, Some(s @ "http stop"), None)
-        | (_, Some(s @ "tcp stop"), None) => master.do_send(MasterCommand::UpdatePolicy(
-            instance,
-            Box::new(PolicyRequest::Stop(protocol(s))),
-        )),
+        | (_, Some(s @ "tcp stop"), None) => {
+            master.do_send(PolicyCommand(instance, PolicyRequest::Stop(protocol(s))))
+        }
         (_, Some(s @ "debug on"), None)
         | (_, Some(s @ "http debug on"), None)
-        | (_, Some(s @ "tcp debug on"), None) => master.do_send(MasterCommand::UpdatePolicy(
+        | (_, Some(s @ "tcp debug on"), None) => master.do_send(PolicyCommand(
             instance,
-            Box::new(PolicyRequest::Debug(protocol(s), true)),
+            PolicyRequest::Debug(protocol(s), true),
         )),
         (_, Some(s @ "debug off"), None)
         | (_, Some(s @ "http debug off"), None)
-        | (_, Some(s @ "tcp debug off"), None) => master.do_send(MasterCommand::UpdatePolicy(
+        | (_, Some(s @ "tcp debug off"), None) => master.do_send(PolicyCommand(
             instance,
-            Box::new(PolicyRequest::Debug(protocol(s), false)),
+            PolicyRequest::Debug(protocol(s), false),
         )),
         (_, Some("http timeout"), Some(secs)) => {
             if let Ok(secs) = secs.parse::<u8>() {
-                master.do_send(MasterCommand::UpdatePolicy(
-                    instance,
-                    Box::new(PolicyRequest::Timeout(secs)),
-                ))
+                master.do_send(PolicyCommand(instance, PolicyRequest::Timeout(secs)))
             } else {
                 log::warn!("http timeout <seconds>: expecting u8, got {}", secs);
             }
@@ -220,9 +210,9 @@ fn master_command(
                         protocol,
                         prog.blake3_hash().unwrap()
                     );
-                    master.do_send(MasterCommand::UpdatePolicy(
+                    master.do_send(PolicyCommand(
                         instance,
-                        Box::new(PolicyRequest::SetPolicy(protocol, prog)),
+                        PolicyRequest::SetPolicy(protocol, prog),
                     ))
                 }
                 Err(err) => log::warn!(r#"{:?}: {}"#, path, err),
@@ -358,8 +348,8 @@ fn set_policy(
         if allow { "allow" } else { "deny" },
         prog.blake3_hash().unwrap()
     );
-    master.do_send(MasterCommand::UpdatePolicy(
+    master.do_send(PolicyCommand(
         instance,
-        Box::new(PolicyRequest::SetPolicy(protocol, prog)),
+        PolicyRequest::SetPolicy(protocol, prog),
     ))
 }
