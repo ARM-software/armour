@@ -1,10 +1,10 @@
+use super::instance::InstanceSelector;
+use super::master::{ArmourDataMaster, MasterCommand};
 use actix_web::{post, web, HttpResponse};
-// use actix_web::HttpRequest;
 use armour_api::{labels::Label, master::PolicyUpdate};
 use armour_lang::lang::Program;
-// use futures::StreamExt;
 
-type Master = web::Data<actix::Addr<super::ArmourDataMaster>>;
+type Master = web::Data<actix::Addr<ArmourDataMaster>>;
 
 #[post("/update")]
 pub async fn update(
@@ -22,8 +22,8 @@ pub async fn update(
 		let prog = Program::from_bincode(&request.policy)?;
 		log::info!("sending policy: {} {}", label, prog.blake3_hash().unwrap());
 		master
-			.send(super::MasterCommand::UpdatePolicy(
-				super::InstanceSelector::All, // TODO:
+			.send(MasterCommand::UpdatePolicy(
+				InstanceSelector::All, // TODO:
 				Box::new(armour_api::proxy::PolicyRequest::SetPolicy(
 					armour_api::proxy::Protocol::All, // TODO
 					prog,
