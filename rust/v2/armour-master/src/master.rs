@@ -180,20 +180,22 @@ impl Handler<MasterCommand> for ArmourDataMaster {
 }
 
 #[derive(Message)]
-#[rtype("bool")]
+#[rtype("Option<&'static str>")]
 pub struct PolicyCommand(pub InstanceSelector, pub PolicyRequest);
 
 impl Handler<PolicyCommand> for ArmourDataMaster {
-    type Result = bool;
+    type Result = Option<&'static str>;
     fn handle(&mut self, msg: PolicyCommand, _ctx: &mut Context<Self>) -> Self::Result {
         let selected = self.get_instances(msg.0);
         if selected.is_empty() {
-            false
-        } else {
+            Some("failed to select a proxy")
+        } else if msg.1.valid() {
             for instance in selected {
                 instance.addr.do_send(msg.1.clone())
             }
-            true
+            None
+        } else {
+            Some("policy is empty")
         }
     }
 }

@@ -38,6 +38,16 @@ pub enum PolicyRequest {
     Timeout(u8),
 }
 
+impl PolicyRequest {
+    pub fn valid(&self) -> bool {
+        if let PolicyRequest::SetPolicy(_, prog) = self {
+            !prog.is_empty()
+        } else {
+            true
+        }
+    }
+}
+
 /// Transport codec for Master to Proxy instance communication
 pub struct PolicyCodec;
 

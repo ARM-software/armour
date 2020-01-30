@@ -41,7 +41,7 @@ fn main() -> io::Result<()> {
     // enable logging
     std::env::set_var(
         "RUST_LOG",
-        "armour_master=debug,armour_lang=debug,actix=debug",
+        "armour_master=debug,armour_lang=debug,actix=info",
     );
     std::env::set_var("RUST_BACKTRACE", "1");
     pretty_env_logger::init();

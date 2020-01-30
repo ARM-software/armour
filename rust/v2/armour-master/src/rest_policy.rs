@@ -19,21 +19,26 @@ pub async fn update(
 	// 3. add policy under "proxy::protocol" label
 	// 4. if the proxy is active (launched) then forward policy
 	if let Ok(label) = request.label.parse::<Label>() {
-		let prog = Program::from_bincode(&request.policy)?;
-		log::info!("sending policy: {} {}", label, prog.blake3_hash().unwrap());
-		if master
-			.send(PolicyCommand(
-				InstanceSelector::Name("1".to_string()), // TODO:
-				armour_api::proxy::PolicyRequest::SetPolicy(
-					armour_api::proxy::Protocol::All, // TODO
-					prog,
-				),
-			))
-			.await?
-		{
-			Ok(HttpResponse::Ok().finish())
-		} else {
-			Ok(HttpResponse::BadRequest().body("failed to select a proxy"))
+		match Program::from_bincode_raw(&request.policy) {
+			Ok(prog) => {
+				log::info!("sending policy: {} {}", label, prog.blake3_hash().unwrap());
+				if let Some(err) = master
+					.send(PolicyCommand(
+						InstanceSelector::All, // TODO:
+						armour_api::proxy::PolicyRequest::SetPolicy(
+							armour_api::proxy::Protocol::All, // TODO
+							prog,
+						),
+					))
+					.await?
+				{
+					Ok(HttpResponse::BadRequest().body(err))
+				} else {
+					Ok(HttpResponse::Ok().finish())
+				}
+			}
+			Err(err) => Ok(HttpResponse::BadRequest()
+				.body(format!("failed to parse policy bincode:\n{}", err))),
 		}
 	} else {
 		Ok(HttpResponse::BadRequest().body("failed to parse label"))

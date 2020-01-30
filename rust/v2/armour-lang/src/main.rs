@@ -58,7 +58,28 @@ async fn main() -> std::io::Result<()> {
             Arg::with_name("bincode")
                 .long("bincode")
                 .required(false)
-                .help("load program from bincode file"),
+                .takes_value(true)
+                .requires("input file")
+                .conflicts_with("protocol")
+                .help("Load policy from bincode input"),
+        )
+        .arg(
+            Arg::with_name("policy")
+                .long("policy")
+                .required(false)
+                .takes_value(true)
+                .conflicts_with("input file")
+                .requires("protocol")
+                .possible_values(&["allow", "deny"])
+                .help("Type of policy"),
+        )
+        .arg(
+            Arg::with_name("protocol")
+                .long("protocol")
+                .required(false)
+                .takes_value(true)
+                .possible_values(&["tcp", "http"])
+                .help("Type of protocol"),
         )
         .arg(
             Arg::with_name("input file")
@@ -96,11 +117,30 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "0");
     pretty_env_logger::init();
 
-    // try to load code from an input file
-    let mut prog = lang::Program::from_file_option(
-        matches.is_present("bincode"),
-        matches.value_of("input file"),
-    )?;
+    // try to load code from an input file, or by using policy + protocol option
+    let file = matches.value_of("input file");
+    let mut prog = if matches.is_present("bincode") {
+        lang::Program::from_bincode(file.unwrap())?
+    } else {
+        match (
+            matches.value_of("policy"),
+            matches.value_of("protocol"),
+            file,
+        ) {
+            (Some("allow"), Some("tcp"), None) => lang::Program::allow_all(&*lang::TCP_POLICY)?,
+            (Some("allow"), Some("http"), None) => lang::Program::allow_all(&*lang::REST_POLICY)?,
+            (Some("deny"), Some("tcp"), None) => lang::Program::deny_all(&*lang::TCP_POLICY)?,
+            (Some("deny"), Some("http"), None) => lang::Program::deny_all(&*lang::REST_POLICY)?,
+            (None, Some("tcp"), Some(file)) => {
+                lang::Program::from_file(file, Some(&*lang::TCP_POLICY))?
+            }
+            (None, Some("http"), Some(file)) => {
+                lang::Program::from_file(file, Some(&*lang::REST_POLICY))?
+            }
+            (_, _, Some(file)) => lang::Program::from_file(file, None)?,
+            _ => lang::Program::default(),
+        }
+    };
     if let Some(timeout) = matches.value_of("timeout") {
         let d = Duration::from_secs(timeout.parse().map_err(|_| {
             io::Error::new(

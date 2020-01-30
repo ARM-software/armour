@@ -203,18 +203,7 @@ fn master_command(
             let path = pathbuf(file);
             let protocol = protocol(s);
             match lang::Module::from_file(&path, Some(policy(&protocol))) {
-                Ok(module) => {
-                    let prog = module.program;
-                    log::info!(
-                        "sending {} policy: {}",
-                        protocol,
-                        prog.blake3_hash().unwrap()
-                    );
-                    master.do_send(PolicyCommand(
-                        instance,
-                        PolicyRequest::SetPolicy(protocol, prog),
-                    ))
-                }
+                Ok(module) => set_policy(master, instance, protocol, module.program),
                 Err(err) => log::warn!(r#"{:?}: {}"#, path, err),
             }
         }
@@ -225,13 +214,14 @@ fn master_command(
         | (_, Some(s @ "http deny all"), None)
         | (_, Some(s @ "tcp deny all"), None) => {
             let protocol = protocol(s);
-            let allow = s.contains("allow");
-            if protocol == Protocol::All || protocol == Protocol::REST {
-                set_policy(master, instance.clone(), Protocol::REST, allow)
-            }
-            if protocol == Protocol::All || protocol == Protocol::TCP {
-                set_policy(master, instance, Protocol::TCP, allow)
-            }
+            let policy = policy(&protocol);
+            let module = if s.contains("allow") {
+                lang::Module::allow_all(policy)
+            } else {
+                lang::Module::deny_all(policy)
+            };
+            let prog = module.unwrap().program;
+            set_policy(master, instance, protocol, prog)
         }
         _ => log::info!("unknown command"),
     }
@@ -333,19 +323,11 @@ fn set_policy(
     master: &Addr<ArmourDataMaster>,
     instance: InstanceSelector,
     protocol: Protocol,
-    allow: bool,
+    prog: lang::Program,
 ) {
-    let policy = policy(&protocol);
-    let module = if allow {
-        lang::Module::allow_all(policy)
-    } else {
-        lang::Module::deny_all(policy)
-    };
-    let prog = module.unwrap().program;
     log::info!(
-        r#"sending {} "{} all" policy: {}"#,
-        protocol,
-        if allow { "allow" } else { "deny" },
+        r#"sending {} policy: {}"#,
+        prog.description(),
         prog.blake3_hash().unwrap()
     );
     master.do_send(PolicyCommand(

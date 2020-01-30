@@ -79,7 +79,7 @@ impl Program {
             .map(|a| base64::encode(&a))
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
     }
-    pub fn from_bincode<T: ?Sized + AsRef<[u8]>>(s: &T) -> Result<Self, std::io::Error> {
+    pub fn from_bincode_raw<T: ?Sized + AsRef<[u8]>>(s: &T) -> Result<Self, std::io::Error> {
         let bytes =
             base64::decode(s).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         bincode::deserialize(&bytes).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
@@ -107,14 +107,14 @@ impl Program {
     pub fn policy(&self, name: &str) -> Policy {
         self.policies.0.get(name).cloned().unwrap_or_default()
     }
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.policies.0.is_empty()
     }
-    fn is_allow_all(&self) -> bool {
+    pub fn is_allow_all(&self) -> bool {
         // does not capture case when program is empty
         self.policies.0.values().all(|p| p.is_allow())
     }
-    fn is_deny_all(&self) -> bool {
+    pub fn is_deny_all(&self) -> bool {
         self.policies.0.values().all(|p| p.is_deny())
     }
     pub fn description(&self) -> String {
@@ -130,25 +130,30 @@ impl Program {
             "hash failed!".to_string()
         }
     }
-    pub fn from_file_option<P: AsRef<std::path::Path>>(
-        bincode: bool,
-        path: Option<P>,
+    pub fn allow_all(interface: &Interface) -> Result<Self, std::io::Error> {
+        Ok(Module::allow_all(interface)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+            .program)
+    }
+    pub fn deny_all(interface: &Interface) -> Result<Self, std::io::Error> {
+        Ok(Module::deny_all(interface)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+            .program)
+    }
+    pub fn from_bincode<P: AsRef<std::path::Path>>(path: P) -> Result<Self, std::io::Error> {
+        use std::io::prelude::Read;
+        let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
+        let mut buf = String::new();
+        reader.read_to_string(&mut buf)?;
+        Program::from_bincode_raw(buf.as_bytes())
+    }
+    pub fn from_file<P: AsRef<std::path::Path>>(
+        path: P,
+        interface: Option<&Interface>,
     ) -> Result<Self, std::io::Error> {
-        if let Some(path) = path {
-            if bincode {
-                use std::io::prelude::Read;
-                let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
-                let mut buf = String::new();
-                reader.read_to_string(&mut buf)?;
-                Program::from_bincode(buf.as_bytes())
-            } else {
-                Ok(Module::from_file(path, None)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
-                    .program)
-            }
-        } else {
-            Ok(Self::default())
-        }
+        Ok(Module::from_file(path, interface)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+            .program)
     }
 }
 
