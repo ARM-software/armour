@@ -1,6 +1,6 @@
 //! HTTP proxy with Armour policies
 
-use super::http_policy::{EvalRestFn, GetRestPolicy, PolicyStatus, RestFn, RestPolicyResponse};
+use super::http_policy::{EvalHttpFn, GetHttpPolicy, HttpFn, HttpPolicyResponse, PolicyStatus};
 use super::policy::{PolicyActor, ID};
 use super::ToArmourExpression;
 use actix_web::{
@@ -48,7 +48,7 @@ async fn request(
     proxy_port: web::Data<u16>,
 ) -> Result<HttpResponse, Error> {
     if let Some(connection) = Connection::new(&req, **proxy_port) {
-        if let Ok(p) = policy.send(GetRestPolicy(connection.from_to())).await {
+        if let Ok(p) = policy.send(GetHttpPolicy(connection.from_to())).await {
             // we succeeded in getting a policy
             match p.status {
                 // allow all
@@ -68,7 +68,7 @@ async fn request(
                     } else {
                         vec![(&req, &p.connection).to_expression()]
                     };
-                    let message = EvalRestFn(RestFn::Request, args);
+                    let message = EvalHttpFn(HttpFn::Request, args);
                     let allowed = policy.send(message).await;
                     match allowed {
                         // allow request
@@ -160,7 +160,7 @@ async fn allow_all(
 
 // Process request (so far it's allow by the policy)
 async fn client_payload(
-    p: RestPolicyResponse,
+    p: HttpPolicyResponse,
     req: HttpRequest,
     connection: Connection,
     mut payload: web::Payload,
@@ -183,7 +183,7 @@ async fn client_payload(
             }
             let payload = literals::Payload::from((client_payload.as_ref(), &p.connection));
             let allowed = policy
-                .send(EvalRestFn(RestFn::ClientPayload, vec![payload.into()]))
+                .send(EvalHttpFn(HttpFn::ClientPayload, vec![payload.into()]))
                 .await;
             match allowed {
                 // allow payload
@@ -250,7 +250,7 @@ async fn client_payload(
 
 /// Send server response back to client
 async fn response(
-    p: RestPolicyResponse,
+    p: HttpPolicyResponse,
     policy: web::Data<actix::Addr<PolicyActor>>,
     res: Result<
         ClientResponse<impl Stream<Item = Result<web::Bytes, PayloadError>> + Unpin>,
@@ -281,7 +281,7 @@ async fn response(
                     } else {
                         vec![(&response, &p.connection).to_expression()]
                     };
-                    let message = EvalRestFn(RestFn::Response, args);
+                    let message = EvalHttpFn(HttpFn::Response, args);
                     let allowed = policy.send(message).await;
                     match allowed {
                         // allow
@@ -321,7 +321,7 @@ async fn response(
 
 /// Send server response back to client
 async fn server_payload(
-    p: RestPolicyResponse,
+    p: HttpPolicyResponse,
     policy: web::Data<actix::Addr<PolicyActor>>,
     client_resp: HttpResponse,
     mut res: ClientResponse<impl Stream<Item = Result<web::Bytes, PayloadError>> + Unpin>,
@@ -345,7 +345,7 @@ async fn server_payload(
             // };
             let payload = literals::Payload::from((server_payload.as_ref(), &p.connection));
             let allowed = policy
-                .send(EvalRestFn(RestFn::ServerPayload, vec![payload.into()]))
+                .send(EvalHttpFn(HttpFn::ServerPayload, vec![payload.into()]))
                 .await;
             match allowed {
                 // allow

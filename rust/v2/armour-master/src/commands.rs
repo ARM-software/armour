@@ -282,7 +282,7 @@ fn is_tcp(s: &str) -> bool {
 
 fn protocol(s: &str) -> Protocol {
     if is_rest(s) {
-        Protocol::REST
+        Protocol::HTTP
     } else if is_tcp(s) {
         Protocol::TCP
     } else {
@@ -292,9 +292,9 @@ fn protocol(s: &str) -> Protocol {
 
 fn policy(p: &Protocol) -> &lang::Interface {
     match p {
-        Protocol::REST => &*lang::REST_POLICY,
+        Protocol::HTTP => &*lang::HTTP_POLICY,
         Protocol::TCP => &*lang::TCP_POLICY,
-        Protocol::All => &*lang::TCP_REST_POLICY,
+        Protocol::All => &*lang::TCP_HTTP_POLICY,
     }
 }
 

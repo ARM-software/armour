@@ -23,6 +23,14 @@ fn main() -> io::Result<()> {
         .author("Anthony Fox <anthony.fox@arm.com>")
         .about("Armour Data Plane Master")
         .arg(
+            Arg::with_name("name")
+                .short("n")
+                .long("name")
+                .required(false)
+                .takes_value(true)
+                .help("Name of Armour master"),
+        )
+        .arg(
             Arg::with_name("script")
                 .short("r")
                 .long("run")
@@ -71,9 +79,11 @@ fn main() -> io::Result<()> {
     });
 
     // REST interface
+    let name = matches.value_of("name").unwrap_or("master").to_string();
     let master_clone = master.clone();
     HttpServer::new(move || {
         App::new()
+            .data(name.clone())
             .data(master_clone.clone())
             .wrap(middleware::Logger::default())
             .service(web::scope("/policy").service(rest_policy::update))

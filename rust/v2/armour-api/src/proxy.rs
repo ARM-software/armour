@@ -5,21 +5,34 @@ use armour_lang::lang::Program;
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::str::FromStr;
 use tokio_util::codec::{Decoder, Encoder};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Protocol {
     All,
-    REST,
+    HTTP,
     TCP,
 }
 
 impl fmt::Display for Protocol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Protocol::REST => write!(f, "REST"),
+            Protocol::HTTP => write!(f, "HTTP"),
             Protocol::TCP => write!(f, "TCP"),
-            Protocol::All => write!(f, "REST+TCP"),
+            Protocol::All => write!(f, "TCP+HTTP"),
+        }
+    }
+}
+
+impl FromStr for Protocol {
+    type Err = &'static str;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "tcp" => Ok(Protocol::TCP),
+            "http" => Ok(Protocol::HTTP),
+            "tcp+http" => Ok(Protocol::All),
+            _ => Err("failed to parse protocol"),
         }
     }
 }

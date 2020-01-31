@@ -1,5 +1,5 @@
 //! actix-web support for Armour policies
-use super::{http_policy::RestPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_proxy};
+use super::{http_policy::HttpPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_proxy};
 use actix::prelude::*;
 use actix_web::http::uri;
 use armour_api::master::{PolicyResponse, Status};
@@ -100,7 +100,7 @@ pub struct PolicyActor {
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio::net::UnixStream>, PolicyCodec>,
     pub connection_number: usize,
     // proxies
-    pub http: RestPolicy,
+    pub http: HttpPolicy,
     pub tcp: TcpPolicy,
     id_uri_cache: HashMap<actix_web::http::uri::Uri, literals::ID>,
     id_ip_cache: HashMap<std::net::IpAddr, literals::ID>,
@@ -131,7 +131,7 @@ impl PolicyActor {
                 name: name.to_string(),
                 connection_number: 0,
                 uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
-                http: RestPolicy::default(),
+                http: HttpPolicy::default(),
                 tcp: TcpPolicy::default(),
                 id_uri_cache: HashMap::new(),
                 id_ip_cache: HashMap::new(),
@@ -199,16 +199,16 @@ impl Handler<PolicyRequest> for PolicyActor {
                     .set_timeout(std::time::Duration::from_secs(secs.into()));
                 info!("timeout: {:?}", secs)
             }
-            PolicyRequest::Debug(Protocol::REST, debug) => {
+            PolicyRequest::Debug(Protocol::HTTP, debug) => {
                 self.http.set_debug(debug);
-                info!("REST debug: {}", debug)
+                info!("HTTP debug: {}", debug)
             }
             PolicyRequest::Debug(Protocol::TCP, debug) => {
                 self.tcp.set_debug(debug);
                 info!("TCP debug: {}", debug)
             }
             PolicyRequest::Debug(Protocol::All, debug) => {
-                ctx.notify(PolicyRequest::Debug(Protocol::REST, debug));
+                ctx.notify(PolicyRequest::Debug(Protocol::HTTP, debug));
                 ctx.notify(PolicyRequest::Debug(Protocol::TCP, debug))
             }
             PolicyRequest::Status => {
@@ -217,7 +217,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                     tcp: self.tcp.status(),
                 });
             }
-            PolicyRequest::Stop(Protocol::REST) => {
+            PolicyRequest::Stop(Protocol::HTTP) => {
                 if self.http.port().is_none() {
                     self.uds_framed.write(PolicyResponse::RequestFailed)
                 } else {
@@ -234,7 +234,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                 }
             }
             PolicyRequest::Stop(Protocol::All) => {
-                ctx.notify(PolicyRequest::Stop(Protocol::REST));
+                ctx.notify(PolicyRequest::Stop(Protocol::HTTP));
                 ctx.notify(PolicyRequest::Stop(Protocol::TCP))
             }
             PolicyRequest::StartHttp(port) => {
@@ -269,7 +269,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                     })
                     .wait(ctx)
             }
-            PolicyRequest::SetPolicy(Protocol::REST, prog) => {
+            PolicyRequest::SetPolicy(Protocol::HTTP, prog) => {
                 self.http.set_policy(prog);
                 self.uds_framed.write(PolicyResponse::UpdatedPolicy);
                 info!("installed HTTP policy")
@@ -280,7 +280,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                 info!("installed TCP policy")
             }
             PolicyRequest::SetPolicy(Protocol::All, prog) => {
-                ctx.notify(PolicyRequest::SetPolicy(Protocol::REST, prog.clone()));
+                ctx.notify(PolicyRequest::SetPolicy(Protocol::HTTP, prog.clone()));
                 ctx.notify(PolicyRequest::SetPolicy(Protocol::TCP, prog))
             }
             PolicyRequest::Shutdown => {

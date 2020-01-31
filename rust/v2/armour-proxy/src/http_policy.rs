@@ -44,14 +44,14 @@ impl Default for PolicyStatus {
     }
 }
 
-pub struct RestPolicy {
+pub struct HttpPolicy {
     program: Arc<lang::Program>,
     env: Arc<Env>,
     proxy: Option<(actix_web::dev::Server, u16)>,
     status: PolicyStatus,
 }
 
-impl Policy<actix_web::dev::Server> for RestPolicy {
+impl Policy<actix_web::dev::Server> for HttpPolicy {
     fn start(&mut self, server: actix_web::dev::Server, port: u16) {
         self.proxy = Some((server, port))
     }
@@ -92,10 +92,10 @@ impl Policy<actix_web::dev::Server> for RestPolicy {
     }
 }
 
-impl Default for RestPolicy {
+impl Default for HttpPolicy {
     fn default() -> Self {
         let program = Arc::new(lang::Program::default());
-        RestPolicy {
+        HttpPolicy {
             program: program.clone(),
             env: Arc::new(Env::new(program)),
             proxy: None,
@@ -104,7 +104,7 @@ impl Default for RestPolicy {
     }
 }
 
-impl RestPolicy {
+impl HttpPolicy {
     fn get(&self) -> PolicyStatus {
         self.status.clone()
     }
@@ -115,32 +115,32 @@ impl RestPolicy {
 
 /// Information about REST policies
 #[derive(Clone, MessageResponse)]
-pub struct RestPolicyResponse {
+pub struct HttpPolicyResponse {
     pub status: PolicyStatus,
     pub connection: literals::Connection,
 }
 
 /// Request REST policy information
-pub struct GetRestPolicy(pub (ID, ID));
+pub struct GetHttpPolicy(pub (ID, ID));
 
-impl Message for GetRestPolicy {
-    type Result = RestPolicyResponse;
+impl Message for GetHttpPolicy {
+    type Result = HttpPolicyResponse;
 }
 
 // handle request to get current policy status information
-impl Handler<GetRestPolicy> for PolicyActor {
-    type Result = RestPolicyResponse;
+impl Handler<GetHttpPolicy> for PolicyActor {
+    type Result = HttpPolicyResponse;
 
-    fn handle(&mut self, msg: GetRestPolicy, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: GetHttpPolicy, _ctx: &mut Context<Self>) -> Self::Result {
         let status = self.http.get();
         if status.allow_all {
-            RestPolicyResponse {
+            HttpPolicyResponse {
                 status,
                 connection: literals::Connection::default(),
             }
         } else {
             let from_to = msg.0;
-            RestPolicyResponse {
+            HttpPolicyResponse {
                 status,
                 connection: self.connection(from_to.0, from_to.1),
             }
@@ -149,28 +149,28 @@ impl Handler<GetRestPolicy> for PolicyActor {
 }
 
 /// REST policy functions
-pub enum RestFn {
+pub enum HttpFn {
     Request,
     ClientPayload,
     ServerPayload,
     Response,
 }
 
-/// Request evaluation of a (REST) policy function
+/// Request evaluation of a (HTTP) policy function
 #[derive(Message)]
 #[rtype(result = "Result<bool, expressions::Error>")]
-pub struct EvalRestFn(pub RestFn, pub Vec<expressions::Expr>);
+pub struct EvalHttpFn(pub HttpFn, pub Vec<expressions::Expr>);
 
 // handle requests to evaluate the Armour policy
-impl Handler<EvalRestFn> for PolicyActor {
+impl Handler<EvalHttpFn> for PolicyActor {
     type Result = ResponseFuture<Result<bool, expressions::Error>>;
 
-    fn handle(&mut self, msg: EvalRestFn, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: EvalHttpFn, _ctx: &mut Context<Self>) -> Self::Result {
         let function = match msg.0 {
-            RestFn::Request => lang::ALLOW_REST_REQUEST,
-            RestFn::ClientPayload => lang::ALLOW_CLIENT_PAYLOAD,
-            RestFn::ServerPayload => lang::ALLOW_SERVER_PAYLOAD,
-            RestFn::Response => lang::ALLOW_REST_RESPONSE,
+            HttpFn::Request => lang::ALLOW_REST_REQUEST,
+            HttpFn::ClientPayload => lang::ALLOW_CLIENT_PAYLOAD,
+            HttpFn::ServerPayload => lang::ALLOW_SERVER_PAYLOAD,
+            HttpFn::Response => lang::ALLOW_REST_RESPONSE,
         };
         self.http.evaluate(function, msg.1)
     }

@@ -105,17 +105,21 @@ impl Program {
         self.headers.typ(name)
     }
     pub fn policy(&self, name: &str) -> Policy {
-        self.policies.0.get(name).cloned().unwrap_or_default()
+        self.policies
+            .functions
+            .get(name)
+            .cloned()
+            .unwrap_or_default()
     }
     pub fn is_empty(&self) -> bool {
-        self.policies.0.is_empty()
+        self.policies.functions.is_empty()
     }
     pub fn is_allow_all(&self) -> bool {
         // does not capture case when program is empty
-        self.policies.0.values().all(|p| p.is_allow())
+        self.policies.functions.values().all(|p| p.is_allow())
     }
     pub fn is_deny_all(&self) -> bool {
-        self.policies.0.values().all(|p| p.is_deny())
+        self.policies.functions.values().all(|p| p.is_deny())
     }
     pub fn description(&self) -> String {
         if self.is_empty() {
@@ -139,6 +143,9 @@ impl Program {
         Ok(Module::deny_all(interface)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
             .program)
+    }
+    pub fn protocol(&self) -> String {
+        self.policies.protocol.to_string()
     }
     pub fn from_bincode<P: AsRef<std::path::Path>>(path: P) -> Result<Self, std::io::Error> {
         use std::io::prelude::Read;
@@ -182,14 +189,20 @@ impl FunctionInterface {
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
-pub struct Interface(BTreeMap<String, FunctionInterface>);
+pub struct Interface {
+    protocol: String,
+    functions: BTreeMap<String, FunctionInterface>,
+}
 
 impl Interface {
-    pub fn new() -> Self {
-        Interface(BTreeMap::new())
+    pub fn new(s: &str) -> Self {
+        Interface {
+            protocol: s.to_string(),
+            functions: BTreeMap::new(),
+        }
     }
     pub fn insert(&mut self, name: &str, policy: FunctionInterface) {
-        self.0.insert(name.to_string(), policy);
+        self.functions.insert(name.to_string(), policy);
     }
     pub fn insert_bool(&mut self, name: &str, args: Vec<Vec<Typ>>) {
         let sigs = args
@@ -222,8 +235,12 @@ impl Interface {
         )
     }
     pub fn extend(&mut self, other: &Interface) {
-        self.0
-            .extend(other.0.iter().map(|(name, i)| (name.clone(), i.clone())))
+        self.functions.extend(
+            other
+                .functions
+                .iter()
+                .map(|(name, i)| (name.clone(), i.clone())),
+        )
     }
 }
 
@@ -235,8 +252,8 @@ pub const ALLOW_TCP_CONNECTION: &str = "allow_tcp_connection";
 pub const ON_TCP_DISCONNECT: &str = "on_tcp_disconnect";
 
 lazy_static! {
-    pub static ref REST_POLICY: Interface = {
-        let mut policy = Interface::new();
+    pub static ref HTTP_POLICY: Interface = {
+        let mut policy = Interface::new("http");
         policy.insert_bool(ALLOW_REST_REQUEST, vec![vec![Typ::HttpRequest], Vec::new()]);
         policy.insert_bool(ALLOW_CLIENT_PAYLOAD, vec![vec![Typ::Payload]]);
         policy.insert_bool(ALLOW_SERVER_PAYLOAD, vec![vec![Typ::Payload]]);
@@ -247,7 +264,7 @@ lazy_static! {
         policy
     };
     pub static ref TCP_POLICY: Interface = {
-        let mut policy = Interface::new();
+        let mut policy = Interface::new("tcp");
         policy.insert_bool(
             ALLOW_TCP_CONNECTION,
             vec![vec![Typ::Connection], Vec::new()],
@@ -262,9 +279,10 @@ lazy_static! {
         );
         policy
     };
-    pub static ref TCP_REST_POLICY: Interface = {
-        let mut policy = TCP_POLICY.clone();
-        policy.extend(&REST_POLICY);
+    pub static ref TCP_HTTP_POLICY: Interface = {
+        let mut policy = Interface::new("tcp+http");
+        policy.extend(&TCP_POLICY);
+        policy.extend(&HTTP_POLICY);
         policy
     };
 }
@@ -293,12 +311,15 @@ impl Policy {
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
-pub struct Policies(pub BTreeMap<String, Policy>);
+pub struct Policies {
+    pub protocol: String,
+    pub functions: BTreeMap<String, Policy>,
+}
 
 impl Policies {
     fn cut(&mut self, set: &[String]) {
         for s in set.iter() {
-            self.0.remove(s);
+            self.functions.remove(s);
         }
     }
 }
@@ -342,7 +363,7 @@ impl Module {
             .map(|sig| sig.args().unwrap_or_else(Vec::new).len() as u8)
     }
     pub fn interface(&self, s: &str) -> Option<&FunctionInterface> {
-        self.interface.0.get(s)
+        self.interface.functions.get(s)
     }
     fn add_decl(&mut self, decl: &parser::FnDecl) -> Result<(), Error> {
         // println!("{:#?}", decl);
@@ -432,11 +453,12 @@ impl Module {
     }
     pub fn set_interface(&mut self, interface: &Interface, allow: bool) -> Result<(), Error> {
         self.interface = interface.clone();
-        for (function, i) in interface.0.iter() {
+        self.program.policies.protocol = interface.protocol.clone();
+        for (function, i) in interface.functions.iter() {
             self.check_interface(function, i, allow)?;
             self.program
                 .policies
-                .0
+                .functions
                 .insert(function.to_string(), self.policy(function));
         }
         Ok(())
@@ -457,7 +479,7 @@ impl Module {
         if let Some(interface) = interface {
             // TODO: if no interface functions are declared then default to deny
             module.set_interface(interface, true)?;
-            let top: Vec<&String> = interface.0.keys().collect();
+            let top: Vec<&String> = interface.functions.keys().collect();
             module
                 .program
                 .cut(module.call_graph.unreachable(top.as_slice()).as_slice());
