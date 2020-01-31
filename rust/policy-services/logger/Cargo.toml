@@ -20,7 +20,7 @@ chrono-tz = "0.5"
 futures = "0.3"
 log = "0.4"
 petgraph = "0.5"
-pretty_env_logger = "0.3"
+pretty_env_logger = "0.4"
 rustyline = "6.0"
 serde = { version = "1.0",  features = ["derive"] }
 serde_yaml = "0.8"
