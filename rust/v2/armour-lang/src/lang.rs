@@ -75,14 +75,14 @@ impl Program {
             .ok()
     }
     pub fn to_bincode(&self) -> Result<String, std::io::Error> {
-        bincode::serialize(self)
-            .map(|a| base64::encode(&a))
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        let mut buf = Vec::new();
+        armour_utils::bincode_gz_base64_enc(&mut buf, self)?;
+        Ok(std::str::from_utf8(&buf)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+            .to_string())
     }
-    pub fn from_bincode_raw<T: ?Sized + AsRef<[u8]>>(s: &T) -> Result<Self, std::io::Error> {
-        let bytes =
-            base64::decode(s).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        bincode::deserialize(&bytes).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    pub fn from_bincode_raw<R: std::io::Read>(r: R) -> Result<Self, std::io::Error> {
+        armour_utils::bincode_gz_base64_dec(r)
     }
     fn internal(&self, s: &str) -> Option<&Expr> {
         self.code.0.get(s)
@@ -148,11 +148,11 @@ impl Program {
         self.policies.protocol.to_string()
     }
     pub fn from_bincode<P: AsRef<std::path::Path>>(path: P) -> Result<Self, std::io::Error> {
-        use std::io::prelude::Read;
+        use std::io::BufRead;
         let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
         let mut buf = String::new();
         reader.read_to_string(&mut buf)?;
-        Program::from_bincode_raw(buf.as_bytes())
+        Program::from_bincode_raw(buf.trim_end().as_bytes())
     }
     pub fn from_file<P: AsRef<std::path::Path>>(
         path: P,

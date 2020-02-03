@@ -28,7 +28,7 @@ pub async fn update(
 					.get("proxy")
 					.map(InstanceSelector::Name)
 					.unwrap_or(InstanceSelector::All);
-				match Program::from_bincode_raw(&request.policy) {
+				match Program::from_bincode_raw(request.policy.as_bytes()) {
 					Ok(prog) => {
 						let prog_protocol = prog.protocol();
 						if let Ok(protocol) = prog_protocol.parse::<Protocol>() {

@@ -4,9 +4,9 @@
 use actix::prelude::*;
 use actix_web::{middleware, web, App, HttpServer};
 use armour_master::{
+    api_policy,
     commands::{run_command, run_script},
     master::{ArmourDataMaster, MasterCommand, UdsConnect},
-    rest_policy,
 };
 use clap::{crate_version, App as ClapApp, Arg};
 use futures::StreamExt;
@@ -86,7 +86,7 @@ fn main() -> io::Result<()> {
             .data(name.clone())
             .data(master_clone.clone())
             .wrap(middleware::Logger::default())
-            .service(web::scope("/policy").service(rest_policy::update))
+            .service(web::scope("/policy").service(api_policy::update))
     })
     .bind(TCP_SOCKET)?
     .run();

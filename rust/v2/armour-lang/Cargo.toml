@@ -10,6 +10,8 @@ build = "build.rs"
 capnpc = "0.12"
 
 [dependencies]
+armour-utils = {path = "../armour-utils"}
+
 actix = "0.9"
 actix-rt = "1.0"
 arrayvec = "0.5"

@@ -58,7 +58,6 @@ async fn main() -> std::io::Result<()> {
             Arg::with_name("bincode")
                 .long("bincode")
                 .required(false)
-                .takes_value(true)
                 .requires("input file")
                 .conflicts_with("protocol")
                 .help("Load policy from bincode input"),
@@ -166,6 +165,7 @@ async fn main() -> std::io::Result<()> {
         };
         print!("{}", s)
     } else {
+        prog.print();
         // start eval actor
         let headers = prog.headers.clone();
         let eval = Eval::new(prog).start();
