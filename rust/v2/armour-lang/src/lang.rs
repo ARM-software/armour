@@ -148,7 +148,7 @@ impl Program {
         self.policies.protocol.to_string()
     }
     pub fn from_bincode<P: AsRef<std::path::Path>>(path: P) -> Result<Self, std::io::Error> {
-        use std::io::BufRead;
+        use std::io::Read;
         let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
         let mut buf = String::new();
         reader.read_to_string(&mut buf)?;
