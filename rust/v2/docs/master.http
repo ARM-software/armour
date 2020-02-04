@@ -1,19 +1,47 @@
-### fail (empty policy)
+### armour-master:> myproxy: launch log
+
+### fail (protocol not set in policy)
 POST http://127.0.0.1:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
-    "label": "host::proxy",
-    "policy": "AAAAAAAAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    "label": "master::myproxy",
+    "policy": {
+      "Bincode": "H4sIAAAAAAAE/43FMQ0AAACDsCXz75kHAfTpdC8BFkdTsjQAAAA="
+    }
 }
 
-### succeed
+### fail (wrong master)
+POST http://127.0.0.1:8090/policy/update HTTP/1.1
+content-type: application/json
+
+{
+  "label":"other::myproxy",
+  "policy": {
+    "AllowAll": "HTTP"
+  }
+}
+
+### fail (wrong proxy)
 POST http://127.0.0.1:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
   "label":"master::other",
-  "policy":"H4sIAAAAAAAE/7WV3W7UMBCFHX4KSIDEj0DiHbhHvu0Nl4gXiELW7a7IxkvigHhDHov57EzWTtP2qpVnHdtnzpyZTNzKpL+LNJnOX1+74fl5VY++/fl4XjM94UfsvRij6Tr/p267g+tDfWr+dr7ZvZCDZ2KMeYsAj2SNyWReyc8HMUYKam1JkiPfAhO79H3v2nDwvbX9dPzhBk0AvneCYHxLKoRwgSuMeaUMj2RwIJ3VrgmNtZ3r8WCDQ4znJQAoBTDfSl1pNpWm0sS6DW4M9eB+TTITWistW3DBSUAtusRzL2UDIZ9kZnwN4fQ9MVg79Qfhqveu2blhiSmwjFhWcXAMWU5uEJFvEOl1hBszhsHaq8Ef6ylcfVFtzLnHDDam0gAgjPx9XpPnKSqoJeJHQTOK3NrNt5klphQxCV20BEEJfKqTJHQveCJq7+QdBqoOXpmYMYhafqLlOeHA+ky91fbUHFdte3oAHHtI0Q65XPJdNzsqMDxaDWbY0QRpFK0MnJpeUdCjC3u/ww0iZnWR9lOm+KW+ASBWuJ+asMdJ9mPsLWfOlYnqsFa8Cg+enWi6Vane4isZT74fHQU+hxqfRkcTZeqdlGQmuLVjaMI05pEz99nbGELTKv/mHeVKCkY3/HZDPV9mSAALdN66kGcoMHmMctb3W0mSI+9/5flLXK6f7S9ipQw1yeBAOitpkIe53zR6Wb+2+P9QVUgQUzWaf3PjUlyg2kV3dMaC1Z4oNZTlX8CqYf222lKyvi5eNEYxt77kikNJzTADUKMwGI7rWCtpW7E0/71c9/pc5lcKpser2+saj++oZTwv+UuREfAfixh1rD8IAAA="
+  "policy": {
+    "AllowAll": "HTTP"
+  }
+}
+
+### fail (wrong label)
+POST http://127.0.0.1:8090/policy/update HTTP/1.1
+content-type: application/json
+
+{
+  "label":"master::myproxy::extra",
+  "policy": {
+    "AllowAll": "HTTP"
+  }
 }
 
 ### fail (not valid base64)
@@ -21,6 +49,42 @@ POST http://127.0.0.1:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
-  "label":"host::proxy",
-  "policy":"AA="
+  "label":"master::myproxy",
+  "policy": {
+    "Bincode": "AA="
+  }
+}
+
+### succeed
+POST http://127.0.0.1:8090/policy/update HTTP/1.1
+content-type: application/json
+
+{
+  "label":"master::*",
+  "policy": {
+    "DenyAll": "TCP"
+  }
+}
+
+### succeed
+POST http://127.0.0.1:8090/policy/update HTTP/1.1
+content-type: application/json
+
+{
+  "label":"master::myproxy",
+  "policy": {
+    "AllowAll": "HTTP"
+  }
+}
+
+### succeed
+POST http://127.0.0.1:8090/policy/update HTTP/1.1
+content-type: application/json
+
+{
+  "label":"master::myproxy",
+  "policy": {
+    "Bincode": 
+    "H4sIAAAAAAAE/7WV3W7UMBCFHX4KSIDEj0DiHbhHvu0Nl4gXiELW7a7IxkvigHhDHov57EzWTtP2qpVnHdtnzpyZTNzKpL+LNJnOX1+74fl5VY++/fl4XjM94UfsvRij6Tr/p267g+tDfWr+dr7ZvZCDZ2KMeYsAj2SNyWReyc8HMUYKam1JkiPfAhO79H3v2nDwvbX9dPzhBk0AvneCYHxLKoRwgSuMeaUMj2RwIJ3VrgmNtZ3r8WCDQ4znJQAoBTDfSl1pNpWm0sS6DW4M9eB+TTITWistW3DBSUAtusRzL2UDIZ9kZnwN4fQ9MVg79Qfhqveu2blhiSmwjFhWcXAMWU5uEJFvEOl1hBszhsHaq8Ef6ylcfVFtzLnHDDam0gAgjPx9XpPnKSqoJeJHQTOK3NrNt5klphQxCV20BEEJfKqTJHQveCJq7+QdBqoOXpmYMYhafqLlOeHA+ky91fbUHFdte3oAHHtI0Q65XPJdNzsqMDxaDWbY0QRpFK0MnJpeUdCjC3u/ww0iZnWR9lOm+KW+ASBWuJ+asMdJ9mPsLWfOlYnqsFa8Cg+enWi6Vane4isZT74fHQU+hxqfRkcTZeqdlGQmuLVjaMI05pEz99nbGELTKv/mHeVKCkY3/HZDPV9mSAALdN66kGcoMHmMctb3W0mSI+9/5flLXK6f7S9ipQw1yeBAOitpkIe53zR6Wb+2+P9QVUgQUzWaf3PjUlyg2kV3dMaC1Z4oNZTlX8CqYf222lKyvi5eNEYxt77kikNJzTADUKMwGI7rWCtpW7E0/71c9/pc5lcKpser2+saj++oZTwv+UuREfAfixh1rD8IAAA="
+  }
 }

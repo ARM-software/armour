@@ -126,15 +126,19 @@ async fn main() -> std::io::Result<()> {
             matches.value_of("protocol"),
             file,
         ) {
-            (Some("allow"), Some("tcp"), None) => lang::Program::allow_all(&*lang::TCP_POLICY)?,
-            (Some("allow"), Some("http"), None) => lang::Program::allow_all(&*lang::HTTP_POLICY)?,
-            (Some("deny"), Some("tcp"), None) => lang::Program::deny_all(&*lang::TCP_POLICY)?,
-            (Some("deny"), Some("http"), None) => lang::Program::deny_all(&*lang::HTTP_POLICY)?,
+            (Some("allow"), Some("tcp"), None) => lang::Program::allow_all(&lang::TCP_POLICY)?,
+            (Some("allow"), Some("http"), None) => lang::Program::allow_all(&lang::HTTP_POLICY)?,
+            (Some("deny"), Some("tcp"), None) | (None, Some("tcp"), None) => {
+                lang::Program::deny_all(&*lang::TCP_POLICY)?
+            }
+            (Some("deny"), Some("http"), None) | (None, Some("http"), None) => {
+                lang::Program::deny_all(&*lang::HTTP_POLICY)?
+            }
             (None, Some("tcp"), Some(file)) => {
-                lang::Program::from_file(file, Some(&*lang::TCP_POLICY))?
+                lang::Program::from_file(file, Some(&lang::TCP_POLICY))?
             }
             (None, Some("http"), Some(file)) => {
-                lang::Program::from_file(file, Some(&*lang::HTTP_POLICY))?
+                lang::Program::from_file(file, Some(&lang::HTTP_POLICY))?
             }
             (_, _, Some(file)) => lang::Program::from_file(file, None)?,
             _ => lang::Program::default(),

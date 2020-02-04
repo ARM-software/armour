@@ -14,6 +14,12 @@ pub struct Error(String);
 
 impl std::error::Error for Error {}
 
+impl std::convert::From<Error> for std::io::Error {
+    fn from(e: Error) -> Self {
+        std::io::Error::new(std::io::ErrorKind::Other, e.0)
+    }
+}
+
 impl Error {
     pub fn new<D: std::fmt::Display>(e: D) -> Error {
         Error(e.to_string())

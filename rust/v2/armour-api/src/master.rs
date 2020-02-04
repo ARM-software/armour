@@ -1,5 +1,5 @@
 /// API of data plane master
-use super::{DeserializeDecoder, SerializeEncoder};
+use super::{proxy, DeserializeDecoder, SerializeEncoder};
 use actix::prelude::*;
 use armour_lang::lang::Program;
 use bytes::BytesMut;
@@ -8,9 +8,16 @@ use tokio_util::codec::{Decoder, Encoder};
 
 /// Control plane messages to master
 #[derive(Serialize, Deserialize, Debug)]
+pub enum Policy {
+    AllowAll(proxy::Protocol),
+    DenyAll(proxy::Protocol),
+    Bincode(String),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct PolicyUpdate {
     pub label: String,
-    pub policy: String,
+    pub policy: Policy,
 }
 
 /// Proxy messages to master

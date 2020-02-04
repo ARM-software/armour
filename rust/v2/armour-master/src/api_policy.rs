@@ -1,9 +1,14 @@
 use super::instance::InstanceSelector;
 use super::master::{ArmourDataMaster, PolicyCommand};
 use actix_web::{post, web, HttpResponse};
-use armour_api::{labels::Label, master::PolicyUpdate, proxy::Protocol};
-use armour_lang::lang::Program;
+use armour_api::{
+	labels::Label,
+	master::{Policy, PolicyUpdate},
+	proxy::{PolicyRequest, Protocol},
+};
+use armour_lang::lang::{Program, HTTP_POLICY, TCP_POLICY};
 use lazy_static::lazy_static;
+use std::io;
 
 type Master = web::Data<actix::Addr<ArmourDataMaster>>;
 
@@ -11,24 +16,30 @@ lazy_static! {
 	static ref MASTER_PROXY_LABEL: Label = "<master>::<proxy>".parse().unwrap();
 }
 
+fn policy(p: &Policy) -> std::io::Result<armour_lang::lang::Program> {
+	match p {
+		Policy::AllowAll(Protocol::TCP) => Program::allow_all(&TCP_POLICY),
+		Policy::AllowAll(Protocol::HTTP) => Program::allow_all(&HTTP_POLICY),
+		Policy::DenyAll(Protocol::TCP) => Program::deny_all(&TCP_POLICY),
+		Policy::DenyAll(Protocol::HTTP) => Program::deny_all(&HTTP_POLICY),
+		Policy::Bincode(s) => Program::from_bincode_raw(s.as_bytes()),
+		_ => Err(io::Error::new(io::ErrorKind::Other, "missing protocol")),
+	}
+}
+
 #[post("/update")]
 pub async fn update(
 	name: web::Data<String>,
 	master: Master,
 	request: web::Json<PolicyUpdate>,
-) -> Result<HttpResponse, actix_web::Error> {
+) -> HttpResponse {
 	if let Ok(label) = request.label.parse::<Label>() {
 		if let Some(m) = MASTER_PROXY_LABEL.match_with(&label) {
-			let master_ok = m
-				.get("master")
+			if m.get("master")
 				.map(|master_name| master_name == **name)
-				.unwrap_or(true);
-			if master_ok {
-				let instance_selector = m
-					.get("proxy")
-					.map(InstanceSelector::Name)
-					.unwrap_or(InstanceSelector::All);
-				match Program::from_bincode_raw(request.policy.as_bytes()) {
+				.unwrap_or(true)
+			{
+				match policy(&request.policy) {
 					Ok(prog) => {
 						let prog_protocol = prog.protocol();
 						if let Ok(protocol) = prog_protocol.parse::<Protocol>() {
@@ -38,32 +49,39 @@ pub async fn update(
 								label,
 								prog.blake3_hash().unwrap()
 							);
-							if let Some(err) = master
+							match master
 								.send(PolicyCommand(
-									instance_selector,
-									armour_api::proxy::PolicyRequest::SetPolicy(protocol, prog),
+									m.get("proxy")
+										.map(InstanceSelector::Name)
+										.unwrap_or(InstanceSelector::All),
+									PolicyRequest::SetPolicy(protocol, prog),
 								))
-								.await?
+								.await
 							{
-								Ok(HttpResponse::BadRequest().body(err))
-							} else {
-								Ok(HttpResponse::Ok().finish())
+								Ok(None) => HttpResponse::Ok().finish(),
+								Ok(Some(err)) => HttpResponse::BadRequest().body(err),
+								Err(err) => {
+									log::warn!("{}", err);
+									HttpResponse::InternalServerError().finish()
+								}
 							}
+						} else if prog_protocol.is_empty() {
+							HttpResponse::BadRequest().body("protocol is not specified in policy")
 						} else {
-							Ok(HttpResponse::BadRequest()
-								.body(format!("unrecognized policy protocol: {}", prog_protocol)))
+							HttpResponse::BadRequest()
+								.body(format!("unrecognized policy protocol: {}", prog_protocol))
 						}
 					}
-					Err(err) => Ok(HttpResponse::BadRequest()
-						.body(format!("failed to parse policy bincode:\n{}", err))),
+					Err(err) => HttpResponse::BadRequest()
+						.body(format!("failed to parse policy bincode:\n{}", err)),
 				}
 			} else {
-				Ok(HttpResponse::BadRequest().body("policy is not for this master"))
+				HttpResponse::BadRequest().body("policy is not for this master")
 			}
 		} else {
-			Ok(HttpResponse::BadRequest().body("expecting label of the form <master>::<proxy>"))
+			HttpResponse::BadRequest().body("expecting label of the form <master>::<proxy>")
 		}
 	} else {
-		Ok(HttpResponse::BadRequest().body("failed to parse label"))
+		HttpResponse::BadRequest().body("failed to parse label")
 	}
 }
