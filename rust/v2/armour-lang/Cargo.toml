@@ -15,7 +15,7 @@ armour-utils = {path = "../armour-utils"}
 actix = "0.9"
 actix-rt = "1.0"
 arrayvec = "0.5"
-async-std = "1.4"
+async-std = "1.5"
 base64 = "0.11"
 bincode = "1.2"
 blake3 = "0.1"
