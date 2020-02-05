@@ -589,6 +589,7 @@ impl Program {
         String::from_utf8(w).unwrap()
     }
     pub fn print(&self) {
+        // println!("protocol: {}", self.protocol());
         for (name, e) in self.code.0.iter() {
             self.decl_to_doc(name, e)
                 .render_colored(80, StandardStream::stdout(ColorChoice::Auto))

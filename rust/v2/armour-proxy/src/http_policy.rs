@@ -77,6 +77,9 @@ impl Policy<actix_web::dev::Server> for HttpPolicy {
     fn policy(&self) -> Arc<lang::Program> {
         self.program.clone()
     }
+    fn hash(&self) -> String {
+        self.program.blake3_string()
+    }
     fn env(&self) -> Arc<Env> {
         self.env.clone()
     }
@@ -94,7 +97,7 @@ impl Policy<actix_web::dev::Server> for HttpPolicy {
 
 impl Default for HttpPolicy {
     fn default() -> Self {
-        let program = Arc::new(lang::Program::default());
+        let program = Arc::new(lang::Program::deny_all(&lang::HTTP_POLICY).unwrap_or_default());
         HttpPolicy {
             program: program.clone(),
             env: Arc::new(Env::new(program)),

@@ -4,9 +4,9 @@
 use actix::prelude::*;
 use actix_web::{middleware, web, App, HttpServer};
 use armour_master::{
-    api_policy,
     commands::{run_command, run_script},
-    master::{ArmourDataMaster, MasterCommand, UdsConnect},
+    master::{ArmourDataMaster, Quit, UdsConnect},
+    rest_api,
 };
 use clap::{crate_version, App as ClapApp, Arg};
 use futures::StreamExt;
@@ -86,7 +86,16 @@ fn main() -> io::Result<()> {
             .data(name.clone())
             .data(master_clone.clone())
             .wrap(middleware::Logger::default())
-            .service(web::scope("/policy").service(api_policy::update))
+            .service(
+                web::scope("/master")
+                    .service(rest_api::master::name)
+                    .service(rest_api::master::proxies),
+            )
+            .service(
+                web::scope("/policy")
+                    .service(rest_api::policy::query)
+                    .service(rest_api::policy::update),
+            )
     })
     .bind(TCP_SOCKET)?
     .run();
@@ -110,7 +119,7 @@ fn main() -> io::Result<()> {
                     }
                 }
                 Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
-                    master.do_send(MasterCommand::Quit);
+                    master.do_send(Quit);
                     break;
                 }
                 Err(err) => log::warn!("{}", err),

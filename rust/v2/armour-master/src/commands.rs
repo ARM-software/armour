@@ -9,10 +9,10 @@
 
 use super::{
     instance::InstanceSelector,
-    master::{AddChild, ArmourDataMaster, MasterCommand, PolicyCommand},
+    master::{AddChild, ArmourDataMaster, List, PolicyCommand, Quit},
 };
 use actix::Addr;
-use armour_api::proxy::{PolicyRequest, Protocol};
+use armour_api::proxy::{Policy, PolicyRequest, Protocol};
 use armour_lang::lang;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -96,17 +96,17 @@ fn master_command(
     [<id>:] [http|tcp] stop            stop HTTP/TCP proxy
     [<id>:] [http|tcp] allow all       request allow all policy
     [<id>:] [http|tcp] deny all        request deny all policy
-    [<id>:] [http|tcp] policy <file>   read policy <file> and send to instance
+    [<id>:] (http|tcp) policy <file>   read policy <file> and send to instance
     [<id>:] [http|tcp] debug [on|off]  enable/disable display of HTTP requests
     [<id>:] http timeout <seconds>     server response timeout
     
     <id>  instance ID number"
         ),
         (true, Some("list"), None) => {
-            master.do_send(MasterCommand::ListActive);
+            master.do_send(List);
         }
         (true, Some("quit"), None) => {
-            master.do_send(MasterCommand::Quit);
+            master.do_send(Quit);
             return true;
         }
         (true, Some("run"), Some(file)) => run_script(file, master, socket),
@@ -163,7 +163,7 @@ fn master_command(
         (_, Some("status"), None) => master.do_send(PolicyCommand(instance, PolicyRequest::Status)),
         (_, Some(s @ "tcp start"), Some(port)) | (_, Some(s @ "http start"), Some(port)) => {
             if let Ok(port) = port.parse::<u16>() {
-                let start = if is_rest(s) {
+                let start = if is_http(s) {
                     PolicyRequest::StartHttp(port)
                 } else {
                     PolicyRequest::StartTcp(port)
@@ -197,13 +197,11 @@ fn master_command(
                 log::warn!("http timeout <seconds>: expecting u8, got {}", secs);
             }
         }
-        (_, Some(s @ "policy"), Some(file))
-        | (_, Some(s @ "http policy"), Some(file))
-        | (_, Some(s @ "tcp policy"), Some(file)) => {
+        (_, Some(s @ "http policy"), Some(file)) | (_, Some(s @ "tcp policy"), Some(file)) => {
             let path = pathbuf(file);
             let protocol = protocol(s);
-            match lang::Module::from_file(&path, Some(policy(&protocol))) {
-                Ok(module) => set_policy(master, instance, protocol, module.program),
+            match lang::Module::from_file(&path, Some(protocol.interface())) {
+                Ok(module) => set_policy(master, instance, Policy::Program(module.program)),
                 Err(err) => log::warn!(r#"{:?}: {}"#, path, err),
             }
         }
@@ -214,14 +212,11 @@ fn master_command(
         | (_, Some(s @ "http deny all"), None)
         | (_, Some(s @ "tcp deny all"), None) => {
             let protocol = protocol(s);
-            let policy = policy(&protocol);
-            let module = if s.contains("allow") {
-                lang::Module::allow_all(policy)
+            if s.contains("allow") {
+                set_policy(master, instance, Policy::AllowAll(protocol))
             } else {
-                lang::Module::deny_all(policy)
-            };
-            let prog = module.unwrap().program;
-            set_policy(master, instance, protocol, prog)
+                set_policy(master, instance, Policy::DenyAll(protocol))
+            }
         }
         _ => log::info!("unknown command"),
     }
@@ -272,7 +267,7 @@ pub fn run_script(script: &str, master: &Addr<ArmourDataMaster>, socket: &std::p
     }
 }
 
-fn is_rest(s: &str) -> bool {
+fn is_http(s: &str) -> bool {
     s.starts_with("http")
 }
 
@@ -281,7 +276,7 @@ fn is_tcp(s: &str) -> bool {
 }
 
 fn protocol(s: &str) -> Protocol {
-    if is_rest(s) {
+    if is_http(s) {
         Protocol::HTTP
     } else if is_tcp(s) {
         Protocol::TCP
@@ -290,12 +285,9 @@ fn protocol(s: &str) -> Protocol {
     }
 }
 
-fn policy(p: &Protocol) -> &lang::Interface {
-    match p {
-        Protocol::HTTP => &*lang::HTTP_POLICY,
-        Protocol::TCP => &*lang::TCP_POLICY,
-        Protocol::All => &*lang::TCP_HTTP_POLICY,
-    }
+fn set_policy(master: &Addr<ArmourDataMaster>, instance: InstanceSelector, policy: Policy) {
+    log::info!("sending policy: {}", policy);
+    master.do_send(PolicyCommand(instance, PolicyRequest::SetPolicy(policy)))
 }
 
 fn armour_proxy() -> std::path::PathBuf {
@@ -317,21 +309,4 @@ fn pathbuf(s: &str) -> std::path::PathBuf {
                 .unwrap_or_else(|| oss.to_os_string())
         })
         .collect()
-}
-
-fn set_policy(
-    master: &Addr<ArmourDataMaster>,
-    instance: InstanceSelector,
-    protocol: Protocol,
-    prog: lang::Program,
-) {
-    log::info!(
-        r#"sending {} policy: {}"#,
-        prog.description(),
-        prog.blake3_hash().unwrap()
-    );
-    master.do_send(PolicyCommand(
-        instance,
-        PolicyRequest::SetPolicy(protocol, prog),
-    ))
 }

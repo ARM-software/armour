@@ -1,7 +1,7 @@
 /// Communication interface between data plane master and proxy instances
-use super::{DeserializeDecoder, SerializeEncoder};
+use super::{master, DeserializeDecoder, SerializeEncoder};
 use actix::prelude::*;
-use armour_lang::lang::Program;
+use armour_lang::lang;
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -13,6 +13,16 @@ pub enum Protocol {
     All,
     HTTP,
     TCP,
+}
+
+impl Protocol {
+    pub fn interface(&self) -> &lang::Interface {
+        match self {
+            Protocol::HTTP => &*lang::HTTP_POLICY,
+            Protocol::TCP => &*lang::TCP_POLICY,
+            Protocol::All => &*lang::TCP_HTTP_POLICY,
+        }
+    }
 }
 
 impl fmt::Display for Protocol {
@@ -37,12 +47,51 @@ impl FromStr for Protocol {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub enum Policy {
+    AllowAll(Protocol),
+    DenyAll(Protocol),
+    Program(lang::Program),
+}
+
+impl std::convert::TryFrom<&master::Policy> for Policy {
+    type Error = String;
+    fn try_from(policy: &master::Policy) -> Result<Self, Self::Error> {
+        match policy {
+            master::Policy::AllowAll(p) => Ok(Policy::AllowAll(p.clone())),
+            master::Policy::DenyAll(p) => Ok(Policy::DenyAll(p.clone())),
+            master::Policy::Bincode(s) => {
+                let prog = lang::Program::from_bincode_raw(s.as_bytes())
+                    .map_err(|err| format!("failed to parse policy bincode:\n{}", err))?;
+                let protocol = prog.protocol();
+                if protocol.parse::<Protocol>().is_ok() {
+                    Ok(Policy::Program(prog))
+                } else {
+                    Err(format!("failed to parse protocol: {}", protocol))
+                }
+            }
+        }
+    }
+}
+
+impl fmt::Display for Policy {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Policy::AllowAll(protocol) => write!(f, "allow all {}", protocol),
+            Policy::DenyAll(protocol) => write!(f, "deny all {}", protocol),
+            Policy::Program(prog) => {
+                write!(f, "{} policy {}", prog.protocol(), prog.blake3_string())
+            }
+        }
+    }
+}
+
 /// Message to proxy instance
 #[derive(Serialize, Deserialize, Message, Clone)]
 #[rtype("()")]
 pub enum PolicyRequest {
     Debug(Protocol, bool),
-    SetPolicy(Protocol, Program),
+    SetPolicy(Policy),
     Shutdown,
     StartHttp(u16),
     StartTcp(u16),
@@ -53,7 +102,7 @@ pub enum PolicyRequest {
 
 impl PolicyRequest {
     pub fn valid(&self) -> bool {
-        if let PolicyRequest::SetPolicy(_, prog) = self {
+        if let PolicyRequest::SetPolicy(Policy::Program(prog)) = self {
             !prog.is_empty()
         } else {
             true
@@ -65,7 +114,7 @@ impl PolicyRequest {
 pub struct PolicyCodec;
 
 impl DeserializeDecoder<PolicyRequest, std::io::Error> for PolicyCodec {}
-impl SerializeEncoder<super::master::PolicyResponse, std::io::Error> for PolicyCodec {}
+impl SerializeEncoder<master::PolicyResponse, std::io::Error> for PolicyCodec {}
 
 impl Decoder for PolicyCodec {
     type Item = PolicyRequest;
@@ -76,7 +125,7 @@ impl Decoder for PolicyCodec {
 }
 
 impl Encoder for PolicyCodec {
-    type Item = super::master::PolicyResponse;
+    type Item = master::PolicyResponse;
     type Error = std::io::Error;
     fn encode(&mut self, msg: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
         self.serialize_encode(msg, dst)

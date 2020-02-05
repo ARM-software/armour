@@ -3,7 +3,7 @@ use super::{http_policy::HttpPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_prox
 use actix::prelude::*;
 use actix_web::http::uri;
 use armour_api::master::{PolicyResponse, Status};
-use armour_api::proxy::{PolicyCodec, PolicyRequest, Protocol};
+use armour_api::proxy::{self, PolicyCodec, PolicyRequest, Protocol};
 use armour_lang::{expressions, interpret::Env, lang, literals};
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::HashMap;
@@ -56,6 +56,7 @@ pub trait Policy<P> {
     fn set_policy(&mut self, p: lang::Program);
     fn port(&self) -> Option<u16>;
     fn policy(&self) -> Arc<lang::Program>;
+    fn hash(&self) -> String;
     fn env(&self) -> Arc<Env>;
     fn debug(&self) -> bool;
     fn status(&self) -> Box<Status>;
@@ -113,6 +114,8 @@ impl Actor for PolicyActor {
         self.uds_framed.write(PolicyResponse::Connect(
             std::process::id(),
             self.name.to_string(),
+            self.http.hash(),
+            self.tcp.hash(),
         ));
         info!("started Armour policy actor")
     }
@@ -170,6 +173,56 @@ impl PolicyActor {
         // let now = std::time::Instant::now();
         // info!("now: {:?}", now.elapsed());
         literals::Connection::from((&self.id(from), &self.id(to), number))
+    }
+    fn install_http(&mut self, prog: lang::Program) {
+        let hash = prog.blake3_string();
+        self.http.set_policy(prog);
+        self.uds_framed.write(PolicyResponse::UpdatedPolicy(
+            armour_api::proxy::Protocol::HTTP,
+            hash,
+        ));
+        info!("installed HTTP policy")
+    }
+    fn install_tcp(&mut self, prog: lang::Program) {
+        let hash = prog.blake3_string();
+        self.tcp.set_policy(prog);
+        self.uds_framed.write(PolicyResponse::UpdatedPolicy(
+            armour_api::proxy::Protocol::TCP,
+            hash,
+        ));
+        info!("installed TCP policy")
+    }
+    fn install_http_allow_all(&mut self) {
+        if let Ok(prog) = lang::Program::allow_all(&lang::HTTP_POLICY) {
+            self.install_http(prog)
+        } else {
+            self.uds_framed.write(PolicyResponse::RequestFailed);
+            info!("failed to install HTTP allow all policy")
+        }
+    }
+    fn install_tcp_allow_all(&mut self) {
+        if let Ok(prog) = lang::Program::allow_all(&lang::TCP_POLICY) {
+            self.install_tcp(prog)
+        } else {
+            self.uds_framed.write(PolicyResponse::RequestFailed);
+            info!("failed to install TCP allow all policy")
+        }
+    }
+    fn install_http_deny_all(&mut self) {
+        if let Ok(prog) = lang::Program::deny_all(&lang::HTTP_POLICY) {
+            self.install_http(prog)
+        } else {
+            self.uds_framed.write(PolicyResponse::RequestFailed);
+            info!("failed to install HTTP deny all policy")
+        }
+    }
+    fn install_tcp_deny_all(&mut self) {
+        if let Ok(prog) = lang::Program::deny_all(&lang::TCP_POLICY) {
+            self.install_tcp(prog)
+        } else {
+            self.uds_framed.write(PolicyResponse::RequestFailed);
+            info!("failed to install TCP deny all policy")
+        }
     }
 }
 
@@ -269,20 +322,28 @@ impl Handler<PolicyRequest> for PolicyActor {
                     })
                     .wait(ctx)
             }
-            PolicyRequest::SetPolicy(Protocol::HTTP, prog) => {
-                self.http.set_policy(prog);
-                self.uds_framed.write(PolicyResponse::UpdatedPolicy);
-                info!("installed HTTP policy")
-            }
-            PolicyRequest::SetPolicy(Protocol::TCP, prog) => {
-                self.tcp.set_policy(prog);
-                self.uds_framed.write(PolicyResponse::UpdatedPolicy);
-                info!("installed TCP policy")
-            }
-            PolicyRequest::SetPolicy(Protocol::All, prog) => {
-                ctx.notify(PolicyRequest::SetPolicy(Protocol::HTTP, prog.clone()));
-                ctx.notify(PolicyRequest::SetPolicy(Protocol::TCP, prog))
-            }
+            PolicyRequest::SetPolicy(policy) => match policy {
+                proxy::Policy::AllowAll(Protocol::All) => {
+                    self.install_http_allow_all();
+                    self.install_tcp_allow_all()
+                }
+                proxy::Policy::AllowAll(Protocol::HTTP) => self.install_http_allow_all(),
+                proxy::Policy::AllowAll(Protocol::TCP) => self.install_tcp_allow_all(),
+                proxy::Policy::DenyAll(Protocol::All) => {
+                    self.install_http_deny_all();
+                    self.install_tcp_deny_all()
+                }
+                proxy::Policy::DenyAll(Protocol::HTTP) => self.install_http_deny_all(),
+                proxy::Policy::DenyAll(Protocol::TCP) => self.install_tcp_deny_all(),
+                proxy::Policy::Program(prog) => match prog.protocol().as_str() {
+                    "http" => self.install_http(prog),
+                    "tcp" => self.install_tcp(prog),
+                    s => {
+                        self.uds_framed.write(PolicyResponse::RequestFailed);
+                        info!("failed to install policy, unrecognized protocol: {}", s)
+                    }
+                },
+            },
             PolicyRequest::Shutdown => {
                 log::info!("shutting down");
                 self.uds_framed.write(PolicyResponse::ShuttingDown);

@@ -1,7 +1,9 @@
-use super::master::{ArmourDataMaster, Connect, Disconnect, RegisterProxy};
+use super::master::{
+    ArmourDataMaster, Connect, Disconnect, RegisterHttpHash, RegisterProxy, RegisterTcpHash,
+};
 use actix::prelude::*;
-use armour_api::master::{MasterCodec, PolicyResponse};
-use armour_api::proxy::PolicyRequest;
+use armour_api::master::{self, MasterCodec, PolicyResponse};
+use armour_api::proxy::{PolicyRequest, Protocol};
 use log::*;
 use std::collections::HashMap;
 use std::fmt;
@@ -14,23 +16,42 @@ pub enum InstanceSelector {
     ID(usize),
 }
 
+#[derive(Clone)]
 pub struct Meta {
     pub pid: u32,
     pub name: String,
+    pub http: String, // hash of HTTP policy
+    pub tcp: String,  // hash of TCP policy
+}
+
+impl From<&Meta> for master::Proxy {
+    fn from(m: &Meta) -> Self {
+        master::Proxy {
+            name: m.name.to_string(),
+            http: m.http.to_string(),
+            tcp: m.tcp.to_string(),
+        }
+    }
 }
 
 impl Meta {
-    fn new(pid: u32, name: &str) -> Self {
+    fn new(pid: u32, name: String, http: String, tcp: String) -> Self {
         Meta {
             pid,
-            name: name.to_string(),
+            name,
+            http,
+            tcp,
         }
     }
 }
 
 impl fmt::Display for Meta {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, r#""{}" {}"#, self.name, self.pid)
+        write!(
+            f,
+            r#""{}"; pid: {}; http: {}; tcp: {}"#,
+            self.name, self.pid, self.http, self.tcp
+        )
     }
 }
 
@@ -43,8 +64,18 @@ impl Instance {
     pub fn new(addr: Addr<ArmourDataInstance>) -> Self {
         Instance { meta: None, addr }
     }
-    pub fn set_meta(&mut self, pid: u32, name: &str) {
-        self.meta = Some(Meta::new(pid, name))
+    pub fn set_meta(&mut self, meta: Meta) {
+        self.meta = Some(meta)
+    }
+    pub fn set_http_hash(&mut self, s: &str) {
+        if let Some(mut meta) = self.meta.as_mut() {
+            meta.http = s.to_string();
+        }
+    }
+    pub fn set_tcp_hash(&mut self, s: &str) {
+        if let Some(mut meta) = self.meta.as_mut() {
+            meta.tcp = s.to_string();
+        }
     }
 }
 
@@ -102,13 +133,24 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
     fn handle(&mut self, msg: Result<PolicyResponse, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
             match msg {
-                PolicyResponse::Connect(pid, name) => {
+                PolicyResponse::Connect(pid, name, http, tcp) => {
                     info!(r#"{}: connect with process "{}" {}"#, self.id, name, pid);
-                    self.master.do_send(RegisterProxy(self.id, pid, name))
+                    self.master
+                        .do_send(RegisterProxy(self.id, Meta::new(pid, name, http, tcp)))
                 }
                 PolicyResponse::Started => info!("{}: started a proxy", self.id),
                 PolicyResponse::Stopped => info!("{}: stopped a proxy", self.id),
-                PolicyResponse::UpdatedPolicy => info!("{}: updated policy", self.id),
+                PolicyResponse::UpdatedPolicy(protocol, hash) => {
+                    info!("{}: updated policy", self.id);
+                    match protocol {
+                        Protocol::HTTP => self.master.do_send(RegisterHttpHash(self.id, hash)),
+                        Protocol::TCP => self.master.do_send(RegisterTcpHash(self.id, hash)),
+                        Protocol::All => {
+                            self.master.do_send(RegisterHttpHash(self.id, hash.clone()));
+                            self.master.do_send(RegisterTcpHash(self.id, hash))
+                        }
+                    }
+                }
                 PolicyResponse::RequestFailed => info!("{}: request failed", self.id),
                 PolicyResponse::ShuttingDown => {
                     info!("{}: received shutdown", self.id);
@@ -116,7 +158,11 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
                     ctx.stop()
                 }
                 PolicyResponse::Status { http, tcp } => {
-                    info!("{}:\n=== HTTP ===\n{}=== TCP ===\n{}", self.id, http, tcp)
+                    info!("{}:\n=== HTTP ===\n{}=== TCP ===\n{}", self.id, http, tcp);
+                    self.master
+                        .do_send(RegisterHttpHash(self.id, http.policy.blake3_string()));
+                    self.master
+                        .do_send(RegisterTcpHash(self.id, tcp.policy.blake3_string()))
                 }
             }
         } else {

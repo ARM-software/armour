@@ -1,7 +1,19 @@
 ### armour-master:> myproxy: launch log
 
+### succeed
+GET http://localhost:8090/master/name HTTP/1.1
+
+### succeed
+GET http://localhost:8090/master/proxies HTTP/1.1
+
+### succeed
+GET http://localhost:8090/policy/query HTTP/1.1
+content-type: application/json
+
+"master::myproxy"
+
 ### fail (protocol not set in policy)
-POST http://127.0.0.1:8090/policy/update HTTP/1.1
+POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
@@ -12,7 +24,7 @@ content-type: application/json
 }
 
 ### fail (wrong master)
-POST http://127.0.0.1:8090/policy/update HTTP/1.1
+POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
@@ -23,7 +35,7 @@ content-type: application/json
 }
 
 ### fail (wrong proxy)
-POST http://127.0.0.1:8090/policy/update HTTP/1.1
+POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
@@ -34,7 +46,7 @@ content-type: application/json
 }
 
 ### fail (wrong label)
-POST http://127.0.0.1:8090/policy/update HTTP/1.1
+POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
@@ -45,7 +57,7 @@ content-type: application/json
 }
 
 ### fail (not valid base64)
-POST http://127.0.0.1:8090/policy/update HTTP/1.1
+POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
@@ -56,7 +68,7 @@ content-type: application/json
 }
 
 ### succeed
-POST http://127.0.0.1:8090/policy/update HTTP/1.1
+POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
@@ -67,7 +79,7 @@ content-type: application/json
 }
 
 ### succeed
-POST http://127.0.0.1:8090/policy/update HTTP/1.1
+POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
@@ -78,7 +90,7 @@ content-type: application/json
 }
 
 ### succeed
-POST http://127.0.0.1:8090/policy/update HTTP/1.1
+POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {

@@ -1,9 +1,10 @@
 use super::instance::{ArmourDataInstance, Instance, InstanceSelector, Instances, Meta};
 use actix::prelude::*;
-use armour_api::master::MasterCodec;
+use armour_api::master::{self, MasterCodec};
 use armour_api::proxy::PolicyRequest;
 use log::*;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
 use tokio_util::codec::FramedRead;
 
 /// Actor that handles Unix socket connections
@@ -130,13 +131,39 @@ impl Handler<Disconnect> for ArmourDataMaster {
 
 #[derive(Message)]
 #[rtype("()")]
-pub struct RegisterProxy(pub usize, pub u32, pub String);
+pub struct RegisterProxy(pub usize, pub Meta);
 
 impl Handler<RegisterProxy> for ArmourDataMaster {
     type Result = ();
     fn handle(&mut self, msg: RegisterProxy, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(instance) = self.instances.0.get_mut(&msg.0) {
-            instance.set_meta(msg.1, &msg.2)
+            instance.set_meta(msg.1)
+        }
+    }
+}
+
+#[derive(Message)]
+#[rtype("()")]
+pub struct RegisterHttpHash(pub usize, pub String);
+
+impl Handler<RegisterHttpHash> for ArmourDataMaster {
+    type Result = ();
+    fn handle(&mut self, msg: RegisterHttpHash, _ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(instance) = self.instances.0.get_mut(&msg.0) {
+            instance.set_http_hash(&msg.1)
+        }
+    }
+}
+
+#[derive(Message)]
+#[rtype("()")]
+pub struct RegisterTcpHash(pub usize, pub String);
+
+impl Handler<RegisterTcpHash> for ArmourDataMaster {
+    type Result = ();
+    fn handle(&mut self, msg: RegisterTcpHash, _ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(instance) = self.instances.0.get_mut(&msg.0) {
+            instance.set_tcp_hash(&msg.1)
         }
     }
 }
@@ -153,29 +180,52 @@ impl Handler<AddChild> for ArmourDataMaster {
     }
 }
 
-/// Represents commands sent to the data plane master.
-///
-/// Policy update request are forwarded on to the appropriate instance actor.
 #[derive(Message)]
 #[rtype("()")]
-pub enum MasterCommand {
-    ListActive,
-    Quit,
+pub struct Quit;
+
+impl Handler<Quit> for ArmourDataMaster {
+    type Result = ();
+    fn handle(&mut self, _msg: Quit, _ctx: &mut Context<Self>) -> Self::Result {
+        System::current().stop()
+    }
 }
 
-impl Handler<MasterCommand> for ArmourDataMaster {
-    type Result = ();
-    fn handle(&mut self, msg: MasterCommand, _ctx: &mut Context<Self>) -> Self::Result {
-        match msg {
-            MasterCommand::Quit => System::current().stop(),
-            MasterCommand::ListActive => {
-                if self.instances.0.is_empty() {
-                    info!("there are no active instances")
-                } else {
-                    info!("active instances: {}", self.instances)
-                }
-            }
+#[derive(Message)]
+#[rtype("Arc<Vec<String>>")]
+pub struct List;
+
+impl Handler<List> for ArmourDataMaster {
+    type Result = Arc<Vec<String>>;
+    fn handle(&mut self, _msg: List, _ctx: &mut Context<Self>) -> Self::Result {
+        if self.instances.0.is_empty() {
+            info!("there are no active instances")
+        } else {
+            info!("active instances: {}", self.instances)
         }
+        let list: BTreeSet<String> = self
+            .instances
+            .0
+            .values()
+            .filter_map(|i| i.meta.as_ref().map(|m| m.name.to_string()))
+            .collect();
+        Arc::new(list.into_iter().collect())
+    }
+}
+
+#[derive(Message)]
+#[rtype("Arc<Vec<master::Proxy>>")]
+pub struct MetaData(pub InstanceSelector);
+
+impl Handler<MetaData> for ArmourDataMaster {
+    type Result = Arc<Vec<master::Proxy>>;
+    fn handle(&mut self, msg: MetaData, _ctx: &mut Context<Self>) -> Self::Result {
+        Arc::new(
+            self.get_instances(msg.0)
+                .iter()
+                .filter_map(|i| i.meta.as_ref().map(master::Proxy::from))
+                .collect(),
+        )
     }
 }
 

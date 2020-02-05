@@ -74,6 +74,11 @@ impl Program {
             .map(|bytes| blake3::hash(&bytes).to_hex())
             .ok()
     }
+    pub fn blake3_string(&self) -> String {
+        self.blake3_hash()
+            .map(|h| h.to_string())
+            .unwrap_or_else(|| "<hash error>".to_string())
+    }
     pub fn to_bincode(&self) -> Result<String, std::io::Error> {
         let mut buf = Vec::new();
         armour_utils::bincode_gz_base64_enc(&mut buf, self)?;

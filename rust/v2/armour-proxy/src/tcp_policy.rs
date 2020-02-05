@@ -47,6 +47,9 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
     fn policy(&self) -> Arc<lang::Program> {
         self.program.clone()
     }
+    fn hash(&self) -> String {
+        self.program.blake3_string()
+    }
     fn env(&self) -> Arc<Env> {
         self.env.clone()
     }
@@ -64,7 +67,7 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
 
 impl Default for TcpPolicy {
     fn default() -> Self {
-        let program = Arc::new(lang::Program::default());
+        let program = Arc::new(lang::Program::deny_all(&lang::TCP_POLICY).unwrap_or_default());
         TcpPolicy {
             connect: lang::Policy::default(),
             disconnect: lang::Policy::default(),

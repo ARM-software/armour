@@ -20,15 +20,28 @@ pub struct PolicyUpdate {
     pub policy: Policy,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PolicyQuery {
+    pub label: String,
+    pub potocol: proxy::Protocol,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Proxy {
+    pub name: String,
+    pub http: String, // hash
+    pub tcp: String,  // hash
+}
+
 /// Proxy messages to master
 #[derive(Serialize, Deserialize, Message)]
 #[rtype("()")]
 pub enum PolicyResponse {
-    Connect(u32, String), // PID and name of proxy
+    Connect(u32, String, String, String), // (PID, name, http hash, tcp hash)
     Started,
     Stopped,
     ShuttingDown,
-    UpdatedPolicy,
+    UpdatedPolicy(proxy::Protocol, String), // hash of new policy
     RequestFailed,
     Status { http: Box<Status>, tcp: Box<Status> },
 }
