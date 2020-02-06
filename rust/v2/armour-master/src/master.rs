@@ -240,16 +240,16 @@ impl Handler<List> for ArmourDataMaster {
 }
 
 #[derive(Message)]
-#[rtype("Arc<Vec<master::Proxy>>")]
+#[rtype("Arc<Vec<master::PolicyStatus>>")]
 pub struct MetaData(pub InstanceSelector);
 
 impl Handler<MetaData> for ArmourDataMaster {
-    type Result = Arc<Vec<master::Proxy>>;
+    type Result = Arc<Vec<master::PolicyStatus>>;
     fn handle(&mut self, msg: MetaData, _ctx: &mut Context<Self>) -> Self::Result {
         Arc::new(
             self.get_instances(msg.0)
                 .iter()
-                .filter_map(|i| i.meta.as_ref().map(master::Proxy::from))
+                .filter_map(|i| i.meta.as_ref().map(master::PolicyStatus::from))
                 .collect(),
         )
     }

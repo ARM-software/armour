@@ -24,9 +24,9 @@ pub struct Meta {
     pub tcp: String,  // hash of TCP policy
 }
 
-impl From<&Meta> for master::Proxy {
+impl From<&Meta> for master::PolicyStatus {
     fn from(m: &Meta) -> Self {
-        master::Proxy {
+        master::PolicyStatus {
             name: m.name.to_string(),
             http: m.http.to_string(),
             tcp: m.tcp.to_string(),

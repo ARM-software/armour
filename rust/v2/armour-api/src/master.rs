@@ -1,4 +1,5 @@
-/// API of data plane master
+//! Data plane `master` API
+
 use super::{proxy, DeserializeDecoder, SerializeEncoder};
 use actix::prelude::*;
 use armour_lang::lang::Program;
@@ -6,7 +7,12 @@ use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use tokio_util::codec::{Decoder, Encoder};
 
-/// Control plane messages to master
+/// Policy type during `control` plane to `master` communication
+///
+/// There are three main possibilities:
+/// 1. Allow all (HTTP, TCP or both)
+/// 2. Deny all (HTTP, TCP or both)
+/// 3. A policy program, encoded as a [String](https://doc.rust-lang.org/std/string/struct.String.html) using Bincode (serde), Gzip and Base64
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Policy {
     AllowAll(proxy::Protocol),
@@ -14,26 +20,33 @@ pub enum Policy {
     Bincode(String),
 }
 
+/// Request policy update
+///
+/// Consists of a label, which should be of the form `<master>::<proxy>`, and a [Policy](enum.Policy.html) value
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PolicyUpdate {
     pub label: String,
     pub policy: Policy,
 }
 
+/// Query current policy status
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PolicyQuery {
     pub label: String,
     pub potocol: proxy::Protocol,
 }
 
+/// Current policy status
+///
+/// Consists of proxy `name` and (blake3) hashes of current HTTP and TCP policies
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Proxy {
+pub struct PolicyStatus {
     pub name: String,
     pub http: String, // hash
     pub tcp: String,  // hash
 }
 
-/// Proxy messages to master
+/// Message from `proxy` instance to `master`
 #[derive(Serialize, Deserialize, Message)]
 #[rtype("()")]
 pub enum PolicyResponse {
@@ -66,7 +79,7 @@ impl std::fmt::Display for Status {
     }
 }
 
-/// Transport codec for Proxy instance to Master communication
+/// Tokio utils codec for `proxy` instance to `master` communication
 pub struct MasterCodec;
 
 impl DeserializeDecoder<PolicyResponse, std::io::Error> for MasterCodec {}
