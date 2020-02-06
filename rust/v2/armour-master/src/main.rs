@@ -68,14 +68,13 @@ fn main() -> io::Result<()> {
     let socket =
         std::fs::canonicalize(&socket).unwrap_or_else(|_| std::path::PathBuf::from(socket));
     log::info!("started Data Master on socket: {}", socket.display());
-    let socket_clone = socket.clone();
     let master = ArmourDataMaster::create(|ctx| {
         ctx.add_message_stream(
             Box::leak(listener)
                 .incoming()
                 .map(|st| UdsConnect(st.unwrap())),
         );
-        ArmourDataMaster::new(socket_clone)
+        ArmourDataMaster::new(socket)
     });
 
     // REST interface
@@ -103,7 +102,7 @@ fn main() -> io::Result<()> {
     // Interactive shell interface
     std::thread::spawn(move || {
         if let Some(script) = matches.value_of("script") {
-            run_script(script, &master, &socket)
+            run_script(&master, script)
         };
         let mut rl = Editor::new();
         rl.set_helper(Some(Helper::new()));
@@ -114,7 +113,7 @@ fn main() -> io::Result<()> {
             match rl.readline("armour-master:> ") {
                 Ok(cmd) => {
                     rl.add_history_entry(cmd.as_str());
-                    if run_command(&master, &cmd, &socket) {
+                    if run_command(&master, &cmd) {
                         break;
                     }
                 }

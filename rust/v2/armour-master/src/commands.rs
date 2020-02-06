@@ -9,7 +9,7 @@
 
 use super::{
     instance::InstanceSelector,
-    master::{AddChild, ArmourDataMaster, List, PolicyCommand, Quit},
+    master::{ArmourDataMaster, Launch, List, PolicyCommand, Quit},
 };
 use actix::Addr;
 use armour_api::proxy::{Policy, PolicyRequest, Protocol};
@@ -69,11 +69,7 @@ fn command<'a>(caps: &'a regex::Captures) -> (InstanceSelector, Option<&'a str>,
     )
 }
 
-fn master_command(
-    master: &Addr<ArmourDataMaster>,
-    caps: regex::Captures,
-    socket: &std::path::PathBuf,
-) -> bool {
+fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> bool {
     let (instance, command, args) = command(&caps);
     let command = command.map(|s| s.to_lowercase());
     match (
@@ -109,7 +105,7 @@ fn master_command(
             master.do_send(Quit);
             return true;
         }
-        (true, Some("run"), Some(file)) => run_script(file, master, socket),
+        (true, Some("run"), Some(file)) => run_script(master, file),
         (true, Some("wait"), Some(secs)) => {
             if let Ok(delay) = secs.parse::<u8>() {
                 std::thread::sleep(std::time::Duration::from_secs(delay.min(5).into()))
@@ -118,8 +114,6 @@ fn master_command(
             }
         }
         (_, Some(s @ "launch"), None) | (_, Some(s @ "launch log"), None) => {
-            let log = if s.ends_with("log") { "info" } else { "warn" };
-            let armour_proxy = armour_proxy();
             let name = match instance {
                 InstanceSelector::Name(name) => name,
                 InstanceSelector::ID(id) => {
@@ -128,33 +122,7 @@ fn master_command(
                 }
                 InstanceSelector::All => "proxy".to_string(),
             };
-            // sudo ~/.cargo/bin/flamegraph ~/rust/target/debug/armour-proxy
-            match std::process::Command::new(&armour_proxy)
-                .arg("-l")
-                .arg(log)
-                .arg("-n")
-                .arg(&name)
-                .arg(socket)
-                .spawn()
-            {
-                Ok(child) => {
-                    let pid = child.id();
-                    master.do_send(AddChild(pid, child));
-                    log::info!("launched proxy processs: {} {}", name, pid)
-                }
-                Err(err) => log::warn!("failed to launch: {}\n{}", armour_proxy.display(), err),
-            }
-            // let mut command = std::process::Command::new("sudo");
-            // let command = command
-            //     .arg("/Users/antfox02/.cargo/bin/flamegraph")
-            //     .arg("/Users/antfox02/rust/target/release/armour-proxy")
-            //     .arg("armour")
-            //     .arg(log);
-            // log::info!("command: {:?}", command);
-            // match command.spawn() {
-            //     Ok(child) => log::info!("started processs: {}", child.id()),
-            //     Err(err) => log::warn!("failed to spawn data plane instance: {}", err),
-            // }
+            master.do_send(Launch(s.ends_with("log"), name))
         }
         (_, Some("shutdown"), None) => {
             log::info!("sending shudown");
@@ -223,15 +191,11 @@ fn master_command(
     false
 }
 
-pub fn run_command(
-    master: &Addr<ArmourDataMaster>,
-    cmd: &str,
-    socket: &std::path::PathBuf,
-) -> bool {
+pub fn run_command(master: &Addr<ArmourDataMaster>, cmd: &str) -> bool {
     let cmd = cmd.trim();
     if cmd != "" {
         if let Some(caps) = COMMAND.captures(&cmd) {
-            return master_command(&master, caps, socket);
+            return master_command(&master, caps);
         } else {
             log::info!("unknown command <none>")
         }
@@ -239,7 +203,7 @@ pub fn run_command(
     false
 }
 
-pub fn run_script(script: &str, master: &Addr<ArmourDataMaster>, socket: &std::path::PathBuf) {
+pub fn run_script(master: &Addr<ArmourDataMaster>, script: &str) {
     match std::fs::File::open(pathbuf(script)) {
         Ok(file) => {
             let mut buf_reader = std::io::BufReader::new(file);
@@ -251,7 +215,7 @@ pub fn run_script(script: &str, master: &Addr<ArmourDataMaster>, socket: &std::p
                     cmd = cmd.trim().to_string();
                     if !(cmd == "" || cmd.starts_with('#')) {
                         log::info!(r#"run command: "{}""#, cmd);
-                        if run_command(master, &cmd, socket) {
+                        if run_command(master, &cmd) {
                             return;
                         }
                     };
@@ -288,16 +252,6 @@ fn protocol(s: &str) -> Protocol {
 fn set_policy(master: &Addr<ArmourDataMaster>, instance: InstanceSelector, policy: Policy) {
     log::info!("sending policy: {}", policy);
     master.do_send(PolicyCommand(instance, PolicyRequest::SetPolicy(policy)))
-}
-
-fn armour_proxy() -> std::path::PathBuf {
-    if let Ok(Some(path)) =
-        std::env::current_exe().map(|path| path.parent().map(|dir| dir.join("armour-proxy")))
-    {
-        path
-    } else {
-        std::path::PathBuf::from("./armour-proxy")
-    }
 }
 
 fn pathbuf(s: &str) -> std::path::PathBuf {

@@ -180,6 +180,44 @@ impl Handler<AddChild> for ArmourDataMaster {
     }
 }
 
+// launch a new proxy
+#[derive(Message)]
+#[rtype("()")]
+pub struct Launch(pub bool, pub String);
+
+impl Handler<Launch> for ArmourDataMaster {
+    type Result = ();
+    fn handle(&mut self, msg: Launch, _ctx: &mut Context<Self>) -> Self::Result {
+        let log = if msg.0 { "info" } else { "warn" };
+        let armour_proxy = armour_proxy();
+        match std::process::Command::new(&armour_proxy)
+            .arg("-l")
+            .arg(log)
+            .arg("-n")
+            .arg(&msg.1)
+            .arg(&self.socket)
+            .spawn()
+        {
+            Ok(child) => {
+                let pid = child.id();
+                self.children.insert(pid, child);
+                log::info!("launched proxy processs: {} {}", msg.1, pid)
+            }
+            Err(err) => log::warn!("failed to launch: {}\n{}", armour_proxy.display(), err),
+        }
+    }
+}
+
+fn armour_proxy() -> std::path::PathBuf {
+    if let Ok(Some(path)) =
+        std::env::current_exe().map(|path| path.parent().map(|dir| dir.join("armour-proxy")))
+    {
+        path
+    } else {
+        std::path::PathBuf::from("./armour-proxy")
+    }
+}
+
 #[derive(Message)]
 #[rtype("()")]
 pub struct Quit;

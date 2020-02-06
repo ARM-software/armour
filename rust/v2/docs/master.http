@@ -10,7 +10,7 @@ GET http://localhost:8090/master/proxies HTTP/1.1
 GET http://localhost:8090/policy/query HTTP/1.1
 content-type: application/json
 
-"master::myproxy"
+"master::*"
 
 ### fail (protocol not set in policy)
 POST http://localhost:8090/policy/update HTTP/1.1
