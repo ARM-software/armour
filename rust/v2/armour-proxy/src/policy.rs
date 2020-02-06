@@ -66,7 +66,7 @@ pub trait Policy<P> {
         args: Vec<expressions::Expr>,
     ) -> BoxFuture<'static, Result<T, expressions::Error>> {
         let now = if self.debug() {
-            info!(r#"evaluting "{}""#, function);
+            log::info!(r#"evaluting "{}""#, function);
             Some(std::time::Instant::now())
         } else {
             None
@@ -77,8 +77,8 @@ pub trait Policy<P> {
                 .evaluate(env)
                 .await?;
             if let Some(elapsed) = now.map(|t| t.elapsed()) {
-                info!("result: {}", result);
-                info!("evaluate time: {:?}", elapsed)
+                log::info!("result: {}", result);
+                log::info!("evaluate time: {:?}", elapsed)
             };
             if let expressions::Expr::LitExpr(lit) = result {
                 if let Ok(r) = lit.try_into() {
@@ -117,10 +117,10 @@ impl Actor for PolicyActor {
             self.http.hash(),
             self.tcp.hash(),
         ));
-        info!("started Armour policy actor")
+        log::info!("started Armour policy actor")
     }
     fn stopped(&mut self, _ctx: &mut Self::Context) {
-        info!("stopped Armour policy")
+        log::info!("stopped Armour policy")
     }
 }
 
@@ -171,7 +171,7 @@ impl PolicyActor {
         let number = self.connection_number;
         self.connection_number += 1;
         // let now = std::time::Instant::now();
-        // info!("now: {:?}", now.elapsed());
+        // log::info!("now: {:?}", now.elapsed());
         literals::Connection::from((&self.id(from), &self.id(to), number))
     }
     fn install_http(&mut self, prog: lang::Program) {
@@ -181,7 +181,7 @@ impl PolicyActor {
             armour_api::proxy::Protocol::HTTP,
             hash,
         ));
-        info!("installed HTTP policy")
+        log::info!("installed HTTP policy")
     }
     fn install_tcp(&mut self, prog: lang::Program) {
         let hash = prog.blake3_string();
@@ -190,14 +190,14 @@ impl PolicyActor {
             armour_api::proxy::Protocol::TCP,
             hash,
         ));
-        info!("installed TCP policy")
+        log::info!("installed TCP policy")
     }
     fn install_http_allow_all(&mut self) {
         if let Ok(prog) = lang::Program::allow_all(&lang::HTTP_POLICY) {
             self.install_http(prog)
         } else {
             self.uds_framed.write(PolicyResponse::RequestFailed);
-            info!("failed to install HTTP allow all policy")
+            log::info!("failed to install HTTP allow all policy")
         }
     }
     fn install_tcp_allow_all(&mut self) {
@@ -205,7 +205,7 @@ impl PolicyActor {
             self.install_tcp(prog)
         } else {
             self.uds_framed.write(PolicyResponse::RequestFailed);
-            info!("failed to install TCP allow all policy")
+            log::info!("failed to install TCP allow all policy")
         }
     }
     fn install_http_deny_all(&mut self) {
@@ -213,7 +213,7 @@ impl PolicyActor {
             self.install_http(prog)
         } else {
             self.uds_framed.write(PolicyResponse::RequestFailed);
-            info!("failed to install HTTP deny all policy")
+            log::info!("failed to install HTTP deny all policy")
         }
     }
     fn install_tcp_deny_all(&mut self) {
@@ -221,7 +221,7 @@ impl PolicyActor {
             self.install_tcp(prog)
         } else {
             self.uds_framed.write(PolicyResponse::RequestFailed);
-            info!("failed to install TCP deny all policy")
+            log::info!("failed to install TCP deny all policy")
         }
     }
 }
@@ -236,7 +236,7 @@ impl StreamHandler<Result<PolicyRequest, std::io::Error>> for PolicyActor {
         }
     }
     fn finished(&mut self, _ctx: &mut Context<Self>) {
-        info!("lost connection to master");
+        log::info!("lost connection to master");
         System::current().stop()
     }
 }
@@ -250,15 +250,15 @@ impl Handler<PolicyRequest> for PolicyActor {
             PolicyRequest::Timeout(secs) => {
                 self.http
                     .set_timeout(std::time::Duration::from_secs(secs.into()));
-                info!("timeout: {:?}", secs)
+                log::info!("timeout: {:?}", secs)
             }
             PolicyRequest::Debug(Protocol::HTTP, debug) => {
                 self.http.set_debug(debug);
-                info!("HTTP debug: {}", debug)
+                log::info!("HTTP debug: {}", debug)
             }
             PolicyRequest::Debug(Protocol::TCP, debug) => {
                 self.tcp.set_debug(debug);
-                info!("TCP debug: {}", debug)
+                log::info!("TCP debug: {}", debug)
             }
             PolicyRequest::Debug(Protocol::All, debug) => {
                 ctx.notify(PolicyRequest::Debug(Protocol::HTTP, debug));
@@ -300,7 +300,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                             act.uds_framed.write(PolicyResponse::Started)
                         } else {
                             // TODO: show error and port
-                            warn!("failed to start HTTP proxy")
+                            log::warn!("failed to start HTTP proxy")
                         };
                         async {}.into_actor(act)
                     })
@@ -316,7 +316,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                             act.uds_framed.write(PolicyResponse::Started)
                         } else {
                             // TODO: show error and port
-                            warn!("failed to start TCP proxy")
+                            log::warn!("failed to start TCP proxy")
                         };
                         async {}.into_actor(act)
                     })
@@ -340,7 +340,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                     "tcp" => self.install_tcp(prog),
                     s => {
                         self.uds_framed.write(PolicyResponse::RequestFailed);
-                        info!("failed to install policy, unrecognized protocol: {}", s)
+                        log::info!("failed to install policy, unrecognized protocol: {}", s)
                     }
                 },
             },

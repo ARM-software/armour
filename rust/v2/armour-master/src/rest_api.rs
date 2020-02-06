@@ -25,10 +25,10 @@ pub mod policy {
 	use crate::master::{MetaData, PolicyCommand};
 	use actix_web::{get, post, web, HttpResponse};
 	use armour_api::{
-		labels::Label,
 		master::PolicyUpdate,
 		proxy::{Policy, PolicyRequest},
 	};
+	use armour_lang::labels::Label;
 	use lazy_static::lazy_static;
 	use std::convert::TryFrom;
 

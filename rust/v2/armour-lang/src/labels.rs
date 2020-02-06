@@ -1,3 +1,5 @@
+//! Label data type
+
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
@@ -7,7 +9,7 @@ use std::str::FromStr;
 thread_local!(static NODE_ANY: regex::Regex = regex::Regex::new("^<[[:alpha:]][[:alnum:]]*>$").unwrap());
 thread_local!(static NODE_STR: regex::Regex = regex::Regex::new("^[[:alpha:]]([ _+-]?[[:alnum:]])*$").unwrap());
 
-/// Node of label
+/// Node element of [Label](struct.Label.html)
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Node {
     Any(String),
@@ -53,6 +55,7 @@ enum MatchNode {
     Map(String, Node),
 }
 
+/// Result of matching one label against another
 pub struct Match(BTreeMap<String, Node>);
 
 impl fmt::Display for Match {
@@ -99,7 +102,7 @@ impl Node {
     }
 }
 
-/// Generic label type
+/// Label type representing sequences of [Node](enum.Node.html) elements
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Label(Vec<Node>);
 
@@ -173,13 +176,11 @@ impl Label {
         }
     }
     pub fn parts(&self) -> Option<Vec<String>> {
-        match self.get(0..) {
-            Some(v) => {
-                let r: Result<Vec<String>, ()> = v.iter().map(Node::get_str).collect();
-                r.ok()
-            }
-            _ => None,
-        }
+        self.0
+            .iter()
+            .map(Node::get_str)
+            .collect::<Result<Vec<String>, ()>>()
+            .ok()
     }
     pub fn matches_with(&self, l: &Label) -> bool {
         self.match_with(l).is_some()

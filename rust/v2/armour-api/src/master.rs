@@ -55,15 +55,14 @@ pub struct Status {
 
 impl std::fmt::Display for Status {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.policy.print();
         if let Some(port) = self.port {
             writeln!(f, "active on port {}", port)?
         } else {
             writeln!(f, "inactive")?
         }
         writeln!(f, "debug is {}", if self.debug { "on" } else { "off" })?;
-        write!(f, "policy is: ")?;
-        self.policy.print();
-        writeln!(f, "{}", self.policy.description())
+        write!(f, "policy is: {}", self.policy.description())
     }
 }
 

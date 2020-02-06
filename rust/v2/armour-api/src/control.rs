@@ -1,4 +1,5 @@
-// use armour_lang::lang::Program;
+//! Control plane API
+
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -15,7 +16,7 @@ pub struct OnboardMasterRequest {
 
 #[derive(Serialize, Deserialize)]
 pub struct OnboardServiceRequest {
-    pub label: Label,  // FIXME
+    pub label: Label,   // FIXME
     pub master: String, // FIXME
 }
 

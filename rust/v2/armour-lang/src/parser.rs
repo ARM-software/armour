@@ -1147,7 +1147,7 @@ named!(parse_match_exprs<Tokens, Vec<(LocExpr, Pat)>>,
     )
 );
 
-lazy_static! {
+lazy_static::lazy_static! {
     static ref CLASSES: HashSet<&'static str> =
         vec!["alpha", "alphanum", "base64", "digit", "hex_digit", "s"]
             .into_iter()

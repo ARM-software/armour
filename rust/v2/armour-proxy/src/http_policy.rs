@@ -58,7 +58,7 @@ impl Policy<actix_web::dev::Server> for HttpPolicy {
     #[allow(unused_must_use)]
     fn stop(&mut self) {
         if let Some((server, port)) = &self.proxy {
-            info!("stopping HTTP proxy on port {}", port);
+            log::info!("stopping HTTP proxy on port {}", port);
             server.stop(true);
         };
         self.proxy = None

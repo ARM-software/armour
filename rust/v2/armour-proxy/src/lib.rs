@@ -1,8 +1,3 @@
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate log;
-
 use actix::prelude::*;
 use actix_web::web;
 use armour_lang::{expressions, literals};

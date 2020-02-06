@@ -65,7 +65,7 @@ pub struct TcpDataServer {
 impl Actor for TcpDataServer {
     type Context = Context<Self>;
     fn stopped(&mut self, _ctx: &mut Context<Self>) {
-        info!("stopped socket: {}", self.port);
+        log::info!("stopped socket: {}", self.port);
     }
 }
 
@@ -108,7 +108,7 @@ fn original_dst(_sock: &tokio::net::TcpStream) -> Option<std::net::SocketAddr> {
 
 fn shutdown_both(stream: tokio::net::TcpStream) {
     if let Err(e) = stream.shutdown(std::net::Shutdown::Both) {
-        warn!("{}", e);
+        log::warn!("{}", e);
     }
 }
 
@@ -129,15 +129,17 @@ impl StreamHandler<TcpConnect> for TcpDataServer {
         // get the orgininal server socket address
         if let Some(socket) = original_dst(&msg.0) {
             if let Ok(peer_addr) = msg.0.peer_addr() {
-                info!(
+                log::info!(
                     "TCP {}: received from {}, forwarding to {}",
-                    self.port, peer_addr, socket
+                    self.port,
+                    peer_addr,
+                    socket
                 );
                 if socket.port() == self.port && armour_utils::INTERFACE_IPS.contains(&socket.ip())
                 {
-                    warn!("TCP {}: trying to forward to self", self.port);
+                    log::warn!("TCP {}: trying to forward to self", self.port);
                     if let Err(e) = msg.0.shutdown(std::net::Shutdown::Both) {
-                        warn!("{}", e);
+                        log::warn!("{}", e);
                     };
                 } else {
                     let policy = self.policy.clone();
@@ -172,23 +174,23 @@ impl StreamHandler<TcpConnect> for TcpDataServer {
                                                 }
                                             });
                                         } else {
-                                            warn!("failed to connect to socket: {}", socket);
+                                            log::warn!("failed to connect to socket: {}", socket);
                                             shutdown_both(msg.0)
                                         }
                                     }
                                     // reject
                                     Ok(Ok(TcpPolicyStatus::Block)) => {
-                                        info!("connection denied");
+                                        log::info!("connection denied");
                                         shutdown_both(msg.0)
                                     }
                                     // policy error
                                     Ok(Err(e)) => {
-                                        warn!("{}", e);
+                                        log::warn!("{}", e);
                                         shutdown_both(msg.0)
                                     }
                                     // actor error
                                     Err(e) => {
-                                        warn!("{}", e);
+                                        log::warn!("{}", e);
                                         shutdown_both(msg.0)
                                     }
                                 }
@@ -198,10 +200,10 @@ impl StreamHandler<TcpConnect> for TcpDataServer {
                         .wait(ctx)
                 }
             } else {
-                warn!("TCP {}: could not obtain source IP address", self.port)
+                log::warn!("TCP {}: could not obtain source IP address", self.port)
             }
         } else {
-            warn!("TCP {}: could not obtain original destination", self.port)
+            log::warn!("TCP {}: could not obtain original destination", self.port)
         }
     }
 }
@@ -227,7 +229,7 @@ impl Actor for TcpData {
         if let Some(connection) = &self.connection {
             self.policy.do_send(connection.clone());
         }
-        info!("end of connection")
+        log::info!("end of connection")
     }
 }
 
@@ -254,7 +256,7 @@ impl StreamHandler<Result<client::ClientBytes, std::io::Error>> for TcpData {
         // if we are then simply close the connection
         // TODO: find a better way to handle backpressure
         if self.counter > MAX_SPEED {
-            warn!("too fast, giving up!");
+            log::warn!("too fast, giving up!");
             ctx.stop();
         } else if let Ok(client::ClientBytes(bytes)) = msg {
             self.counter += 1;
@@ -277,7 +279,7 @@ impl StreamHandler<Result<server::ServerBytes, std::io::Error>> for TcpData {
         ctx: &mut Self::Context,
     ) {
         if self.counter > MAX_SPEED {
-            warn!("too fast, giving up!");
+            log::warn!("too fast, giving up!");
             ctx.stop()
         } else if let Ok(server::ServerBytes(bytes)) = msg {
             self.counter += 1;

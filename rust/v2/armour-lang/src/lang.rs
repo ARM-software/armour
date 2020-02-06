@@ -1,7 +1,8 @@
-use super::expressions::{Error, Expr};
 /// policy language
+use super::expressions::{Error, Expr};
 use super::{externals, headers, lexer, literals, parser, types};
 use headers::Headers;
+use lazy_static::lazy_static;
 use literals::Literal;
 use petgraph::graph;
 use serde::{Deserialize, Serialize};

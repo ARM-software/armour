@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate log;
-
 use mongodb::{options::ClientOptions, Client};
 
 pub struct ControlPlaneState {

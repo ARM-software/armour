@@ -2,11 +2,12 @@ use super::ControlPlaneState;
 use actix_web::{get, post, web, web::Json, HttpResponse};
 use armour_api::control::*;
 use bson::{bson, doc};
+use log::*;
 
-const ARMOUR_DB: &'static str = "armour";
-const MASTERS_COL: &'static str = "masters";
-const SERVICES_COL: &'static str = "services";
-const POLICIES_COL: &'static str = "policies";
+const ARMOUR_DB: &str = "armour";
+const MASTERS_COL: &str = "masters";
+const SERVICES_COL: &str = "services";
+const POLICIES_COL: &str = "policies";
 
 type State = web::Data<std::sync::Arc<ControlPlaneState>>;
 
@@ -107,7 +108,7 @@ async fn update_policy(
     } else {
         println!("Error converting the BSON object into a MongoDB document");
         Err(actix_web::Error::from(
-            HttpResponse::InternalServerError().body(format!("Error inserting policy")),
+            HttpResponse::InternalServerError().body("Error inserting policy"),
         ))
     }
 }
@@ -116,7 +117,7 @@ async fn update_policy(
 #[get("/query-policy")]
 async fn query_policy(
     state: State,
-    request: Json<PolicyQueryRequest>
+    request: Json<PolicyQueryRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
     info!("Querying policy for {:?}", request.service);
 

@@ -27,7 +27,7 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
     }
     fn stop(&mut self) {
         if let Some((server, port)) = &self.proxy {
-            info!("stopping TCP proxy on port {}", port);
+            log::info!("stopping TCP proxy on port {}", port);
             server.do_send(Stop);
         }
         self.proxy = None
@@ -99,7 +99,7 @@ impl Handler<GetTcpPolicy> for PolicyActor {
                 Box::pin(future::ok(TcpPolicyStatus::Allow(Box::new(None))))
             }
             lang::Policy::Deny => {
-                info!("deny");
+                log::info!("deny");
                 Box::pin(future::ok(TcpPolicyStatus::Block))
             }
             lang::Policy::Args(n) if n == 1 => {

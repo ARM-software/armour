@@ -14,6 +14,7 @@ use armour_lang::{lang::Policy, literals};
 use armour_utils::own_ip;
 use bytes::BytesMut;
 use futures::{stream::Stream, StreamExt};
+use lazy_static::lazy_static;
 use std::collections::HashSet;
 
 pub async fn start_proxy(
@@ -79,12 +80,12 @@ async fn request(
                         Ok(Ok(false)) => Ok(unauthorized("bad client request")),
                         // policy error
                         Ok(Err(e)) => {
-                            warn!("{}", e);
+                            log::warn!("{}", e);
                             Ok(internal())
                         }
                         // actor error
                         Err(e) => {
-                            warn!("{}", e);
+                            log::warn!("{}", e);
                             Ok(internal())
                         }
                     }
@@ -104,7 +105,7 @@ async fn request(
             }
         } else {
             // we failed to get a policy
-            warn!("failed to get HTTP policy");
+            log::warn!("failed to get HTTP policy");
             Ok(internal())
         }
     } else {
@@ -132,7 +133,7 @@ async fn allow_all(
         .process_headers(req.peer_addr())
         .timeout(timeout);
     if debug {
-        debug!("{:?}", client_request)
+        log::debug!("{:?}", client_request)
     };
     // forward the request (with the original client payload)
     match client_request.send_body(client_payload).await {
@@ -150,7 +151,7 @@ async fn allow_all(
             }
             let response = response_builder.body(server_payload);
             if debug {
-                debug!("{:?}", response)
+                log::debug!("{:?}", response)
             }
             Ok(response)
         }
@@ -193,7 +194,7 @@ async fn client_payload(
                         .process_headers(req.peer_addr())
                         .timeout(timeout);
                     if debug {
-                        debug!("{:?}", client_request)
+                        log::debug!("{:?}", client_request)
                     };
                     // forward the request (with the original client payload)
                     let res = client_request.send_body(client_payload).await;
@@ -204,12 +205,12 @@ async fn client_payload(
                 Ok(Ok(false)) => Ok(unauthorized("request denied (bad client payload)")),
                 // policy error
                 Ok(Err(e)) => {
-                    warn!("{}", e);
+                    log::warn!("{}", e);
                     Ok(internal())
                 }
                 // actor error
                 Err(e) => {
-                    warn!("{}", e);
+                    log::warn!("{}", e);
                     Ok(internal())
                 }
             }
@@ -231,7 +232,7 @@ async fn client_payload(
                 .process_headers(req.peer_addr())
                 .timeout(timeout);
             if debug {
-                debug!("{:?}", client_request)
+                log::debug!("{:?}", client_request)
             };
             // forward the request (with the original client payload)
             let res = client_request.send_body(client_payload).await;
@@ -263,12 +264,12 @@ async fn response(
             for (header_name, header_value) in res.headers().iter().filter(|(h, _)| {
                 *h != "connection" && *h != "content-length" && *h != "content-encoding"
             }) {
-                // debug!("header {}: {:?}", header_name, header_value);
+                // log::debug!("header {}: {:?}", header_name, header_value);
                 response_builder.header(header_name.clone(), header_value.clone());
             }
             let response: HttpResponse = response_builder.into();
             if p.status.debug {
-                debug!("{:?}", response)
+                log::debug!("{:?}", response)
             }
             match p.status {
                 // check server response
@@ -290,12 +291,12 @@ async fn response(
                         Ok(Ok(false)) => Ok(unauthorized("request denied (bad server response)")),
                         // policy error
                         Ok(Err(e)) => {
-                            warn!("{}", e);
+                            log::warn!("{}", e);
                             Ok(internal())
                         }
                         // actor error
                         Err(e) => {
-                            warn!("{}", e);
+                            log::warn!("{}", e);
                             Ok(internal())
                         }
                     }
@@ -341,7 +342,7 @@ async fn server_payload(
                 server_payload.extend_from_slice(&chunk)
             }
             // if debug {
-            //     debug!("\n{:?}", server_payload)
+            //     log::debug!("\n{:?}", server_payload)
             // };
             let payload = literals::Payload::from((server_payload.as_ref(), &p.connection));
             let allowed = policy
@@ -355,12 +356,12 @@ async fn server_payload(
                 Ok(Ok(false)) => Ok(unauthorized("request denied (bad server payload)")),
                 // policy error
                 Ok(Err(e)) => {
-                    warn!("{}", e);
+                    log::warn!("{}", e);
                     Ok(internal())
                 }
                 // actor error
                 Err(e) => {
-                    warn!("{}", e);
+                    log::warn!("{}", e);
                     Ok(internal())
                 }
             }
@@ -415,7 +416,7 @@ impl Connection {
                 })
             }
             Err(err) => {
-                warn!("{}", err);
+                log::warn!("{}", err);
                 None
             }
         }
