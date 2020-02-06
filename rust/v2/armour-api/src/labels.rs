@@ -100,7 +100,7 @@ impl Node {
 }
 
 /// Generic label type
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Label(Vec<Node>);
 
 impl FromStr for Label {
