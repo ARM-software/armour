@@ -168,18 +168,6 @@ impl Handler<RegisterTcpHash> for ArmourDataMaster {
     }
 }
 
-// message sent when new proxy is "launched"
-#[derive(Message)]
-#[rtype("()")]
-pub struct AddChild(pub u32, pub std::process::Child);
-
-impl Handler<AddChild> for ArmourDataMaster {
-    type Result = ();
-    fn handle(&mut self, msg: AddChild, _ctx: &mut Context<Self>) -> Self::Result {
-        self.children.insert(msg.0, msg.1);
-    }
-}
-
 // launch a new proxy
 #[derive(Message)]
 #[rtype("()")]
