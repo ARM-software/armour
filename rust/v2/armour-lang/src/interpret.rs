@@ -1,8 +1,9 @@
 /// policy language interpreter
 // NOTE: no optimization
-use super::expressions::{Block, Error, Expr};
+use super::expressions::{Block, Error, Expr, Pattern};
 use super::externals::{Call, ExternalActor};
 use super::headers::Headers;
+use super::labels::Label;
 use super::lang::{Code, Program};
 use super::literals::{Connection, HttpRequest, HttpResponse, Literal, Method, Payload, VecSet};
 use super::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
@@ -162,6 +163,7 @@ impl Literal {
             ("Connection::number", Literal::Connection(c)) => Some(c.number()),
             ("Payload::data", Literal::Payload(p)) => Some(p.data()),
             ("Payload::connection", Literal::Payload(p)) => Some(p.connection()),
+            ("Label::parts", Literal::Label(l)) => Some(l.parts().into()),
             _ => None,
         }
     }
@@ -180,7 +182,7 @@ impl Literal {
             ("str::ends_with", Literal::Str(i), Literal::Str(j)) => {
                 Some(Literal::Bool(i.ends_with(j)))
             }
-            ("str::matches_with", Literal::Str(s), Literal::Regex(r))
+            ("str::is_match", Literal::Str(s), Literal::Regex(r))
             | ("Regex::is_match", Literal::Regex(r), Literal::Str(s)) => {
                 Some(Literal::Bool(r.is_match(s)))
             }
@@ -244,6 +246,9 @@ impl Literal {
             }
             ("Payload::new", Literal::Data(d), Literal::Connection(c)) => {
                 Some(Payload::literal(d, c))
+            }
+            ("Label::captures", Literal::Label(i), Literal::Label(j)) => {
+                Some(i.match_with(j).into())
             }
             _ => None,
         }
@@ -314,18 +319,44 @@ impl Expr {
             _ => self,
         }
     }
-    fn perform_match(e: Expr, re: PolicyRegex) -> Option<(Expr, Option<BTreeMap<String, Expr>>)> {
-        match e {
-            Expr::ReturnExpr(_) => Some((e, None)),
+    fn perform_match(self, pat: Pattern) -> Option<(Expr, Option<BTreeMap<String, Expr>>)> {
+        match pat {
+            Pattern::Regex(re) => self.perform_regex_match(re),
+            Pattern::Label(label) => self.perform_label_match(label),
+        }
+    }
+    fn perform_label_match(self, label: Label) -> Option<(Expr, Option<BTreeMap<String, Expr>>)> {
+        match self {
+            Expr::ReturnExpr(_) => Some((self, None)),
+            Expr::LitExpr(Literal::Label(ref l)) => {
+                if let Some(m) = label.match_with(l) {
+                    let v: Vec<(String, String)> = (&m).into();
+                    Some((
+                        self,
+                        Some(v.into_iter().map(|(x, y)| (x, y.into())).collect()),
+                    ))
+                } else {
+                    Some((self, None))
+                }
+            }
+            _ => None,
+        }
+    }
+    fn perform_regex_match(
+        self,
+        re: PolicyRegex,
+    ) -> Option<(Expr, Option<BTreeMap<String, Expr>>)> {
+        match self {
+            Expr::ReturnExpr(_) => Some((self, None)),
             Expr::LitExpr(Literal::Str(ref s)) => {
                 let names: Vec<&str> = re.capture_names().filter_map(|s| s).collect();
                 // if there are no bindings then do a simple "is_match", otherwise collect
                 // variable captures
                 if names.is_empty() {
                     if re.is_match(s) {
-                        Some((e, Some(BTreeMap::new())))
+                        Some((self, Some(BTreeMap::new())))
                     } else {
-                        Some((e, None))
+                        Some((self, None))
                     }
                 } else {
                     match re.captures(s) {
@@ -358,13 +389,13 @@ impl Expr {
                                 );
                             }
                             if is_match {
-                                Some((e, Some(captures)))
+                                Some((self, Some(captures)))
                             } else {
-                                Some((e, None))
+                                Some((self, None))
                             }
                         }
                         // not a match
-                        None => Some((e, None)),
+                        None => Some((self, None)),
                     }
                 }
             }
@@ -568,7 +599,7 @@ impl Expr {
                 } => {
                     let mut rs = Vec::new();
                     for (e, re) in matches.into_iter() {
-                        if let Some(r) = Expr::perform_match(e.eval(env.clone()).await?, re) {
+                        if let Some(r) = e.eval(env.clone()).await?.perform_match(re) {
                             rs.push(r)
                         } else {
                             return Err(Error::new("eval, if-match-expression: type error"));

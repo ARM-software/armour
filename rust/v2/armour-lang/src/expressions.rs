@@ -1,5 +1,5 @@
 /// policy language
-use super::{headers, lexer, literals, parser, types};
+use super::{headers, labels, lexer, literals, parser, types};
 use headers::Headers;
 use literals::Literal;
 use parser::{Infix, Prefix};
@@ -166,6 +166,12 @@ pub enum Block {
 }
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub enum Pattern {
+    Regex(parser::PolicyRegex),
+    Label(labels::Label),
+}
+
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Expr {
     Var(parser::Ident),
     BVar(parser::Ident, usize),
@@ -184,7 +190,7 @@ pub enum Expr {
     },
     IfMatchExpr {
         variables: Vec<String>,
-        matches: Vec<(Expr, parser::PolicyRegex)>,
+        matches: Vec<(Expr, Pattern)>,
         consequence: Box<Expr>,
         alternative: Option<Box<Expr>>,
     },
@@ -492,6 +498,7 @@ impl Expr {
             _ => Err(Error::new("apply: expression is not a closure")),
         }
     }
+    #[allow(clippy::cognitive_complexity)]
     fn from_loc_expr(
         e: &parser::LocExpr,
         headers: &Headers,
@@ -708,36 +715,51 @@ impl Expr {
                     .map(|(e, _)| Expr::from_loc_expr(e, headers, ret, ctxt))
                     .collect();
                 let (expressions, mut calls, types) = ExprAndMeta::split_vec(expressions?);
-                let len = types.len();
                 let types = matches
                     .iter()
                     .map(|(e, _)| Some(e.loc()))
                     .zip(types.iter())
                     .collect();
-                Typ::type_check("if-match-expression", types, vec![(None, &Typ::Str); len])?;
-                let mut set = HashSet::new();
-                let matches: Result<Vec<parser::PolicyRegex>, self::Error> = matches
+                let expected: Vec<(_, &Typ)> =
+                    matches.iter().map(|(_, p)| (None, p.typ())).collect();
+                Typ::type_check("if-match-expression", types, expected)?;
+                let mut map = HashMap::new();
+                let matches: Result<Vec<Pattern>, self::Error> = matches
                     .iter()
-                    .map(|(e, p)| {
-                        let re = parser::PolicyRegex::from_pat(p)?;
-                        let cap_names: HashSet<(String, parser::As)> = re
-                            .capture_names()
-                            .filter_map(|x| x.map(parser::Pat::strip_as))
-                            .collect();
-                        if set.is_disjoint(&cap_names) {
-                            set.extend(cap_names);
-                            Ok(re)
-                        } else {
-                            Err(Error::new(&format!(
-                                "{}: repeated variable(s) in \"if match\"",
-                                e.loc()
-                            )))
+                    .map(|(e, p)| match p {
+                        parser::Pattern::Regex(r) => {
+                            let re = parser::PolicyRegex::from_pat(r)?;
+                            for x in re.capture_names() {
+                                if let Some(x) = x {
+                                    let (k, v) = parser::Pat::strip_as(x);
+                                    if map.insert(k.clone(), v).is_some() {
+                                        return Err(Error::new(format!(
+                                            r#"{}: repeated variable "{}"" in "if match""#,
+                                            e.loc(),
+                                            k
+                                        )));
+                                    }
+                                }
+                            }
+                            Ok(Pattern::Regex(re))
+                        }
+                        parser::Pattern::Label(l) => {
+                            for x in l.vars() {
+                                if map.insert(x.clone(), parser::As::Str).is_some() {
+                                    return Err(Error::new(format!(
+                                        r#"{}: repeated variable "{}" in "if match""#,
+                                        e.loc(),
+                                        x
+                                    )));
+                                }
+                            }
+                            Ok(Pattern::Label(l.clone()))
                         }
                     })
                     .collect();
-                let vs: Vec<(String, parser::As)> = set.into_iter().collect();
+                let matches = matches?;
                 let mut extend_vars = ctxt.clone();
-                for (v, a) in vs.iter() {
+                for (v, a) in map.iter() {
                     extend_vars = extend_vars.add_var(
                         &v,
                         &(if *a == parser::As::I64 {
@@ -752,7 +774,7 @@ impl Expr {
                 let (mut expr1, calls1, typ1) =
                     Expr::from_block_stmt(consequence.as_ref(), headers, ret, &extend_vars)?
                         .split();
-                let variables: Vec<String> = vs.into_iter().map(|x| x.0).collect();
+                let variables: Vec<String> = map.into_iter().map(|x| x.0).collect();
                 for v in variables.iter().rev() {
                     expr1 = expr1.closure_expr(v)
                 }
@@ -767,7 +789,7 @@ impl Expr {
                         ExprAndMeta::new(
                             Expr::IfMatchExpr {
                                 variables,
-                                matches: expressions.into_iter().zip(matches?).collect(),
+                                matches: expressions.into_iter().zip(matches).collect(),
                                 consequence: { Box::new(expr1) },
                                 alternative: None,
                             },
@@ -787,7 +809,7 @@ impl Expr {
                         ExprAndMeta::new(
                             Expr::IfMatchExpr {
                                 variables,
-                                matches: expressions.into_iter().zip(matches?).collect(),
+                                matches: expressions.into_iter().zip(matches).collect(),
                                 consequence: { Box::new(expr1) },
                                 alternative: Some(Box::new(expr2)),
                             },

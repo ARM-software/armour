@@ -1,4 +1,4 @@
-use super::expressions::{Block, Expr};
+use super::expressions::{Block, Expr, Pattern};
 use super::headers::Headers;
 use super::lang::Program;
 use super::literals::Literal;
@@ -465,6 +465,15 @@ impl PolicyRegex {
 impl fmt::Display for PolicyRegex {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_pretty(80))
+    }
+}
+
+impl Pattern {
+    fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
+        match self {
+            Pattern::Regex(r) => r.to_doc(),
+            Pattern::Label(l) => RcDoc::text(l.to_string()),
+        }
     }
 }
 

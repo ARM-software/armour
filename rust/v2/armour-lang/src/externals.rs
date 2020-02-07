@@ -152,6 +152,7 @@ impl Externals {
             Literal::ID(id) => Externals::build_value(v, &Literal::from(id)),
             Literal::Int(i) => v.set_int64(*i),
             Literal::IpAddr(ip) => Externals::build_value(v, &Literal::from(ip)),
+            Literal::Label(label) => v.set_text(&label.to_string()),
             Literal::Payload(pld) => Externals::build_value(v, &Literal::from(pld)),
             Literal::Regex(r) => v.set_text(&r.to_string()),
             Literal::Str(s) => v.set_text(s),
@@ -167,7 +168,7 @@ impl Externals {
                 for (i, t) in ts.iter().enumerate() {
                     Externals::build_value(list.reborrow().get(i as u32), t)
                 }
-            } // Literal::Policy(p) => v.set_text(p.to_string().as_str()),
+            }
         }
     }
     /// Read a Cap'n Proto literal and return an Armour literal

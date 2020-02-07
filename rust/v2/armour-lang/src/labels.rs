@@ -1,7 +1,7 @@
 //! Label data type
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::slice::SliceIndex;
 use std::str::FromStr;
@@ -56,6 +56,7 @@ enum MatchNode {
 }
 
 /// Result of matching one label against another
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Match(BTreeMap<String, Node>);
 
 impl fmt::Display for Match {
@@ -68,6 +69,14 @@ impl fmt::Display for Match {
             }
         }
         Ok(())
+    }
+}
+
+impl From<&Match> for Vec<(String, String)> {
+    fn from(m: &Match) -> Self {
+        m.0.iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 }
 
@@ -93,11 +102,17 @@ impl Node {
             _ => MatchNode::Match,
         }
     }
-    fn get_str(&self) -> Result<String, ()> {
+    fn get_str(&self) -> Option<String> {
         if let Node::Str(s) = self {
-            Ok(s.to_string())
+            Some(s.to_string())
         } else {
-            Err(())
+            None
+        }
+    }
+    fn get_any(&self) -> Option<String> {
+        match self {
+            Node::Any(s) if !s.is_empty() => Some(s.to_string()),
+            _ => None,
         }
     }
 }
@@ -176,11 +191,10 @@ impl Label {
         }
     }
     pub fn parts(&self) -> Option<Vec<String>> {
-        self.0
-            .iter()
-            .map(Node::get_str)
-            .collect::<Result<Vec<String>, ()>>()
-            .ok()
+        self.0.iter().map(Node::get_str).collect()
+    }
+    pub fn vars(&self) -> Vec<String> {
+        self.0.iter().filter_map(Node::get_any).collect()
     }
     pub fn matches_with(&self, l: &Label) -> bool {
         self.match_with(l).is_some()
@@ -209,7 +223,7 @@ impl Label {
     }
 }
 
-pub struct LabelMap<T>(Vec<(Label, T)>);
+/* pub struct LabelMap<T>(Vec<(Label, T)>);
 
 impl<T> Default for LabelMap<T> {
     fn default() -> Self {
@@ -259,3 +273,4 @@ impl<T> LabelMap<T> {
         old
     }
 }
+ */

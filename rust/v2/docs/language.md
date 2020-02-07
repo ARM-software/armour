@@ -42,6 +42,10 @@ $ cargo run [input file]
 
     `Regex("a" | "b".*)`
 
+- **`Label`**
+
+    `'<a>::b::*'`
+
 - **`ID`**
 
 - **`Connection`**
@@ -185,18 +189,20 @@ $ cargo run [input file]
 - **if match**
 
     ```
-    if <str-expression1> matches <reg-exp1> &&
-       <str-expression2> matches <reg-exp2> && ... {
+    if <expression1> matches <exp1> &&
+       <expression2> matches <exp2> && ... {
         <unit-statement>
     }
 
-    if <str-expression1> matches <reg-exp1> &&
-       <str-expression2> matches <reg-exp2> && ... {
+    if <expression1> matches <exp1> &&
+       <expression2> matches <exp2> && ... {
         <statement>
     } else {
         <statement>
     }
     ```
+
+    where each `expression<n>` and `expr<n>` are either a `str` and `Regex`, or a `Label` and a `Label`.
 
 - **if let**
 
@@ -393,13 +399,20 @@ function               | type
 | starts_with          | `(str, str) -> bool`                   |
 | ends_with            | `(str, str) -> bool`                   |
 | contains             | `(str, str) -> bool`                   |
-| matches_with         | `(str, Regex) -> bool`                 |
+| is_match             | `(str, Regex) -> bool`                 |
 
 ### regex::
 
 function               | type
 ---------------------- | ----------------------------------------
 | is_match             | `(Regex, str) -> bool`                 |
+
+### Label::
+
+function               | type
+---------------------- | ----------------------------------------
+| captures             | `(Label, Label) -> List<(str, str)>`   |
+| parts                | `Label -> Option<List<str>>`           |
 
 ### data::
 

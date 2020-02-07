@@ -49,7 +49,7 @@ impl Headers {
             "str::as_bytes" => sig(vec![Typ::Str], Typ::Data),
             "str::from_utf8" => sig(vec![Typ::Data], Typ::Str),
             "str::to_base64" => sig(vec![Typ::Str], Typ::Str),
-            "str::matches_with" => sig(vec![Typ::Str, Typ::Regex], Typ::Bool),
+            "str::is_match" => sig(vec![Typ::Str, Typ::Regex], Typ::Bool),
             "Regex::is_match" => sig(vec![Typ::Regex, Typ::Str], Typ::Bool),
             "data::to_base64" => sig(vec![Typ::Data], Typ::Str),
             "data::len" => sig(vec![Typ::Data], Typ::I64),
@@ -187,6 +187,11 @@ impl Headers {
             "Payload::new" => sig(vec![Typ::Data, Typ::Connection], Typ::Payload),
             "Payload::data" => sig(vec![Typ::Payload], Typ::Data),
             "Payload::connection" => sig(vec![Typ::Payload], Typ::Connection),
+            "Label::captures" => sig(
+                vec![Typ::Label, Typ::Label],
+                Typ::List(Box::new(Typ::Tuple(vec![Typ::Str, Typ::Str]))).option(),
+            ),
+            "Label::parts" => sig(vec![Typ::Label], Typ::List(Box::new(Typ::Str)).option()),
             _ => None,
         }
     }

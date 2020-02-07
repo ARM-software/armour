@@ -243,7 +243,7 @@ pub enum Expr {
         alternative: Option<BlockStmt>,
     },
     IfMatchExpr {
-        matches: Vec<(LocExpr, Pat)>,
+        matches: Vec<(LocExpr, Pattern)>,
         consequence: BlockStmt,
         alternative: Option<BlockStmt>,
     },
@@ -313,6 +313,12 @@ pub enum Pat {
     Plus(Box<Pat>),
     CaseInsensitive(Box<Pat>),
     IgnoreWhitespace(Box<Pat>),
+}
+
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    Regex(Pat),
+    Label(super::labels::Label),
 }
 
 impl Pat {
@@ -407,7 +413,7 @@ impl PolicyRegex {
 
 enum LocExprOrMatches {
     Expr(LocExpr),
-    Matches(Vec<(LocExpr, Pat)>),
+    Matches(Vec<(LocExpr, Pattern)>),
     SomeMatch(LocIdent, LocExpr),
 }
 
@@ -663,6 +669,21 @@ macro_rules! parse_int_literal (
   );
 );
 
+macro_rules! parse_label_literal (
+    ($i: expr,) => (
+      {
+          let (i1, t1) = try_parse!($i, take!(1));
+          if t1.tok.is_empty() {
+              Err(nom::Err::Error(error_position!($i, ErrorKind::Tag)))
+          } else {
+              match t1.tok0().clone() {
+                  Token::LabelLiteral(i) => Ok((i1, (t1.loc(), i))),
+                  _ => Err(nom::Err::Error(error_position!($i, ErrorKind::Tag))),
+              }
+          }
+      }
+    );
+  );
 macro_rules! parse_literal (
   ($i: expr,) => (
     {
@@ -671,13 +692,13 @@ macro_rules! parse_literal (
             Err(nom::Err::Error(error_position!($i, ErrorKind::Tag)))
         } else {
             match t1.tok0().clone() {
-                Token::IntLiteral(i) => Ok((i1, LocLiteral(t1.loc(), Literal::Int(i)))),
-                Token::FloatLiteral(f) => Ok((i1, LocLiteral(t1.loc(), Literal::Float(f)))),
                 Token::BoolLiteral(b) => Ok((i1, LocLiteral(t1.loc(), Literal::Bool(b)))),
                 Token::DataLiteral(d) => Ok((i1, LocLiteral(t1.loc(), Literal::Data(d)))),
-                Token::StringLiteral(s) => Ok((i1, LocLiteral(t1.loc(), Literal::Str(s)))),
-                // Token::PolicyLiteral(p) => Ok((i1, LocLiteral(t1.loc(), Literal::Policy(p)))),
+                Token::FloatLiteral(f) => Ok((i1, LocLiteral(t1.loc(), Literal::Float(f)))),
                 Token::Ident(ref s) if s == "None" => Ok((i1, LocLiteral(t1.loc(), Literal::none()))),
+                Token::IntLiteral(i) => Ok((i1, LocLiteral(t1.loc(), Literal::Int(i)))),
+                Token::LabelLiteral(l) => Ok((i1, LocLiteral(t1.loc(), Literal::Label(l)))),
+                Token::StringLiteral(s) => Ok((i1, LocLiteral(t1.loc(), Literal::Str(s)))),
                 _ => Err(nom::Err::Error(error_position!($i, ErrorKind::Tag))),
             }
         }
@@ -1126,20 +1147,20 @@ named!(parse_some_match<Tokens, (LocIdent, LocExpr)>,
     )
 );
 
-named!(parse_match_expr<Tokens, (LocExpr, Pat)>,
+named!(parse_match_expr<Tokens, (LocExpr, Pattern)>,
     do_parse!(
         e: parse_expr >>
         tag_token!(Token::Matches) >>
-        pat: parse_pat >>
+        pat: parse_pattern >>
         ((e, pat))
     )
 );
 
-named!(parse_and_match_exprs<Tokens, (LocExpr, Pat)>,
+named!(parse_and_match_exprs<Tokens, (LocExpr, Pattern)>,
     preceded!(tag_token!(Token::And), parse_match_expr)
 );
 
-named!(parse_match_exprs<Tokens, Vec<(LocExpr, Pat)>>,
+named!(parse_match_exprs<Tokens, Vec<(LocExpr, Pattern)>>,
     do_parse!(
         e: parse_match_expr >>
         es: many0!(parse_and_match_exprs) >>
@@ -1250,6 +1271,12 @@ named!(parse_pat<Tokens, Pat>,
                 )
             ) >>
         (if ps.is_empty() {p} else {Pat::Alt([&vec!(p)[..], &ps[..]].concat())})
+    )
+);
+
+named!(parse_pattern<Tokens, Pattern>, alt!(
+        complete!(do_parse!(p: parse_pat >> (Pattern::Regex(p)))) |
+        complete!(do_parse!(p: parse_label_literal!() >> (Pattern::Label(p.1))))
     )
 );
 

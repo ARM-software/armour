@@ -16,8 +16,8 @@ pub enum Typ {
     I64,
     ID,
     IpAddr,
+    Label,
     Payload,
-    // Policy,
     Regex,
     Return,
     Str,
@@ -39,8 +39,8 @@ impl fmt::Display for Typ {
             Typ::I64 => write!(f, "i64"),
             Typ::ID => write!(f, "ID"),
             Typ::IpAddr => write!(f, "IpAddr"),
+            Typ::Label => write!(f, "Label"),
             Typ::Payload => write!(f, "Payload"),
-            // Typ::Policy => write!(f, "Policy"),
             Typ::Regex => write!(f, "Regex"),
             Typ::Return => write!(f, "!"),
             Typ::Str => write!(f, "str"),
@@ -178,8 +178,8 @@ impl Typ {
             "i64" => Ok(Typ::I64),
             "ID" => Ok(Typ::ID),
             "IpAddr" => Ok(Typ::IpAddr),
+            "Label" => Ok(Typ::Label),
             "Payload" => Ok(Typ::Payload),
-            // "Policy" => Ok(Typ::Policy),
             "Regex" => Ok(Typ::Regex),
             "str" => Ok(Typ::Str),
             "unit" => Ok(Typ::Unit),
@@ -266,6 +266,15 @@ impl Infix {
 impl parser::Param {
     pub fn typ(&self) -> Result<Typ, Error> {
         Typ::from_parse(&self.typ)
+    }
+}
+
+impl parser::Pattern {
+    pub fn typ(&self) -> &Typ {
+        match self {
+            parser::Pattern::Regex(_) => &Typ::Str,
+            parser::Pattern::Label(_) => &Typ::Label,
+        }
     }
 }
 

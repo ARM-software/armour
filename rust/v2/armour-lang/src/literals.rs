@@ -1,16 +1,9 @@
-use super::{parser, types::Typ};
+use super::{labels, parser, types::Typ};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Display};
 use std::str::FromStr;
 use url;
-
-// #[derive(PartialEq, Debug, Display, Clone, Serialize, Deserialize)]
-// pub enum Policy {
-//     Accept,
-//     Forward,
-//     Reject,
-// }
 
 #[derive(PartialEq, Debug, Display, Clone, Serialize, Deserialize)]
 pub enum Method {
@@ -557,9 +550,9 @@ pub enum Literal {
     ID(ID),
     Int(i64),
     IpAddr(std::net::IpAddr),
+    Label(labels::Label),
     List(Vec<Literal>),
     Payload(Payload),
-    // Policy(Policy),
     Regex(parser::PolicyRegex),
     Str(String),
     Tuple(Vec<Literal>),
@@ -584,9 +577,9 @@ impl Literal {
             Literal::ID(_) => Typ::ID,
             Literal::Int(_) => Typ::I64,
             Literal::IpAddr(_) => Typ::IpAddr,
+            Literal::Label(_) => Typ::Label,
             Literal::List(l) => l.get(0).map(|t| t.typ()).unwrap_or(Typ::Return),
             Literal::Payload(_) => Typ::Payload,
-            // Literal::Policy(_) => Typ::Policy,
             Literal::Regex(_) => Typ::Regex,
             Literal::Str(_) => Typ::Str,
             Literal::Tuple(l) => Typ::Tuple((*l).iter().map(|t: &Literal| t.typ()).collect()),
@@ -636,6 +629,7 @@ impl fmt::Display for Literal {
             Literal::ID(id) => write!(f, "{:?}", id),
             Literal::Int(i) => write!(f, "{}", i),
             Literal::IpAddr(ip) => write!(f, "{}", ip),
+            Literal::Label(label) => write!(f, "'{}'", label),
             Literal::List(lits) | Literal::Tuple(lits) => {
                 let s = lits
                     .iter()
@@ -655,7 +649,6 @@ impl fmt::Display for Literal {
             Literal::Regex(r) => write!(f, "{:?}", r),
             Literal::Str(s) => write!(f, r#""{}""#, s),
             Literal::Payload(p) => write!(f, "{:?}", p),
-            // Literal::Policy(p) => write!(f, "{:?}", p),
             Literal::Unit => write!(f, "()"),
         }
     }
@@ -818,9 +811,54 @@ impl From<&str> for Literal {
     }
 }
 
+impl From<String> for Literal {
+    fn from(s: String) -> Self {
+        s.as_str().into()
+    }
+}
+
 impl From<()> for Literal {
     fn from(_: ()) -> Self {
         Literal::Unit
+    }
+}
+
+impl<T> From<Vec<T>> for Literal
+where
+    T: Into<Literal>,
+{
+    fn from(x: Vec<T>) -> Self {
+        Literal::List(x.into_iter().map(|x| x.into()).collect())
+    }
+}
+
+impl<T> From<Option<T>> for Literal
+where
+    T: Into<Literal>,
+{
+    fn from(x: Option<T>) -> Self {
+        if let Some(v) = x {
+            v.into().some()
+        } else {
+            Literal::none()
+        }
+    }
+}
+
+impl From<&labels::Match> for Literal {
+    fn from(m: &labels::Match) -> Self {
+        let v: Vec<(String, String)> = m.into();
+        Literal::List(
+            v.into_iter()
+                .map(|(x, y)| Literal::Tuple(vec![Literal::Str(x), Literal::Str(y)]))
+                .collect(),
+        )
+    }
+}
+
+impl From<labels::Match> for Literal {
+    fn from(m: labels::Match) -> Self {
+        (&m).into()
     }
 }
 

@@ -1,8 +1,7 @@
 /// lexer
 // Originally based on https://github.com/Rydgel/monkey-rust/tree/master/lib/lexer
 // There have been significant modifications, in particular making use of nom_locate
-
-// use super::literals;
+use super::labels;
 use nom::character::complete::{digit1, multispace0, not_line_ending};
 use nom::number::complete::recognize_float;
 use nom::*;
@@ -30,12 +29,12 @@ pub enum Token {
     // identifier and literals
     Comment(String),
     Ident(String),
+    BoolLiteral(bool),
     DataLiteral(Vec<u8>),
-    StringLiteral(String),
     FloatLiteral(f64),
     IntLiteral(i64),
-    BoolLiteral(bool),
-    // PolicyLiteral(literals::Policy),
+    LabelLiteral(labels::Label),
+    StringLiteral(String),
     Some,
     Regex,
     // statements
@@ -411,12 +410,29 @@ fn parse_reserved(t: Span) -> LocToken {
         "return" => LocToken::new(t, Token::Return),
         "Some" => LocToken::new(t, Token::Some),
         "true" => LocToken::new(t, Token::BoolLiteral(true)),
-        // "Accept" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Accept)),
-        // "Forward" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Forward)),
-        // "Reject" => LocToken::new(t, Token::PolicyLiteral(literals::Policy::Reject)),
         _ => LocToken::new(t, Token::Ident(string)),
     }
 }
+
+fn lex_label_inner<'a, E: error::ParseError<Span<'a>>>(
+    input: Span<'a>,
+) -> IResult<Span<'a>, LocToken, E> {
+    match nom::bytes::complete::take_until("'")(input) {
+        Ok((rest, span)) => {
+            if let Ok(label) = span.to_string().parse::<labels::Label>() {
+                Ok((rest, LocToken::new(span, Token::LabelLiteral(label))))
+            } else {
+                Err(nom::Err::Incomplete(nom::Needed::Unknown))
+            }
+        }
+        Err(nom::Err::Failure(e)) => Err(nom::Err::Error(e)),
+        Err(e) => Err(e),
+    }
+}
+
+named!(lex_label<Span, LocToken>,
+    delimited!(tag!("'"), lex_label_inner, tag!("'"))
+);
 
 // Identifiers and reserved words
 fn lex_reserved_ident<'a, E: error::ParseError<Span<'a>>>(
@@ -482,6 +498,7 @@ named!(lex_token<Span, LocToken>,
     alt!(
         complete!(lex_number) |
         complete!(lex_string) |
+        complete!(lex_label) |
         complete!(lex_reserved_ident) |
         complete!(lex_operator) |
         complete!(lex_illegal)
