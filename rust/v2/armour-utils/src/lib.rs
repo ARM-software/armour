@@ -1,9 +1,12 @@
+//! Library of Armour helper functions.
+
 use lazy_static::lazy_static;
 use std::collections::HashSet;
 use std::io;
 use std::net::IpAddr;
 
 lazy_static! {
+    /// Set of IP addresses associated with local interface.
     pub static ref INTERFACE_IPS: HashSet<IpAddr> = {
         let set: HashSet<String> = ["lo", "lo0", "en0", "eth0"]
             .iter()
@@ -26,6 +29,9 @@ lazy_static! {
     };
 }
 
+/// Check if the supplied IP address correspondence with an IP of the local interface.
+///
+/// Used to check if a proxy is attempting to proxy itself.
 pub fn own_ip(s: &IpAddr) -> bool {
     INTERFACE_IPS.contains(s)
         || match s {
@@ -34,7 +40,11 @@ pub fn own_ip(s: &IpAddr) -> bool {
         }
 }
 
-// bincode serialize -> flate2 compress -> base64 encode
+/// Serialize data using [bincode](https://github.com/servo/bincode) encoder,
+/// followed by [flate2](https://github.com/alexcrichton/flate2-rs) compression and
+/// [base64](https://github.com/marshallpierce/rust-base64) encoding.
+///
+/// Can be used to transmit serializable rust data over HTTP.
 pub fn bincode_gz_base64_enc<W: std::io::Write, S: serde::Serialize>(
     mut w: W,
     data: S,
@@ -48,7 +58,7 @@ pub fn bincode_gz_base64_enc<W: std::io::Write, S: serde::Serialize>(
     gz_base64_enc.finish().map(|_| ())
 }
 
-// base64 decode -> flate2 decompress -> bincode deserialize
+/// Deserialize data that has been encoded with [bincode_gz_base64_enc](fn.bincode_gz_base64_enc.html).
 pub fn bincode_gz_base64_dec<R: std::io::Read, D: serde::de::DeserializeOwned>(
     mut r: R,
 ) -> Result<D, std::io::Error> {

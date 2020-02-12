@@ -2,9 +2,10 @@
 
 use super::{proxy, DeserializeDecoder, SerializeEncoder};
 use actix::prelude::*;
-use armour_lang::lang::Program;
+use armour_lang::{labels::Labels, lang::Program};
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use tokio_util::codec::{Decoder, Encoder};
 
 /// Policy type during `control` plane to `master` communication
@@ -51,12 +52,13 @@ pub struct PolicyStatus {
 #[rtype("()")]
 pub enum PolicyResponse {
     Connect(u32, String, String, String), // (PID, name, http hash, tcp hash)
-    Started,
-    Stopped,
-    ShuttingDown,
-    UpdatedPolicy(proxy::Protocol, String), // hash of new policy
+    Labels(BTreeMap<String, Labels>),
     RequestFailed,
+    ShuttingDown,
+    Started,
     Status { http: Box<Status>, tcp: Box<Status> },
+    Stopped,
+    UpdatedPolicy(proxy::Protocol, String), // hash of new policy
 }
 
 #[derive(Serialize, Deserialize, Clone)]

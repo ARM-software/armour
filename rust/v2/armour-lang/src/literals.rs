@@ -152,6 +152,7 @@ pub struct ID {
     hosts: BTreeSet<String>,
     ips: BTreeSet<std::net::IpAddr>,
     port: Option<u16>,
+    labels: BTreeSet<labels::Label>,
 }
 
 impl ID {
@@ -165,6 +166,14 @@ impl ID {
         } else {
             None
         }
+    }
+    pub fn labels(&self) -> Literal {
+        Literal::List(
+            self.labels
+                .iter()
+                .map(|l| Literal::Label(l.clone()))
+                .collect(),
+        )
     }
     pub fn hosts(&self) -> Literal {
         Literal::List(
@@ -183,6 +192,11 @@ impl ID {
             None => Literal::none(),
         }
     }
+    pub fn add_label(&self, label: &labels::Label) -> ID {
+        let mut new = self.clone();
+        new.labels.insert(label.clone());
+        new
+    }
     pub fn add_host(&self, host: &str) -> ID {
         let mut new = self.clone();
         new.hosts.insert(host.to_string());
@@ -198,10 +212,20 @@ impl ID {
         new.port = Some(port);
         new
     }
+    pub fn has_label(&self, label: &labels::Label) -> bool {
+        self.labels.iter().any(|x| label.matches_with(x))
+    }
+    pub fn has_host(&self, host: &str) -> bool {
+        self.hosts.iter().any(|x| x == host)
+    }
+    pub fn has_ip(&self, ip: &std::net::IpAddr) -> bool {
+        self.ips.iter().any(|x| x == ip)
+    }
 }
 
-impl From<std::net::IpAddr> for ID {
-    fn from(ip: std::net::IpAddr) -> Self {
+impl From<(std::net::IpAddr, Option<&BTreeSet<labels::Label>>)> for ID {
+    fn from(s: (std::net::IpAddr, Option<&BTreeSet<labels::Label>>)) -> Self {
+        let (ip, labels) = s;
         let mut ips = BTreeSet::new();
         if ip.is_ipv4() {
             ips.insert(ip);
@@ -215,21 +239,22 @@ impl From<std::net::IpAddr> for ID {
             hosts,
             ips,
             port: None,
+            labels: labels.cloned().unwrap_or_default(),
         }
     }
 }
 
-impl From<std::net::SocketAddr> for ID {
-    fn from(s: std::net::SocketAddr) -> Self {
-        let mut id = ID::from(s.ip());
-        id.port = Some(s.port());
+impl From<(std::net::SocketAddr, Option<&BTreeSet<labels::Label>>)> for ID {
+    fn from(s: (std::net::SocketAddr, Option<&BTreeSet<labels::Label>>)) -> Self {
+        let mut id = ID::from((s.0.ip(), s.1));
+        id.port = Some(s.0.port());
         id
     }
 }
 
-impl From<(Option<&str>, Option<u16>)> for ID {
-    fn from(s: (Option<&str>, Option<u16>)) -> Self {
-        let (host, port) = s;
+impl From<(Option<&str>, Option<u16>, Option<&BTreeSet<labels::Label>>)> for ID {
+    fn from(s: (Option<&str>, Option<u16>, Option<&BTreeSet<labels::Label>>)) -> Self {
+        let (host, port, labels) = s;
         let mut hosts = BTreeSet::new();
         let mut ips = BTreeSet::new();
         if let Some(host) = host {
@@ -241,7 +266,12 @@ impl From<(Option<&str>, Option<u16>)> for ID {
                 }
             }
         }
-        ID { hosts, ips, port }
+        ID {
+            hosts,
+            ips,
+            port,
+            labels: labels.cloned().unwrap_or_default(),
+        }
     }
 }
 
@@ -272,17 +302,17 @@ impl Connection {
     pub fn number(&self) -> Literal {
         Literal::Int(self.number)
     }
-    pub fn set_from(&self, from: &ID) -> Connection {
+    pub fn set_from(&self, from: &ID) -> Self {
         let mut conn = self.clone();
         conn.from = from.clone();
         conn
     }
-    pub fn set_to(&self, to: &ID) -> Connection {
+    pub fn set_to(&self, to: &ID) -> Self {
         let mut conn = self.clone();
         conn.to = to.clone();
         conn
     }
-    pub fn set_number(&self, number: i64) -> Connection {
+    pub fn set_number(&self, number: i64) -> Self {
         let mut conn = self.clone();
         conn.number = number;
         conn
@@ -307,10 +337,10 @@ pub struct Payload {
 }
 
 impl Payload {
-    pub fn literal(data: &[u8], connection: &Connection) -> Literal {
+    pub fn literal(data: &[u8]) -> Literal {
         Literal::Payload(Payload {
             payload: data.to_vec(),
-            connection: connection.clone(),
+            connection: Connection::default(),
         })
     }
     pub fn data(&self) -> Literal {
@@ -318,6 +348,27 @@ impl Payload {
     }
     pub fn connection(&self) -> Literal {
         self.connection.clone().into()
+    }
+    pub fn from_lit(&self) -> Literal {
+        self.connection.from_lit()
+    }
+    pub fn to_lit(&self) -> Literal {
+        self.connection.to_lit()
+    }
+    pub fn set_connection(&self, connection: &Connection) -> Self {
+        let mut new = self.clone();
+        new.connection = connection.clone();
+        new
+    }
+    pub fn set_from(&self, from: &ID) -> Self {
+        let mut payld = self.clone();
+        payld.connection.from = from.clone();
+        payld
+    }
+    pub fn set_to(&self, to: &ID) -> Self {
+        let mut payld = self.clone();
+        payld.connection.to = to.clone();
+        payld
     }
 }
 
@@ -341,8 +392,8 @@ pub struct HttpRequest {
 }
 
 impl HttpRequest {
-    pub fn new(method: Method) -> HttpRequest {
-        let mut new = HttpRequest::default();
+    pub fn new(method: Method) -> Self {
+        let mut new = Self::default();
         new.method = method;
         new
     }
@@ -358,7 +409,7 @@ impl HttpRequest {
     pub fn path(&self) -> Literal {
         Literal::Str(self.path.to_string())
     }
-    pub fn set_path(&self, s: &str) -> HttpRequest {
+    pub fn set_path(&self, s: &str) -> Self {
         let mut new = self.clone();
         new.path = s.to_string();
         new
@@ -375,7 +426,7 @@ impl HttpRequest {
     pub fn query(&self) -> Literal {
         Literal::Str(self.query.to_string())
     }
-    pub fn set_query(&self, s: &str) -> HttpRequest {
+    pub fn set_query(&self, s: &str) -> Self {
         let mut new = self.clone();
         new.query = s.to_string();
         new
@@ -402,7 +453,7 @@ impl HttpRequest {
     pub fn unique_header(&self, s: &str) -> Literal {
         self.headers.unique_header(s)
     }
-    pub fn set_header(&self, k: &str, v: &[u8]) -> HttpRequest {
+    pub fn set_header(&self, k: &str, v: &[u8]) -> Self {
         let mut new = self.clone();
         new.headers.set_header(k, v);
         new
@@ -413,10 +464,26 @@ impl HttpRequest {
     pub fn header_pairs(&self) -> Literal {
         self.headers.header_pairs()
     }
-    pub fn set_connection(&self, c: &Connection) -> HttpRequest {
+    pub fn set_connection(&self, c: &Connection) -> Self {
         let mut new = self.clone();
         new.connection = c.clone();
         new
+    }
+    pub fn from_lit(&self) -> Literal {
+        self.connection.from_lit()
+    }
+    pub fn to_lit(&self) -> Literal {
+        self.connection.to_lit()
+    }
+    pub fn set_from(&self, from: &ID) -> Self {
+        let mut req = self.clone();
+        req.connection.from = from.clone();
+        req
+    }
+    pub fn set_to(&self, to: &ID) -> Self {
+        let mut req = self.clone();
+        req.connection.to = to.clone();
+        req
     }
 }
 
@@ -446,9 +513,9 @@ pub struct HttpResponse {
 
 impl HttpResponse {
     pub fn literal(status: u16) -> Literal {
-        let mut new = HttpResponse::default();
+        let mut new = Self::default();
         new.status = status;
-        Literal::HttpResponse(new)
+        new.into()
     }
     pub fn connection(&self) -> Literal {
         self.connection.clone().into()
@@ -472,12 +539,12 @@ impl HttpResponse {
             Literal::none()
         }
     }
-    pub fn set_reason(&self, reason: &str) -> HttpResponse {
+    pub fn set_reason(&self, reason: &str) -> Self {
         let mut new = self.clone();
         new.reason = Some(reason.to_string());
         new
     }
-    pub fn set_header(&self, k: &str, v: &[u8]) -> HttpResponse {
+    pub fn set_header(&self, k: &str, v: &[u8]) -> Self {
         let mut new = self.clone();
         new.headers.set_header(k, v);
         new
@@ -488,10 +555,26 @@ impl HttpResponse {
     pub fn header_pairs(&self) -> Literal {
         self.headers.header_pairs()
     }
-    pub fn set_connection(&self, c: &Connection) -> HttpResponse {
+    pub fn set_connection(&self, c: &Connection) -> Self {
         let mut new = self.clone();
         new.connection = c.clone();
         new
+    }
+    pub fn from_lit(&self) -> Literal {
+        self.connection.from_lit()
+    }
+    pub fn to_lit(&self) -> Literal {
+        self.connection.to_lit()
+    }
+    pub fn set_from(&self, from: &ID) -> Self {
+        let mut res = self.clone();
+        res.connection.from = from.clone();
+        res
+    }
+    pub fn set_to(&self, to: &ID) -> Self {
+        let mut res = self.clone();
+        res.connection.to = to.clone();
+        res
     }
 }
 
@@ -545,8 +628,8 @@ pub enum Literal {
     Connection(Connection),
     Data(Vec<u8>),
     Float(f64),
-    HttpRequest(HttpRequest),
-    HttpResponse(HttpResponse),
+    HttpRequest(Box<HttpRequest>),
+    HttpResponse(Box<HttpResponse>),
     ID(ID),
     Int(i64),
     IpAddr(std::net::IpAddr),
@@ -696,7 +779,7 @@ impl From<f64> for Literal {
 
 impl From<HttpRequest> for Literal {
     fn from(r: HttpRequest) -> Self {
-        Literal::HttpRequest(r)
+        Literal::HttpRequest(Box::new(r))
     }
 }
 
@@ -715,7 +798,7 @@ impl From<&HttpRequest> for Literal {
 
 impl From<HttpResponse> for Literal {
     fn from(r: HttpResponse) -> Self {
-        Literal::HttpResponse(r)
+        Literal::HttpResponse(Box::new(r))
     }
 }
 
@@ -742,8 +825,8 @@ impl From<&ID> for Literal {
     }
 }
 
-impl From<std::net::SocketAddr> for Literal {
-    fn from(s: std::net::SocketAddr) -> Self {
+impl From<(std::net::SocketAddr, Option<&BTreeSet<labels::Label>>)> for Literal {
+    fn from(s: (std::net::SocketAddr, Option<&BTreeSet<labels::Label>>)) -> Self {
         Literal::ID(s.into())
     }
 }

@@ -104,7 +104,9 @@ impl fmt::Display for Instances {
 ///
 /// There will be one actor per Unix socket connection
 pub struct ArmourDataInstance {
+    /// unique ID of instance
     pub id: usize,
+    /// address of data plane master actor
     pub master: Addr<ArmourDataMaster>,
     pub uds_framed: actix::io::FramedWrite<WriteHalf<tokio::net::UnixStream>, MasterCodec>,
 }
@@ -156,6 +158,9 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
                     info!("{}: received shutdown", self.id);
                     self.master.do_send(Disconnect(self.id));
                     ctx.stop()
+                }
+                PolicyResponse::Labels(labels) => {
+                    info!("{}:\n=== Labels ===\n{:?}", self.id, labels)
                 }
                 PolicyResponse::Status { http, tcp } => {
                     info!("{}:\n=== HTTP ===\n{}\n=== TCP ===\n{}", self.id, http, tcp);

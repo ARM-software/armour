@@ -1,19 +1,12 @@
-//! Data plane master commands
-//!
-//! The following commands are supported:
-//! - `list` : show active connections
-//! - `<instance> allow all`
-//! - `<instance> deny all`
-//! - `<instance> policy <path>` : send a policy to an instance
-//! - `<instance> remote <path>` : ask the instance to load a policy from a file
+//! Run data plane `master` interactive shell commands
 
 use super::{
     instance::InstanceSelector,
     master::{ArmourDataMaster, Launch, List, PolicyCommand, Quit},
 };
 use actix::Addr;
-use armour_api::proxy::{Policy, PolicyRequest, Protocol};
-use armour_lang::lang;
+use armour_api::proxy::{LabelOp, Policy, PolicyRequest, Protocol};
+use armour_lang::{labels, lang};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::io::BufRead;
@@ -32,14 +25,16 @@ lazy_static! {
             launch (\s log)? |
             shutdown |
             status |
-            ((http | tcp) \s)? deny \s all |
-            ((http | tcp) \s)? allow \s all |
-            ((http | tcp) \s)? stop |
-            ((http | tcp) \s)? debug \s (on | off) |
-            ((http | tcp) \s)? policy |
-            (http | tcp) \s start |
-            ((http | tcp) \s)? stop |
-            http \s timeout)
+            label \s (add | rm) |
+            labels (\s rm)? |
+            deny \s all (\s (http | tcp))?  |
+            allow \s all (\s (http | tcp))?  |
+            stop (\s (http | tcp))? |
+            debug \s (on | off) (\s (http | tcp))? |
+            policy (\s (http | tcp))? |
+            start \s (http | tcp) |
+            stop (\s (http | tcp))? |
+            timeout)
           (?P<arg>\s+.+)?\s*$"
     )
     .unwrap();
@@ -69,6 +64,7 @@ fn command<'a>(caps: &'a regex::Captures) -> (InstanceSelector, Option<&'a str>,
     )
 }
 
+#[allow(clippy::cognitive_complexity)]
 fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> bool {
     let (instance, command, args) = command(&caps);
     let command = command.map(|s| s.to_lowercase());
@@ -85,18 +81,26 @@ fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> boo
     run <file>         run commands from <file>
     wait <seconds>     wait for <seconds> to elapse (up to 5s)
 
-    [<id>:] launch [log]               start a new slave instance
-    [<id>:] shutdown                   request slave shutdown
-    [<id>:] status                     retrieve and print status
-    [<id>:] (http|tcp) start <port>    start HTTP/TCP proxy on <port>
-    [<id>:] [http|tcp] stop            stop HTTP/TCP proxy
-    [<id>:] [http|tcp] allow all       request allow all policy
-    [<id>:] [http|tcp] deny all        request deny all policy
-    [<id>:] (http|tcp) policy <file>   read policy <file> and send to instance
-    [<id>:] [http|tcp] debug [on|off]  enable/disable display of HTTP requests
-    [<id>:] http timeout <seconds>     server response timeout
+    [<id>:] launch [log]              start a new slave instance
+    [<id>:] shutdown                  request slave shutdown
+    [<id>:] start <proto> <port>      start proxy on <port>
+    [<id>:] stop [<proto>]            stop proxy
+    [<id>:] status                    retrieve and print status
     
-    <id>  instance ID number"
+    [<id>:] allow all [<proto>]       request allow all policy
+    [<id>:] deny all [<proto>]        request deny all policy
+    [<id>:] policy <proto> <file>     read policy <file> and send to instance
+
+    [<id>:] debug (on|off) [<proto>]  enable/disable debug output
+    [<id>:] timeout <seconds>         HTTP server response timeout
+
+    [<id>:] label add <url> <label>   add a label
+    [<id>:] label rm <url> <label>    remove a label
+    [<id>:] labels                    list labels
+    [<id>:] labels rm [<url>]         remove labels (for <url> or all)
+
+    <id>    instance ID number
+    <proto> http or tcp"
         ),
         (true, Some("list"), None) => {
             master.do_send(List);
@@ -129,7 +133,7 @@ fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> boo
             master.do_send(PolicyCommand(instance, PolicyRequest::Shutdown))
         }
         (_, Some("status"), None) => master.do_send(PolicyCommand(instance, PolicyRequest::Status)),
-        (_, Some(s @ "tcp start"), Some(port)) | (_, Some(s @ "http start"), Some(port)) => {
+        (_, Some(s @ "start tcp"), Some(port)) | (_, Some(s @ "start http"), Some(port)) => {
             if let Ok(port) = port.parse::<u16>() {
                 let start = if is_http(s) {
                     PolicyRequest::StartHttp(port)
@@ -138,34 +142,34 @@ fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> boo
                 };
                 master.do_send(PolicyCommand(instance, start))
             } else {
-                log::warn!("tcp start <port>: expecting port number, got {}", port);
+                log::warn!("expecting port number, got {}", port);
             }
         }
         (_, Some(s @ "stop"), None)
-        | (_, Some(s @ "http stop"), None)
-        | (_, Some(s @ "tcp stop"), None) => {
+        | (_, Some(s @ "stop http"), None)
+        | (_, Some(s @ "stop tcp"), None) => {
             master.do_send(PolicyCommand(instance, PolicyRequest::Stop(protocol(s))))
         }
         (_, Some(s @ "debug on"), None)
-        | (_, Some(s @ "http debug on"), None)
-        | (_, Some(s @ "tcp debug on"), None) => master.do_send(PolicyCommand(
+        | (_, Some(s @ "debug on http"), None)
+        | (_, Some(s @ "debug on tcp"), None) => master.do_send(PolicyCommand(
             instance,
             PolicyRequest::Debug(protocol(s), true),
         )),
         (_, Some(s @ "debug off"), None)
-        | (_, Some(s @ "http debug off"), None)
-        | (_, Some(s @ "tcp debug off"), None) => master.do_send(PolicyCommand(
+        | (_, Some(s @ "debug off http"), None)
+        | (_, Some(s @ "debug off tcp"), None) => master.do_send(PolicyCommand(
             instance,
             PolicyRequest::Debug(protocol(s), false),
         )),
-        (_, Some("http timeout"), Some(secs)) => {
+        (_, Some("timeout"), Some(secs)) => {
             if let Ok(secs) = secs.parse::<u8>() {
                 master.do_send(PolicyCommand(instance, PolicyRequest::Timeout(secs)))
             } else {
-                log::warn!("http timeout <seconds>: expecting u8, got {}", secs);
+                log::warn!("timeout <seconds>: expecting u8, got {}", secs);
             }
         }
-        (_, Some(s @ "http policy"), Some(file)) | (_, Some(s @ "tcp policy"), Some(file)) => {
+        (_, Some(s @ "policy http"), Some(file)) | (_, Some(s @ "policy tcp"), Some(file)) => {
             let path = pathbuf(file);
             let protocol = protocol(s);
             match lang::Module::from_file(&path, Some(protocol.interface())) {
@@ -174,17 +178,66 @@ fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> boo
             }
         }
         (_, Some(s @ "allow all"), None)
-        | (_, Some(s @ "http allow all"), None)
-        | (_, Some(s @ "tcp allow all"), None)
+        | (_, Some(s @ "allow all http"), None)
+        | (_, Some(s @ "allow all tcp"), None)
         | (_, Some(s @ "deny all"), None)
-        | (_, Some(s @ "http deny all"), None)
-        | (_, Some(s @ "tcp deny all"), None) => {
+        | (_, Some(s @ "deny all http"), None)
+        | (_, Some(s @ "deny all tcp"), None) => {
             let protocol = protocol(s);
-            if s.contains("allow") {
+            if s.starts_with("allow") {
                 set_policy(master, instance, Policy::AllowAll(protocol))
             } else {
                 set_policy(master, instance, Policy::DenyAll(protocol))
             }
+        }
+        (_, Some(s @ "label add"), Some(arg)) | (_, Some(s @ "label rm"), Some(arg)) => {
+            if let [key, value] = arg.split(' ').collect::<Vec<&str>>().as_slice() {
+                if let Ok(label) = value.parse::<labels::Label>() {
+                    if let Ok(ip) = key.parse::<std::net::Ipv4Addr>() {
+                        let op = if s.ends_with("add") {
+                            LabelOp::AddIp(ip, label)
+                        } else {
+                            LabelOp::RemoveIp(ip, Some(label))
+                        };
+                        master.do_send(PolicyCommand(instance, PolicyRequest::Label(op)))
+                    } else if let Ok(url) = key.parse::<url::Url>() {
+                        let op = if s.ends_with("add") {
+                            LabelOp::AddUrl(url, label)
+                        } else {
+                            LabelOp::RemoveUrl(url, Some(label))
+                        };
+                        master.do_send(PolicyCommand(instance, PolicyRequest::Label(op)))
+                    } else {
+                        log::info!("expecting <url> or <ip>")
+                    }
+                } else {
+                    log::info!("expecting <label>")
+                }
+            } else {
+                log::info!("expecting <url> or <ip>, and <label>")
+            }
+        }
+        (_, Some("labels rm"), Some(arg)) => {
+            if let Ok(ip) = arg.parse::<std::net::Ipv4Addr>() {
+                master.do_send(PolicyCommand(
+                    instance,
+                    PolicyRequest::Label(LabelOp::RemoveIp(ip, None)),
+                ))
+            } else if let Ok(url) = arg.parse::<url::Url>() {
+                master.do_send(PolicyCommand(
+                    instance,
+                    PolicyRequest::Label(LabelOp::RemoveUrl(url, None)),
+                ))
+            } else {
+                log::info!("expecting <url> or <ip>")
+            }
+        }
+        (_, Some("labels rm"), None) => master.do_send(PolicyCommand(
+            instance,
+            PolicyRequest::Label(LabelOp::Clear),
+        )),
+        (_, Some("labels"), None) => {
+            master.do_send(PolicyCommand(instance, PolicyRequest::Label(LabelOp::List)))
         }
         _ => log::info!("unknown command"),
     }
@@ -232,11 +285,11 @@ pub fn run_script(master: &Addr<ArmourDataMaster>, script: &str) {
 }
 
 fn is_http(s: &str) -> bool {
-    s.starts_with("http")
+    s.ends_with("http")
 }
 
 fn is_tcp(s: &str) -> bool {
-    s.starts_with("tcp")
+    s.ends_with("tcp")
 }
 
 fn protocol(s: &str) -> Protocol {

@@ -1,7 +1,7 @@
 //! Label data type
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::slice::SliceIndex;
 use std::str::FromStr;
@@ -10,7 +10,7 @@ thread_local!(static NODE_ANY: regex::Regex = regex::Regex::new("^<[[:alpha:]][[
 thread_local!(static NODE_STR: regex::Regex = regex::Regex::new("^[[:alpha:]]([ _+-]?[[:alnum:]])*$").unwrap());
 
 /// Node element of [Label](struct.Label.html)
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Node {
     Any(String),
     Str(String),
@@ -118,7 +118,7 @@ impl Node {
 }
 
 /// Label type representing sequences of [Node](enum.Node.html) elements
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialOrd, Ord)]
 pub struct Label(Vec<Node>);
 
 impl FromStr for Label {
@@ -222,6 +222,8 @@ impl Label {
         Some(map)
     }
 }
+
+pub type Labels = BTreeSet<Label>;
 
 /* pub struct LabelMap<T>(Vec<(Label, T)>);
 

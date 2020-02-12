@@ -82,15 +82,15 @@ impl Literal {
     }
     fn eval_call0(f: &str) -> Option<Self> {
         match f {
-            "HttpRequest::GET" => Some(Literal::HttpRequest(HttpRequest::default())),
-            "HttpRequest::POST" => Some(Literal::HttpRequest(HttpRequest::new(Method::POST))),
-            "HttpRequest::PUT" => Some(Literal::HttpRequest(HttpRequest::new(Method::PUT))),
-            "HttpRequest::DELETE" => Some(Literal::HttpRequest(HttpRequest::new(Method::DELETE))),
-            "HttpRequest::HEAD" => Some(Literal::HttpRequest(HttpRequest::new(Method::HEAD))),
-            "HttpRequest::OPTIONS" => Some(Literal::HttpRequest(HttpRequest::new(Method::OPTIONS))),
-            "HttpRequest::CONNECT" => Some(Literal::HttpRequest(HttpRequest::new(Method::CONNECT))),
-            "HttpRequest::PATCH" => Some(Literal::HttpRequest(HttpRequest::new(Method::PATCH))),
-            "HttpRequest::TRACE" => Some(Literal::HttpRequest(HttpRequest::new(Method::TRACE))),
+            "HttpRequest::GET" => Some(HttpRequest::default().into()),
+            "HttpRequest::POST" => Some(HttpRequest::new(Method::POST).into()),
+            "HttpRequest::PUT" => Some(HttpRequest::new(Method::PUT).into()),
+            "HttpRequest::DELETE" => Some(HttpRequest::new(Method::DELETE).into()),
+            "HttpRequest::HEAD" => Some(HttpRequest::new(Method::HEAD).into()),
+            "HttpRequest::OPTIONS" => Some(HttpRequest::new(Method::OPTIONS).into()),
+            "HttpRequest::CONNECT" => Some(HttpRequest::new(Method::CONNECT).into()),
+            "HttpRequest::PATCH" => Some(HttpRequest::new(Method::PATCH).into()),
+            "HttpRequest::TRACE" => Some(HttpRequest::new(Method::TRACE).into()),
             "ID::default" => Some(Literal::ID(Default::default())),
             "Connection::default" => Some(Literal::Connection(Default::default())),
             "IpAddr::localhost" => Some(Literal::IpAddr(std::net::IpAddr::V4(
@@ -119,6 +119,8 @@ impl Literal {
             ("data::to_base64", Literal::Data(d)) => Some(Literal::Str(base64::encode(d))),
             ("data::len", Literal::Data(d)) => Some(Literal::Int(d.len() as i64)),
             ("HttpRequest::connection", Literal::HttpRequest(req)) => Some(req.connection()),
+            ("HttpRequest::from", Literal::HttpRequest(req)) => Some(req.from_lit()),
+            ("HttpRequest::to", Literal::HttpRequest(req)) => Some(req.to_lit()),
             ("HttpRequest::method", Literal::HttpRequest(req)) => Some(req.method()),
             ("HttpRequest::version", Literal::HttpRequest(req)) => Some(req.version()),
             ("HttpRequest::path", Literal::HttpRequest(req)) => Some(req.path()),
@@ -129,6 +131,8 @@ impl Literal {
             ("HttpRequest::headers", Literal::HttpRequest(req)) => Some(req.headers()),
             ("HttpResponse::new", Literal::Int(code)) => Some(HttpResponse::literal(*code as u16)),
             ("HttpResponse::connection", Literal::HttpResponse(res)) => Some(res.connection()),
+            ("HttpResponse::from", Literal::HttpResponse(res)) => Some(res.from_lit()),
+            ("HttpResponse::to", Literal::HttpResponse(res)) => Some(res.to_lit()),
             ("HttpResponse::status", Literal::HttpResponse(res)) => Some(res.status()),
             ("HttpResponse::version", Literal::HttpResponse(res)) => Some(res.version()),
             ("HttpResponse::reason", Literal::HttpResponse(res)) => Some(res.reason()),
@@ -147,6 +151,7 @@ impl Literal {
                 }
             }
             ("IpAddr::octets", Literal::IpAddr(ip)) => Some(Literal::from(ip)),
+            ("ID::labels", Literal::ID(id)) => Some(id.labels()),
             ("ID::hosts", Literal::ID(id)) => Some(id.hosts()),
             ("ID::ips", Literal::ID(id)) => Some(id.ips()),
             ("ID::port", Literal::ID(id)) => Some(id.port()),
@@ -161,8 +166,11 @@ impl Literal {
             ("Connection::from", Literal::Connection(c)) => Some(c.from_lit()),
             ("Connection::to", Literal::Connection(c)) => Some(c.to_lit()),
             ("Connection::number", Literal::Connection(c)) => Some(c.number()),
+            ("Payload::new", Literal::Data(d)) => Some(Payload::literal(d)),
             ("Payload::data", Literal::Payload(p)) => Some(p.data()),
             ("Payload::connection", Literal::Payload(p)) => Some(p.connection()),
+            ("Payload::from", Literal::Payload(p)) => Some(p.from_lit()),
+            ("Payload::to", Literal::Payload(p)) => Some(p.to_lit()),
             ("Label::parts", Literal::Label(l)) => Some(l.parts().into()),
             _ => None,
         }
@@ -190,10 +198,10 @@ impl Literal {
                 Some(Literal::Bool(i.contains(j)))
             }
             ("HttpRequest::set_path", Literal::HttpRequest(req), Literal::Str(q)) => {
-                Some(Literal::HttpRequest(req.set_path(q)))
+                Some(req.set_path(q).into())
             }
             ("HttpRequest::set_query", Literal::HttpRequest(req), Literal::Str(q)) => {
-                Some(Literal::HttpRequest(req.set_query(q)))
+                Some(req.set_query(q).into())
             }
             ("HttpRequest::header", Literal::HttpRequest(req), Literal::Str(h)) => {
                 Some(req.header(&h))
@@ -202,7 +210,13 @@ impl Literal {
                 Some(req.unique_header(&h))
             }
             ("HttpRequest::set_connection", Literal::HttpRequest(req), Literal::Connection(c)) => {
-                Some(Literal::HttpRequest(req.set_connection(c)))
+                Some(req.set_connection(c).into())
+            }
+            ("HttpRequest::set_from", Literal::HttpRequest(req), Literal::ID(f)) => {
+                Some(req.set_from(f).into())
+            }
+            ("HttpRequest::set_to", Literal::HttpRequest(req), Literal::ID(f)) => {
+                Some(req.set_to(f).into())
             }
             ("HttpResponse::header", Literal::HttpResponse(res), Literal::Str(h)) => {
                 Some(res.header(&h))
@@ -210,16 +224,28 @@ impl Literal {
             ("HttpResponse::unique_header", Literal::HttpResponse(res), Literal::Str(h)) => {
                 Some(res.unique_header(&h))
             }
-            ("HttpResponse::set_reason", Literal::HttpResponse(req), Literal::Str(q)) => {
-                Some(Literal::HttpResponse(req.set_reason(q)))
+            ("HttpResponse::set_reason", Literal::HttpResponse(res), Literal::Str(q)) => {
+                Some(res.set_reason(q).into())
             }
             (
                 "HttpResponse::set_connection",
                 Literal::HttpResponse(res),
                 Literal::Connection(c),
-            ) => Some(Literal::HttpResponse(res.set_connection(c))),
-            ("ID::add_host", Literal::ID(id), Literal::Str(q)) => Some(Literal::ID(id.add_host(q))),
-            ("ID::add_ip", Literal::ID(id), Literal::IpAddr(q)) => Some(Literal::ID(id.add_ip(*q))),
+            ) => Some(res.set_connection(c).into()),
+            ("HttpResponse::set_from", Literal::HttpResponse(res), Literal::ID(f)) => {
+                Some(res.set_from(f).into())
+            }
+            ("HttpResponse::set_to", Literal::HttpResponse(res), Literal::ID(f)) => {
+                Some(res.set_to(f).into())
+            }
+            ("ID::has_label", Literal::ID(id), Literal::Label(l)) => Some(id.has_label(l).into()),
+            ("ID::add_label", Literal::ID(id), Literal::Label(l)) => {
+                Some(Literal::ID(id.add_label(l)))
+            }
+            ("ID::has_host", Literal::ID(id), Literal::Str(h)) => Some(id.has_host(h).into()),
+            ("ID::add_host", Literal::ID(id), Literal::Str(h)) => Some(Literal::ID(id.add_host(h))),
+            ("ID::has_ip", Literal::ID(id), Literal::IpAddr(i)) => Some(id.has_ip(i).into()),
+            ("ID::add_ip", Literal::ID(id), Literal::IpAddr(i)) => Some(Literal::ID(id.add_ip(*i))),
             ("ID::set_port", Literal::ID(id), Literal::Int(q)) => {
                 Some(Literal::ID(id.set_port(*q as u16)))
             }
@@ -244,9 +270,13 @@ impl Literal {
             ("Connection::set_number", Literal::Connection(c), Literal::Int(n)) => {
                 Some(c.set_number(*n).into())
             }
-            ("Payload::new", Literal::Data(d), Literal::Connection(c)) => {
-                Some(Payload::literal(d, c))
+            ("Payload::set_connection", Literal::Payload(p), Literal::Connection(c)) => {
+                Some(p.set_connection(c).into())
             }
+            ("Payload::set_from", Literal::Payload(p), Literal::ID(i)) => {
+                Some(p.set_from(i).into())
+            }
+            ("Payload::set_to", Literal::Payload(p), Literal::ID(i)) => Some(p.set_to(i).into()),
             ("Label::captures", Literal::Label(i), Literal::Label(j)) => {
                 Some(i.match_with(j).into())
             }
@@ -260,13 +290,13 @@ impl Literal {
                 Literal::HttpRequest(req),
                 Literal::Str(h),
                 Literal::Data(v),
-            ) => Some(Literal::HttpRequest(req.set_header(h, v))),
+            ) => Some(req.set_header(h, v).into()),
             (
                 "HttpResponse::set_header",
                 Literal::HttpResponse(res),
                 Literal::Str(h),
                 Literal::Data(v),
-            ) => Some(Literal::HttpResponse(res.set_header(h, v))),
+            ) => Some(res.set_header(h, v).into()),
             ("Connection::new", Literal::ID(from), Literal::ID(to), Literal::Int(number)) => {
                 Some(Connection::literal(from, to, *number))
             }

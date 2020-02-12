@@ -1,7 +1,7 @@
 /// Communication interface between data plane master and proxy instances
 use super::{master, DeserializeDecoder, SerializeEncoder};
 use actix::prelude::*;
-use armour_lang::lang;
+use armour_lang::{labels, lang};
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -86,11 +86,22 @@ impl fmt::Display for Policy {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub enum LabelOp {
+    AddIp(std::net::Ipv4Addr, labels::Label),
+    AddUrl(url::Url, labels::Label),
+    RemoveIp(std::net::Ipv4Addr, Option<labels::Label>),
+    RemoveUrl(url::Url, Option<labels::Label>),
+    Clear,
+    List,
+}
+
 /// Message to proxy instance
 #[derive(Serialize, Deserialize, Message, Clone)]
 #[rtype("()")]
 pub enum PolicyRequest {
     Debug(Protocol, bool),
+    Label(LabelOp),
     SetPolicy(Policy),
     Shutdown,
     StartHttp(u16),

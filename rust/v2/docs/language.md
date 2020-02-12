@@ -298,6 +298,8 @@ function               | type
 | PATCH                | `() -> HttpRequest`                       |
 | TRACE                | `() -> HttpRequest`                       |
 | connection           | `HttpRequest -> Connection`               |
+| from                 | `HttpRequest -> ID`                       |
+| to                   | `HttpRequest -> ID`                       |
 | method               | `HttpRequest -> str`                      |
 | version              | `HttpRequest -> str`                      |
 | path                 | `HttpRequest -> str`                      |
@@ -312,6 +314,8 @@ function               | type
 | set_path             | `(HttpRequest, str) -> HttpRequest`       |
 | set_query            | `(HttpRequest, str) -> HttpRequest`       |
 | set_header           | `(HttpRequest, str, data) -> HttpRequest` |
+| set_from             | `(HttpRequest, ID) -> HttpRequest`        |
+| set_to               | `(HttpRequest, ID) -> HttpRequest`        |
 
 ### HttpResponse::
 
@@ -319,6 +323,8 @@ function               | type
 ---------------------- | ----------------------------------------------
 | new                  | `i64 -> HttpResponse`                        |
 | connection           | `HttpResponse -> Connection`                 |
+| from                 | `HttpResponse -> ID`                         |
+| to                   | `HttpResponse -> ID`                         |
 | status               | `HttpResponse -> i64`                        |
 | version              | `HttpResponse -> str`                        |
 | reason               | `HttpResponse -> Option<str>`                |
@@ -328,15 +334,22 @@ function               | type
 | header_pairs         | `HttpResponse -> List<(str, data)>`          |
 | set_connection       | `(HttpResponse, Connection) -> HttpResponse` |
 | set_reason           | `(HttpResponse, str) -> HttpResponse `       |
-| set_header           | `(HttpResponse, str, data) -> HttpResponse ` |
+| set_header           | `(HttpResponse, str, data) -> HttpResponse`  |
+| set_from             | `(HttpResponse, ID) -> HttpResponse`         |
+| set_to               | `(HttpResponse, ID) -> HttpResponse`         |
 
 ### Payload::
 
 function               | type
 ---------------------- | --------------------------------------
-| new                  | `(data, Connection) -> Payload`      |
+| new                  | `(data) -> Payload`                  |
 | data                 | `Payload -> data`                    |
 | connection           | `Payload -> Connection`              |
+| from                 | `Payload -> ID`                      |
+| to                   | `Payload -> ID`                      |
+| set_connection       | `(Payload, Connection) -> Payload`   |
+| set_from             | `(Payload, ID) -> Payload`           |
+| set_to               | `(Payload, ID) -> Payload`           |
 
 ### Connection::
 
@@ -357,11 +370,16 @@ function               | type
 function               | type
 ---------------------- | ----------------------------------------
 | default              | `() -> ID`                             |
+| labels               | `ID -> List<Label>`                    |
 | hosts                | `ID -> List<str>`                      |
 | ips                  | `ID -> List<IpAddr>`                   |
 | port                 | `ID -> Option<i64>`                    |
+| add_label            | `(ID, Label) -> ID`                    |
 | add_host             | `(ID, str) -> ID`                      |
 | add_ip               | `(ID, IpAddr) -> ID`                   |
+| has_label            | `(ID, Label) -> bool`                  |
+| has_host             | `(ID, str) -> bool`                    |
+| has_ip               | `(ID, IpAddr) -> bool`                 |
 | set_port             | `(ID, i64) -> ID`                      |
 
 ### IpAddr::

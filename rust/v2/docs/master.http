@@ -10,17 +10,17 @@ GET http://localhost:8090/master/proxies HTTP/1.1
 GET http://localhost:8090/policy/query HTTP/1.1
 content-type: application/json
 
-"master::*"
+"master::myproxy"
 
 ### fail (protocol not set in policy)
 POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
-    "label": "master::myproxy",
-    "policy": {
-      "Bincode": "H4sIAAAAAAAE/43FMQ0AAACDsCXz75kHAfTpdC8BFkdTsjQAAAA="
-    }
+  "label": "master::myproxy",
+  "policy": {
+    "Bincode": "H4sIAAAAAAAE/43FMQ0AAACDsCXz75kHAfTpdC8BFkdTsjQAAAA="
+  }
 }
 
 ### fail (wrong master)
@@ -28,7 +28,7 @@ POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
-  "label":"other::myproxy",
+  "label": "other::myproxy",
   "policy": {
     "AllowAll": "HTTP"
   }
@@ -39,7 +39,7 @@ POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
-  "label":"master::other",
+  "label": "master::other",
   "policy": {
     "AllowAll": "HTTP"
   }
@@ -50,7 +50,7 @@ POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
-  "label":"master::myproxy::extra",
+  "label": "master::myproxy::extra",
   "policy": {
     "AllowAll": "HTTP"
   }
@@ -61,7 +61,7 @@ POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
-  "label":"master::myproxy",
+  "label": "master::myproxy",
   "policy": {
     "Bincode": "AA="
   }
@@ -72,7 +72,7 @@ POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
-  "label":"master::*",
+  "label": "master::*",
   "policy": {
     "DenyAll": "TCP"
   }
@@ -83,7 +83,7 @@ POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
-  "label":"master::myproxy",
+  "label": "master::myproxy",
   "policy": {
     "AllowAll": "HTTP"
   }
@@ -94,9 +94,9 @@ POST http://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
-  "label":"master::myproxy",
+  "label": "master::myproxy",
   "policy": {
     "Bincode": 
-    "H4sIAAAAAAAE/7WV3W7UMBCFHX4KSIDEj0DiHbhHvu0Nl4gXiELW7a7IxkvigHhDHov57EzWTtP2qpVnHdtnzpyZTNzKpL+LNJnOX1+74fl5VY++/fl4XjM94UfsvRij6Tr/p267g+tDfWr+dr7ZvZCDZ2KMeYsAj2SNyWReyc8HMUYKam1JkiPfAhO79H3v2nDwvbX9dPzhBk0AvneCYHxLKoRwgSuMeaUMj2RwIJ3VrgmNtZ3r8WCDQ4znJQAoBTDfSl1pNpWm0sS6DW4M9eB+TTITWistW3DBSUAtusRzL2UDIZ9kZnwN4fQ9MVg79Qfhqveu2blhiSmwjFhWcXAMWU5uEJFvEOl1hBszhsHaq8Ef6ylcfVFtzLnHDDam0gAgjPx9XpPnKSqoJeJHQTOK3NrNt5klphQxCV20BEEJfKqTJHQveCJq7+QdBqoOXpmYMYhafqLlOeHA+ky91fbUHFdte3oAHHtI0Q65XPJdNzsqMDxaDWbY0QRpFK0MnJpeUdCjC3u/ww0iZnWR9lOm+KW+ASBWuJ+asMdJ9mPsLWfOlYnqsFa8Cg+enWi6Vane4isZT74fHQU+hxqfRkcTZeqdlGQmuLVjaMI05pEz99nbGELTKv/mHeVKCkY3/HZDPV9mSAALdN66kGcoMHmMctb3W0mSI+9/5flLXK6f7S9ipQw1yeBAOitpkIe53zR6Wb+2+P9QVUgQUzWaf3PjUlyg2kV3dMaC1Z4oNZTlX8CqYf222lKyvi5eNEYxt77kikNJzTADUKMwGI7rWCtpW7E0/71c9/pc5lcKpser2+saj++oZTwv+UuREfAfixh1rD8IAAA="
+    "H4sIAAAAAAAE/7WV247UMAyGUw7LQYDEQSDxDtyj3O4Nl4gXqEonuzOi0wxtCuINeSz8JXUnKd3dqx3FTePYv387bqYy6XeRJtP562s3PD2v6tG3Px7Oa6ZHPETeiTCarvO/67Y7uD7Up+ZP55vdM9l4IsKYVQR4IGtEJvNSHu9FGCmotSVIbvkGM5FL3/euDQffW9tPx+9u0ATAeysWjK+JhQAu5mrGvGKGRxIwoM5q14TG2s71eKBgE+F9CYCVGjDfCF1pNpWm0sS6DW4M9eB+TjITWistKrDAJKAWXeK5F6KAyEeZGV9COH1LCNZO/UGw6r1rdm5YYopZBiyrONgGKAc3kMgVGLyK5saMYbD2avDHegpXn5Ubc+4xGxtTaQAsjPw+rcHzFNWoJeIHsWYUubWbp5klphAxCV20BIEJeMqTJFQXPBG1d/IOw6oOXpGYEYBaHlHynHBgfYbeansOEFdte3oAO3RQ0Q65XPJdNzssEDxaDWbQaII0ilYGTE2vKOjRhb3f4QYQs7pI+ylS/FJfYyBSuJ+asMdJ9DH2ljP7ikR1WKu9Eg8eTRRVVcq3+ErGk+9HR4HPocbH0dFEmnonJZrJ3NoxNGEa88iZ++xtDKFplb+zRrESg9ENv9xQz5cZFLDFdFZdyDsQiLxGOuv7rQTJLe8+8vwQl+tn+4tYMYNNEjCgzkoa5H7uN41e1q8t/h+qCgoiz0UYmn/z36W4mGoX3dIZi632RMmhLP9irBzWp9WWlPW4OGiES3HrS67YJCdmKq5CYRAc17FW1LZiaf57ue71vcyvJEyPVzfXNW7fUsu4X+KXJKPBP/M1Pms/CAAA"
   }
 }

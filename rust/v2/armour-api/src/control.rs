@@ -7,7 +7,7 @@ type Label = String;
 type Credentials = String;
 type ArmourProgram = String;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct OnboardMasterRequest {
     pub host: Url,
     pub label: Label,

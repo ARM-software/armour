@@ -3,52 +3,16 @@ use super::{http_policy::HttpPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_prox
 use actix::prelude::*;
 use actix_web::http::uri;
 use armour_api::master::{PolicyResponse, Status};
-use armour_api::proxy::{self, PolicyCodec, PolicyRequest, Protocol};
-use armour_lang::{expressions, interpret::Env, lang, literals};
+use armour_api::proxy::{self, LabelOp, PolicyCodec, PolicyRequest, Protocol};
+use armour_lang::{expressions, interpret::Env, labels, lang, literals};
 use futures::future::{BoxFuture, FutureExt};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
 use std::sync::Arc;
 use tokio::io::WriteHalf;
 use tokio_util::codec::FramedRead;
 
-#[derive(Clone, Debug)]
-pub enum ID {
-    Uri(actix_web::http::uri::Uri),
-    SocketAddr(std::net::SocketAddr),
-    Anonymous,
-}
-
-impl From<actix_web::http::uri::Uri> for ID {
-    fn from(uri: actix_web::http::uri::Uri) -> Self {
-        ID::Uri(uri)
-    }
-}
-
-impl From<Option<std::net::SocketAddr>> for ID {
-    fn from(sock: Option<std::net::SocketAddr>) -> Self {
-        if let Some(s) = sock {
-            ID::SocketAddr(s)
-        } else {
-            ID::Anonymous
-        }
-    }
-}
-
-fn scheme_port(u: &uri::Uri) -> Option<u16> {
-    if let Some(scheme) = u.scheme() {
-        if *scheme == actix_web::http::uri::Scheme::HTTP {
-            Some(80)
-        } else if *scheme == actix_web::http::uri::Scheme::HTTPS {
-            Some(443)
-        } else {
-            None
-        }
-    } else {
-        None
-    }
-}
-
+// Trait for managing proxies and their associated policies (implemented for HTTP and TCP protocols)
 pub trait Policy<P> {
     fn start(&mut self, proxy: P, port: u16);
     fn stop(&mut self);
@@ -67,6 +31,7 @@ pub trait Policy<P> {
     ) -> BoxFuture<'static, Result<T, expressions::Error>> {
         let now = if self.debug() {
             log::info!(r#"evaluting "{}""#, function);
+            // log::info!(r#"args "{:?}""#, args);
             Some(std::time::Instant::now())
         } else {
             None
@@ -97,20 +62,21 @@ pub trait Policy<P> {
 /// Armour policy actor
 pub struct PolicyActor {
     name: String,
-    // connection to master
-    uds_framed: actix::io::FramedWrite<WriteHalf<tokio::net::UnixStream>, PolicyCodec>,
     pub connection_number: usize,
     // proxies
     pub http: HttpPolicy,
     pub tcp: TcpPolicy,
-    id_uri_cache: HashMap<actix_web::http::uri::Uri, literals::ID>,
-    id_ip_cache: HashMap<std::net::IpAddr, literals::ID>,
+    // ID information
+    identity: Identity,
+    // connection to master
+    uds_framed: actix::io::FramedWrite<WriteHalf<tokio::net::UnixStream>, PolicyCodec>,
 }
 
 // implement Actor trait for PolicyActor
 impl Actor for PolicyActor {
     type Context = Context<Self>;
     fn started(&mut self, _ctx: &mut Self::Context) {
+        // send a connection message to the data plane master
         self.uds_framed.write(PolicyResponse::Connect(
             std::process::id(),
             self.name.to_string(),
@@ -133,36 +99,45 @@ impl PolicyActor {
             PolicyActor {
                 name: name.to_string(),
                 connection_number: 0,
-                uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
                 http: HttpPolicy::default(),
                 tcp: TcpPolicy::default(),
-                id_uri_cache: HashMap::new(),
-                id_ip_cache: HashMap::new(),
+                identity: Identity::default(),
+                uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
             }
         })
     }
+}
+
+// identity/connection management
+impl PolicyActor {
     fn id(&mut self, id: ID) -> literals::ID {
         match id {
             ID::Anonymous => literals::ID::default(),
-            ID::Uri(u) => self.id_uri_cache.get(&u).cloned().unwrap_or_else(|| {
-                let mut port = u.port_u16();
-                if port.is_none() {
-                    port = scheme_port(&u)
+            ID::Uri(u) => {
+                let labels = self.identity.uri_labels.get(&u);
+                log::info!("creating ID for {} with labels {:?}", u, labels);
+                if let Some(id) = self.identity.uri_cache.get(&u) {
+                    id.clone()
+                } else {
+                    let mut port = u.port_u16();
+                    if port.is_none() {
+                        port = scheme_port(&u)
+                    }
+                    let id = literals::ID::from((u.host(), port, labels));
+                    self.identity.uri_cache.insert(u, id.clone());
+                    id
                 }
-                let id = literals::ID::from((u.host(), port));
-                self.id_uri_cache.insert(u, id.clone());
-                id
-            }),
+            }
             ID::SocketAddr(s) => {
                 let ip = s.ip();
-                self.id_ip_cache
-                    .get(&ip)
-                    .map(|id| id.set_port(s.port()))
-                    .unwrap_or_else(|| {
-                        let id = literals::ID::from(s);
-                        self.id_ip_cache.insert(ip, id.clone());
-                        id
-                    })
+                let labels = self.identity.ip_labels.get(&ip);
+                if let Some(id) = self.identity.ip_cache.get(&ip) {
+                    id.set_port(s.port())
+                } else {
+                    let id = literals::ID::from((s, labels));
+                    self.identity.ip_cache.insert(ip, id.clone());
+                    id
+                }
             }
         }
     }
@@ -174,55 +149,118 @@ impl PolicyActor {
         // log::info!("now: {:?}", now.elapsed());
         literals::Connection::from((&self.id(from), &self.id(to), number))
     }
-    fn install_http(&mut self, prog: lang::Program) {
-        let hash = prog.blake3_string();
-        self.http.set_policy(prog);
-        self.uds_framed.write(PolicyResponse::UpdatedPolicy(
-            armour_api::proxy::Protocol::HTTP,
-            hash,
-        ));
-        log::info!("installed HTTP policy")
+}
+
+#[derive(Default)]
+struct Identity {
+    /// map from IDs to Armour label set expressions
+    uri_labels: HashMap<uri::Uri, labels::Labels>,
+    ip_labels: HashMap<std::net::IpAddr, labels::Labels>,
+    uri_cache: HashMap<uri::Uri, literals::ID>,
+    ip_cache: HashMap<std::net::IpAddr, literals::ID>,
+}
+
+impl Identity {
+    fn clear_labels(&mut self) {
+        self.uri_labels.clear();
+        self.ip_labels.clear();
+        self.uri_cache.clear();
+        self.ip_cache.clear()
     }
-    fn install_tcp(&mut self, prog: lang::Program) {
-        let hash = prog.blake3_string();
-        self.tcp.set_policy(prog);
-        self.uds_framed.write(PolicyResponse::UpdatedPolicy(
-            armour_api::proxy::Protocol::TCP,
-            hash,
-        ));
-        log::info!("installed TCP policy")
-    }
-    fn install_http_allow_all(&mut self) {
-        if let Ok(prog) = lang::Program::allow_all(&lang::HTTP_POLICY) {
-            self.install_http(prog)
+    fn add_uri(&mut self, uri: uri::Uri, label: labels::Label) {
+        if let Some(labels) = self.uri_labels.get_mut(&uri) {
+            labels.insert(label);
         } else {
-            self.uds_framed.write(PolicyResponse::RequestFailed);
-            log::info!("failed to install HTTP allow all policy")
+            let mut labels = BTreeSet::new();
+            labels.insert(label);
+            self.uri_labels.insert(uri, labels);
+        }
+        self.uri_cache.clear()
+    }
+    fn add_ip(&mut self, ip: std::net::IpAddr, label: labels::Label) {
+        if let Some(labels) = self.ip_labels.get_mut(&ip) {
+            labels.insert(label);
+        } else {
+            let mut labels = BTreeSet::new();
+            labels.insert(label);
+            self.ip_labels.insert(ip, labels);
+        }
+        self.ip_cache.clear()
+    }
+    fn remove_uri(&mut self, uri: &uri::Uri, label: Option<labels::Label>) {
+        if let Some(label) = label {
+            if let Some(labels) = self.uri_labels.get_mut(uri) {
+                if labels.remove(&label) && labels.is_empty() {
+                    self.uri_labels.remove(uri);
+                }
+            }
+        } else {
+            self.uri_labels.remove(uri);
+        }
+        self.uri_cache.clear()
+    }
+    fn remove_ip(&mut self, ip: &std::net::IpAddr, label: Option<labels::Label>) {
+        if let Some(label) = label {
+            if let Some(labels) = self.ip_labels.get_mut(ip) {
+                if labels.remove(&label) && labels.is_empty() {
+                    self.ip_labels.remove(ip);
+                }
+            }
+        } else {
+            self.ip_labels.remove(ip);
+        }
+        self.ip_cache.clear()
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ID {
+    Uri(actix_web::http::uri::Uri),
+    SocketAddr(std::net::SocketAddr),
+    Anonymous,
+}
+
+impl ID {
+    fn authority(uri: uri::Uri) -> uri::Uri {
+        if let Some(auth) = uri.authority() {
+            if let Ok(uri) = uri::Builder::new().authority(auth.clone()).build() {
+                uri
+            } else {
+                uri
+            }
+        } else {
+            uri
         }
     }
-    fn install_tcp_allow_all(&mut self) {
-        if let Ok(prog) = lang::Program::allow_all(&lang::TCP_POLICY) {
-            self.install_tcp(prog)
+}
+
+impl From<uri::Uri> for ID {
+    fn from(uri: uri::Uri) -> Self {
+        ID::Uri(ID::authority(uri))
+    }
+}
+
+impl From<Option<std::net::SocketAddr>> for ID {
+    fn from(sock: Option<std::net::SocketAddr>) -> Self {
+        if let Some(s) = sock {
+            ID::SocketAddr(s)
         } else {
-            self.uds_framed.write(PolicyResponse::RequestFailed);
-            log::info!("failed to install TCP allow all policy")
+            ID::Anonymous
         }
     }
-    fn install_http_deny_all(&mut self) {
-        if let Ok(prog) = lang::Program::deny_all(&lang::HTTP_POLICY) {
-            self.install_http(prog)
+}
+
+fn scheme_port(u: &uri::Uri) -> Option<u16> {
+    if let Some(scheme) = u.scheme() {
+        if *scheme == actix_web::http::uri::Scheme::HTTP {
+            Some(80)
+        } else if *scheme == actix_web::http::uri::Scheme::HTTPS {
+            Some(443)
         } else {
-            self.uds_framed.write(PolicyResponse::RequestFailed);
-            log::info!("failed to install HTTP deny all policy")
+            None
         }
-    }
-    fn install_tcp_deny_all(&mut self) {
-        if let Ok(prog) = lang::Program::deny_all(&lang::TCP_POLICY) {
-            self.install_tcp(prog)
-        } else {
-            self.uds_framed.write(PolicyResponse::RequestFailed);
-            log::info!("failed to install TCP deny all policy")
-        }
+    } else {
+        None
     }
 }
 
@@ -247,6 +285,7 @@ impl Handler<PolicyRequest> for PolicyActor {
 
     fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) -> Self::Result {
         match msg {
+            PolicyRequest::Label(op) => self.handle_label_op(op),
             PolicyRequest::Timeout(secs) => {
                 self.http
                     .set_timeout(std::time::Duration::from_secs(secs.into()));
@@ -350,6 +389,125 @@ impl Handler<PolicyRequest> for PolicyActor {
                 self.uds_framed.close();
                 System::current().stop()
             }
+        }
+    }
+}
+
+// label management
+impl PolicyActor {
+    // convert ID labels into exportable structure
+    fn labels(&self) -> BTreeMap<String, labels::Labels> {
+        let mut labels = BTreeMap::new();
+        for (k, v) in self.identity.uri_labels.iter() {
+            labels.insert(k.to_string(), v.clone());
+        }
+        for (k, v) in self.identity.ip_labels.iter() {
+            labels.insert(k.to_string(), v.clone());
+        }
+        labels
+    }
+    // convert url::Url into uri::Uri by taking just the domain and port (when available)
+    fn url_to_uri(url: url::Url) -> Option<uri::Uri> {
+        if let Some(domain) = url.domain() {
+            let s = if let Some(port) = url.port_or_known_default() {
+                format!("{}:{}", domain, port)
+            } else {
+                domain.to_string()
+            };
+            s.parse::<http::uri::Uri>().ok()
+        } else {
+            None
+        }
+    }
+    fn handle_label_op(&mut self, op: LabelOp) {
+        match op {
+            LabelOp::AddUrl(url, label) => {
+                if let Some(uri) = PolicyActor::url_to_uri(url) {
+                    log::info!("adding label for: {}", uri);
+                    self.identity.add_uri(uri, label)
+                } else {
+                    log::warn!("failed to convert URL to Uri");
+                    self.uds_framed.write(PolicyResponse::RequestFailed)
+                }
+            }
+            LabelOp::AddIp(ip, label) => {
+                let ip = ip.into();
+                log::info!("adding label for: {}", ip);
+                self.identity.add_ip(ip, label)
+            }
+            LabelOp::RemoveUrl(url, label) => {
+                if let Some(uri) = PolicyActor::url_to_uri(url) {
+                    log::info!("removing label for: {}", uri);
+                    self.identity.remove_uri(&uri, label)
+                } else {
+                    log::warn!("failed to convert URL to Uri");
+                    self.uds_framed.write(PolicyResponse::RequestFailed)
+                }
+            }
+            LabelOp::RemoveIp(ip, label) => {
+                let ip = ip.into();
+                log::info!("removing label for: {}", ip);
+                self.identity.remove_ip(&ip, label)
+            }
+            LabelOp::Clear => {
+                log::info!("clearing all labels");
+                self.identity.clear_labels()
+            }
+            LabelOp::List => self.uds_framed.write(PolicyResponse::Labels(self.labels())),
+        }
+    }
+}
+
+// install policies
+impl PolicyActor {
+    fn install_http(&mut self, prog: lang::Program) {
+        let hash = prog.blake3_string();
+        self.http.set_policy(prog);
+        self.uds_framed.write(PolicyResponse::UpdatedPolicy(
+            armour_api::proxy::Protocol::HTTP,
+            hash,
+        ));
+        log::info!("installed HTTP policy")
+    }
+    fn install_tcp(&mut self, prog: lang::Program) {
+        let hash = prog.blake3_string();
+        self.tcp.set_policy(prog);
+        self.uds_framed.write(PolicyResponse::UpdatedPolicy(
+            armour_api::proxy::Protocol::TCP,
+            hash,
+        ));
+        log::info!("installed TCP policy")
+    }
+    fn install_http_allow_all(&mut self) {
+        if let Ok(prog) = lang::Program::allow_all(&lang::HTTP_POLICY) {
+            self.install_http(prog)
+        } else {
+            self.uds_framed.write(PolicyResponse::RequestFailed);
+            log::info!("failed to install HTTP allow all policy")
+        }
+    }
+    fn install_tcp_allow_all(&mut self) {
+        if let Ok(prog) = lang::Program::allow_all(&lang::TCP_POLICY) {
+            self.install_tcp(prog)
+        } else {
+            self.uds_framed.write(PolicyResponse::RequestFailed);
+            log::info!("failed to install TCP allow all policy")
+        }
+    }
+    fn install_http_deny_all(&mut self) {
+        if let Ok(prog) = lang::Program::deny_all(&lang::HTTP_POLICY) {
+            self.install_http(prog)
+        } else {
+            self.uds_framed.write(PolicyResponse::RequestFailed);
+            log::info!("failed to install HTTP deny all policy")
+        }
+    }
+    fn install_tcp_deny_all(&mut self) {
+        if let Ok(prog) = lang::Program::deny_all(&lang::TCP_POLICY) {
+            self.install_tcp(prog)
+        } else {
+            self.uds_framed.write(PolicyResponse::RequestFailed);
+            log::info!("failed to install TCP deny all policy")
         }
     }
 }

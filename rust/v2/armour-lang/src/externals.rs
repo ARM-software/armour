@@ -36,6 +36,9 @@ impl Call {
             args,
         }
     }
+    fn path(&self) -> String {
+        format!("{}::{}", self.external, self.method)
+    }
 }
 
 impl Handler<Call> for ExternalActor {
@@ -147,8 +150,8 @@ impl Externals {
             Literal::Connection(conn) => Externals::build_value(v, &Literal::from(conn)),
             Literal::Data(d) => v.set_data(d),
             Literal::Float(f) => v.set_float64(*f),
-            Literal::HttpRequest(req) => Externals::build_value(v, &Literal::from(req)),
-            Literal::HttpResponse(res) => Externals::build_value(v, &Literal::from(res)),
+            Literal::HttpRequest(req) => Externals::build_value(v, &Literal::from(&**req)),
+            Literal::HttpResponse(res) => Externals::build_value(v, &Literal::from(&**res)),
             Literal::ID(id) => Externals::build_value(v, &Literal::from(id)),
             Literal::Int(i) => v.set_int64(*i),
             Literal::IpAddr(ip) => Externals::build_value(v, &Literal::from(ip)),
@@ -219,7 +222,7 @@ impl Externals {
                 Err(err) => Err(err.into()),
             }
         } else {
-            Err(format!("failed to get external: {}", call.external).into())
+            Err(format!("failed to get external: {}", call.path()).into())
         }
     }
 }

@@ -1,0 +1,5 @@
+// REST request allow/deny
+fn allow_rest_request(req: HttpRequest) -> bool {
+  req.to().has_label('allowed')
+}
+
