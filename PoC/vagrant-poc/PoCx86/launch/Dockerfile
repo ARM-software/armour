@@ -15,3 +15,29 @@ COPY supervisord.conf /etc/supervisord.conf
 COPY master.py /master.py
 
 CMD [ "supervisord", "-n", "-c", "/etc/supervisord.conf" ]
+
+
+
+############################
+# STEP 1 build application
+############################
+
+FROM golang:alpine as builder
+RUN apk update && apk add --no-cache git xz curl
+COPY src /src
+WORKDIR /src
+RUN go mod download
+RUN curl -LO https://github.com/upx/upx/releases/download/v3.95/upx-3.95-amd64_linux.tar.xz
+RUN tar -xvf upx-3.95-amd64_linux.tar.xz
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -v -installsuffix cgo -ldflags="-s" -o /go/bin/launch
+RUN ./upx-3.95-amd64_linux/upx /go/bin/launch
+
+############################
+# STEP 2 build a small image
+############################
+
+FROM scratch
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /go/bin/launch /go/bin/launch
+ENTRYPOINT ["/go/bin/launch"]
+

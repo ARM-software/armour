@@ -6,19 +6,17 @@ use std::collections::BTreeMap as Map;
 use std::{fs, io, path};
 
 #[macro_use]
-mod serde_utils;
+pub mod serde_utils;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Compose {
-    version: String,
-
+    pub version: String,
     #[serde(default)]
     #[serde(skip_serializing_if = "Map::is_empty")]
-    services: Map<String, service::Service>,
+    pub services: Map<String, service::Service>,
 
     #[serde(default)]
-    #[serde(skip_serializing_if = "Map::is_empty")]
-    networks: Map<String, network::Network>,
+    pub networks: Map<String, network::Network>,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "Map::is_empty")]
@@ -29,7 +27,7 @@ pub struct Compose {
     configs: Map<String, Option<config::ConfigConfig>>,
 
     #[serde(default)]
-    #[serde(skip_serializing_if = "Map::is_empty")]
+    #[serde(skip_serializing)]
     secrets: Map<String, Option<secret::SecretConfig>>,
 
     // capture everything else (future proofing)
@@ -43,6 +41,11 @@ impl Compose {
         let file = fs::File::open(p).map_err(serde::de::Error::custom)?;
         serde_yaml::from_reader(io::BufReader::new(file))
     }
+
+    pub fn validate() -> bool {
+        true    
+    }
+    
 }
 
 impl std::str::FromStr for Compose {
@@ -58,19 +61,19 @@ mod secret {
     pub type SecretConfig = super::config::ConfigConfig;
     pub type Secret = super::config::Config;
 }
-mod network;
-mod service;
+pub mod network;
+pub mod service;
 mod volume;
 
 mod external {
     use serde::{Deserialize, Serialize};
 
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct ExternalRecord {
         name: String,
     }
 
-    #[derive(Deserialize, Serialize, Debug)]
+    #[derive(Deserialize, Serialize, Debug, Clone)]
     #[serde(untagged)]
     pub enum External {
         Raw(bool),

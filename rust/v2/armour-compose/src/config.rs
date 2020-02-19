@@ -5,7 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap as Map;
 use std::fmt;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ConfigConfig {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -28,7 +28,7 @@ pub struct ConfigConfig {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ConfigRecord {
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
@@ -50,7 +50,7 @@ pub struct ConfigRecord {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Config {
     Raw(String),

@@ -5,7 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap as Map;
 use std::fmt;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VolumeConfig {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -32,22 +32,22 @@ pub struct VolumeConfig {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
 pub struct Bind {
     popogation: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
 pub struct VolumeOptions {
     nocopy: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
 pub struct Tmpfs {
     size: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VolumeRecord {
     #[serde(default)]
     #[serde(rename = "type")]
@@ -79,7 +79,7 @@ pub struct VolumeRecord {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Volume {
     Raw(String),

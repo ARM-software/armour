@@ -444,7 +444,7 @@ impl Serialize for CapSet {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Capabilities {
     #[serde(default)]
     #[serde(skip_serializing_if = "CapSet::is_empty")]

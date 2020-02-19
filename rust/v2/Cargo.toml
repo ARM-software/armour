@@ -9,6 +9,7 @@ members = [
     "armour-proxy",
     "armour-master",
     "armour-control",
+    "server",
 ]
 
 [profile.release]

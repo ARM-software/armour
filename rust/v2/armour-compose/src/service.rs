@@ -5,7 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap as Map;
 use std::fmt;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone )]
 pub struct Service {
     // TODO:
     //
@@ -13,143 +13,150 @@ pub struct Service {
     // healthcheck
     // logging
     // ulimits
-    //
     #[serde(default)]
     #[serde(deserialize_with = "string_or_struct::deserialize")]
     #[serde(skip_serializing_if = "is_default")]
-    build: Build,
+    pub build: Build,
+
+    //#[serde(skip_serializing_if = "skip")]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "is_default")]
+    //#[serde(skip_deserializing)]
+    pub armour: Armour,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    cgroup_parent: Option<String>,
+    pub cgroup_parent: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    container_name: Option<String>,
+    pub container_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    domainname: Option<String>,
+    pub domainname: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    hostname: Option<String>,
+    pub hostname: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    image: Option<String>,
+    pub image: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    ipc: Option<String>,
+    pub ipc: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    isolation: Option<String>,
+    pub isolation: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    mac_address: Option<String>,
+    pub mac_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    network_mode: Option<String>,
+    pub network_mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pid: Option<String>,
+    pub pid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    restart: Option<String>,
+    pub restart: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    shm_size: Option<String>,
+    pub shm_size: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    stop_grace_period: Option<String>,
+    pub stop_grace_period: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    stop_signal: Option<String>,
+    pub stop_signal: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    user: Option<String>,
+    pub user: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    userns_mode: Option<String>,
+    pub userns_mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    working_dir: Option<String>,
-
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    depends_on: Vec<String>,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    devices: Vec<String>,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    expose: Vec<String>,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    external_links: Vec<String>,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    security_opt: Vec<String>,
+    pub working_dir: Option<String>,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    configs: Vec<config::Config>,
+    pub depends_on: Vec<String>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    ports: Vec<Port>,
+    pub devices: Vec<String>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    secrets: Vec<secret::Secret>,
+    pub expose: Vec<String>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    volumes: Vec<volume::Volume>,
+    pub external_links: Vec<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub security_opt: Vec<String>,
+
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub configs: Vec<config::Config>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ports: Vec<Port>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub secrets: Vec<secret::Secret>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub volumes: Vec<volume::Volume>,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    init: bool,
+    pub init: bool,
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    privileged: bool,
+    pub privileged: bool,
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    read_only: bool,
+    pub read_only: bool,
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    stdin_open: bool,
+    pub stdin_open: bool,
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    tty: bool,
+    pub tty: bool,
 
     #[serde(flatten)]
-    capabilities: capabilities::Capabilities,
+    pub capabilities: capabilities::Capabilities,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "string_or_list::StringList::is_empty")]
-    command: string_or_list::StringList,
+    pub command: string_or_list::StringList,
     #[serde(default)]
     #[serde(skip_serializing_if = "string_or_list::StringList::is_empty")]
-    dns_search: string_or_list::StringList,
+    pub dns_search: string_or_list::StringList,
     #[serde(default)]
     #[serde(skip_serializing_if = "string_or_list::StringList::is_empty")]
-    entrypoint: string_or_list::StringList,
+    pub entrypoint: string_or_list::StringList,
     #[serde(default)]
     #[serde(skip_serializing_if = "string_or_list::StringList::is_empty")]
-    env_file: string_or_list::StringList,
+    pub env_file: string_or_list::StringList,
     #[serde(default)]
     #[serde(skip_serializing_if = "string_or_list::StringList::is_empty")]
-    tmpfs: string_or_list::StringList,
+    pub tmpfs: string_or_list::StringList,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(deserialize_with = "string_or_list::deserialize")]
-    dns: Vec<std::net::IpAddr>,
+    pub dns: Vec<std::net::IpAddr>,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    environment: array_dict::ArrayDict,
+    pub environment: array_dict::ArrayDict,
+    #[serde(default)]
+    #[serde(skip_serializing)]
+    //#[serde(skip_serializing_if = "is_default")]
+    pub extra_hosts: array_dict::ArrayDict,
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    extra_hosts: array_dict::ArrayDict,
+    pub labels: array_dict::ArrayDict,
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    labels: array_dict::ArrayDict,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
-    sysctls: array_dict::ArrayDict,
+    pub sysctls: array_dict::ArrayDict,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    deploy: Deployment,
+    pub deploy: Deployment,
     #[serde(default)]
+    //#[serde(skip_serializing)]
     #[serde(skip_serializing_if = "is_default")]
-    networks: network::Networks,
+    pub networks: network::Networks,
 
     // capture everything else (future proofing)
     #[serde(skip_serializing)]
     #[serde(flatten)]
-    _extras: Map<String, serde_yaml::Value>,
+    pub _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone )]
 pub struct Build {
     context: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -172,7 +179,9 @@ pub struct Build {
     #[serde(flatten)]
     _extras: Map<String, serde_yaml::Value>,
 }
-
+//pub fn skip(m: &Armour>) -> bool {
+ //   true
+//}
 impl std::str::FromStr for Build {
     type Err = &'static str;
 
@@ -190,7 +199,23 @@ impl std::str::FromStr for Build {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone )]
+pub struct Armour {
+    pub labels: array_dict::ArrayDict,
+}
+
+impl std::str::FromStr for Armour {
+    type Err = &'static str;
+
+    fn from_str(_s: &str) -> Result<Self, Self::Err> {
+        Ok(Armour {
+            labels: array_dict::ArrayDict::default(),
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone )]
 pub struct PortRecord {
     target: u16,
     published: u16,
@@ -201,7 +226,7 @@ pub struct PortRecord {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone )]
 #[serde(untagged)]
 pub enum Port {
     Raw(String),
@@ -252,7 +277,7 @@ impl<'de> Deserialize<'de> for Port {
     }
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, PartialEq, Clone )]
 #[serde(rename_all(serialize = "kebab-case"))]
 pub enum Order {
     StartFirst,
@@ -272,7 +297,7 @@ impl std::str::FromStr for Order {
 
 deserialize_from_str!(Order);
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone )]
 pub struct Config {
     #[serde(skip_serializing_if = "Option::is_none")]
     parallelism: Option<usize>,
@@ -291,7 +316,7 @@ pub struct Config {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone )]
 pub struct Resource {
     #[serde(skip_serializing_if = "Option::is_none")]
     cpus: Option<String>,
@@ -302,7 +327,7 @@ pub struct Resource {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone )]
 pub struct Resources {
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
@@ -315,7 +340,7 @@ pub struct Resources {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone )]
 pub struct Deployment {
     #[serde(skip_serializing_if = "Option::is_none")]
     mode: Option<String>,
@@ -345,9 +370,9 @@ pub struct Deployment {
     #[serde(skip_serializing_if = "Option::is_none")]
     restart_policy: Option<serde_yaml::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    placement: Option<serde_yaml::Value>,
+    pub placement: Option<serde_yaml::Value>,
 
     #[serde(skip_serializing)]
     #[serde(flatten)]
-    _extras: Map<String, serde_yaml::Value>,
+    pub _extras: Map<String, serde_yaml::Value>,
 }

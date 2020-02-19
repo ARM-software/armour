@@ -5,7 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap as Map;
 use std::fmt;
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(rename_all(serialize = "lowercase"))]
 pub enum Driver {
     Bridge,
@@ -27,63 +27,65 @@ impl std::str::FromStr for Driver {
 
 deserialize_from_str!(Driver);
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct IpamConfig {
-    subnet: ipnetwork::IpNetwork,
-    #[serde(skip_serializing)]
-    #[serde(flatten)]
-    _extras: Map<String, serde_yaml::Value>,
+    pub subnet: ipnetwork::IpNetwork,
+    //#[serde(skip_serializing)]
+    //#[serde(flatten)]
+    //#[serde(default)]
+    //_extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Ipam {
-    driver: String,
-    config: Vec<IpamConfig>,
+    pub driver: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub config: Vec<IpamConfig>,
     // capture everything else (future proofing)
     #[serde(skip_serializing)]
     #[serde(flatten)]
-    _extras: Map<String, serde_yaml::Value>,
+    pub _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Network {
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    name: String,
+    pub name: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    driver: Option<Driver>,
+    pub driver: Option<Driver>,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "Map::is_empty")]
-    driver_opts: Map<String, String>,
+    pub driver_opts: Map<String, String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    ipam: Option<Ipam>,
+    pub ipam: Option<Ipam>,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    external: bool,
+    pub external: bool,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    internal: bool,
+    pub internal: bool,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    attachable: bool,
+    pub attachable: bool,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    labels: array_dict::ArrayDict,
+    pub labels: array_dict::ArrayDict,
 
     // capture everything else (future proofing)
     #[serde(skip_serializing)]
     #[serde(flatten)]
-    _extras: Map<String, serde_yaml::Value>,
+    pub _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
 pub struct NetworkRecord {
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -98,7 +100,7 @@ pub struct NetworkRecord {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, PartialEq, Clone)]
 #[serde(untagged)]
 pub enum Networks {
     Array(Vec<String>),

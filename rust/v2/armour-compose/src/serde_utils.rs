@@ -109,7 +109,7 @@ pub mod string_or_list {
         deserializer.deserialize_any(FromString(PhantomData))
     }
 
-    #[derive(Default, Debug, Deserialize)]
+    #[derive(Default, Debug, Deserialize, Clone)]
     #[serde(transparent)]
     pub struct StringList(#[serde(deserialize_with = "deserialize")] Vec<String>);
 
@@ -188,7 +188,7 @@ pub mod array_dict {
     use serde::{Deserialize, Serialize};
     use std::collections::BTreeMap as Map;
 
-    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
     #[serde(untagged)]
     pub enum ArrayDict {
         Array(Vec<String>),

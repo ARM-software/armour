@@ -1,0 +1,15 @@
+---
+version: "3.0"
+services:
+  srv-nginx:
+    container_name: srv-nginx
+    hostname: srv-nginx
+    image: nginx
+    networks:
+      - arm-srv-nginx
+networks:
+  arm-srv-nginx:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: arm-srv-nginx
+    internal: true
