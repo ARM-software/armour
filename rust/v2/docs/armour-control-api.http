@@ -5,7 +5,7 @@ Content-Type: application/json
 
 {
         "host": "http://localhost",
-        "label": "armour::service-1",
+        "label": "armour::master-1",
         "credentials": "no-creds"
 }
 

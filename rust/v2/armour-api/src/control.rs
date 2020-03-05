@@ -30,3 +30,8 @@ pub struct PolicyUpdateRequest {
 pub struct PolicyQueryRequest {
     pub service: String, // FIXME
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct PolicyQueryResponse {
+    pub policy: ArmourProgram, // FIXME
+}

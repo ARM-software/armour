@@ -18,29 +18,36 @@ pub async fn onboard_master(
 ) -> Result<HttpResponse, actix_web::Error> {
     info!("Onboarding master {:?}", request.host);
 
-    // TODO Perform appropriate checks if necessary
-
     let connection = &state.db_con;
-
     let db = connection.database(ARMOUR_DB);
     let col = db.collection(MASTERS_COL);
 
     // Check if the master is already there
-    let filter = doc! { "host" : bson::to_bson(&request.host).unwrap() };
-
+    let filter = doc! {
+        "host" : bson::to_bson(&request.host)
+                   .map_err(|_| HttpResponse::InternalServerError().body(format!("Bson conversion error")))?,
+    };
     let result: Vec<Result<bson::Document, mongodb::error::Error>> =
-        col.find(filter, None).unwrap().collect();
+        col.find(filter, None)
+        .map_err(|_| HttpResponse::InternalServerError().body(format!("MongoDB query error")))?.collect();
+
     if !result.is_empty() {
         return Err(actix_web::Error::from(
             HttpResponse::InternalServerError()
-                .body(format!("Master already present in {:?}", &request.host)),
+                .body(format!("Master already present for {:}", &request.host)),
         ));
     }
 
-    if let bson::Bson::Document(document) = bson::to_bson(&request.into_inner()).unwrap() {
-        col.insert_one(document, None).unwrap(); // Insert into a MongoDB collection
+    if let bson::Bson::Document(document) = bson::to_bson(&request.into_inner())
+        .map_err(|_| HttpResponse::InternalServerError().body(format!("Bson conversion error")))?
+    {
+        col.insert_one(document, None)
+            .map_err(|_| HttpResponse::InternalServerError().body(format!("Error inserting in MongoDB")))?;
     } else {
-        println!("Error converting the BSON object into a MongoDB document");
+        return Err(actix_web::Error::from(
+            HttpResponse::InternalServerError()
+                .body(format!("Error extracting document "))
+        ))
     }
 
     Ok(HttpResponse::Ok().body("success".to_string()))
@@ -54,19 +61,36 @@ pub async fn onboard_service(
     info!("Onboarding service {:?}", request.label);
 
     let connection = &state.db_con;
-
     let db = connection.database(ARMOUR_DB);
     let col = db.collection(SERVICES_COL);
 
-    if let bson::Bson::Document(document) = bson::to_bson(&request.into_inner()).unwrap() {
-        let res = col.insert_one(document, None).unwrap(); // Insert into a MongoDB collection
-        info!("Result of insertion is: {:?}", res.inserted_id);
-        let doc = col
-            .find_one(Some(doc! {"_id" : res.inserted_id}), None)
-            .expect("Document not found");
-        info!("Is it there? {:?}", doc);
+    // Check if the service is already there
+    let filter = doc! { "label" :
+                         bson::to_bson(&request.label)
+                         .map_err(|_| HttpResponse::InternalServerError().body(format!("Bson conversion error")))?
+    };
+
+    let result: Vec<Result<bson::Document, mongodb::error::Error>> =
+        col.find(filter, None)
+        .map_err(|_| HttpResponse::InternalServerError().body(format!("MongoDB query error")))?.collect();
+
+    if !result.is_empty() {
+        return Err(actix_web::Error::from(
+            HttpResponse::InternalServerError()
+                .body(format!("Service label in use {:?}", &request.label)),
+        ));
+    }
+
+    if let bson::Bson::Document(document) = bson::to_bson(&request.into_inner())
+        .map_err(|_| HttpResponse::InternalServerError().body(format!("Bson conversion error")))?
+    {
+        col.insert_one(document, None) // Insert into a MongoDB collection
+            .map_err(|_| HttpResponse::InternalServerError().body(format!("Error inserting in MongoDB")))?;
     } else {
-        println!("Error converting the BSON object into a MongoDB document");
+        return Err(actix_web::Error::from(
+            HttpResponse::InternalServerError()
+                .body(format!("Error extracting document "))
+        ))
     }
 
     Ok(HttpResponse::Ok().body("success".to_string()))
@@ -80,9 +104,7 @@ async fn update_policy(
     request: Json<PolicyUpdateRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
     info!("Updating policy for {:?}", request.service);
-
     let connection = &state.db_con;
-
     let db = connection.database(ARMOUR_DB);
     let col = db.collection(POLICIES_COL);
 
@@ -91,18 +113,23 @@ async fn update_policy(
     let service_clone = service.clone();
     let clone_policy = request.policy.clone();
 
-    if let bson::Bson::Document(document) = bson::to_bson(&request.into_inner()).unwrap() {
+    if let bson::Bson::Document(document) = bson::to_bson(&request.into_inner())
+        .map_err(|_| HttpResponse::InternalServerError().body(format!("Bson conversion error")))? {
         if let Ok(Some(doc)) = col.find_one(Some(doc! {"service": service}), None) {
             let current =
-                bson::from_bson::<PolicyUpdateRequest>(bson::Bson::Document(doc)).unwrap();
+                bson::from_bson::<PolicyUpdateRequest>(bson::Bson::Document(doc))
+                .map_err(|_| HttpResponse::InternalServerError().body("Error inserting policy"))?;
             // To obtain the old policy:
             // let p : Program = serde_json::from_str(&current.policy).unwrap();
 
-            let _ = col.delete_many(doc! {"service" : service_clone}, None);
-            let _ = col.insert_one(document, None);
+            let _ = col.delete_many(doc! {"service" : service_clone}, None)
+                .map_err(|_| HttpResponse::InternalServerError().body("Error removing old policies"))?;
+            let _ = col.insert_one(document, None)
+                .map_err(|_| HttpResponse::InternalServerError().body("Error inserting new policy"))?;
             Ok(HttpResponse::Ok().body(current.policy))
         } else {
-            let _ = col.insert_one(document, None);
+            let _ = col.insert_one(document, None)
+                .map_err(|_| HttpResponse::InternalServerError().body("Error inserting new policy"))?;
             Ok(HttpResponse::Ok().body(clone_policy))
         }
     } else {
@@ -122,7 +149,6 @@ async fn query_policy(
     info!("Querying policy for {:?}", request.service);
 
     let connection = &state.db_con;
-
     let db = connection.database(ARMOUR_DB);
     let col = db.collection(POLICIES_COL);
 
@@ -130,7 +156,8 @@ async fn query_policy(
     let service_clone = request.service.clone();
 
     if let Ok(Some(doc)) = col.find_one(Some(doc! {"service": service}), None) {
-        let current = bson::from_bson::<PolicyUpdateRequest>(bson::Bson::Document(doc)).unwrap();
+        let current = bson::from_bson::<PolicyUpdateRequest>(bson::Bson::Document(doc))
+            .map_err(|_| HttpResponse::InternalServerError().body(format!("Bson conversion error")))?;
         Ok(HttpResponse::Ok().json(current.policy))
     } else {
         Err(actix_web::Error::from(

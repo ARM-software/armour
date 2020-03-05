@@ -1,0 +1,58 @@
+name: armour-ctl
+version: "1.0"
+about: Armour control command line tool
+args:
+  - CONTROLPLANEURL:
+      help: URL of the control plane
+      required: false
+      index: 1
+subcommands:
+  - update:
+      about: Used to update policies
+      args:
+        - POLICYFILE:
+            short: p
+            long: policy
+            help: Input policy file
+            takes_value: true
+        - SERVICE:
+            short: s
+            long: service
+            help: Service label
+            takes_value: true
+  - query:
+      about: Used to query policies
+      args:
+        - SERVICE:
+            short: s
+            long: service
+            help: Service label
+            takes_value: true
+
+  - fake-master-onboard:
+      about: Used to test the dataplane API
+      args:
+        - MASTERURL:
+            short: u
+            long: master-url
+            help: master url
+            takes_value: true
+        - MASTER:
+            short: m
+            long: master-label
+            help: Master label
+            takes_value: true
+
+  - fake-service-onboard:
+      about: Used to test the dataplane API
+      args:
+        - SERVICE:
+            short: s
+            long: service
+            help: Service label
+            takes_value: true
+        - MASTER:
+            short: m
+            long: master-label
+            help: Master label
+            takes_value: true

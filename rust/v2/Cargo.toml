@@ -10,6 +10,7 @@ members = [
     "armour-master",
     "armour-control",
     "server",
+    "armour-ctl"
 ]
 
 [profile.release]
