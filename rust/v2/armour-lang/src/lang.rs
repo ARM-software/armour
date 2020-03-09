@@ -251,8 +251,6 @@ impl Interface {
 }
 
 pub const ALLOW_REST_REQUEST: &str = "allow_rest_request";
-pub const ALLOW_CLIENT_PAYLOAD: &str = "allow_client_payload";
-pub const ALLOW_SERVER_PAYLOAD: &str = "allow_server_payload";
 pub const ALLOW_REST_RESPONSE: &str = "allow_rest_response";
 pub const ALLOW_TCP_CONNECTION: &str = "allow_tcp_connection";
 pub const ON_TCP_DISCONNECT: &str = "on_tcp_disconnect";
@@ -260,12 +258,21 @@ pub const ON_TCP_DISCONNECT: &str = "on_tcp_disconnect";
 lazy_static! {
     pub static ref HTTP_POLICY: Interface = {
         let mut policy = Interface::new("http");
-        policy.insert_bool(ALLOW_REST_REQUEST, vec![vec![Typ::HttpRequest], Vec::new()]);
-        policy.insert_bool(ALLOW_CLIENT_PAYLOAD, vec![vec![Typ::Payload]]);
-        policy.insert_bool(ALLOW_SERVER_PAYLOAD, vec![vec![Typ::Payload]]);
+        policy.insert_bool(
+            ALLOW_REST_REQUEST,
+            vec![
+                vec![Typ::HttpRequest, Typ::Data],
+                vec![Typ::HttpRequest],
+                Vec::new(),
+            ],
+        );
         policy.insert_bool(
             ALLOW_REST_RESPONSE,
-            vec![vec![Typ::HttpResponse], Vec::new()],
+            vec![
+                vec![Typ::HttpResponse, Typ::Data],
+                vec![Typ::HttpResponse],
+                Vec::new(),
+            ],
         );
         policy
     };
@@ -380,7 +387,7 @@ impl Module {
             .nodes
             .get(name)
             .ok_or_else(|| Error::new(&format!("cannot find \"{}\" node", name)))?;
-        for c in calls.into_iter().filter(|c| !Headers::is_builtin(&c.name)) {
+        for c in calls.into_iter().filter(|c| !Headers::is_internal(&c.name)) {
             let call_idx = self
                 .call_graph
                 .nodes

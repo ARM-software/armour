@@ -330,57 +330,6 @@ impl From<(&ID, &ID, usize)> for Connection {
     }
 }
 
-#[derive(PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
-pub struct Payload {
-    payload: Vec<u8>,
-    connection: Connection,
-}
-
-impl Payload {
-    pub fn literal(data: &[u8]) -> Literal {
-        Literal::Payload(Payload {
-            payload: data.to_vec(),
-            connection: Connection::default(),
-        })
-    }
-    pub fn data(&self) -> Literal {
-        self.payload.clone().into()
-    }
-    pub fn connection(&self) -> Literal {
-        self.connection.clone().into()
-    }
-    pub fn from_lit(&self) -> Literal {
-        self.connection.from_lit()
-    }
-    pub fn to_lit(&self) -> Literal {
-        self.connection.to_lit()
-    }
-    pub fn set_connection(&self, connection: &Connection) -> Self {
-        let mut new = self.clone();
-        new.connection = connection.clone();
-        new
-    }
-    pub fn set_from(&self, from: &ID) -> Self {
-        let mut payld = self.clone();
-        payld.connection.from = from.clone();
-        payld
-    }
-    pub fn set_to(&self, to: &ID) -> Self {
-        let mut payld = self.clone();
-        payld.connection.to = to.clone();
-        payld
-    }
-}
-
-impl From<(&[u8], &Connection)> for Payload {
-    fn from(pld: (&[u8], &Connection)) -> Self {
-        Payload {
-            payload: pld.0.to_vec(),
-            connection: pld.1.clone(),
-        }
-    }
-}
-
 #[derive(PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HttpRequest {
     method: Method,
@@ -392,10 +341,22 @@ pub struct HttpRequest {
 }
 
 impl HttpRequest {
-    pub fn new(method: Method) -> Self {
-        let mut new = Self::default();
-        new.method = method;
-        new
+    pub fn new(
+        method: &str,
+        version: &str,
+        path: &str,
+        query: &str,
+        headers: Vec<(&str, &[u8])>,
+        connection: Connection,
+    ) -> Self {
+        HttpRequest {
+            method: method.parse().unwrap_or_default(),
+            version: version.parse().unwrap_or_default(),
+            path: path.to_owned(),
+            query: query.to_owned(),
+            headers: Headers::from(headers),
+            connection,
+        }
     }
     pub fn connection(&self) -> Literal {
         self.connection.clone().into()
@@ -487,18 +448,17 @@ impl HttpRequest {
     }
 }
 
-impl From<(&str, &str, &str, &str, Vec<(&str, &[u8])>, Connection)> for HttpRequest {
-    #[allow(clippy::type_complexity)]
-    fn from(req: (&str, &str, &str, &str, Vec<(&str, &[u8])>, Connection)) -> Self {
-        let (method, version, path, query, h, connection) = req;
-        HttpRequest {
-            method: method.parse().unwrap_or_default(),
-            version: version.parse().unwrap_or_default(),
-            path: path.to_owned(),
-            query: query.to_owned(),
-            headers: Headers::from(h),
-            connection,
-        }
+impl From<Method> for HttpRequest {
+    fn from(method: Method) -> Self {
+        let mut new = Self::default();
+        new.method = method;
+        new
+    }
+}
+
+impl From<Method> for Literal {
+    fn from(method: Method) -> Self {
+        Literal::HttpRequest(Box::new(method.into()))
     }
 }
 
@@ -512,6 +472,21 @@ pub struct HttpResponse {
 }
 
 impl HttpResponse {
+    pub fn new(
+        version: &str,
+        status: u16,
+        reason: Option<&str>,
+        headers: Vec<(&str, &[u8])>,
+        connection: Connection,
+    ) -> Self {
+        HttpResponse {
+            version: version.parse().unwrap_or_default(),
+            status,
+            reason: reason.map(|s| s.to_string()),
+            headers: Headers::from(headers),
+            connection,
+        }
+    }
     pub fn literal(status: u16) -> Literal {
         let mut new = Self::default();
         new.status = status;
@@ -578,20 +553,6 @@ impl HttpResponse {
     }
 }
 
-impl From<(&str, u16, Option<&str>, Vec<(&str, &[u8])>, Connection)> for HttpResponse {
-    #[allow(clippy::type_complexity)]
-    fn from(res: (&str, u16, Option<&str>, Vec<(&str, &[u8])>, Connection)) -> Self {
-        let (version, status, reason, h, connection) = res;
-        HttpResponse {
-            version: version.parse().unwrap_or_default(),
-            status,
-            reason: reason.map(|s| s.to_string()),
-            headers: Headers::from(h),
-            connection,
-        }
-    }
-}
-
 pub struct VecSet;
 
 impl VecSet {
@@ -635,7 +596,6 @@ pub enum Literal {
     IpAddr(std::net::IpAddr),
     Label(labels::Label),
     List(Vec<Literal>),
-    Payload(Payload),
     Regex(parser::PolicyRegex),
     Str(String),
     Tuple(Vec<Literal>),
@@ -662,7 +622,6 @@ impl Literal {
             Literal::IpAddr(_) => Typ::IpAddr,
             Literal::Label(_) => Typ::Label,
             Literal::List(l) => l.get(0).map(|t| t.typ()).unwrap_or(Typ::Return),
-            Literal::Payload(_) => Typ::Payload,
             Literal::Regex(_) => Typ::Regex,
             Literal::Str(_) => Typ::Str,
             Literal::Tuple(l) => Typ::Tuple((*l).iter().map(|t: &Literal| t.typ()).collect()),
@@ -731,7 +690,6 @@ impl fmt::Display for Literal {
             }
             Literal::Regex(r) => write!(f, "{:?}", r),
             Literal::Str(s) => write!(f, r#""{}""#, s),
-            Literal::Payload(p) => write!(f, "{:?}", p),
             Literal::Unit => write!(f, "()"),
         }
     }
@@ -774,6 +732,18 @@ impl From<&[u8]> for Literal {
 impl From<f64> for Literal {
     fn from(n: f64) -> Self {
         Literal::Float(n)
+    }
+}
+
+impl From<labels::Label> for Literal {
+    fn from(l: labels::Label) -> Self {
+        Literal::Label(l)
+    }
+}
+
+impl From<&labels::Label> for Literal {
+    fn from(l: &labels::Label) -> Self {
+        l.clone().into()
     }
 }
 
@@ -873,21 +843,6 @@ impl From<&std::net::IpAddr> for Literal {
     }
 }
 
-impl From<Payload> for Literal {
-    fn from(pld: Payload) -> Self {
-        Literal::Payload(pld)
-    }
-}
-
-impl From<&Payload> for Literal {
-    fn from(pld: &Payload) -> Self {
-        Literal::Tuple(vec![
-            pld.payload.as_slice().into(),
-            (&pld.connection).into(),
-        ])
-    }
-}
-
 impl From<&str> for Literal {
     fn from(s: &str) -> Self {
         Literal::Str(s.to_string())
@@ -911,6 +866,15 @@ where
     T: Into<Literal>,
 {
     fn from(x: Vec<T>) -> Self {
+        Literal::List(x.into_iter().map(|x| x.into()).collect())
+    }
+}
+
+impl<T> From<BTreeSet<T>> for Literal
+where
+    T: Into<Literal>,
+{
+    fn from(x: BTreeSet<T>) -> Self {
         Literal::List(x.into_iter().map(|x| x.into()).collect())
     }
 }

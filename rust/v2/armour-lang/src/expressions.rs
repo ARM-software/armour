@@ -334,15 +334,19 @@ impl Expr {
         }
     }
     fn let_expr(self, v: Vec<&str>, e: Expr) -> Expr {
-        let mut c = self;
-        for s in v.iter().rev() {
-            c = c.closure_expr(s)
+        if v.as_slice() == ["_"] {
+            Expr::BlockExpr(Block::Block, vec![e, self])
+        } else {
+            let mut c = self;
+            for s in v.iter().rev() {
+                c = c.closure_expr(s)
+            }
+            Expr::Let(
+                v.iter().map(|s| (*s).to_string()).collect(),
+                Box::new(e),
+                Box::new(c),
+            )
         }
-        Expr::Let(
-            v.iter().map(|s| (*s).to_string()).collect(),
-            Box::new(e),
-            Box::new(c),
-        )
     }
     fn iter_expr(self, op: &parser::Iter, v: Vec<&str>, e: Expr) -> Expr {
         let mut c = self;
@@ -508,7 +512,7 @@ impl Expr {
         match e.expr() {
             parser::Expr::IdentExpr(id) => match ctxt.var(&id.0) {
                 Some(typ) => Ok(ExprAndMeta::new(Expr::var(&id.0), typ, vec![])),
-                None => Err(Error::new(&format!(
+                None => Err(Error::from(format!(
                     "undeclared variable \"{}\" at {}",
                     id.0,
                     e.loc()
@@ -645,7 +649,7 @@ impl Expr {
             } => {
                 let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, ctxt)?.split();
                 let typ1 = typ1.dest_option().map_err(|_| {
-                    Error::new(format!("expecting option type in if-let at {}", e.loc()))
+                    Error::from(format!("expecting option type in if-let at {}", e.loc()))
                 })?;
                 let id = var.id();
                 let (expr2, calls2, typ2) = Expr::from_block_stmt(
@@ -678,7 +682,7 @@ impl Expr {
             } => {
                 let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, ctxt)?.split();
                 let typ1 = typ1.dest_option().map_err(|_| {
-                    Error::new(format!("expecting option type in if-let at {}", e.loc()))
+                    Error::from(format!("expecting option type in if-let at {}", e.loc()))
                 })?;
                 let id = var.id();
                 let (expr2, calls2, typ2) = Expr::from_block_stmt(
@@ -733,7 +737,7 @@ impl Expr {
                                 if let Some(x) = x {
                                     let (k, v) = parser::Pat::strip_as(x);
                                     if map.insert(k.clone(), v).is_some() {
-                                        return Err(Error::new(format!(
+                                        return Err(Error::from(format!(
                                             r#"{}: repeated variable "{}"" in "if match""#,
                                             e.loc(),
                                             k
@@ -746,7 +750,7 @@ impl Expr {
                         parser::Pattern::Label(l) => {
                             for x in l.vars() {
                                 if map.insert(x.clone(), parser::As::Str).is_some() {
-                                    return Err(Error::new(format!(
+                                    return Err(Error::from(format!(
                                         r#"{}: repeated variable "{}" in "if match""#,
                                         e.loc(),
                                         x
@@ -844,7 +848,7 @@ impl Expr {
                                     (vs, iter_vars)
                                 }
                                 _ => {
-                                    return Err(Error::new(&format!(
+                                    return Err(Error::from(format!(
                                         "{} over expression of type {} at {} ",
                                         op,
                                         typ1,
@@ -855,7 +859,7 @@ impl Expr {
                         }
                     }
                     _ => {
-                        return Err(Error::new(&format!(
+                        return Err(Error::from(format!(
                             "{} over expression of type {} at {} ",
                             op,
                             typ1,
@@ -963,7 +967,7 @@ impl Expr {
                                     calls,
                                 ))
                             } else {
-                                Err(Error::new(&format!(
+                                Err(Error::from(format!(
                                     "tuple index function \"{}\" called on tuple with just {} elements at {}",
                                     function,
                                     l.len(),
@@ -971,7 +975,7 @@ impl Expr {
                                 )))
                             }
                         }
-                        _ => Err(Error::new(&format!(
+                        _ => Err(Error::from(format!(
                             "tuple index function \"{}\" called on non-tuple ({}) at {}",
                             function,
                             types
@@ -983,7 +987,7 @@ impl Expr {
                         ))),
                     }
                 } else {
-                    Err(Error::new(&format!(
+                    Err(Error::from(format!(
                         "undeclared function \"{}\" at {}",
                         function,
                         e.loc()
@@ -1021,7 +1025,7 @@ impl Expr {
                             vec![calls],
                         ))
                     } else {
-                        Err(Error::new(&format!(
+                        Err(Error::from(format!(
                             "unreachable code after return at {}",
                             stmt.loc()
                         )))
@@ -1053,7 +1057,7 @@ impl Expr {
                         ))
                     } else {
                         if !semi {
-                            return Err(Error::new(&format!(
+                            return Err(Error::from(format!(
                                 "missing semi-colon after expression at {}",
                                 stmt.loc()
                             )));
@@ -1109,7 +1113,7 @@ impl Expr {
                                     vec![calls1, calls2],
                                 ))
                             }
-                            _ => Err(Error::new(&format!(
+                            _ => Err(Error::from(format!(
                                 "{} variables in let expression of type {} at {} ",
                                 ids.len(),
                                 typ1,
@@ -1198,9 +1202,9 @@ impl Expr {
                     Ok(Expr::check_from_loc_expr(&e, headers, &Context::new())?.expr)
                 }
                 Err(nom::Err::Error((toks, _))) => {
-                    Err(self::Error(format!("syntax error: {}", toks.tok[0])))
+                    Err(Error::from(format!("syntax error: {}", toks.tok[0])))
                 }
-                Err(err) => Err(self::Error(format!("{:?}", err))),
+                Err(err) => Err(Error::from(format!("{:?}", err))),
             },
         }
     }

@@ -36,8 +36,15 @@ impl Call {
             args,
         }
     }
-    fn path(&self) -> String {
+    pub fn path(&self) -> String {
         format!("{}::{}", self.external, self.method)
+    }
+    pub fn split(&self) -> (&str, &str, &[Literal]) {
+        (
+            self.external.as_str(),
+            self.method.as_str(),
+            self.args.as_slice(),
+        )
     }
 }
 
@@ -51,7 +58,7 @@ impl Handler<Call> for ExternalActor {
 pub type Disconnector = Box<dyn Future<Output = ()> + std::marker::Unpin>;
 
 impl ExternalActor {
-    pub fn new(prog: Arc<Program>) -> Self {
+    pub fn new(prog: &Program) -> Self {
         ExternalActor {
             externals: Arc::new(prog.externals.clone()),
         }
@@ -156,7 +163,6 @@ impl Externals {
             Literal::Int(i) => v.set_int64(*i),
             Literal::IpAddr(ip) => Externals::build_value(v, &Literal::from(ip)),
             Literal::Label(label) => v.set_text(&label.to_string()),
-            Literal::Payload(pld) => Externals::build_value(v, &Literal::from(pld)),
             Literal::Regex(r) => v.set_text(&r.to_string()),
             Literal::Str(s) => v.set_text(s),
             Literal::Unit => v.set_unit(()),

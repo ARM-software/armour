@@ -24,6 +24,8 @@ pub mod lang;
 pub mod lexer;
 /// Armour primitive types
 pub mod literals;
+/// Metadata actor
+pub mod meta;
 /// Parser implemented using [nom](../nom/index.html)
 pub mod parser;
 /// Pretty-printer

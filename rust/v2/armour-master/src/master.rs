@@ -13,6 +13,7 @@ pub struct ArmourDataMaster {
     children: HashMap<u32, std::process::Child>, // maps PID to child process
     count: usize,                                // enumerates instances
     socket: std::path::PathBuf,                  // path to master's UDS socket
+    key: [u8; 32],                               // master key
 }
 
 impl Actor for ArmourDataMaster {
@@ -25,12 +26,13 @@ impl Actor for ArmourDataMaster {
 }
 
 impl ArmourDataMaster {
-    pub fn new(socket: std::path::PathBuf) -> Self {
+    pub fn new(socket: std::path::PathBuf, key: [u8; 32]) -> Self {
         ArmourDataMaster {
             instances: Instances::default(),
             children: HashMap::new(),
             count: 0,
             socket,
+            key,
         }
     }
     fn get_instances(&self, instances: InstanceSelector) -> Vec<&Instance> {
@@ -176,9 +178,10 @@ pub struct Launch(pub bool, pub String);
 impl Handler<Launch> for ArmourDataMaster {
     type Result = ();
     fn handle(&mut self, msg: Launch, _ctx: &mut Context<Self>) -> Self::Result {
-        let log = if msg.0 { "info" } else { "warn" };
+        let log = if msg.0 { "debug" } else { "warn" };
         let armour_proxy = armour_proxy();
         match std::process::Command::new(&armour_proxy)
+            .env("ARMOUR_PASS", base64::encode(&self.key))
             .arg("-l")
             .arg(log)
             .arg("-n")

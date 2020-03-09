@@ -2,7 +2,10 @@
 use super::policy::{Policy, PolicyActor, ID};
 use actix::prelude::*;
 use armour_api::master::Status;
-use armour_lang::{expressions, interpret::Env, lang, literals};
+use armour_lang::{expressions, interpret::Env, lang, literals, meta::IngressEgress};
+use futures::future::{self, TryFutureExt};
+use std::boxed::Box;
+use std::convert::TryInto;
 use std::sync::Arc;
 
 /// Information about REST policies
@@ -10,23 +13,16 @@ use std::sync::Arc;
 pub struct PolicyStatus {
     pub debug: bool,
     pub timeout: std::time::Duration,
-    pub allow_all: bool,
     pub request: lang::Policy,
-    pub client_payload: lang::Policy,
-    pub server_payload: lang::Policy,
     pub response: lang::Policy,
+    allow_all: bool,
 }
 
 impl PolicyStatus {
     fn update_for_policy(&mut self, prog: &lang::Program) {
         self.request = prog.policy(lang::ALLOW_REST_REQUEST);
-        self.client_payload = prog.policy(lang::ALLOW_CLIENT_PAYLOAD);
-        self.server_payload = prog.policy(lang::ALLOW_SERVER_PAYLOAD);
         self.response = prog.policy(lang::ALLOW_REST_RESPONSE);
-        self.allow_all = self.request == lang::Policy::Allow
-            && self.client_payload == lang::Policy::Allow
-            && self.server_payload == lang::Policy::Allow
-            && self.response == lang::Policy::Allow
+        self.allow_all = self.request == lang::Policy::Allow && self.response == lang::Policy::Allow
     }
 }
 
@@ -37,8 +33,6 @@ impl Default for PolicyStatus {
             timeout: std::time::Duration::from_secs(5),
             allow_all: false,
             request: lang::Policy::default(),
-            client_payload: lang::Policy::default(),
-            server_payload: lang::Policy::default(),
             response: lang::Policy::default(),
         }
     }
@@ -46,7 +40,7 @@ impl Default for PolicyStatus {
 
 pub struct HttpPolicy {
     program: Arc<lang::Program>,
-    env: Arc<Env>,
+    env: Env,
     proxy: Option<(actix_web::dev::Server, u16)>,
     status: PolicyStatus,
 }
@@ -69,7 +63,7 @@ impl Policy<actix_web::dev::Server> for HttpPolicy {
     fn set_policy(&mut self, p: lang::Program) {
         self.status.update_for_policy(&p);
         self.program = Arc::new(p);
-        self.env = Arc::new(Env::new(self.program.clone()))
+        self.env = Env::new(&self.program)
     }
     fn port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|p| p.1)
@@ -80,8 +74,8 @@ impl Policy<actix_web::dev::Server> for HttpPolicy {
     fn hash(&self) -> String {
         self.program.blake3_string()
     }
-    fn env(&self) -> Arc<Env> {
-        self.env.clone()
+    fn env(&self) -> &Env {
+        &self.env
     }
     fn debug(&self) -> bool {
         self.status.debug
@@ -100,7 +94,7 @@ impl Default for HttpPolicy {
         let program = Arc::new(lang::Program::deny_all(&lang::HTTP_POLICY).unwrap_or_default());
         HttpPolicy {
             program: program.clone(),
-            env: Arc::new(Env::new(program)),
+            env: Env::new(&program),
             proxy: None,
             status: PolicyStatus::default(),
         }
@@ -154,27 +148,40 @@ impl Handler<GetHttpPolicy> for PolicyActor {
 /// REST policy functions
 pub enum HttpFn {
     Request,
-    ClientPayload,
-    ServerPayload,
     Response,
 }
 
 /// Request evaluation of a (HTTP) policy function
 #[derive(Message)]
-#[rtype(result = "Result<bool, expressions::Error>")]
-pub struct EvalHttpFn(pub HttpFn, pub Vec<expressions::Expr>);
+#[rtype(result = "Result<(bool, Option<String>), expressions::Error>")]
+pub struct EvalHttpFn(pub HttpFn, pub Vec<expressions::Expr>, pub Option<String>);
 
 // handle requests to evaluate the Armour policy
 impl Handler<EvalHttpFn> for PolicyActor {
-    type Result = ResponseFuture<Result<bool, expressions::Error>>;
+    type Result = ResponseFuture<Result<(bool, Option<String>), expressions::Error>>;
 
     fn handle(&mut self, msg: EvalHttpFn, _ctx: &mut Context<Self>) -> Self::Result {
         let function = match msg.0 {
             HttpFn::Request => lang::ALLOW_REST_REQUEST,
-            HttpFn::ClientPayload => lang::ALLOW_CLIENT_PAYLOAD,
-            HttpFn::ServerPayload => lang::ALLOW_SERVER_PAYLOAD,
             HttpFn::Response => lang::ALLOW_REST_RESPONSE,
         };
-        self.http.evaluate(function, msg.1)
+        // try to decrypt ingress metadata
+        let ingress_meta = msg
+            .2
+            .map(|xarmour| PolicyActor::decrypt_meta(&self.aead, &xarmour))
+            .flatten();
+        let meta = IngressEgress::new(ingress_meta, self.name.as_str().try_into().ok());
+        let aead = self.aead.clone();
+        Box::pin(
+            self.http
+                .evaluate(function, msg.1, meta)
+                .and_then(move |(b, meta)| {
+                    let encrypted = PolicyActor::encrypt_meta(&aead, meta);
+                    // if let Some(e) = encrypted.as_ref() {
+                    //     log::debug!("meta is: {:?}", PolicyActor::decrypt_meta(&aead, e))
+                    // }
+                    future::ok((b, encrypted))
+                }),
+        )
     }
 }

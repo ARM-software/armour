@@ -33,7 +33,7 @@ impl Headers {
             self.0.remove(s);
         }
     }
-    pub fn builtins(f: &str) -> Option<Signature> {
+    fn builtins(f: &str) -> Option<Signature> {
         let sig = |args, ty| Some(Signature::new(args, ty));
         match f {
             "option::Some" => sig(vec![Typ::Return], Typ::Return),
@@ -162,14 +162,8 @@ impl Headers {
             "HttpResponse::set_connection" => {
                 sig(vec![Typ::HttpResponse, Typ::Connection], Typ::HttpResponse)
             }
-            "IpAddr::lookup" => sig(
-                vec![Typ::Str],
-                Typ::Tuple(vec![Typ::List(Box::new(Typ::IpAddr))]),
-            ),
-            "IpAddr::reverse_lookup" => sig(
-                vec![Typ::IpAddr],
-                Typ::Tuple(vec![Typ::List(Box::new(Typ::Str))]),
-            ),
+            "IpAddr::lookup" => sig(vec![Typ::Str], Typ::List(Box::new(Typ::IpAddr)).option()),
+            "IpAddr::reverse_lookup" => sig(vec![Typ::IpAddr], Typ::Str.option()),
             "IpAddr::localhost" => sig(vec![], Typ::IpAddr),
             "IpAddr::from" => sig(vec![Typ::I64, Typ::I64, Typ::I64, Typ::I64], Typ::IpAddr),
             "IpAddr::octets" => sig(
@@ -197,27 +191,42 @@ impl Headers {
             "Connection::set_from" => sig(vec![Typ::Connection, Typ::ID], Typ::Connection),
             "Connection::set_to" => sig(vec![Typ::Connection, Typ::ID], Typ::Connection),
             "Connection::set_number" => sig(vec![Typ::Connection, Typ::I64], Typ::Connection),
-            "Payload::new" => sig(vec![Typ::Data], Typ::Payload),
-            "Payload::data" => sig(vec![Typ::Payload], Typ::Data),
-            "Payload::connection" => sig(vec![Typ::Payload], Typ::Connection),
-            "Payload::from" => sig(vec![Typ::Payload], Typ::ID),
-            "Payload::to" => sig(vec![Typ::Payload], Typ::ID),
-            "Payload::set_connection" => sig(vec![Typ::Payload, Typ::Connection], Typ::Payload),
-            "Payload::set_from" => sig(vec![Typ::Payload, Typ::ID], Typ::Payload),
-            "Payload::set_to" => sig(vec![Typ::Payload, Typ::ID], Typ::Payload),
             "Label::captures" => sig(
                 vec![Typ::Label, Typ::Label],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::Str, Typ::Str]))).option(),
             ),
             "Label::parts" => sig(vec![Typ::Label], Typ::List(Box::new(Typ::Str)).option()),
+            "Label::is_match" => sig(vec![Typ::Label, Typ::Label], Typ::Bool),
+            _ => None,
+        }
+    }
+    fn internal_service(f: &str) -> Option<Signature> {
+        let sig = |args, ty| Some(Signature::new(args, ty));
+        match f {
+            "Ingress::id" => sig(vec![], Typ::Label.option()),
+            "Ingress::data" => sig(vec![], Typ::List(Box::new(Typ::Data))),
+            "Ingress::has_label" => sig(vec![Typ::Label], Typ::Bool),
+            "Egress::id" => sig(vec![], Typ::Label),
+            "Egress::set_id" => sig(vec![Typ::Label], Typ::Bool),
+            "Egress::data" => sig(vec![], Typ::List(Box::new(Typ::Data))),
+            "Egress::has_label" => sig(vec![Typ::Label], Typ::Bool),
+            "Egress::push" => sig(vec![Typ::Data], Typ::Unit),
+            "Egress::pop" => sig(vec![], Typ::Data.option()),
+            "Egress::add_label" => sig(vec![Typ::Label], Typ::Unit),
+            "Egress::remove_label" => sig(vec![Typ::Label], Typ::Unit),
+            "Egress::wipe" => sig(vec![], Typ::Unit),
             _ => None,
         }
     }
     pub fn is_builtin(name: &str) -> bool {
         Headers::builtins(name).is_some() || name.parse::<usize>().is_ok()
     }
+    pub fn is_internal(name: &str) -> bool {
+        Headers::internal_service(name).is_some() || Headers::is_builtin(name)
+    }
     pub fn typ(&self, name: &str) -> Option<Signature> {
-        (Headers::builtins(name).or_else(|| self.0.get(name).cloned()))
+        Headers::builtins(name)
+            .or_else(|| Headers::internal_service(name).or_else(|| self.0.get(name).cloned()))
     }
     pub fn return_typ(&self, name: &str) -> Result<Typ, Error> {
         Ok(self

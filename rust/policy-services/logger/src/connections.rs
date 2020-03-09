@@ -84,7 +84,7 @@ pub struct Info {
 }
 
 impl Info {
-    pub fn rest(date: &str, method: &str, path: &str) -> Info {
+    pub fn rest(date: &str, method: &str, path: &str, sent: usize) -> Info {
         let timestamp = NaiveDateTime::parse_from_str(date, "%a, %e %b %Y %T %Z")
             .unwrap_or_else(|_| Utc::now().naive_utc());
         Info {
@@ -93,7 +93,7 @@ impl Info {
                 path: path.to_string(),
             },
             timestamp,
-            sent: 0,
+            sent,
             received: 0,
         }
     }
@@ -307,7 +307,9 @@ impl SummaryMap {
         }
     }
     fn html_table(&self) -> String {
-        let mut s = String::from(r#"<table border=1 frame=hsides rules=rows style="width:100%"><tr><th>service</th><th>client</th><th>first</th><th>last</th><th>methods</th><th>sent</th><th>received</th></tr>"#);
+        let mut s = String::from(
+            r#"<table border=1 frame=hsides rules=rows style="width:100%"><tr><th>service</th><th>client</th><th>first</th><th>last</th><th>methods</th><th>sent</th><th>received</th></tr>"#,
+        );
         for (to, from) in self.0.iter() {
             let len = from.len();
             let mut iter = from.iter();

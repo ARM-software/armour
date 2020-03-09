@@ -162,8 +162,11 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
                 PolicyResponse::Labels(labels) => {
                     info!("{}:\n=== Labels ===\n{:?}", self.id, labels)
                 }
-                PolicyResponse::Status { http, tcp } => {
-                    info!("{}:\n=== HTTP ===\n{}\n=== TCP ===\n{}", self.id, http, tcp);
+                PolicyResponse::Status { name, http, tcp } => {
+                    info!(
+                        "{} {}:\n=== HTTP ===\n{}\n=== TCP ===\n{}",
+                        self.id, name, http, tcp
+                    );
                     self.master
                         .do_send(RegisterHttpHash(self.id, http.policy.blake3_string()));
                     self.master

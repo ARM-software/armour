@@ -1,5 +1,6 @@
 // REST request allow/deny
 fn allow_rest_request(req: HttpRequest) -> bool {
+  Egress::wipe();
   req.to().has_label('allowed')
 }
 
