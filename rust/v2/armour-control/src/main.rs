@@ -4,24 +4,37 @@ use actix_web::{middleware, web, App, HttpServer};
 use armour_control::{restapi::*, ControlPlaneState};
 use listenfd::ListenFd;
 use mongodb::{options::ClientOptions, Client};
+#[macro_use]
+extern crate clap;
+use clap::{crate_version};
+
+const DEFAULT_MONGO_DB: &str = "mongodb://localhost:27017";
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     // enable logging
-    std::env::set_var("RUST_LOG", "ctrl_plane=info,actix_web=info");
+    std::env::set_var("RUST_LOG", "armour_control=info,actix_web=info");
     std::env::set_var("RUST_BACKTRACE", "0");
     env_logger::init();
 
 
+    let yaml = load_yaml!("../resources/cli.yml");
+    let matches = clap::App::from_yaml(yaml)
+        .version(crate_version!())
+        .get_matches();
+
+    let mongo_url = matches.value_of("MONGODBURL")
+        .unwrap_or(DEFAULT_MONGO_DB);
+
     let mut listenfd = ListenFd::from_env();
 
-    let mut db_options = ClientOptions::parse("mongodb://localhost:27017").map_err(|e| {
+    let mut db_options = ClientOptions::parse(mongo_url).map_err(|e| {
         log::warn!("failed to get db_options");
         std::io::Error::new(std::io::ErrorKind::Other, e)
     })?;
     db_options.app_name = Some("armour".to_string());
     let client = Client::with_options(db_options.clone()).map_err(|e| {
-        log::warn!("failed to get client");
+        log::info!("Failed to connect to Mongo. Start MongoDB");
         std::io::Error::new(std::io::ErrorKind::Other, e)
     })?;
     let state = std::sync::Arc::new(ControlPlaneState {
