@@ -8,6 +8,7 @@ use armour_lang::{
     expressions::{Error, Expr},
     interpret::Env,
     lang,
+    meta::IngressEgress,
 };
 use futures::future::{self, TryFutureExt};
 use std::sync::Arc;
@@ -17,7 +18,7 @@ pub struct TcpPolicy {
     disconnect: lang::Policy,
     debug: bool,
     program: Arc<lang::Program>,
-    env: Arc<Env>,
+    env: Env,
     proxy: Option<(Addr<tcp_proxy::TcpDataServer>, u16)>,
 }
 
@@ -39,7 +40,7 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
         self.connect = p.policy(lang::ALLOW_TCP_CONNECTION);
         self.disconnect = p.policy(lang::ON_TCP_DISCONNECT);
         self.program = Arc::new(p);
-        self.env = Arc::new(Env::new(self.program.clone()))
+        self.env = Env::new(&self.program)
     }
     fn port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|p| p.1)
@@ -50,8 +51,8 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
     fn hash(&self) -> String {
         self.program.blake3_string()
     }
-    fn env(&self) -> Arc<Env> {
-        self.env.clone()
+    fn env(&self) -> &Env {
+        &self.env
     }
     fn debug(&self) -> bool {
         self.debug
@@ -73,7 +74,7 @@ impl Default for TcpPolicy {
             disconnect: lang::Policy::default(),
             debug: false,
             program: program.clone(),
-            env: Arc::new(Env::new(program)),
+            env: Env::new(&program),
             proxy: None,
         }
     }
@@ -109,8 +110,12 @@ impl Handler<GetTcpPolicy> for PolicyActor {
                 let stats = ConnectionStats::new(&connection);
                 Box::pin(
                     self.tcp
-                        .evaluate(lang::ALLOW_TCP_CONNECTION, vec![connection])
-                        .and_then(move |res| {
+                        .evaluate(
+                            lang::ALLOW_TCP_CONNECTION,
+                            vec![connection],
+                            IngressEgress::default(), // TODO
+                        )
+                        .and_then(move |(res, _meta)| {
                             future::ok(if res {
                                 TcpPolicyStatus::Allow(Box::new(Some(stats)))
                             } else {
@@ -159,7 +164,8 @@ impl Handler<ConnectionStats> for PolicyActor {
             };
             Box::pin(
                 self.tcp
-                    .evaluate(lang::ON_TCP_DISCONNECT, args)
+                    .evaluate(lang::ON_TCP_DISCONNECT, args, IngressEgress::default()) // TODO: meta
+                    .and_then(|((), _meta)| future::ok(()))
                     .map_err(|e| log::warn!("error: {}", e)),
             )
         } else {

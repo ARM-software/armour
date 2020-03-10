@@ -4,18 +4,18 @@ use armour_lang::{expressions, interpret::Env, lang};
 use clap::{crate_version, App, Arg, SubCommand};
 use rustyline::{error::ReadlineError, Editor};
 use std::io;
-use std::sync::Arc;
 use std::time::Duration;
 
 struct Eval {
-    env: Arc<Env>,
+    env: Env,
 }
 
 impl Eval {
-    fn new(prog: lang::Program) -> Self {
-        Eval {
-            env: Arc::new(Env::new(Arc::new(prog))),
-        }
+    fn new(prog: &lang::Program) -> Self {
+        let mut env = Env::new(prog);
+        // env.set_meta(("ingress-test", "egress-test").into());
+        env.set_meta("egress-test".into()); // no ingress metadata
+        Eval { env }
     }
 }
 
@@ -172,7 +172,7 @@ async fn main() -> std::io::Result<()> {
         prog.print();
         // start eval actor
         let headers = prog.headers.clone();
-        let eval = Eval::new(prog).start();
+        let eval = Eval::new(&prog).start();
 
         // evaluate expressions (REPL)
         let mut rl = Editor::<()>::new();

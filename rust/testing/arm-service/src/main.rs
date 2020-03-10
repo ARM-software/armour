@@ -29,6 +29,8 @@ async fn main() -> std::io::Result<()> {
             Arg::with_name("proxy")
                 .required(false)
                 .short("p")
+                .multiple(true)
+                .number_of_values(1)
                 .takes_value(true)
                 .help("proxy port or socket"),
         )
@@ -62,7 +64,7 @@ async fn main() -> std::io::Result<()> {
         .get_matches();
 
     let own_port = matches.value_of("own port").map(|l| parse_port(l));
-    let proxy = matches.value_of("proxy").map(str::to_string);
+    let mut proxies: Vec<&str> = matches.values_of("proxy").unwrap_or_default().collect();
     let destination = matches.value_of("destination").map(str::to_string);
     let uri = matches.value_of("uri").unwrap_or("");
     let message = matches.value_of("message").unwrap_or("").trim().to_string();
@@ -75,15 +77,21 @@ async fn main() -> std::io::Result<()> {
 
     // send a message
     if let Some(destination) = destination {
-        let uri = format!(
-            "http://{}/{}",
-            host(&proxy.clone().unwrap_or_else(|| destination.clone())),
-            uri
-        );
+        let (dst, has_proxy) = if !proxies.is_empty() {
+            (proxies.remove(0).to_string(), true)
+        } else {
+            (destination.clone(), false)
+        };
+        let uri = format!("http://{}/{}", host(&dst), uri);
         info!("sending: {}", uri);
         let mut client = client::Client::new().get(uri);
-        if proxy.is_some() {
-            client = client.header("X-Forwarded-Host", host(&destination))
+        for proxy in proxies {
+            // possible intermediate proxies
+            client = client.header("X-Forwarded-Host", host(proxy))
+        }
+        if has_proxy {
+            // the final destination
+            client = client.header("X-Forwarded-Host", host(&destination));
         };
         if let Some(host) = matches.value_of("host") {
             client = client.header("host", host)

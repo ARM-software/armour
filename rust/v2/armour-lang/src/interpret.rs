@@ -5,39 +5,43 @@ use super::externals::{Call, ExternalActor};
 use super::headers::Headers;
 use super::labels::Label;
 use super::lang::{Code, Program};
-use super::literals::{Connection, HttpRequest, HttpResponse, Literal, Method, Payload, VecSet};
+use super::literals::{Connection, HttpRequest, HttpResponse, Literal, Method, VecSet};
+use super::meta::{Egress, IngressEgress, Meta};
 use super::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
 use actix::prelude::*;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct Env {
-    internal: Code,
+    internal: Arc<Code>,
     external: Addr<ExternalActor>,
+    meta: Addr<IngressEgress>,
 }
 
 impl Default for Env {
     fn default() -> Self {
-        Env::new(Arc::new(Program::default()))
+        Env::new(&Program::default())
     }
 }
 
 impl Env {
-    pub fn new(prog: Arc<Program>) -> Self {
+    pub fn new(prog: &Program) -> Self {
         Env {
-            internal: prog.code.clone(),
+            internal: Arc::new(prog.code.clone()),
             external: ExternalActor::new(prog).start(),
+            meta: IngressEgress::start_default(),
         }
     }
     fn get(&self, name: &str) -> Option<Expr> {
         self.internal.0.get(name).cloned()
     }
-}
-
-impl From<trust_dns_resolver::error::ResolveError> for Error {
-    fn from(err: trust_dns_resolver::error::ResolveError) -> Error {
-        err.to_string().into()
+    pub fn set_meta(&mut self, meta: IngressEgress) {
+        self.meta = meta.start()
+    }
+    pub async fn egress(&self) -> Option<Meta> {
+        self.meta.send(Egress).await.ok()?.ok()
     }
 }
 
@@ -68,11 +72,11 @@ impl Literal {
             }
             (Infix::And, Literal::Bool(i), Literal::Bool(j)) => Some(Literal::Bool(*i && *j)),
             (Infix::Or, Literal::Bool(i), Literal::Bool(j)) => Some(Literal::Bool(*i || *j)),
-            (Infix::Concat, Literal::List(i), Literal::List(j)) => Some(Literal::List({
+            (Infix::Concat, Literal::List(i), Literal::List(j)) => {
                 let mut k = i.clone();
                 k.append(&mut j.clone());
-                k
-            })),
+                Some(Literal::List(k))
+            }
             (Infix::ConcatStr, Literal::Str(i), Literal::Str(j)) => {
                 Some(Literal::Str(format!("{}{}", i, j)))
             }
@@ -83,14 +87,14 @@ impl Literal {
     fn eval_call0(f: &str) -> Option<Self> {
         match f {
             "HttpRequest::GET" => Some(HttpRequest::default().into()),
-            "HttpRequest::POST" => Some(HttpRequest::new(Method::POST).into()),
-            "HttpRequest::PUT" => Some(HttpRequest::new(Method::PUT).into()),
-            "HttpRequest::DELETE" => Some(HttpRequest::new(Method::DELETE).into()),
-            "HttpRequest::HEAD" => Some(HttpRequest::new(Method::HEAD).into()),
-            "HttpRequest::OPTIONS" => Some(HttpRequest::new(Method::OPTIONS).into()),
-            "HttpRequest::CONNECT" => Some(HttpRequest::new(Method::CONNECT).into()),
-            "HttpRequest::PATCH" => Some(HttpRequest::new(Method::PATCH).into()),
-            "HttpRequest::TRACE" => Some(HttpRequest::new(Method::TRACE).into()),
+            "HttpRequest::POST" => Some(Method::POST.into()),
+            "HttpRequest::PUT" => Some(Method::PUT.into()),
+            "HttpRequest::DELETE" => Some(Method::DELETE.into()),
+            "HttpRequest::HEAD" => Some(Method::HEAD.into()),
+            "HttpRequest::OPTIONS" => Some(Method::OPTIONS.into()),
+            "HttpRequest::CONNECT" => Some(Method::CONNECT.into()),
+            "HttpRequest::PATCH" => Some(Method::PATCH.into()),
+            "HttpRequest::TRACE" => Some(Method::TRACE.into()),
             "ID::default" => Some(Literal::ID(Default::default())),
             "Connection::default" => Some(Literal::Connection(Default::default())),
             "IpAddr::localhost" => Some(Literal::IpAddr(std::net::IpAddr::V4(
@@ -166,12 +170,32 @@ impl Literal {
             ("Connection::from", Literal::Connection(c)) => Some(c.from_lit()),
             ("Connection::to", Literal::Connection(c)) => Some(c.to_lit()),
             ("Connection::number", Literal::Connection(c)) => Some(c.number()),
-            ("Payload::new", Literal::Data(d)) => Some(Payload::literal(d)),
-            ("Payload::data", Literal::Payload(p)) => Some(p.data()),
-            ("Payload::connection", Literal::Payload(p)) => Some(p.connection()),
-            ("Payload::from", Literal::Payload(p)) => Some(p.from_lit()),
-            ("Payload::to", Literal::Payload(p)) => Some(p.to_lit()),
             ("Label::parts", Literal::Label(l)) => Some(l.parts().into()),
+            ("IpAddr::reverse_lookup", Literal::IpAddr(ip)) => {
+                Some(if let Ok(res) = dns_lookup::lookup_addr(ip) {
+                    Literal::Str(res).some()
+                } else {
+                    Literal::none()
+                })
+            }
+            ("IpAddr::lookup", Literal::Str(name)) => {
+                Some(if let Ok(res) = dns_lookup::lookup_host(name) {
+                    Literal::List(
+                        res.iter()
+                            .filter_map(|ip| {
+                                if ip.is_ipv4() {
+                                    Some(Literal::IpAddr(*ip))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect(),
+                    )
+                    .some()
+                } else {
+                    Literal::none()
+                })
+            }
             _ => None,
         }
     }
@@ -270,15 +294,11 @@ impl Literal {
             ("Connection::set_number", Literal::Connection(c), Literal::Int(n)) => {
                 Some(c.set_number(*n).into())
             }
-            ("Payload::set_connection", Literal::Payload(p), Literal::Connection(c)) => {
-                Some(p.set_connection(c).into())
-            }
-            ("Payload::set_from", Literal::Payload(p), Literal::ID(i)) => {
-                Some(p.set_from(i).into())
-            }
-            ("Payload::set_to", Literal::Payload(p), Literal::ID(i)) => Some(p.set_to(i).into()),
             ("Label::captures", Literal::Label(i), Literal::Label(j)) => {
                 Some(i.match_with(j).into())
+            }
+            ("Label::is_match", Literal::Label(i), Literal::Label(j)) => {
+                Some(i.matches_with(j).into())
             }
             _ => None,
         }
@@ -432,8 +452,38 @@ impl Expr {
             _ => None,
         }
     }
+    fn eval_call(function: &str, args: Vec<Expr>) -> Result<Expr, self::Error> {
+        // builtin function
+        match args.as_slice() {
+            [] => match Literal::eval_call0(function) {
+                Some(r) => Ok(r.into()),
+                None => Err(Error::new("eval, call(0): type error")),
+            },
+            [Expr::LitExpr(l1)] => match l1.eval_call1(&function) {
+                Some(r) => Ok(r.into()),
+                None => Err(Error::new("eval, call(1): type error")),
+            },
+            [Expr::LitExpr(l1), Expr::LitExpr(l2)] => match l1.eval_call2(&function, l2) {
+                Some(r) => Ok(r.into()),
+                None => Err(Error::new("eval, call(2): type error")),
+            },
+            [Expr::LitExpr(l1), Expr::LitExpr(l2), Expr::LitExpr(l3)] => {
+                match l1.eval_call3(&function, l2, l3) {
+                    Some(r) => Ok(r.into()),
+                    None => Err(Error::new("eval, call(3): type error")),
+                }
+            }
+            [Expr::LitExpr(l1), Expr::LitExpr(l2), Expr::LitExpr(l3), Expr::LitExpr(l4)] => {
+                match l1.eval_call4(&function, l2, l3, l4) {
+                    Some(r) => Ok(r.into()),
+                    None => Err(Error::new("eval, call(4): type error")),
+                }
+            }
+            x => Err(Error::from(format!("eval, call: {}: {:?}", function, x))),
+        }
+    }
     #[allow(clippy::cognitive_complexity)]
-    fn eval(self, env: Arc<Env>) -> BoxFuture<'static, Result<Expr, self::Error>> {
+    fn eval(self, env: Env) -> BoxFuture<'static, Result<Expr, self::Error>> {
         async {
             match self {
                 Expr::Var(_) | Expr::BVar(_, _) => Err(Error::new("eval variable")),
@@ -466,18 +516,24 @@ impl Expr {
                     },
                     _ => Err(Error::new("eval, infix")),
                 },
-                Expr::InfixExpr(op, e1, e2) => match (e1.eval(env.clone()).await?, e2.eval(env.clone()).await?) {
-                    (r @ Expr::ReturnExpr(_), _) => Ok(r),
-                    (_, r @ Expr::ReturnExpr(_)) => Ok(r),
-                    (Expr::LitExpr(l1), Expr::LitExpr(l2)) => match l1.eval_infix(&op, &l2) {
-                        Some(r) => Ok(r.into()),
-                        None => Err(Error::new("eval, infix: type error")),
-                    },
-                    _ => Err(Error::new("eval, infix: failed")),
-                },
+                Expr::InfixExpr(op, e1, e2) => {
+                    match (e1.eval(env.clone()).await?, e2.eval(env).await?) {
+                        (r @ Expr::ReturnExpr(_), _) => Ok(r),
+                        (_, r @ Expr::ReturnExpr(_)) => Ok(r),
+                        (Expr::LitExpr(l1), Expr::LitExpr(l2)) => match l1.eval_infix(&op, &l2) {
+                            Some(r) => Ok(r.into()),
+                            None => Err(Error::new("eval, infix: type error")),
+                        },
+                        _ => Err(Error::new("eval, infix: failed")),
+                    }
+                }
                 Expr::BlockExpr(b, mut es) => {
                     if es.is_empty() {
-                        Ok(Expr::LitExpr(if b == Block::List { Literal::List(Vec::new()) } else { Literal::Unit }))
+                        Ok(Expr::LitExpr(if b == Block::List {
+                            Literal::List(Vec::new())
+                        } else {
+                            Literal::Unit
+                        }))
                     } else if b == Block::Block {
                         let e = es.remove(0);
                         let res = e.eval(env.clone()).await?;
@@ -495,7 +551,12 @@ impl Expr {
                         match rs.iter().find(|r| r.is_return()) {
                             Some(r) => Ok(r.clone()),
                             _ => match Literal::literal_vector(rs) {
-                                Ok(lits) => Ok((if b == Block::List { Literal::List(lits) } else { Literal::Tuple(lits) }).into()),
+                                Ok(lits) => Ok((if b == Block::List {
+                                    Literal::List(lits)
+                                } else {
+                                    Literal::Tuple(lits)
+                                })
+                                .into()),
                                 Err(err) => Err(err),
                             },
                         }
@@ -514,7 +575,9 @@ impl Expr {
                             }
                             e2a.eval(env).await
                         } else if vs.len() == 1 {
-                            e2.apply(&Expr::LitExpr(Literal::Tuple(lits)))?.eval(env).await
+                            e2.apply(&Expr::LitExpr(Literal::Tuple(lits)))?
+                                .eval(env)
+                                .await
                         } else {
                             Err(Error::new("eval, let-expression (tuple length mismatch)"))
                         }
@@ -544,7 +607,9 @@ impl Expr {
                                         }
                                         res.push(e.eval(env.clone()).await?)
                                     } else {
-                                        return Err(Error::new("eval, iter-expression (tuple length mismatch)"));
+                                        return Err(Error::new(
+                                            "eval, iter-expression (tuple length mismatch)",
+                                        ));
                                     }
                                 }
                                 _ => {
@@ -555,7 +620,9 @@ impl Expr {
                                         }
                                         res.push(e.eval(env.clone()).await?)
                                     } else {
-                                        return Err(Error::new("eval, iter-expression (not a tuple list)"));
+                                        return Err(Error::new(
+                                            "eval, iter-expression (not a tuple list)",
+                                        ));
                                     }
                                 }
                             }
@@ -570,12 +637,17 @@ impl Expr {
                                         let filtered_lits = lits
                                             .into_iter()
                                             .zip(iter_lits.into_iter())
-                                            .filter_map(|(l, b)| if b.is_true() { Some(l) } else { None })
+                                            .filter_map(
+                                                |(l, b)| if b.is_true() { Some(l) } else { None },
+                                            )
                                             .collect();
                                         Ok(Literal::List(filtered_lits).into())
                                     }
                                     Iter::FilterMap => {
-                                        let filtered_lits = iter_lits.iter().filter_map(Literal::dest_some).collect();
+                                        let filtered_lits = iter_lits
+                                            .iter()
+                                            .filter_map(Literal::dest_some)
+                                            .collect();
                                         Ok(Literal::List(filtered_lits).into())
                                     }
                                     Iter::All => Ok(iter_lits.iter().all(|l| l.is_true()).into()),
@@ -619,7 +691,7 @@ impl Expr {
                             }
                         }
                     }
-                    r => Err(Error::new(format!("eval, if-let-expression: {:#?}", r))),
+                    r => Err(Error::from(format!("eval, if-let-expression: {:#?}", r))),
                 },
                 Expr::IfMatchExpr {
                     variables,
@@ -661,7 +733,9 @@ impl Expr {
                                     if let Some(e) = all_captures.get(&v) {
                                         c = c.apply(e)?
                                     } else {
-                                        return Err(Error::new("eval, if-match-expression: missing bind"));
+                                        return Err(Error::new(
+                                            "eval, if-match-expression: missing bind",
+                                        ));
                                     }
                                 }
                                 match c.eval(env).await? {
@@ -672,7 +746,11 @@ impl Expr {
                         }
                     }
                 }
-                Expr::CallExpr { function, arguments, is_async } => {
+                Expr::CallExpr {
+                    function,
+                    arguments,
+                    is_async,
+                } => {
                     let mut args = Vec::new();
                     for e in arguments.into_iter() {
                         args.push(e.eval(env.clone()).await?)
@@ -685,69 +763,19 @@ impl Expr {
                                 for a in args {
                                     r = r.apply(&a)?
                                 }
-                                r.evaluate(env.clone()).await
+                                r.evaluate(env).await
                             } else if Headers::is_builtin(&function) {
-                                // builtin function
-                                match args.as_slice() {
-                                    [] => match Literal::eval_call0(&function) {
-                                        Some(r) => Ok(r.into()),
-                                        None => Err(Error::new("eval, call(0): type error")),
-                                    },
-                                    [Expr::LitExpr(l1)] => match function.as_str() {
-                                        // reverse lookup can be slow
-                                        "IpAddr::reverse_lookup" => match l1 {
-                                            Literal::IpAddr(ip) => {
-                                                let (resolver, fut) = trust_dns_resolver::AsyncResolver::from_system_conf()?;
-                                                actix::spawn(fut);
-                                                if let Ok(res) = resolver.reverse_lookup(*ip).await {
-                                                    Ok(Literal::List(res.iter().map(|s| Literal::Str(s.to_utf8())).collect()).some().into())
-                                                } else {
-                                                    Ok(Literal::none().into())
-                                                }
-                                            }
-                                            x => Err(Error::new(format!("eval, call: {}: {:?}", function, x))),
-                                        },
-                                        // lookup can be very slow
-                                        "IpAddr::lookup" => match l1 {
-                                            Literal::Str(name) => {
-                                                let (resolver, fut) = trust_dns_resolver::AsyncResolver::from_system_conf()?;
-                                                actix::spawn(fut);
-                                                if let Ok(res) = resolver.ipv4_lookup(name.as_str()).await {
-                                                    Ok(Literal::List(res.iter().map(|ip| Literal::IpAddr(std::net::IpAddr::V4(*ip))).collect())
-                                                        .some()
-                                                        .into())
-                                                } else {
-                                                    Ok(Literal::none().into())
-                                                }
-                                            }
-                                            x => Err(Error::new(format!("eval, call: {}: {:?}", function, x))),
-                                        },
-                                        _ => match l1.eval_call1(&function) {
-                                            Some(r) => Ok(r.into()),
-                                            None => Err(Error::new("eval, call(1): type error")),
-                                        },
-                                    },
-                                    [Expr::LitExpr(l1), Expr::LitExpr(l2)] => match l1.eval_call2(&function, l2) {
-                                        Some(r) => Ok(r.into()),
-                                        None => Err(Error::new("eval, call(2): type error")),
-                                    },
-                                    [Expr::LitExpr(l1), Expr::LitExpr(l2), Expr::LitExpr(l3)] => match l1.eval_call3(&function, l2, l3) {
-                                        Some(r) => Ok(r.into()),
-                                        None => Err(Error::new("eval, call(3): type error")),
-                                    },
-                                    [Expr::LitExpr(l1), Expr::LitExpr(l2), Expr::LitExpr(l3), Expr::LitExpr(l4)] => {
-                                        match l1.eval_call4(&function, l2, l3, l4) {
-                                            Some(r) => Ok(r.into()),
-                                            None => Err(Error::new("eval, call(4): type error")),
-                                        }
-                                    }
-                                    x => Err(Error::new(format!("eval, call: {}: {:?}", function, x))),
-                                }
+                                Expr::eval_call(function.as_str(), args)
                             } else if let Some((external, method)) = Headers::split(&function) {
+                                // external function (RPC) or "Ingress/Egress" metadata
                                 let args = Literal::literal_vector(args)?;
-                                // external function (RPC)
-                                if is_async {
-                                    let call = Call::new(external, method, args);
+                                let call = Call::new(external, method, args);
+                                if external == "Ingress" || external == "Egress" {
+                                    env.meta
+                                        .send(call)
+                                        .await
+                                        .map_err(|_| Error::new("Metadata call error"))?
+                                } else if is_async {
                                     Arbiter::spawn(env.external.send(call).then(|res| {
                                         match res {
                                             Ok(Err(e)) => log::warn!("{}", e),
@@ -759,12 +787,12 @@ impl Expr {
                                     Ok(Expr::from(()))
                                 } else {
                                     env.external
-                                        .send(Call::new(external, method, args))
+                                        .send(call)
                                         .await
-                                        .map_err(|_| Error::from("capnp error".to_string()))?
+                                        .map_err(|_| Error::new("capnp error"))?
                                 }
                             } else {
-                                Err(Error::new(format!("eval, call: {}: {:?}", function, args)))
+                                Err(Error::from(format!("eval, call: {}: {:?}", function, args)))
                             }
                         }
                     }
@@ -773,7 +801,7 @@ impl Expr {
         }
         .boxed()
     }
-    pub async fn evaluate(self, env: Arc<Env>) -> Result<Expr, self::Error> {
+    pub async fn evaluate(self, env: Env) -> Result<Expr, self::Error> {
         Ok(self.eval(env).await?.strip_return())
     }
 }

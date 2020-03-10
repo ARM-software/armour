@@ -4,7 +4,12 @@ use actix::prelude::*;
 use actix_web::http::uri;
 use armour_api::master::{PolicyResponse, Status};
 use armour_api::proxy::{self, LabelOp, PolicyCodec, PolicyRequest, Protocol};
-use armour_lang::{expressions, interpret::Env, labels, lang, literals};
+use armour_lang::{
+    expressions,
+    interpret::Env,
+    labels, lang, literals,
+    meta::{IngressEgress, Meta},
+};
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
@@ -21,14 +26,15 @@ pub trait Policy<P> {
     fn port(&self) -> Option<u16>;
     fn policy(&self) -> Arc<lang::Program>;
     fn hash(&self) -> String;
-    fn env(&self) -> Arc<Env>;
+    fn env(&self) -> &Env;
     fn debug(&self) -> bool;
     fn status(&self) -> Box<Status>;
     fn evaluate<T: std::convert::TryFrom<literals::Literal> + Send + 'static>(
         &self,
         function: &'static str,
         args: Vec<expressions::Expr>,
-    ) -> BoxFuture<'static, Result<T, expressions::Error>> {
+        meta: IngressEgress,
+    ) -> BoxFuture<'static, Result<(T, Option<Meta>), expressions::Error>> {
         let now = if self.debug() {
             log::info!(r#"evaluting "{}""#, function);
             // log::info!(r#"args "{:?}""#, args);
@@ -36,18 +42,21 @@ pub trait Policy<P> {
         } else {
             None
         };
-        let env = self.env();
+        let mut env = self.env().clone();
+        env.set_meta(meta);
         async move {
             let result = expressions::Expr::call(function, args)
-                .evaluate(env)
+                .evaluate(env.clone())
                 .await?;
+            let meta = env.egress().await;
             if let Some(elapsed) = now.map(|t| t.elapsed()) {
                 log::info!("result: {}", result);
                 log::info!("evaluate time: {:?}", elapsed)
             };
             if let expressions::Expr::LitExpr(lit) = result {
                 if let Ok(r) = lit.try_into() {
-                    Ok(r)
+                    // log::info!("meta is: {:?}", meta);
+                    Ok((r, meta))
                 } else {
                     Err(expressions::Error::new("literal has wrong type"))
                 }
@@ -59,13 +68,18 @@ pub trait Policy<P> {
     }
 }
 
+type Aead = aes_gcm::AesGcm<aes_soft::Aes256>;
+
 /// Armour policy actor
+#[allow(dead_code)] // TODO
 pub struct PolicyActor {
-    name: String,
+    pub name: String,
     pub connection_number: usize,
     // proxies
     pub http: HttpPolicy,
     pub tcp: TcpPolicy,
+    // authenticated encryption with associated data (for metadata)
+    pub aead: Aead,
     // ID information
     identity: Identity,
     // connection to master
@@ -92,7 +106,13 @@ impl Actor for PolicyActor {
 
 impl PolicyActor {
     /// Start a new policy actor that connects to a data plane master on a Unix socket.
-    pub fn create_policy(stream: tokio::net::UnixStream, name: &str) -> Addr<PolicyActor> {
+    pub fn create_policy(
+        stream: tokio::net::UnixStream,
+        name: &str,
+        key: [u8; 32],
+    ) -> Addr<PolicyActor> {
+        use aead::{generic_array::GenericArray, NewAead};
+        use aes_gcm::Aes256Gcm;
         PolicyActor::create(|ctx| {
             let (r, w) = tokio::io::split(stream);
             ctx.add_stream(FramedRead::new(r, PolicyCodec));
@@ -101,13 +121,70 @@ impl PolicyActor {
                 connection_number: 0,
                 http: HttpPolicy::default(),
                 tcp: TcpPolicy::default(),
+                aead: Aes256Gcm::new(GenericArray::clone_from_slice(&key)),
                 identity: Identity::default(),
                 uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
             }
         })
     }
+    fn nonce() -> Option<Vec<u8>> {
+        use std::time::SystemTime;
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|t| [&b"armo"[..4], &t.as_nanos().to_be_bytes()[8..]].concat())
+            .ok()
+    }
+    fn encrypt(aead: &Aead, message: &str) -> Option<String> {
+        use aead::{generic_array::GenericArray, Aead};
+        let nonce = PolicyActor::nonce()?;
+        let mut block = message.to_string().into_bytes();
+        if aead
+            .encrypt_in_place(GenericArray::from_slice(&nonce), &[], &mut block)
+            .is_ok()
+        {
+            Some(format!(
+                "{};{}",
+                base64::encode(&block),
+                base64::encode(&nonce)
+            ))
+        } else {
+            None
+        }
+    }
+    fn decrypt(aead: &Aead, message: &str) -> Option<Vec<u8>> {
+        use aead::{generic_array::GenericArray, Aead};
+        let res: Result<Vec<Vec<u8>>, base64::DecodeError> =
+            message.split(';').map(base64::decode).collect();
+        match res.ok()?.as_slice() {
+            [block, nonce] => {
+                let mut block: Vec<u8> = block.to_vec();
+                if aead
+                    .decrypt_in_place(GenericArray::from_slice(&nonce), &[], &mut block)
+                    .is_ok()
+                {
+                    Some(block)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+    pub fn encrypt_meta(aead: &Aead, meta: Option<Meta>) -> Option<String> {
+        meta.as_ref()
+            .map(|m| {
+                serde_json::to_string(m)
+                    .map(|s| PolicyActor::encrypt(aead, &s))
+                    .ok()
+                    .flatten()
+            })
+            .flatten()
+    }
+    pub fn decrypt_meta(aead: &Aead, message: &str) -> Option<Meta> {
+        let bytes = PolicyActor::decrypt(aead, message)?;
+        serde_json::from_slice(&bytes).ok()
+    }
 }
-
 // identity/connection management
 impl PolicyActor {
     fn id(&mut self, id: ID) -> literals::ID {
@@ -115,7 +192,7 @@ impl PolicyActor {
             ID::Anonymous => literals::ID::default(),
             ID::Uri(u) => {
                 let labels = self.identity.uri_labels.get(&u);
-                log::info!("creating ID for {} with labels {:?}", u, labels);
+                // log::debug!("creating ID for {} with labels {:?}", u, labels);
                 if let Some(id) = self.identity.uri_cache.get(&u) {
                     id.clone()
                 } else {
@@ -305,6 +382,7 @@ impl Handler<PolicyRequest> for PolicyActor {
             }
             PolicyRequest::Status => {
                 self.uds_framed.write(PolicyResponse::Status {
+                    name: self.name.clone(),
                     http: self.http.status(),
                     tcp: self.tcp.status(),
                 });

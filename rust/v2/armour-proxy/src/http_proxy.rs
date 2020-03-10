@@ -5,17 +5,17 @@ use super::policy::{PolicyActor, ID};
 use super::ToArmourExpression;
 use actix_web::{
     client::{Client, ClientRequest, ClientResponse, PayloadError, SendRequestError},
-    dev::HttpResponseBuilder,
-    http::header::{ContentEncoding, HeaderName, HeaderValue},
+    http::header::{ContentEncoding, HeaderMap, HeaderName, HeaderValue},
     http::uri,
     middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
-use armour_lang::{lang::Policy, literals};
+use armour_lang::lang::Policy;
 use armour_utils::own_ip;
 use bytes::BytesMut;
 use futures::{stream::Stream, StreamExt};
 use lazy_static::lazy_static;
 use std::collections::HashSet;
+use std::convert::TryFrom;
 
 pub async fn start_proxy(
     policy: actix::Addr<PolicyActor>,
@@ -43,7 +43,7 @@ pub async fn start_proxy(
 /// The server response is then checked before it is forwarded back to the original client.
 async fn request(
     req: HttpRequest,
-    payload: web::Payload,
+    mut payload: web::Payload,
     policy: web::Data<actix::Addr<PolicyActor>>,
     client: web::Data<Client>,
     proxy_port: web::Data<u16>,
@@ -52,32 +52,47 @@ async fn request(
         if let Ok(p) = policy.send(GetHttpPolicy(connection.from_to())).await {
             // we succeeded in getting a policy
             match p.status {
-                // allow all
-                PolicyStatus {
-                    allow_all: true,
-                    debug,
-                    timeout,
-                    ..
-                } => allow_all(req, connection, payload, client, debug, timeout).await,
                 // check request
                 PolicyStatus {
                     request: Policy::Args(count),
+                    debug,
+                    timeout,
                     ..
                 } => {
-                    let args = if count == 0 {
-                        vec![]
-                    } else {
-                        vec![(&req, &p.connection).to_expression()]
+                    if debug {
+                        log::debug!("{:?}", req)
+                    }
+                    let mut client_payload = BytesMut::new();
+                    while let Some(chunk) = payload.next().await {
+                        let chunk = chunk?;
+                        client_payload.extend_from_slice(&chunk)
+                    }
+                    let args = match count {
+                        0 => vec![],
+                        1 => vec![(&req, &p.connection).to_expression()],
+                        2 => vec![
+                            (&req, &p.connection).to_expression(),
+                            client_payload.as_ref().into(),
+                        ],
+                        _ => unreachable!(),
                     };
-                    let message = EvalHttpFn(HttpFn::Request, args);
-                    let allowed = policy.send(message).await;
-                    match allowed {
+                    let ingress = connection.meta().as_ref().cloned();
+                    match policy
+                        .send(EvalHttpFn(HttpFn::Request, args, ingress))
+                        .await
+                    {
                         // allow request
-                        Ok(Ok(true)) => {
-                            client_payload(p, req, connection, payload, policy, client).await
+                        Ok(Ok((true, meta))) => {
+                            // build request
+                            let client_request =
+                                build_request(client, connection.uri(), req, meta, timeout, debug);
+                            // forward the request (with the original client payload)
+                            let res = client_request.send_body(client_payload).await;
+                            // send the response back to the client
+                            response(p, policy, res).await
                         }
                         // reject
-                        Ok(Ok(false)) => Ok(unauthorized("bad client request")),
+                        Ok(Ok((false, _meta))) => Ok(unauthorized("bad client request")),
                         // policy error
                         Ok(Err(e)) => {
                             log::warn!("{}", e);
@@ -93,8 +108,26 @@ async fn request(
                 // allow
                 PolicyStatus {
                     request: Policy::Allow,
+                    debug,
+                    timeout,
                     ..
-                } => client_payload(p, req, connection, payload, policy, client).await,
+                } => {
+                    if debug {
+                        log::debug!("{:?}", req)
+                    }
+                    let mut client_payload = BytesMut::new();
+                    while let Some(chunk) = payload.next().await {
+                        let chunk = chunk?;
+                        client_payload.extend_from_slice(&chunk)
+                    }
+                    // build request
+                    let client_request =
+                        build_request(client, connection.uri(), req, None, timeout, debug);
+                    // forward the request (with the original client payload)
+                    let res = client_request.send_body(client_payload).await;
+                    // send the response back to the client
+                    response(p, policy, res).await
+                }
                 // deny
                 PolicyStatus {
                     request: Policy::Deny,
@@ -114,141 +147,6 @@ async fn request(
     }
 }
 
-// Streamlined processing of "allow all" policy
-async fn allow_all(
-    req: HttpRequest,
-    connection: Connection,
-    mut payload: web::Payload,
-    client: web::Data<Client>,
-    debug: bool,
-    timeout: std::time::Duration,
-) -> Result<HttpResponse, Error> {
-    let mut client_payload = BytesMut::new();
-    while let Some(chunk) = payload.next().await {
-        let chunk = chunk?;
-        client_payload.extend_from_slice(&chunk)
-    }
-    let client_request = client
-        .request_from(connection.uri(), req.head())
-        .process_headers(req.peer_addr())
-        .timeout(timeout);
-    if debug {
-        log::debug!("{:?}", client_request)
-    };
-    // forward the request (with the original client payload)
-    match client_request.send_body(client_payload).await {
-        Ok(mut res) => {
-            let mut server_payload = BytesMut::new();
-            while let Some(chunk) = res.next().await {
-                let chunk = chunk?;
-                server_payload.extend_from_slice(&chunk)
-            }
-            let mut response_builder = HttpResponse::build(res.status());
-            for (header_name, header_value) in res.headers().iter().filter(|(h, _)| {
-                *h != "connection" && *h != "content-length" && *h != "content-encoding"
-            }) {
-                response_builder.header(header_name.clone(), header_value.clone());
-            }
-            let response = response_builder.body(server_payload);
-            if debug {
-                log::debug!("{:?}", response)
-            }
-            Ok(response)
-        }
-        Err(err) => Ok(err.error_response()),
-    }
-}
-
-// Process request (so far it's allow by the policy)
-async fn client_payload(
-    p: HttpPolicyResponse,
-    req: HttpRequest,
-    connection: Connection,
-    mut payload: web::Payload,
-    policy: web::Data<actix::Addr<PolicyActor>>,
-    client: web::Data<Client>,
-) -> Result<HttpResponse, Error> {
-    match p.status {
-        // check client payload
-        PolicyStatus {
-            client_payload: Policy::Args(_arg_count),
-            debug,
-            timeout,
-            // connection_number,
-            ..
-        } => {
-            let mut client_payload = BytesMut::new();
-            while let Some(chunk) = payload.next().await {
-                let chunk = chunk?;
-                client_payload.extend_from_slice(&chunk)
-            }
-            let payload = literals::Payload::from((client_payload.as_ref(), &p.connection));
-            let allowed = policy
-                .send(EvalHttpFn(HttpFn::ClientPayload, vec![payload.into()]))
-                .await;
-            match allowed {
-                // allow payload
-                Ok(Ok(true)) => {
-                    let client_request = client
-                        .request_from(connection.uri(), req.head())
-                        .process_headers(req.peer_addr())
-                        .timeout(timeout);
-                    if debug {
-                        log::debug!("{:?}", client_request)
-                    };
-                    // forward the request (with the original client payload)
-                    let res = client_request.send_body(client_payload).await;
-                    // send the response back to the client
-                    response(p, policy, res).await
-                }
-                // reject
-                Ok(Ok(false)) => Ok(unauthorized("request denied (bad client payload)")),
-                // policy error
-                Ok(Err(e)) => {
-                    log::warn!("{}", e);
-                    Ok(internal())
-                }
-                // actor error
-                Err(e) => {
-                    log::warn!("{}", e);
-                    Ok(internal())
-                }
-            }
-        }
-        // allow
-        PolicyStatus {
-            client_payload: Policy::Allow,
-            debug,
-            timeout,
-            ..
-        } => {
-            let mut client_payload = BytesMut::new();
-            while let Some(chunk) = payload.next().await {
-                let chunk = chunk?;
-                client_payload.extend_from_slice(&chunk)
-            }
-            let client_request = client
-                .request_from(connection.uri(), req.head())
-                .process_headers(req.peer_addr())
-                .timeout(timeout);
-            if debug {
-                log::debug!("{:?}", client_request)
-            };
-            // forward the request (with the original client payload)
-            let res = client_request.send_body(client_payload).await;
-            // send the response back to the client
-            response(p, policy, res).await
-        }
-        // deny
-        PolicyStatus {
-            client_payload: Policy::Deny,
-            ..
-        } => Ok(unauthorized("request denied (bad client payload)")),
-        // cannot be Unit policy
-        _ => unreachable!(),
-    }
-}
-
 /// Send server response back to client
 async fn response(
     p: HttpPolicyResponse,
@@ -259,36 +157,58 @@ async fn response(
     >,
 ) -> Result<HttpResponse, Error> {
     match res {
-        Ok(res) => {
+        Ok(mut res) => {
             let mut response_builder = HttpResponse::build(res.status());
             for (header_name, header_value) in res.headers().iter().filter(|(h, _)| {
-                *h != "connection" && *h != "content-length" && *h != "content-encoding"
+                *h != "connection"
+                    && *h != "content-length"
+                    && *h != "content-encoding"
+                    && *h != X_ARMOUR
             }) {
                 // log::debug!("header {}: {:?}", header_name, header_value);
                 response_builder.header(header_name.clone(), header_value.clone());
-            }
-            let response: HttpResponse = response_builder.into();
-            if p.status.debug {
-                log::debug!("{:?}", response)
             }
             match p.status {
                 // check server response
                 PolicyStatus {
                     response: Policy::Args(count),
+                    debug,
                     ..
                 } => {
-                    let args = if count == 0 {
-                        vec![]
-                    } else {
-                        vec![(&response, &p.connection).to_expression()]
+                    let mut server_payload = BytesMut::new();
+                    while let Some(chunk) = res.next().await {
+                        let chunk = chunk?;
+                        server_payload.extend_from_slice(&chunk)
+                    }
+                    let args = match count {
+                        0 => vec![],
+                        1 => vec![(&response_builder.finish(), &p.connection).to_expression()],
+                        2 => vec![
+                            (&response_builder.finish(), &p.connection).to_expression(),
+                            server_payload.as_ref().into(),
+                        ],
+                        _ => unreachable!(),
                     };
-                    let message = EvalHttpFn(HttpFn::Response, args);
-                    let allowed = policy.send(message).await;
-                    match allowed {
+                    let ingress = get_x_armour(res.headers());
+                    match policy
+                        .send(EvalHttpFn(HttpFn::Response, args, ingress))
+                        .await
+                    {
                         // allow
-                        Ok(Ok(true)) => server_payload(p, policy, response, res).await,
+                        Ok(Ok((true, meta))) => {
+                            // add X-Armour header
+                            if let Some(meta) = meta {
+                                response_builder.header("x-armour", meta.as_str());
+                            };
+                            if debug {
+                                log::debug!("{:?}", response_builder)
+                            }
+                            Ok(response_builder.body(server_payload))
+                        }
                         // reject
-                        Ok(Ok(false)) => Ok(unauthorized("request denied (bad server response)")),
+                        Ok(Ok((false, _meta))) => {
+                            Ok(unauthorized("request denied (bad server response)"))
+                        }
                         // policy error
                         Ok(Err(e)) => {
                             log::warn!("{}", e);
@@ -304,8 +224,19 @@ async fn response(
                 // allow
                 PolicyStatus {
                     response: Policy::Allow,
+                    debug,
                     ..
-                } => server_payload(p, policy, response, res).await,
+                } => {
+                    let mut server_payload = BytesMut::new();
+                    while let Some(chunk) = res.next().await {
+                        let chunk = chunk?;
+                        server_payload.extend_from_slice(&chunk)
+                    }
+                    if debug {
+                        log::debug!("{:?}", response_builder)
+                    }
+                    Ok(response_builder.body(server_payload))
+                }
                 // deny
                 PolicyStatus {
                     response: Policy::Deny,
@@ -320,75 +251,6 @@ async fn response(
     }
 }
 
-/// Send server response back to client
-async fn server_payload(
-    p: HttpPolicyResponse,
-    policy: web::Data<actix::Addr<PolicyActor>>,
-    client_resp: HttpResponse,
-    mut res: ClientResponse<impl Stream<Item = Result<web::Bytes, PayloadError>> + Unpin>,
-) -> Result<HttpResponse, Error> {
-    match p.status {
-        // check server payload
-        PolicyStatus {
-            server_payload: Policy::Args(_arg_count),
-            // connection_number,
-            // debug,
-            ..
-        } => {
-            // get the server payload
-            let mut server_payload = BytesMut::new();
-            while let Some(chunk) = res.next().await {
-                let chunk = chunk?;
-                server_payload.extend_from_slice(&chunk)
-            }
-            // if debug {
-            //     log::debug!("\n{:?}", server_payload)
-            // };
-            let payload = literals::Payload::from((server_payload.as_ref(), &p.connection));
-            let allowed = policy
-                .send(EvalHttpFn(HttpFn::ServerPayload, vec![payload.into()]))
-                .await;
-            match allowed {
-                // allow
-                // Ok(Ok(true)) => future::Either::A(client_resp.body(server_payload)),
-                Ok(Ok(true)) => Ok(HttpResponseBuilder::from(client_resp).body(server_payload)),
-                // reject
-                Ok(Ok(false)) => Ok(unauthorized("request denied (bad server payload)")),
-                // policy error
-                Ok(Err(e)) => {
-                    log::warn!("{}", e);
-                    Ok(internal())
-                }
-                // actor error
-                Err(e) => {
-                    log::warn!("{}", e);
-                    Ok(internal())
-                }
-            }
-        }
-        // allow
-        PolicyStatus {
-            server_payload: Policy::Allow,
-            ..
-        } => {
-            // get the server payload
-            let mut server_payload = BytesMut::new();
-            while let Some(chunk) = res.next().await {
-                let chunk = chunk?;
-                server_payload.extend_from_slice(&chunk)
-            }
-            Ok(HttpResponseBuilder::from(client_resp).body(server_payload))
-        }
-        // deny
-        PolicyStatus {
-            server_payload: Policy::Deny,
-            ..
-        } => Ok(unauthorized("request denied (bad server payload)")),
-        // cannot be Unit policy
-        _ => unreachable!(),
-    }
-}
-
 fn internal() -> HttpResponse {
     HttpResponse::InternalServerError().body("Armour internal error")
 }
@@ -397,22 +259,81 @@ fn unauthorized(message: &'static str) -> HttpResponse {
     HttpResponse::Unauthorized().body(message)
 }
 
+const X_ARMOUR: &str = "x-armour";
+
+fn get_x_armour(h: &HeaderMap) -> Option<String> {
+    h.get(X_ARMOUR)
+        .map(|h| h.to_str().map(String::from).ok())
+        .flatten()
+}
+
+fn build_request<U>(
+    client: web::Data<Client>,
+    url: U,
+    req: HttpRequest,
+    meta: Option<String>,
+    timeout: std::time::Duration,
+    debug: bool,
+) -> ClientRequest
+where
+    uri::Uri: TryFrom<U>,
+    <uri::Uri as TryFrom<U>>::Error: Into<http::Error>,
+{
+    // client request builder, using original request as starting point
+    let mut client_req = client.request_from(url, req.head());
+    // the client request headers
+    let headers = client_req.headers_mut();
+    // process the X-Forwarded-Host header
+    let mut forward_hosts: Vec<&HeaderValue> = req.headers().get_all("x-forwarded-host").collect();
+    // log::debug!("HOSTS are: {:?}", forward_hosts);
+    if !forward_hosts.is_empty() {
+        // we had a X-Forwarded-Host header, so need to update Host header and rebuild X-Forwarded-Host header
+        headers.insert(
+            HeaderName::from_static("host"),
+            forward_hosts.remove(0).clone(),
+        );
+        headers.remove("x-forwarded-host");
+        for host in forward_hosts.into_iter() {
+            headers.append(HeaderName::from_static("x-forwarded-host"), host.clone())
+        }
+    }
+    // try to add X-Forwarded-For header
+    if let Some(Ok(addr)) = req
+        .peer_addr()
+        .map(|a| HeaderValue::from_str(a.to_string().as_str()))
+    {
+        headers.insert(HeaderName::from_static("x-forwarded-for"), addr)
+    }
+    // add X-Armour header
+    if let Some(Ok(meta)) = meta.as_ref().map(|m| HeaderValue::from_str(m.as_str())) {
+        headers.insert(HeaderName::from_static(X_ARMOUR), meta)
+    } else {
+        headers.remove(X_ARMOUR)
+    }
+    if debug {
+        log::debug!("{:?}", client_req)
+    };
+    client_req.timeout(timeout)
+}
+
 struct Connection {
     uri: uri::Uri,
     from: ID,
     to: ID,
+    meta: Option<String>,
 }
 
 impl Connection {
     fn new(req: &HttpRequest, proxy_port: u16) -> Option<Connection> {
         // obtain the forwarding URI
-        match req.forward_uri(proxy_port) {
+        match Connection::forward_uri(req, proxy_port) {
             Ok(uri) => {
                 let to = uri.clone().into();
                 Some(Connection {
                     uri,
                     from: req.peer_addr().into(),
                     to,
+                    meta: get_x_armour(req.headers()),
                 })
             }
             Err(err) => {
@@ -424,26 +345,19 @@ impl Connection {
     fn uri(&self) -> &uri::Uri {
         &self.uri
     }
+    fn meta(&self) -> &Option<String> {
+        &self.meta
+    }
     fn from_to(&self) -> (ID, ID) {
         (self.from.clone(), self.to.clone())
     }
-}
-
-/// Extract a forwarding URL
-trait ForwardUri {
-    fn forward_uri(&self, proxy_port: u16) -> Result<uri::Uri, Error>
-    where
-        Self: Sized;
-}
-
-// Get forwarding address from headers
-impl ForwardUri for HttpRequest {
-    fn forward_uri(&self, proxy_port: u16) -> Result<uri::Uri, Error> {
-        let info = self.connection_info();
+    fn forward_uri(req: &HttpRequest, proxy_port: u16) -> Result<uri::Uri, Error> {
+        let info = req.connection_info();
+        // log::debug!("HOST is: {}", info.host());
         let mut uri = uri::Builder::new()
             .scheme(info.scheme())
             .authority(info.host());
-        if let Some(p_and_q) = self.uri().path_and_query() {
+        if let Some(p_and_q) = req.uri().path_and_query() {
             uri = uri.path_and_query(p_and_q.clone());
         }
         match uri.build() {
@@ -492,31 +406,6 @@ fn is_local_host(host: &str) -> bool {
         own_ip(&ipv4.into())
     } else {
         LOCAL_HOST_NAMES.contains(&host.to_ascii_lowercase())
-    }
-}
-
-/// Conditionally set the `x-forwarded-for` header to be a TCP socket address
-trait ProcessHeaders {
-    fn process_headers(self, peer_addr: Option<std::net::SocketAddr>) -> Self;
-}
-
-impl ProcessHeaders for ClientRequest {
-    fn process_headers(self, peer_addr: Option<std::net::SocketAddr>) -> Self {
-        let mut req;
-        if let Some(addr) = peer_addr {
-            req = self.header("x-forwarded-for", format!("{}", addr))
-        } else {
-            req = self
-        };
-        if let Some(host) = req.headers().get("x-forwarded-host").cloned() {
-            let headers = req.headers_mut();
-            headers.remove("x-forwarded-host");
-            headers.insert(
-                HeaderName::from_static("host"),
-                HeaderValue::from_bytes(host.as_ref()).unwrap(),
-            );
-        }
-        req
     }
 }
 

@@ -22,7 +22,7 @@ pub trait ToArmourExpression {
 impl ToArmourExpression for (&web::HttpRequest, &literals::Connection) {
     fn to_expression(&self) -> expressions::Expr {
         let (req, connection) = *self;
-        expressions::Expr::from(literals::HttpRequest::from((
+        literals::HttpRequest::new(
             req.method().as_str(),
             format!("{:?}", req.version()).as_str(),
             req.path(),
@@ -32,24 +32,26 @@ impl ToArmourExpression for (&web::HttpRequest, &literals::Connection) {
                 .map(|(k, v)| (k.as_str(), v.as_bytes()))
                 .collect(),
             connection.clone(),
-        )))
+        )
+        .into()
     }
 }
 
 /// Convert an actix-web HttpResponse into an equivalent Armour language literal
 impl ToArmourExpression for (&web::HttpResponse, &literals::Connection) {
     fn to_expression(&self) -> expressions::Expr {
-        let (req, connection) = *self;
-        let head = req.head();
-        expressions::Expr::from(literals::HttpResponse::from((
+        let res = self.0;
+        let head = res.head();
+        literals::HttpResponse::new(
             format!("{:?}", head.version).as_str(),
-            req.status().as_u16(),
+            res.status().as_u16(),
             head.reason,
-            req.headers()
+            res.headers()
                 .iter()
                 .map(|(k, v)| (k.as_str(), v.as_bytes()))
                 .collect(),
-            connection.clone(),
-        )))
+            self.1.clone(),
+        )
+        .into()
     }
 }

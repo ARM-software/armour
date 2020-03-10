@@ -52,7 +52,7 @@ $ cargo run [input file]
 
 - **`IpAddr`**
 
-- **`HttpRequest`**, **`HttpResponse`**, **`Payload`**
+- **`HttpRequest`**, **`HttpResponse`**
 
 ### Composite
 
@@ -337,19 +337,6 @@ function               | type
 | set_header           | `(HttpResponse, str, data) -> HttpResponse`  |
 | set_from             | `(HttpResponse, ID) -> HttpResponse`         |
 | set_to               | `(HttpResponse, ID) -> HttpResponse`         |
-
-### Payload::
-
-function               | type
----------------------- | --------------------------------------
-| new                  | `(data) -> Payload`                  |
-| data                 | `Payload -> data`                    |
-| connection           | `Payload -> Connection`              |
-| from                 | `Payload -> ID`                      |
-| to                   | `Payload -> ID`                      |
-| set_connection       | `(Payload, Connection) -> Payload`   |
-| set_from             | `(Payload, ID) -> Payload`           |
-| set_to               | `(Payload, ID) -> Payload`           |
 
 ### Connection::
 

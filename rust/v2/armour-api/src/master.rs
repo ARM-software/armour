@@ -56,7 +56,11 @@ pub enum PolicyResponse {
     RequestFailed,
     ShuttingDown,
     Started,
-    Status { http: Box<Status>, tcp: Box<Status> },
+    Status {
+        name: String,
+        http: Box<Status>,
+        tcp: Box<Status>,
+    },
     Stopped,
     UpdatedPolicy(proxy::Protocol, String), // hash of new policy
 }

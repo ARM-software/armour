@@ -18,14 +18,14 @@ impl policy_service::rpc::Dispatcher for LoggerService {
             }
             (
                 "rest",
-                [Literal::Int(number), Literal::Str(date), Literal::Str(method), Literal::Str(path), Literal::Tuple(from), Literal::Tuple(to)],
+                [Literal::Int(number), Literal::Str(date), Literal::Str(method), Literal::Str(path), Literal::Tuple(from), Literal::Tuple(to), Literal::Int(size)],
             ) if from.len() == 3 && to.len() == 3 => {
                 if let (Some(from), Some(to)) = (
                     connections::Endpoint::from(from),
                     connections::Endpoint::to(to),
                 ) {
                     let connection = connections::Connection::new(
-                        connections::Info::rest(date, method, path),
+                        connections::Info::rest(date, method, path, *size as usize),
                         from,
                         to,
                     );
@@ -37,18 +37,6 @@ impl policy_service::rpc::Dispatcher for LoggerService {
                     self.log(name, args)
                 }
                 log::debug!("logged REST connection");
-                Ok(Literal::Unit)
-            }
-            ("client_payload", [Literal::Int(number), Literal::Int(size)]) => {
-                log::debug!("[{}]: client payload: {}", number, size);
-                let mut connections = self.0.lock().unwrap();
-                connections.set_sent(*number as u64, *size as usize);
-                Ok(Literal::Unit)
-            }
-            ("server_payload", [Literal::Int(number), Literal::Int(size)]) => {
-                log::debug!("[{}]: server payload: {}", number, size);
-                let mut connections = self.0.lock().unwrap();
-                connections.set_received(*number as u64, *size as usize);
                 Ok(Literal::Unit)
             }
             ("tcp", [Literal::Int(number), Literal::Tuple(from), Literal::Tuple(to)])

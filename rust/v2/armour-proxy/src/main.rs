@@ -1,6 +1,7 @@
 use armour_api::proxy::PolicyRequest;
 use armour_proxy::{http_proxy, policy::PolicyActor};
 use clap::{crate_version, App as ClapApp, Arg};
+use std::convert::TryInto;
 use std::env;
 
 fn main() -> std::io::Result<()> {
@@ -52,6 +53,17 @@ fn main() -> std::io::Result<()> {
     env::set_var("RUST_BACKTRACE", "0");
     pretty_env_logger::init();
 
+    // get Armour key
+    let key: [u8; 32] = base64::decode(
+        env::var("ARMOUR_PASS")
+            .expect("ARMOUR_PASS environment variable not set")
+            .as_str(),
+    )
+    .expect("ARMOUR_PASS is not base64 encoded")
+    .as_slice()
+    .try_into()
+    .expect("ARMOUR_PASS is wrong length");
+
     // start Actix system
     let mut sys = actix_rt::System::new("armour_proxy");
 
@@ -70,7 +82,7 @@ fn main() -> std::io::Result<()> {
     log::info!("connecting to: {}", master_socket);
     let stream = sys.block_on(tokio::net::UnixStream::connect(master_socket))?;
     let name = matches.value_of("name").unwrap_or("proxy");
-    let policy = PolicyActor::create_policy(stream, name);
+    let policy = PolicyActor::create_policy(stream, name, key);
 
     // start a proxy server
     if let Some(port) = proxy_port {

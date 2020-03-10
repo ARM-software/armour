@@ -7,7 +7,7 @@ use std::slice::SliceIndex;
 use std::str::FromStr;
 
 thread_local!(static NODE_ANY: regex::Regex = regex::Regex::new("^<[[:alpha:]][[:alnum:]]*>$").unwrap());
-thread_local!(static NODE_STR: regex::Regex = regex::Regex::new("^[[:alpha:]]([ _+-]?[[:alnum:]])*$").unwrap());
+thread_local!(static NODE_STR: regex::Regex = regex::Regex::new("^[[:alnum:]]([ _+-]?[[:alnum:]])*$").unwrap());
 
 /// Node element of [Label](struct.Label.html)
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

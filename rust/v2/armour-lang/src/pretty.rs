@@ -519,7 +519,6 @@ impl Literal {
             },
             Literal::HttpRequest(_)
             | Literal::ID(_)
-            | Literal::Payload(_)
             | Literal::Connection(_)
             | Literal::IpAddr(_) => self.non_parse_literal(),
             _ => self.literal(),

@@ -633,7 +633,8 @@ named!(parse_idents<Tokens, Vec<LocIdent>>, alt!(
         tag_token!(Token::RParen) >>
         ([&vec!(id)[..], &ids[..]].concat())
     )) |
-    complete!(do_parse!(id: parse_ident!() >> (vec![id])))
+    complete!(do_parse!(id: parse_ident!() >> (vec![id]))) |
+    value!(vec![LocIdent(Loc::default(), Ident::from("_"))], tag_token!(Token::Underscore))
     )
 );
 

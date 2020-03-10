@@ -11,11 +11,12 @@ use armour_master::{
 use clap::{crate_version, App as ClapApp, Arg};
 use futures::StreamExt;
 use rustyline::{completion, error::ReadlineError, hint, validate::Validator, Editor};
+use std::env;
 use std::io;
 
 fn main() -> io::Result<()> {
     const UDS_SOCKET: &str = "armour";
-    const TCP_SOCKET: &str = "127.0.0.1:8090";
+    const TCP_PORT: u16 = 8090;
 
     // Command Line Interface
     let matches = ClapApp::new("armour-master")
@@ -39,6 +40,13 @@ fn main() -> io::Result<()> {
                 .help("Run commands from a script"),
         )
         .arg(
+            Arg::with_name("rest")
+                .short("p")
+                .required(false)
+                .takes_value(true)
+                .help("TCP port for REST interface"),
+        )
+        .arg(
             Arg::with_name("master socket")
                 .index(1)
                 .required(false)
@@ -47,15 +55,21 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     // enable logging
-    std::env::set_var(
+    env::set_var(
         "RUST_LOG",
         "armour_master=debug,armour_lang=debug,actix=info",
     );
-    std::env::set_var("RUST_BACKTRACE", "1");
+    env::set_var("RUST_BACKTRACE", "1");
     pretty_env_logger::init();
 
     // start Actix system
     let mut sys = actix_rt::System::new("armour_master");
+
+    // get Armour password
+    let pass = env::var("ARMOUR_PASS").unwrap_or_else(|_| {
+        rpassword::read_password_from_tty(Some("password: ")).expect("failed to get password")
+    });
+    let pass_key = argon2rs::argon2i_simple(&pass, PASS_SALT);
 
     // start master, listening for connections on a Unix socket
     let socket = matches
@@ -74,10 +88,15 @@ fn main() -> io::Result<()> {
                 .incoming()
                 .map(|st| UdsConnect(st.unwrap())),
         );
-        ArmourDataMaster::new(socket)
+        ArmourDataMaster::new(socket, pass_key)
     });
 
     // REST interface
+    let port = matches
+        .value_of("rest")
+        .map(|s| s.parse::<u16>().unwrap_or(TCP_PORT))
+        .unwrap_or(TCP_PORT);
+    let socket = format!("127.0.0.1:{}", port);
     let name = matches.value_of("name").unwrap_or("master").to_string();
     let master_clone = master.clone();
     HttpServer::new(move || {
@@ -96,7 +115,7 @@ fn main() -> io::Result<()> {
                     .service(rest_api::policy::update),
             )
     })
-    .bind(TCP_SOCKET)?
+    .bind(socket)?
     .run();
 
     // Interactive shell interface
@@ -130,6 +149,8 @@ fn main() -> io::Result<()> {
 
     sys.run()
 }
+
+const PASS_SALT: &str = "armour-master-salt";
 
 // rustyline configuration
 

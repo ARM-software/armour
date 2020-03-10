@@ -1,0 +1,8 @@
+egress: launch log
+ingress: launch log
+wait 1
+debug on
+egress:  policy http policies/meta-egress.policy
+ingress: policy http policies/meta-ingress.policy
+egress:  start http 6000
+ingress: start http 6001
