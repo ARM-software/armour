@@ -156,6 +156,14 @@ pub struct Service {
     pub _extras: Map<String, serde_yaml::Value>,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone )]
+pub struct MasterInfo {
+    pub armour_labels: Armour,
+    pub container_labels: array_dict::ArrayDict,
+    pub network: String,
+    pub ipv4_address: Option<std::net::Ipv4Addr>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone )]
 pub struct Build {
     context: String,

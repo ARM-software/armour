@@ -1,0 +1,346 @@
+/// policy language
+use super::expressions::Expr;
+use super::{literals};
+use lazy_static::lazy_static;
+use literals::Literal;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct Code(pub BTreeMap<String, Expr>);
+
+impl Code {
+    fn cut(&mut self, set: &[String]) {
+        for s in set.iter() {
+            self.0.remove(s);
+        }
+    }
+    pub fn get(&self, name: &str) -> Option<Expr> {
+        self.0.get(name).cloned()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct Program {
+    pub code: Code,
+    pub policies: Policies,
+}
+
+impl Program {
+    pub fn blake3_hash(&self) -> Option<arrayvec::ArrayString<[u8; 64]>> {
+        bincode::serialize(self)
+            .map(|bytes| blake3::hash(&bytes).to_hex())
+            .ok()
+    }
+    pub fn blake3_string(&self) -> String {
+        self.blake3_hash()
+            .map(|h| h.to_string())
+            .unwrap_or_else(|| "<hash error>".to_string())
+    }
+    
+    fn internal(&self, s: &str) -> Option<&Expr> {
+        self.code.0.get(s)
+    }
+    
+    fn cut(&mut self, set: &[String]) {
+        if !set.is_empty() {
+            log::warn!("removing unreachable functions: {:?}", set)
+        };
+        self.code.cut(set);
+        self.policies.cut(set)
+    }
+    pub fn policy(&self, name: &str) -> Policy {
+        self.policies
+            .functions
+            .get(name)
+            .cloned()
+            .unwrap_or_default()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.policies.functions.is_empty()
+    }
+    pub fn is_allow_all(&self) -> bool {
+        // does not capture case when program is empty
+        self.policies.functions.values().all(|p| p.is_allow())
+    }
+    pub fn is_deny_all(&self) -> bool {
+        self.policies.functions.values().all(|p| p.is_deny())
+    }
+    pub fn description(&self) -> String {
+        if self.is_empty() {
+            "empty".to_string()
+        } else if self.is_allow_all() {
+            "allow all".to_string()
+        } else if self.is_deny_all() {
+            "deny all".to_string()
+        } else if let Some(hash) = self.blake3_hash() {
+            hash.to_string()
+        } else {
+            "hash failed!".to_string()
+        }
+    }
+    // pub fn allow_all(interface: &Interface) -> Result<Self, std::io::Error> {
+    //     Ok(Module::allow_all(interface)
+    //         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+    //         .program)
+    // }
+    // pub fn deny_all(interface: &Interface) -> Result<Self, std::io::Error> {
+    //     Ok(Module::deny_all(interface)
+    //         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+    //         .program)
+    // }
+    pub fn protocol(&self) -> String {
+        self.policies.protocol.to_string()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct FunctionInterface {
+    allow: Literal,
+    deny: Literal,
+}
+
+impl FunctionInterface {
+    pub fn new(
+        allow: Literal,
+        deny: Literal,
+    ) -> FunctionInterface {
+        FunctionInterface {
+            allow,
+            deny,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct Interface {
+    protocol: String,
+    functions: BTreeMap<String, FunctionInterface>,
+}
+
+impl Interface {
+    pub fn new(s: &str) -> Self {
+        Interface {
+            protocol: s.to_string(),
+            functions: BTreeMap::new(),
+        }
+    }
+    pub fn insert(&mut self, name: &str, policy: FunctionInterface) {
+        self.functions.insert(name.to_string(), policy);
+    }
+    pub fn insert_bool(&mut self, name: &str) {
+        self.insert(
+            name,
+            FunctionInterface::new(
+                Literal::Bool(true),
+                Literal::Bool(false),
+            ),
+        )
+    }
+    pub fn insert_unit(&mut self, name: &str) {
+        self.insert(
+            name,
+            FunctionInterface::new(
+                Literal::Unit,
+                Literal::Unit,
+            ),
+        )
+    }
+    pub fn extend(&mut self, other: &Interface) {
+        self.functions.extend(
+            other
+                .functions
+                .iter()
+                .map(|(name, i)| (name.clone(), i.clone())),
+        )
+    }
+}
+
+pub const ALLOW_REST_REQUEST: &str = "allow_rest_request";
+pub const ALLOW_CLIENT_PAYLOAD: &str = "allow_client_payload";
+pub const ALLOW_SERVER_PAYLOAD: &str = "allow_server_payload";
+pub const ALLOW_REST_RESPONSE: &str = "allow_rest_response";
+pub const ALLOW_TCP_CONNECTION: &str = "allow_tcp_connection";
+pub const ON_TCP_DISCONNECT: &str = "on_tcp_disconnect";
+
+lazy_static! {
+    pub static ref HTTP_POLICY: Interface = {
+        let policy = Interface::new("http");
+        // policy.insert_bool(ALLOW_REST_REQUEST, vec![vec![Typ::HttpRequest], Vec::new()]);
+        // policy.insert_bool(ALLOW_CLIENT_PAYLOAD, vec![vec![Typ::Payload]]);
+        // policy.insert_bool(ALLOW_SERVER_PAYLOAD, vec![vec![Typ::Payload]]);
+        // policy.insert_bool(
+        //     ALLOW_REST_RESPONSE,
+        //     vec![vec![Typ::HttpResponse], Vec::new()],
+        // );
+        policy
+    };
+    pub static ref TCP_POLICY: Interface = {
+        let policy = Interface::new("tcp");
+        // policy.insert_bool(
+        //     ALLOW_TCP_CONNECTION,
+        //     vec![vec![Typ::Connection], Vec::new()],
+        // );
+        // policy.insert_unit(
+        //     ON_TCP_DISCONNECT,
+        //     vec![
+        //         vec![Typ::Connection, Typ::I64, Typ::I64],
+        //         vec![Typ::Connection],
+        //         Vec::new(),
+        //     ],
+        // );
+        policy
+    };
+    pub static ref TCP_HTTP_POLICY: Interface = {
+        let mut policy = Interface::new("tcp+http");
+        policy.extend(&TCP_POLICY);
+        policy.extend(&HTTP_POLICY);
+        policy
+    };
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub enum Policy {
+    Allow,
+    Deny,
+    Unit,
+    Args(u8),
+}
+
+impl Default for Policy {
+    fn default() -> Self {
+        Policy::Deny
+    }
+}
+
+impl Policy {
+    pub fn is_allow(&self) -> bool {
+        *self == Policy::Allow || *self == Policy::Unit
+    }
+    fn is_deny(&self) -> bool {
+        *self == Policy::Deny || *self == Policy::Unit
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+pub struct Policies {
+    pub protocol: String,
+    pub functions: BTreeMap<String, Policy>,
+}
+
+impl Policies {
+    fn cut(&mut self, set: &[String]) {
+        for s in set.iter() {
+            self.functions.remove(s);
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct Module {
+    interface: Interface,
+    pub program: Program,
+}
+
+impl Module {
+    pub fn policy(&self, name: &str) -> Policy {
+        if let Some(e) = self.program.internal(name) {
+            if let Some(i) = self.interface(name) {
+                match e {
+                    Expr::LitExpr(Literal::Unit) => Policy::Unit,
+                    Expr::LitExpr(body) => {
+                        if *body == i.allow {
+                            Policy::Allow
+                        } else if *body == i.deny {
+                            Policy::Deny
+                        } else {
+                            Policy::Args(1)
+                            //Policy::Args(self.arg_count(name).unwrap_or_default())
+                        }
+                    }
+                    _ => Policy::Args(1),
+                }
+            } else {
+                log::warn!("function not in policy interface: {}", name);
+                Policy::Deny
+            }
+        } else {
+            log::warn!("missing policy function: {}", name);
+            Policy::Deny
+        }
+    }
+    // fn arg_count(&self, name: &str) -> Option<u8> {
+    //     self.program
+    //         .typ(name)
+    //         .map(|sig| sig.args().unwrap_or_else(Vec::new).len() as u8)
+    // }
+    pub fn interface(&self, s: &str) -> Option<&FunctionInterface> {
+        self.interface.functions.get(s)
+    }
+    // fn check_interface(
+    //     &mut self,
+    //     function: &str,
+    //     interface: &FunctionInterface,
+    //     allow: bool,
+    // ) -> Result<(), Error> {
+    //     match self.program.headers.typ(function) {
+    //         Some(f_sig) => {
+    //             if interface
+    //                 .signatures
+    //                 .iter()
+    //                 .any(|sig| Module::type_check(function, &f_sig, sig).is_ok())
+    //             {
+    //                 Ok(())
+    //             } else {
+    //                 let possible = interface
+    //                     .signatures
+    //                     .iter()
+    //                     .map(|sig| sig.to_string())
+    //                     .collect::<Vec<String>>()
+    //                     .join("; ");
+    //                 Err(Error::new(format!(
+    //                     r#"unable to find suitable instance of function "{}". possible types are: {}"#,
+    //                     function, possible
+    //                 )))
+    //             }
+    //         }
+    //         None => {
+    //             // add default using interface
+    //             self.program
+    //                 .add_function(function, interface.default.clone())?;
+    //             let lit = if allow {
+    //                 interface.allow.clone()
+    //             } else {
+    //                 interface.deny.clone()
+    //             };
+    //             self.program
+    //                 .code
+    //                 .0
+    //                 .insert(function.to_owned(), Expr::LitExpr(lit));
+    //             Ok(())
+    //         }
+    //     }
+    // }
+    // pub fn set_interface(&mut self, interface: &Interface, allow: bool) -> Result<(), Error> {
+    //     self.interface = interface.clone();
+    //     self.program.policies.protocol = interface.protocol.clone();
+    //     for (function, i) in interface.functions.iter() {
+    //         self.check_interface(function, i, allow)?;
+    //         self.program
+    //             .policies
+    //             .functions
+    //             .insert(function.to_string(), self.policy(function));
+    //     }
+    //     Ok(())
+    // }
+    // pub fn allow_all(interface: &Interface) -> Result<Self, Error> {
+    //     let mut module = Module::default();
+    //     module.set_interface(interface, true)?;
+    //     Ok(module)
+    // }
+    // pub fn deny_all(interface: &Interface) -> Result<Self, Error> {
+    //     let mut module = Module::default();
+    //     module.set_interface(interface, false)?;
+    //     Ok(module)
+    // }
+}
