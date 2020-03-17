@@ -12,6 +12,19 @@ services:
     networks:
       srv-net-1:
         ipv4_address: 172.19.0.2
+  
+  srv2:
+    container_name: srv2
+    hostname: srv2
+    armour:
+      labels: 
+        - hello
+    image: nginx
+    extra_hosts:
+      - "client-1:172.21.0.2"
+    networks:
+      srv-net-1:
+        ipv4_address: 172.19.0.2
 
 networks:
   srv-net-1:

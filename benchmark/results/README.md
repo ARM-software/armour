@@ -304,7 +304,10 @@ For the second set of policies that use oracles:
             hosts: [{ socket_address: { address: srv-hyper , port_value: 80 }}]
             
 ### Linkerd policies
-		
+
+`change this description`
+
+Linkerd setup is a bit different from the previous tools, there is no need for a configuration file, just create a file with the name of the destination in the `something` folder and inside the file get ..
 ## Results
 
 ### t2.large: client, server and proxies are running in the same VM

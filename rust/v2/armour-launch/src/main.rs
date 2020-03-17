@@ -5,8 +5,8 @@ use std::process::Command;
 use std::io::{Error, ErrorKind};
 use awc::Client;
 use std::io::{self, Write};
-use tokio::prelude::Future;
 
+//Todo: replace shiplift with our new min-version
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     let matches = App::new("armour-compose")
@@ -73,31 +73,36 @@ async fn main() -> std::io::Result<()> {
                     cmp.networks = networks;
                     fs::write("docker-compose.yml", serde_yaml::to_string(&cmp).unwrap()).expect("Unable to write file");
                     // assuming the docker engine is running
-                    //create containers
                     match Command::new("docker-compose")
                         .arg("up")
                         .arg("--no-start")
                         .output() {
                         Ok(child) => {
                             if child.status.success() {
-                                println!("{:?}",io::stdout().write_all(&child.stdout).unwrap());
+                                println!("Docker container created successfully {:?}",io::stdout().write_all(&child.stdout).unwrap());
                             }
                             else {
                                 panic!("{:?}",io::stderr().write_all(&child.stderr).unwrap());
                             }
                         }
-                        Err(_err) => { panic!("failed to get a successful response status!"); }
+                        Err(_err) => { panic!("docker-compose command failed!"); }
                     }
                     //get networks and ips
                     let docker = shiplift::Docker::new();
-                    for (key, _) in info.iter() {
-                        let fut = docker.containers().get(key).inspect().map(|container| println!("{:#?}", container))
-                        .map_err(|e| eprintln!("Error: {}", e));
-                        tokio::run(fut);
-                        // let ip = ...network_settings.ip_address;
-                        
+                    let t = info.clone();
+                    for (srv, infos) in t.iter() {
+                        let mut runtime = tokio::runtime::Runtime::new().expect("Unable to create a runtime");
+                        let details = runtime.block_on(docker.containers().get(srv).inspect()).unwrap();
+                        for (_, network) in details.network_settings.networks.iter() {
+                            info.insert(srv.to_string(), armour_compose::service::MasterInfo { 
+                                armour_labels: infos.armour_labels.clone(),
+                                container_labels: infos.container_labels.clone(),
+                                network: infos.network.clone(),
+                                ipv4_address: Some(network.ip_address.clone().parse().unwrap())
+                            });
+                        }
                     }
-                    //should the created networks be sent with the labels ?
+                    
                     let client = Client::default();
                     let response = client.post("http://localhost:8088/on-boarding")
                     .send_json(&info)
@@ -109,11 +114,11 @@ async fn main() -> std::io::Result<()> {
                     match response {
                         Ok(_) => {
                             match Command::new("docker-compose")
-                                .arg("up")
+                                .arg("start")
                                 .output() {
                                 Ok(child) => {
                                     if child.status.success() {
-                                        println!("{:?}",io::stdout().write_all(&child.stdout).unwrap());
+                                        println!("Docker container started successfully {:?}",io::stdout().write_all(&child.stdout).unwrap());
                                     }
                                     else {
                                         panic!("{:?}",io::stderr().write_all(&child.stderr).unwrap());
@@ -122,12 +127,10 @@ async fn main() -> std::io::Result<()> {
                                 Err(_err) => { panic!("failed to get a successful response status!"); }
                             }
                         },
-                        Err(_error) => { panic!("failed to get a successful response status!"); }
+                        Err(_error) => { panic!("docker-compose command failed!"); }
                     };
-                    println!("end");
-
                 }
-                Err(e) => println!("{}", e),
+                Err(e) => panic!("{}", e),
             }
         } 
     } else if let Some(down) = matches.subcommand_matches("down") {
@@ -145,10 +148,10 @@ async fn main() -> std::io::Result<()> {
                                 panic!("{:?}",io::stderr().write_all(&child.stderr).unwrap());
                             }
                         }
-                        Err(_err) => { panic!("failed to get a successful response status!"); }
+                        Err(_err) => { panic!("docker-compose command failed!"); }
                     }
                 }
-                Err(e) => println!("{}", e),
+                Err(e) => panic!("{}", e),
             }
         }
     }
