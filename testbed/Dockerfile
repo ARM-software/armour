@@ -6,8 +6,7 @@ RUN apt update \
   && rm -rf /var/lib/apt/lists/* \
   && pip3 install Flask requests
 
-EXPOSE 8080
+EXPOSE 80
 
-WORKDIR /armour-home
+WORKDIR /app
 
-CMD ["tail", "-f", "/dev/null"]

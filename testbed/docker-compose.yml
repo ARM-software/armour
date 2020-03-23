@@ -1,78 +1,68 @@
 version: "3.0"
 services:
-  armour-data:
-    container_name: armour-data
-    hostname: armour-data
-    image: armour-data-master
-    tty: true
+  server:
+    container_name: server
+    hostname: server
+    build:
+      context: .
+      dockerfile: Dockerfile
     extra_hosts:
-      - "server-1:172.19.0.2"
-      - "server-2:172.20.0.2"
+      - "client-1:172.19.0.2"
+      - "client-2:172.20.0.2"
+    command: python server.py
+    volumes:
+      - ./server/:/app
+    expose:
+      - "8080"
     networks:
-      proxy-net:
+      srv-net:
         ipv4_address: 172.18.0.2
 
-  server-1:
-    container_name: server-1
-    hostname: server-1
+  client-1:
+    container_name: client-1
+    hostname: client-1
     extra_hosts:
-      - "armour-data:172.18.0.2"
-      - "server-2:172.20.0.2"
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: client-python
-    command: tail -f /dev/null
-    volumes:
-      - ./flask-server:/flask-server
-    expose:
-      - "8080"
+      - "server:172.18.0.2"
+      - "client-2:172.20.0.2"
+    image: python
     networks:
-      srv-net-1:
+      cl-net-1:
         ipv4_address: 172.19.0.2
 
-  server-2:
-    container_name: server-2
-    hostname: server-2
+  client-2:
+    container_name: client-2
+    hostname: client-2
     extra_hosts:
-      - "server-1:172.19.0.2"
-      - "armour-data:172.18.0.2"
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: client-python
-    command: tail -f /dev/null
-    volumes:
-      - ./flask-server:/flask-server
-    expose:
-      - "8080"
+      - "client-1:172.19.0.2"
+      - "server:172.18.0.2"
+    image: python
     networks:
-      srv-net-2:
+      cl-net-2:
         ipv4_address: 172.20.0.2
 
 networks:
-  srv-net-1:
+  cl-net-1:
     driver: bridge
     driver_opts:
-      com.docker.network.bridge.name: srv-net-1
+      com.docker.network.bridge.name: cl-net-1
     internal: true
     ipam:
       config:
         - subnet: 172.19.0.0/28
 
-  srv-net-2:
+  cl-net-2:
     driver: bridge
     driver_opts:
-      com.docker.network.bridge.name: srv-net-2
+      com.docker.network.bridge.name: cl-net-2
     internal: true
     ipam:
       config:
         - subnet: 172.20.0.0/28
 
-  proxy-net:
+  srv-net:
     driver: bridge
     driver_opts:
-      com.docker.network.bridge.name: proxy-net
+      com.docker.network.bridge.name: srv-net
     ipam:
       config:
         - subnet: 172.18.0.0/28

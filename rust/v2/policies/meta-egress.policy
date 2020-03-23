@@ -13,3 +13,28 @@ fn allow_rest_response() -> bool {
   Egress::wipe();
   Ingress::has_label('ingress-ok')
 }
+
+
+ingress:
+// REST response allow/deny
+fn allow_rest_request() -> bool {
+  Egress::add_label('ingress-ok');
+  true
+}
+fn allow_rest_response() -> bool {
+  Egress::wipe();
+  Ingress::has_label('egress-ok')
+}
+
+egress:
+// REST request allow/deny
+fn allow_rest_request() -> bool {
+  Egress::wipe();
+  Egress::has_label('ingress-ok')
+}
+
+// REST response allow/deny
+fn allow_rest_response() -> bool {
+  Ingress::add_label('egress-ok');
+  true
+}
