@@ -1,0 +1,7 @@
+fn allow_rest_request(req: HttpRequest) -> bool { 
+    let c = req.connection(); 
+    let (from, to) = c.from_to(); 
+    if "server" in to.hosts() {
+      "client-1" in from.hosts() 
+    } else {false}
+}
