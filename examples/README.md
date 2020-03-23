@@ -72,8 +72,8 @@ Policies should be saved in a file (no restrictions on the extension of the file
 
 To apply the policies while the proxy is running: 
 
-| Steps | Armour Proxy | Client  |
-|:-------:| ------ | --------- |
-|**1**| <pre>> policy test1.policy</pre> |<pre>$ docker exec -it client-1 curl http://server:80/private <br>> Response! <br>$ docker exec -it client-2 curl http://server:80/private <br>> Access denied </pre>|
-|**4**| <pre>> allow all </pre> |<pre>$ docker exec -it client-1 curl http://server:80/ <br>> Response! </pre>|
-|**5**| <pre>> deny all </pre>|<pre>$ docker exec -it client-1 curl http://server:80/ <br>> Access denied! </pre>|
+| Armour Proxy | Client  |
+| ------ | --------- |
+| <pre>> policy test1.policy</pre> |<pre>$ docker exec -it client-1 curl http://server:80/private <br>> Response! <br>$ docker exec -it client-2 curl http://server:80/private <br>> Access denied </pre>|
+| <pre>> allow all </pre> |<pre>$ docker exec -it client-1 curl http://server:80/ <br>> Response! </pre>|
+| <pre>> deny all </pre>|<pre>$ docker exec -it client-1 curl http://server:80/ <br>> Access denied! </pre>|
