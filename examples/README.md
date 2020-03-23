@@ -65,10 +65,10 @@ Policies should be saved in a file (no restrictions on the extension of the file
  
 | Graph | Policy  |
 | ------ | --------- |
-| <img src="ID-based.png" width="250" height="200">|**ID based policy** <pre>fn allow&#95;rest&#95;request(req: HttpRequest) -> bool { <br>  let c = req.connection(); <br>  let (from, to) = c.from_to(); <br>  if "server" in to.hosts() {<br>    "client-1" in from.hosts() <br>  } else {false}<br> }</pre>|
-|<img src="method-based.png" width="250" height="200">|**Method based policy**  <pre>fn allow&#95;rest&#95;request(req: HttpRequest) -> bool { <br>  let c = req.connection(); <br>  let (from, to) = c.from_to(); <br>  if "server" in to.hosts() {<br>    "client-1" in from.hosts() <br>      &#38;&#38; req.method() == "GET" <br>      &#38;&#38; req.path() == "private" <br>  } else {false}<br> }</pre>|
+| <img src="pictures/ID-based.png" width="250" height="200">|**ID based policy** <pre>fn allow&#95;rest&#95;request(req: HttpRequest) -> bool { <br>  let c = req.connection(); <br>  let (from, to) = c.from_to(); <br>  if "server" in to.hosts() {<br>    "client-1" in from.hosts() <br>  } else {false}<br> }</pre>|
+|<img src="pictures/method-based.png" width="250" height="200">|**Method based policy**  <pre>fn allow&#95;rest&#95;request(req: HttpRequest) -> bool { <br>  let c = req.connection(); <br>  let (from, to) = c.from_to(); <br>  if "server" in to.hosts() {<br>    "client-1" in from.hosts() <br>      &#38;&#38; req.method() == "GET" <br>      &#38;&#38; req.path() == "private" <br>  } else {false}<br> }</pre>|
 ||**Payload based policy** <pre>fn allow&#95;server&#95;payload(payload: Payload) -> bool {<br>  payload.data().len() < 3000 <br>} </pre>|
-|<img src="oracle.png" width="250" height="200">|**Use oracles**<pre>external logger @ "log&#95;sock" { <br> fn log(&#95;) -> () <br>} <br>fn allow&#95;rest&#95;request(req: HttpRequest) -> bool {<br>  logger::log(req);<br>  true <br>}</pre> So far we have 2 oracles to use, a logger and a Docker engine query [oracle](../rust/policy-services/docker-query/README.md)|
+|<img src="pictures/oracle.png" width="250" height="200">|**Use oracles**<pre>external logger @ "log&#95;sock" { <br> fn log(&#95;) -> () <br>} <br>fn allow&#95;rest&#95;request(req: HttpRequest) -> bool {<br>  logger::log(req);<br>  true <br>}</pre> So far we have 2 oracles to use, a logger and a Docker engine query [oracle](../rust/policy-services/docker-query/README.md)|
 
 To apply the policies while the proxy is running: 
 
