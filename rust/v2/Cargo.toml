@@ -10,7 +10,8 @@ members = [
     "armour-master",
     "armour-control",
     "server",
-    "armour-ctl"
+    "armour-ctl",
+    "docker-api"
 ]
 
 [profile.release]
