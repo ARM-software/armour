@@ -447,7 +447,7 @@ fn lex_reserved_ident<'a, E: error::ParseError<Span<'a>>>(
                 offset,
             },
         )) => {
-            if fragment.is_empty() || fragment.chars().nth(0) == Some('_') {
+            if fragment.is_empty() || fragment.starts_with('_') {
                 Err(nom::Err::Incomplete(nom::Needed::Unknown))
             } else {
                 Ok((

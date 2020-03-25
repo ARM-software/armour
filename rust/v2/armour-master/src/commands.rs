@@ -68,11 +68,7 @@ fn command<'a>(caps: &'a regex::Captures) -> (InstanceSelector, Option<&'a str>,
 fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> bool {
     let (instance, command, args) = command(&caps);
     let command = command.map(|s| s.to_lowercase());
-    match (
-        instance == InstanceSelector::All,
-        command.as_ref().map(String::as_str),
-        args,
-    ) {
+    match (instance == InstanceSelector::All, command.as_deref(), args) {
         (true, Some("help"), None) => println!(
             "COMMANDS:
     help               list commands
