@@ -4,7 +4,7 @@
 
   Author: Anthony Fox
 */
-use super::serde_utils::from_str;
+use armour_serde::{deserialize_from_str, from_str};
 use serde::de::{self, SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -418,7 +418,7 @@ impl<'de> Deserialize<'de> for CapSet {
     }
 }
 
-lazy_static! {
+lazy_static::lazy_static! {
     static ref ALL_CAPS: Set<Capability> = CapSet::all_caps().0;
     static ref NUMBER_OF_CAPS: usize = ALL_CAPS.len();
 }

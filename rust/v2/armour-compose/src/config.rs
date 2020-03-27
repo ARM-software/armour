@@ -1,5 +1,5 @@
 use super::external;
-use super::serde_utils::{array_dict, is_default};
+use armour_serde::{array_dict, is_default};
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap as Map;

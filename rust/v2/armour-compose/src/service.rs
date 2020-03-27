@@ -1,11 +1,14 @@
-use super::serde_utils::{array_dict, from_str, is_default, string_or_list, string_or_struct};
 use super::{capabilities, config, network, secret, volume};
+use armour_api::master::OnboardInfo;
+use armour_serde::{
+    array_dict, deserialize_from_str, from_str, is_default, string_or_list, string_or_struct,
+};
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap as Map;
 use std::fmt;
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone )]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Service {
     // TODO:
     //
@@ -156,12 +159,32 @@ pub struct Service {
     pub _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
-pub struct MasterInfo {
-    pub armour_labels: Armour,
-    pub container_labels: array_dict::ArrayDict,
-    pub network: String,
-    pub ipv4_address: Option<std::net::Ipv4Addr>,
+impl Service {
+    pub fn armour_bridge_network(name: &str) -> String {
+        format!("arm-{}", name)
+    }
+    pub fn convert_for_armour(&mut self, name: &str) -> (OnboardInfo, network::Network) {
+        let armour_bridge_network = Service::armour_bridge_network(name);
+        let info = OnboardInfo {
+            armour_labels: self.armour.labels.clone(),
+            container_labels: self.labels.clone(),
+            network: armour_bridge_network.clone(),
+            ipv4_address: None,
+        };
+        // create a new (internal) bridge network for the service
+        let mut network = network::Network::default();
+        network.driver = Some(network::Driver::Bridge);
+        network.driver_opts.insert(
+            "com.docker.network.bridge.name".to_string(),
+            armour_bridge_network.clone(),
+        );
+        network.internal = true;
+        // wipe armour field
+        self.armour = Armour::default();
+        // use internal bridge network
+        self.networks = network::Networks::Array(vec![armour_bridge_network]);
+        (info, network)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
@@ -188,7 +211,7 @@ pub struct Build {
     _extras: Map<String, serde_yaml::Value>,
 }
 //pub fn skip(m: &Armour>) -> bool {
- //   true
+//   true
 //}
 impl std::str::FromStr for Build {
     type Err = &'static str;
@@ -207,8 +230,7 @@ impl std::str::FromStr for Build {
     }
 }
 
-
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone )]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Armour {
     pub labels: array_dict::ArrayDict,
 }
@@ -223,7 +245,7 @@ impl std::str::FromStr for Armour {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone )]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
 pub struct PortRecord {
     target: u16,
     published: u16,
@@ -234,7 +256,7 @@ pub struct PortRecord {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Debug, Clone )]
+#[derive(Serialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Port {
     Raw(String),
@@ -285,7 +307,7 @@ impl<'de> Deserialize<'de> for Port {
     }
 }
 
-#[derive(Serialize, Debug, PartialEq, Clone )]
+#[derive(Serialize, Debug, PartialEq, Clone)]
 #[serde(rename_all(serialize = "kebab-case"))]
 pub enum Order {
     StartFirst,
@@ -305,7 +327,7 @@ impl std::str::FromStr for Order {
 
 deserialize_from_str!(Order);
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone )]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
 pub struct Config {
     #[serde(skip_serializing_if = "Option::is_none")]
     parallelism: Option<usize>,
@@ -324,7 +346,7 @@ pub struct Config {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone )]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
 pub struct Resource {
     #[serde(skip_serializing_if = "Option::is_none")]
     cpus: Option<String>,
@@ -335,7 +357,7 @@ pub struct Resource {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone )]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
 pub struct Resources {
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
@@ -348,7 +370,7 @@ pub struct Resources {
     _extras: Map<String, serde_yaml::Value>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone )]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
 pub struct Deployment {
     #[serde(skip_serializing_if = "Option::is_none")]
     mode: Option<String>,

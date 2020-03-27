@@ -14,8 +14,8 @@ edition = "2018"
 #path = "src/client.rs"
 
 [dependencies]
-armour-lang = { path = "../armour-lang" }
 armour-api = { path = "../armour-api" }
+armour-lang = { path = "../armour-lang" }
 
 actix = "0.9"
 actix-rt = "1.0"
@@ -31,6 +31,7 @@ pretty_env_logger = "0.4"
 regex = "1.3"
 rpassword = "4.0"
 rustyline = "6.0"
+serde_json = "1.0"
 tokio = { version = "0.2", features = ["uds", "tcp"] }
 tokio-util = { version = "0.2", features = ["codec"] }
 url = "2.1"

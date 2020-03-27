@@ -9,7 +9,7 @@ members = [
     "armour-proxy",
     "armour-master",
     "armour-control",
-    "server",
+    "armour-serde",
     "armour-ctl",
     "docker-api"
 ]

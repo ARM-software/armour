@@ -69,6 +69,10 @@ impl Docker {
         let req = hyper::Request::post(Docker::addr(path)).body(hyper::Body::from(""))?;
         Docker::process_body(path, self.0.request(req).await?).await
     }
+    async fn delete(&self, path: &str) -> Result<hyper::Response<bytes::BytesMut>> {
+        let req = hyper::Request::delete(Docker::addr(path)).body(hyper::Body::from(""))?;
+        Docker::process_body(path, self.0.request(req).await?).await
+    }
 }
 
 /// System operations
@@ -93,10 +97,20 @@ impl Docker {
     pub async fn inspect_container(&self, id: &str) -> Result<rep::ContainerDetails> {
         self.get(&format!("/containers/{}/json", id)).await
     }
+    /// [Start a container](https://docs.docker.com/engine/api/v1.40/#operation/ContainerStart).
+    pub async fn start_container(&self, id: &str) -> Result<()> {
+        let path = format!("/containers/{}/start", id);
+        self.post(&path).await.map(|_| ())
+    }
     /// [Stop a container](https://docs.docker.com/engine/api/v1.40/#operation/ContainerStop).
     pub async fn stop_container(&self, id: &str) -> Result<()> {
         let path = format!("/containers/{}/stop", id);
         self.post(&path).await.map(|_| ())
+    }
+    /// [Remove a container](https://docs.docker.com/engine/api/v1.40/#operation/ContainerDelete).
+    pub async fn remove_container(&self, id: &str) -> Result<()> {
+        let path = format!("/containers/{}", id);
+        self.delete(&path).await.map(|_| ())
     }
     /// [Pause a container](https://docs.docker.com/engine/api/v1.40/#operation/ContainerPause).
     pub async fn pause_container(&self, id: &str) -> Result<()> {

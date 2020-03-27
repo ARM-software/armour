@@ -1,5 +1,4 @@
-use super::serde_utils::array_dict;
-use super::serde_utils::{from_str, is_default};
+use armour_serde::{array_dict, deserialize_from_str, from_str, is_default};
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap as Map;

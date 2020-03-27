@@ -1,5 +1,19 @@
 type Master = actix_web::web::Data<actix::Addr<super::master::ArmourDataMaster>>;
 
+use actix_web::{post, web, HttpResponse};
+
+#[post("/on-board")]
+pub async fn onboard(
+	info: web::Json<armour_api::master::OnboardInformation>,
+) -> Result<HttpResponse, actix_web::Error> {
+	// TODO: onboarding
+	log::info!(
+		"received onboarding: {}",
+		serde_json::to_string_pretty(&info.0)?
+	);
+	Ok(HttpResponse::Ok().finish())
+}
+
 pub mod master {
 	use crate::master::List;
 	use actix_web::{get, web, HttpResponse};

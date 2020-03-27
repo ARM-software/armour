@@ -5,6 +5,9 @@ authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
 [dependencies]
+armour-api = { path = "../armour-api" }
+armour-serde = { path = "../armour-serde" }
+
 serde = { version = "1.0",  features = ["derive"] }
 serde_yaml = "0.8"
 serde_json = "1.0"

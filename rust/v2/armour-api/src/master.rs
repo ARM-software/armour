@@ -85,6 +85,16 @@ impl std::fmt::Display for Status {
     }
 }
 
+pub type OnboardInformation = BTreeMap<String, OnboardInfo>;
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
+pub struct OnboardInfo {
+    pub armour_labels: armour_serde::array_dict::ArrayDict,
+    pub container_labels: armour_serde::array_dict::ArrayDict,
+    pub network: String,
+    pub ipv4_address: Option<std::net::Ipv4Addr>,
+}
+
 /// Tokio utils codec for `proxy` instance to `master` communication
 pub struct MasterCodec;
 

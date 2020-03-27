@@ -40,7 +40,7 @@ fn main() -> io::Result<()> {
                 .help("Run commands from a script"),
         )
         .arg(
-            Arg::with_name("rest")
+            Arg::with_name("port")
                 .short("p")
                 .required(false)
                 .takes_value(true)
@@ -93,7 +93,7 @@ fn main() -> io::Result<()> {
 
     // REST interface
     let port = matches
-        .value_of("rest")
+        .value_of("port")
         .map(|s| s.parse::<u16>().unwrap_or(TCP_PORT))
         .unwrap_or(TCP_PORT);
     let socket = format!("127.0.0.1:{}", port);
@@ -104,6 +104,7 @@ fn main() -> io::Result<()> {
             .data(name.clone())
             .data(master_clone.clone())
             .wrap(middleware::Logger::default())
+            .service(rest_api::onboard)
             .service(
                 web::scope("/master")
                     .service(rest_api::master::name)

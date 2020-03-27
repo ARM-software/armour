@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 armour-lang = { path = "../armour-lang" }
+armour-serde = { path = "../armour-serde" }
 
 actix = "0.9"
 bincode = "1.2"
