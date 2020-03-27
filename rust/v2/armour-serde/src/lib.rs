@@ -5,6 +5,7 @@ where
     *t == T::default()
 }
 
+// provide deserialization support for types that implement the trait `std::str::FromStr`.
 #[macro_export]
 macro_rules! deserialize_from_str {
     ($ty:ident) => {
@@ -13,7 +14,7 @@ macro_rules! deserialize_from_str {
             where
                 D: Deserializer<'de>,
             {
-                from_str::deserialize(deserializer)
+                armour_serde::from_str::deserialize(deserializer)
             }
         }
     };

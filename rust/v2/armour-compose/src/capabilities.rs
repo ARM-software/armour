@@ -4,7 +4,7 @@
 
   Author: Anthony Fox
 */
-use armour_serde::{deserialize_from_str, from_str};
+use armour_serde::deserialize_from_str;
 use serde::de::{self, SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

@@ -1,7 +1,7 @@
 use super::{capabilities, config, network, secret, volume};
 use armour_api::master::OnboardInfo;
 use armour_serde::{
-    array_dict, deserialize_from_str, from_str, is_default, string_or_list, string_or_struct,
+    array_dict, deserialize_from_str, is_default, string_or_list, string_or_struct,
 };
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};

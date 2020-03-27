@@ -4,8 +4,10 @@ use awc::Client;
 use clap::{crate_version, App, AppSettings, Arg, SubCommand};
 use std::process::Command;
 
+type Error = Box<dyn std::error::Error + Send + Sync>;
+
 #[actix_rt::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<(), Error> {
     let matches = get_matches();
     if let Some(up) = matches.subcommand_matches("up") {
         // read armour-compose from input file and write docker-compose.yml file
@@ -52,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 }
 
-fn docker_up() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn docker_up() -> Result<(), Error> {
     let child = Command::new("docker-compose")
         .arg("up")
         .arg("--no-start")
@@ -68,7 +70,7 @@ fn docker_up() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 }
 
-fn docker_down() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn docker_down() -> Result<(), Error> {
     let child = Command::new("docker-compose").arg("down").output()?;
     if child.status.success() {
         println!("`docker-compose down` successful");
@@ -81,9 +83,7 @@ fn docker_down() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 }
 
-fn read_armour<P: AsRef<std::path::Path>>(
-    p: P,
-) -> Result<OnboardInformation, Box<dyn std::error::Error + Send + Sync>> {
+fn read_armour<P: AsRef<std::path::Path>>(p: P) -> Result<OnboardInformation, Error> {
     // load armour compose file
     let (compose, info) = Compose::read_armour(p)?;
     // save as docker compose file
