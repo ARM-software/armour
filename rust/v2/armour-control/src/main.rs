@@ -6,45 +6,45 @@ use listenfd::ListenFd;
 use mongodb::{options::ClientOptions, Client};
 #[macro_use]
 extern crate clap;
-use clap::{crate_version};
+use clap::crate_version;
 
 const DEFAULT_MONGO_DB: &str = "mongodb://localhost:27017";
 
+type Error = Box<dyn std::error::Error + Send + Sync>;
+
 #[actix_rt::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> Result<(), Error> {
     // enable logging
     std::env::set_var("RUST_LOG", "armour_control=info,actix_web=info");
     std::env::set_var("RUST_BACKTRACE", "0");
     env_logger::init();
-
 
     let yaml = load_yaml!("../resources/cli.yml");
     let matches = clap::App::from_yaml(yaml)
         .version(crate_version!())
         .get_matches();
 
-    let mongo_url = matches.value_of("MONGODBURL")
-        .unwrap_or(DEFAULT_MONGO_DB);
+    let mongo_url = matches.value_of("MONGODBURL").unwrap_or(DEFAULT_MONGO_DB);
 
     let mut listenfd = ListenFd::from_env();
 
-    let mut db_options = ClientOptions::parse(mongo_url).map_err(|e| {
-        log::warn!("failed to get db_options");
-        std::io::Error::new(std::io::ErrorKind::Other, e)
+    let mut db_endpoint = ClientOptions::parse(mongo_url).map_err(|e| {
+        log::warn!("failed to get db_endpoint");
+        e
     })?;
-    db_options.app_name = Some("armour".to_string());
-    let client = Client::with_options(db_options.clone()).map_err(|e| {
+    db_endpoint.app_name = Some("armour".to_string());
+    let db_con = Client::with_options(db_endpoint.clone()).map_err(|e| {
         log::info!("Failed to connect to Mongo. Start MongoDB");
-        std::io::Error::new(std::io::ErrorKind::Other, e)
+        e
     })?;
-    let state = std::sync::Arc::new(ControlPlaneState {
-        db_endpoint: db_options,
-        db_con: client,
+    let state = web::Data::new(ControlPlaneState {
+        db_endpoint,
+        db_con,
     });
 
     let mut server = HttpServer::new(move || {
         App::new()
-            .data(state.clone())
+            .app_data(state.clone())
             .wrap(middleware::Logger::default())
             .service(
                 web::scope("/controlplane")

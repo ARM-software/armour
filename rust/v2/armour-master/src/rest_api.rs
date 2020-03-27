@@ -9,7 +9,7 @@ pub async fn onboard(
 	// TODO: onboarding
 	log::info!(
 		"received onboarding: {}",
-		serde_json::to_string_pretty(&info.0)?
+		serde_json::to_string_pretty(&info.into_inner())?
 	);
 	Ok(HttpResponse::Ok().finish())
 }
