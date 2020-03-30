@@ -108,7 +108,7 @@ async fn query_policy(
 fn present(
     col: &mongodb::Collection,
     filter: impl Into<Option<bson::Document>>,
-) -> Result<bool, HttpResponse> {
+) -> Result<bool, actix_web::Error> {
     Ok(col
         .find(filter, None)
         .on_err("MongoDB query error")?
