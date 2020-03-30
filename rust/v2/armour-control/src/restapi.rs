@@ -15,23 +15,13 @@ pub async fn onboard_master(
     state: State,
     request: Json<OnboardMasterRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    log::info!("Onboarding master {:?}", request.host);
-
-    let connection = &state.db_con;
-    let db = connection.database(ARMOUR_DB);
-    let col = db.collection(MASTERS_COL);
+    let host = &request.host;
+    log::info!("Onboarding master {}", host);
+    let col = collection(&state, MASTERS_COL);
 
     // Check if the master is already there
-    let result: Vec<Result<bson::Document, mongodb::error::Error>> = col
-        .find(doc! { "host" : to_bson(&request.host)? }, None)
-        .map_err(|_| internal("MongoDB query error"))?
-        .collect();
-
-    if !result.is_empty() {
-        Ok(internal(format!(
-            "Master already present for {:}",
-            request.host
-        )))
+    if present(&col, doc! { "host" : to_bson(host)? })? {
+        Ok(internal(format!("Master already present for {}", host)))
     } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
         col.insert_one(document, None)
             .map_err(|_| internal("Error inserting in MongoDB"))?;
@@ -46,23 +36,13 @@ pub async fn onboard_service(
     state: State,
     request: Json<OnboardServiceRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    log::info!("Onboarding service {:?}", request.label);
-
-    let connection = &state.db_con;
-    let db = connection.database(ARMOUR_DB);
-    let col = db.collection(SERVICES_COL);
+    let label = &request.label;
+    log::info!("Onboarding service {}", label);
+    let col = collection(&state, SERVICES_COL);
 
     // Check if the service is already there
-    let result: Vec<Result<bson::Document, mongodb::error::Error>> = col
-        .find(doc! { "label" : to_bson(&request.label)? }, None)
-        .map_err(|_| internal("MongoDB query error"))?
-        .collect();
-
-    if !result.is_empty() {
-        Ok(internal(format!(
-            "Service label in use {:?}",
-            request.label
-        )))
+    if present(&col, doc! { "label" : to_bson(label)? })? {
+        Ok(internal(format!("Service label in use {}", label)))
     } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
         col.insert_one(document, None) // Insert into a MongoDB collection
             .map_err(|_| internal("Error inserting in MongoDB"))?;
@@ -79,24 +59,19 @@ async fn update_policy(
     state: State,
     request: Json<PolicyUpdateRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    log::info!("Updating policy for {:?}", request.service);
-    let connection = &state.db_con;
-    let db = connection.database(ARMOUR_DB);
-    let col = db.collection(POLICIES_COL);
-
-    let service = request.service.to_string();
-
-    let service_clone = service.clone();
-    let clone_policy = request.policy.clone();
+    let service = &request.service.to_string();
+    log::info!("Updating policy for {}", service);
+    let policy = request.policy.to_string();
 
     if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
+        let col = collection(&state, POLICIES_COL);
         if let Ok(Some(doc)) = col.find_one(Some(doc! {"service": service}), None) {
             let current = bson::from_bson::<PolicyUpdateRequest>(bson::Bson::Document(doc))
                 .map_err(|_| internal("Error inserting policy"))?;
             // To obtain the old policy:
             // let p : Program = serde_json::from_str(&current.policy).unwrap();
 
-            col.delete_many(doc! {"service" : service_clone}, None)
+            col.delete_many(doc! {"service" : service}, None)
                 .map_err(|_| internal("Error removing old policies"))?;
             col.insert_one(document, None)
                 .map_err(|_| internal("Error inserting new policy"))?;
@@ -104,7 +79,7 @@ async fn update_policy(
         } else {
             col.insert_one(document, None)
                 .map_err(|_| internal("Error inserting new policy"))?;
-            Ok(HttpResponse::Ok().body(clone_policy))
+            Ok(HttpResponse::Ok().body(policy))
         }
     } else {
         log::warn!("Error converting the BSON object into a MongoDB document");
@@ -118,22 +93,31 @@ async fn query_policy(
     state: State,
     request: Json<PolicyQueryRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    log::info!("Querying policy for {:?}", request.service);
-
-    let connection = &state.db_con;
-    let db = connection.database(ARMOUR_DB);
-    let col = db.collection(POLICIES_COL);
-
-    let service = request.service.clone();
-    let service_clone = request.service.clone();
-
+    let service = &request.service;
+    log::info!("Querying policy for {}", service);
+    let col = collection(&state, POLICIES_COL);
     if let Ok(Some(doc)) = col.find_one(Some(doc! {"service": service}), None) {
         let current = bson::from_bson::<PolicyUpdateRequest>(bson::Bson::Document(doc))
             .map_err(|_| internal("Bson conversion error"))?;
         Ok(HttpResponse::Ok().json(current.policy))
     } else {
-        Ok(internal(format!("No policy for {}", service_clone)))
+        Ok(internal(format!("No policy for {}", service)))
     }
+}
+
+fn present(
+    col: &mongodb::Collection,
+    filter: impl Into<Option<bson::Document>>,
+) -> Result<bool, HttpResponse> {
+    Ok(col
+        .find(filter, None)
+        .map_err(|_| internal("MongoDB query error"))?
+        .next()
+        .is_some())
+}
+
+fn collection(state: &State, collection: &str) -> mongodb::Collection {
+    state.db_con.database(ARMOUR_DB).collection(collection)
 }
 
 fn internal<B: Into<actix_web::body::Body>>(b: B) -> HttpResponse {
