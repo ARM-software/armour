@@ -4,9 +4,6 @@ use actix_web::{middleware, web, App, HttpServer};
 use armour_control::{restapi::*, ControlPlaneState};
 use listenfd::ListenFd;
 use mongodb::{options::ClientOptions, Client};
-#[macro_use]
-extern crate clap;
-use clap::crate_version;
 
 const DEFAULT_MONGO_DB: &str = "mongodb://localhost:27017";
 
@@ -19,9 +16,9 @@ async fn main() -> Result<(), Error> {
     std::env::set_var("RUST_BACKTRACE", "0");
     env_logger::init();
 
-    let yaml = load_yaml!("../resources/cli.yml");
+    let yaml = clap::load_yaml!("../resources/cli.yml");
     let matches = clap::App::from_yaml(yaml)
-        .version(crate_version!())
+        .version(clap::crate_version!())
         .get_matches();
 
     let mongo_url = matches.value_of("MONGODBURL").unwrap_or(DEFAULT_MONGO_DB);

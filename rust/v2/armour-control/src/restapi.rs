@@ -24,7 +24,7 @@ pub async fn onboard_master(
         Ok(internal(format!("Master already present for {}", host)))
     } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
         col.insert_one(document, None)
-            .map_err(|_| internal("Error inserting in MongoDB"))?;
+            .on_err("Error inserting in MongoDB")?;
         Ok(HttpResponse::Ok().body("success"))
     } else {
         Ok(internal("Error extracting document"))
@@ -45,7 +45,7 @@ pub async fn onboard_service(
         Ok(internal(format!("Service label in use {}", label)))
     } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
         col.insert_one(document, None) // Insert into a MongoDB collection
-            .map_err(|_| internal("Error inserting in MongoDB"))?;
+            .on_err("Error inserting in MongoDB")?;
         Ok(HttpResponse::Ok().body("success"))
     } else {
         Ok(internal("Error extracting document"))
@@ -67,18 +67,18 @@ async fn update_policy(
         let col = collection(&state, POLICIES_COL);
         if let Ok(Some(doc)) = col.find_one(Some(doc! {"service": service}), None) {
             let current = bson::from_bson::<PolicyUpdateRequest>(bson::Bson::Document(doc))
-                .map_err(|_| internal("Error inserting policy"))?;
+                .on_err("Error inserting policy")?;
             // To obtain the old policy:
             // let p : Program = serde_json::from_str(&current.policy).unwrap();
 
             col.delete_many(doc! {"service" : service}, None)
-                .map_err(|_| internal("Error removing old policies"))?;
+                .on_err("Error removing old policies")?;
             col.insert_one(document, None)
-                .map_err(|_| internal("Error inserting new policy"))?;
+                .on_err("Error inserting new policy")?;
             Ok(HttpResponse::Ok().body(current.policy))
         } else {
             col.insert_one(document, None)
-                .map_err(|_| internal("Error inserting new policy"))?;
+                .on_err("Error inserting new policy")?;
             Ok(HttpResponse::Ok().body(policy))
         }
     } else {
@@ -98,7 +98,7 @@ async fn query_policy(
     let col = collection(&state, POLICIES_COL);
     if let Ok(Some(doc)) = col.find_one(Some(doc! {"service": service}), None) {
         let current = bson::from_bson::<PolicyUpdateRequest>(bson::Bson::Document(doc))
-            .map_err(|_| internal("Bson conversion error"))?;
+            .on_err("Bson conversion error")?;
         Ok(HttpResponse::Ok().json(current.policy))
     } else {
         Ok(internal(format!("No policy for {}", service)))
@@ -111,7 +111,7 @@ fn present(
 ) -> Result<bool, HttpResponse> {
     Ok(col
         .find(filter, None)
-        .map_err(|_| internal("MongoDB query error"))?
+        .on_err("MongoDB query error")?
         .next()
         .is_some())
 }
@@ -120,13 +120,26 @@ fn collection(state: &State, collection: &str) -> mongodb::Collection {
     state.db_con.database(ARMOUR_DB).collection(collection)
 }
 
-fn internal<B: Into<actix_web::body::Body>>(b: B) -> HttpResponse {
-    HttpResponse::InternalServerError().body(b)
-}
-
 pub fn to_bson<T: ?Sized>(value: &T) -> Result<bson::Bson, actix_web::Error>
 where
     T: serde::Serialize,
 {
-    bson::to_bson(value).map_err(|_| internal("Bson conversion error").into())
+    bson::to_bson(value).on_err("Bson conversion error")
 }
+
+fn internal<B: Into<actix_web::body::Body>>(b: B) -> HttpResponse {
+    HttpResponse::InternalServerError().body(b)
+}
+
+trait OnErr<T, E>
+where
+    Self: Into<Result<T, E>>,
+{
+    fn on_err<B: Into<actix_web::body::Body>>(self, b: B) -> Result<T, actix_web::Error> {
+        self.into().map_err(|_| internal(b).into())
+    }
+}
+
+impl<T> OnErr<T, bson::DecoderError> for bson::DecoderResult<T> {}
+impl<T> OnErr<T, bson::EncoderError> for bson::EncoderResult<T> {}
+impl<T> OnErr<T, mongodb::error::Error> for mongodb::error::Result<T> {}
