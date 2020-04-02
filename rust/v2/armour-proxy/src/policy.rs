@@ -68,7 +68,7 @@ pub trait Policy<P> {
     }
 }
 
-type Aead = aes_gcm::AesGcm<aes_soft::Aes256>;
+type Aead = aes_gcm::Aes256Gcm;
 
 /// Armour policy actor
 #[allow(dead_code)] // TODO

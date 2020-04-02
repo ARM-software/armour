@@ -1,7 +1,9 @@
 use super::instance::{ArmourDataInstance, Instance, InstanceSelector, Instances, Meta};
 use actix::prelude::*;
-use armour_api::master::{self, MasterCodec};
-use armour_api::proxy::PolicyRequest;
+use armour_api::{
+    master::{self, MasterCodec},
+    proxy::PolicyRequest,
+};
 use log::*;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;

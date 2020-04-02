@@ -1,6 +1,6 @@
 [package]
 name = "armour-lang"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
@@ -16,9 +16,9 @@ actix = "0.9"
 actix-rt = "1.0"
 arrayvec = "0.5"
 async-std = "1.5"
-base64 = "0.11"
+base64 = "0.12"
 bincode = "1.2"
-blake3 = "0.2"
+blake3 = "0.3"
 capnp = "0.12"
 capnp-rpc = "0.12"
 clap = "2.33"

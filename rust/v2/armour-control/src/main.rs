@@ -34,6 +34,9 @@ async fn main() -> Result<(), Error> {
         log::info!("Failed to connect to Mongo. Start MongoDB");
         e
     })?;
+    // start from blank database
+    db_con.database("armour").drop(None)?;
+    log::info!("reset armour database");
     let state = web::Data::new(ControlPlaneState {
         db_endpoint,
         db_con,
@@ -45,8 +48,10 @@ async fn main() -> Result<(), Error> {
             .wrap(middleware::Logger::default())
             .service(
                 web::scope("/controlplane")
-                    .service(onboard_master)
-                    .service(onboard_service)
+                    .service(on_board_master)
+                    .service(drop_master)
+                    .service(on_board_service)
+                    .service(drop_service)
                     .service(update_policy)
                     .service(query_policy), // .service(index),
             )

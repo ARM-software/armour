@@ -1,5 +1,5 @@
 use super::ControlPlaneState;
-use actix_web::{get, post, web, web::Json, HttpResponse};
+use actix_web::{delete, get, post, web, web::Json, HttpResponse};
 use armour_api::control::*;
 use bson::{bson, doc};
 
@@ -10,18 +10,18 @@ const POLICIES_COL: &str = "policies";
 
 type State = web::Data<ControlPlaneState>;
 
-#[post("/onboard-master")]
-pub async fn onboard_master(
+#[post("/on-board-master")]
+pub async fn on_board_master(
     state: State,
     request: Json<OnboardMasterRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let host = &request.host;
-    log::info!("Onboarding master {}", host);
+    let master = &request.master;
+    log::info!("Onboarding master: {}", master);
     let col = collection(&state, MASTERS_COL);
 
     // Check if the master is already there
-    if present(&col, doc! { "host" : to_bson(host)? })? {
-        Ok(internal(format!("Master already present for {}", host)))
+    if present(&col, doc! { "host" : to_bson(master)? })? {
+        Ok(internal(format!("Master already present for {}", master)))
     } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
         col.insert_one(document, None)
             .on_err("Error inserting in MongoDB")?;
@@ -31,20 +31,56 @@ pub async fn onboard_master(
     }
 }
 
-#[post("/onboard-service")]
-pub async fn onboard_service(
+#[delete("/drop-master")]
+pub async fn drop_master(
+    state: State,
+    request: Json<OnboardMasterRequest>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let master = &request.master;
+    log::info!("Dropping master: {}", master);
+    let col = collection(&state, MASTERS_COL);
+
+    if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
+        col.delete_one(document, None)
+            .on_err("Error removing from MongoDB")?;
+        Ok(HttpResponse::Ok().body("success"))
+    } else {
+        Ok(internal("Error extracting document"))
+    }
+}
+
+#[post("/on-board-service")]
+pub async fn on_board_service(
     state: State,
     request: Json<OnboardServiceRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let label = &request.label;
-    log::info!("Onboarding service {}", label);
+    let service = &request.service;
+    log::info!("Onboarding service: {}", service);
     let col = collection(&state, SERVICES_COL);
 
     // Check if the service is already there
-    if present(&col, doc! { "label" : to_bson(label)? })? {
-        Ok(internal(format!("Service label in use {}", label)))
+    if present(&col, doc! { "service" : to_bson(service)? })? {
+        Ok(internal(format!("Service label in use {}", service)))
     } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
         col.insert_one(document, None) // Insert into a MongoDB collection
+            .on_err("Error inserting in MongoDB")?;
+        Ok(HttpResponse::Ok().body("success"))
+    } else {
+        Ok(internal("Error extracting document"))
+    }
+}
+
+#[delete("/drop-service")]
+pub async fn drop_service(
+    state: State,
+    request: Json<OnboardServiceRequest>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let service = &request.service;
+    log::info!("Dropping service: {}", service);
+    let col = collection(&state, SERVICES_COL);
+
+    if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
+        col.delete_one(document, None) // Insert into a MongoDB collection
             .on_err("Error inserting in MongoDB")?;
         Ok(HttpResponse::Ok().body("success"))
     } else {
@@ -59,19 +95,20 @@ async fn update_policy(
     state: State,
     request: Json<PolicyUpdateRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let service = &request.service.to_string();
+    let service = &request.service.clone();
     log::info!("Updating policy for {}", service);
     let policy = request.policy.to_string();
 
     if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
         let col = collection(&state, POLICIES_COL);
-        if let Ok(Some(doc)) = col.find_one(Some(doc! {"service": service}), None) {
+        let filter = doc! { "service" : to_bson(service)? };
+        if let Ok(Some(doc)) = col.find_one(Some(filter.clone()), None) {
             let current = bson::from_bson::<PolicyUpdateRequest>(bson::Bson::Document(doc))
                 .on_err("Error inserting policy")?;
             // To obtain the old policy:
             // let p : Program = serde_json::from_str(&current.policy).unwrap();
 
-            col.delete_many(doc! {"service" : service}, None)
+            col.delete_many(filter, None)
                 .on_err("Error removing old policies")?;
             col.insert_one(document, None)
                 .on_err("Error inserting new policy")?;
@@ -96,7 +133,7 @@ async fn query_policy(
     let service = &request.service;
     log::info!("Querying policy for {}", service);
     let col = collection(&state, POLICIES_COL);
-    if let Ok(Some(doc)) = col.find_one(Some(doc! {"service": service}), None) {
+    if let Ok(Some(doc)) = col.find_one(Some(doc! { "service" : service.to_string() }), None) {
         let current = bson::from_bson::<PolicyUpdateRequest>(bson::Bson::Document(doc))
             .on_err("Bson conversion error")?;
         Ok(HttpResponse::Ok().json(current.policy))
