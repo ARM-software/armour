@@ -63,7 +63,7 @@ pub async fn on_board_service(
         Ok(internal(format!("Service label in use {}", service)))
     } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
         col.insert_one(document, None) // Insert into a MongoDB collection
-        // FIXME: We should return the policy if present, or a default otherwise            .on_err("Error inserting in MongoDB")?;
+            .on_err("Error inserting in MongoDB")?;
         Ok(HttpResponse::Ok().body("success"))
     } else {
         Ok(internal("Error extracting document"))
