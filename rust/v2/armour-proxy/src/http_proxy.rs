@@ -175,11 +175,7 @@ async fn response(
                     debug,
                     ..
                 } => {
-                    let mut server_payload = BytesMut::new();
-                    while let Some(chunk) = res.next().await {
-                        let chunk = chunk?;
-                        server_payload.extend_from_slice(&chunk)
-                    }
+                    let server_payload = res.body().await?;
                     let args = match count {
                         0 => vec![],
                         1 => vec![(&response_builder.finish(), &p.connection).to_expression()],
@@ -227,15 +223,10 @@ async fn response(
                     debug,
                     ..
                 } => {
-                    let mut server_payload = BytesMut::new();
-                    while let Some(chunk) = res.next().await {
-                        let chunk = chunk?;
-                        server_payload.extend_from_slice(&chunk)
-                    }
                     if debug {
                         log::debug!("{:?}", response_builder)
                     }
-                    Ok(response_builder.body(server_payload))
+                    Ok(response_builder.body(res.body().await?))
                 }
                 // deny
                 PolicyStatus {

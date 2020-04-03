@@ -9,7 +9,9 @@ armour-api = { path = "../armour-api" }
 armour-compose = { path = "../armour-compose" }
 docker-api = { path = "../docker-api" }
 
-clap = "2.33"
-serde_yaml = "0.8"
 actix-rt = "1.0"
-awc = "1.0.1"
+awc = "1.0"
+bytes = "0.5"
+clap = "2.33"
+futures = "0.3"
+serde_yaml = "0.8"

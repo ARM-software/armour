@@ -2,9 +2,10 @@
 //!
 //! Controls proxy (data plane) instances and issues commands to them.
 use actix::prelude::*;
-use actix_web::{middleware, web, App, HttpServer};
+use actix_web::{http, middleware, web, App, HttpServer};
 use armour_master::{
     commands::{run_command, run_script},
+    control_plane,
     master::{ArmourDataMaster, Quit, UdsConnect},
     rest_api,
 };
@@ -12,9 +13,8 @@ use clap::{crate_version, App as ClapApp, Arg};
 use futures::StreamExt;
 use rustyline::{completion, error::ReadlineError, hint, validate::Validator, Editor};
 use std::env;
-use std::io;
 
-fn main() -> io::Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     const UDS_SOCKET: &str = "armour";
     const TCP_PORT: u16 = 8090;
 
@@ -71,40 +71,68 @@ fn main() -> io::Result<()> {
     });
     let pass_key = argon2rs::argon2i_simple(&pass, PASS_SALT);
 
-    // start master, listening for connections on a Unix socket
-    let socket = matches
+    // Unix socket for proxy communication
+    let unix_socket = matches
         .value_of("master socket")
         .unwrap_or(UDS_SOCKET)
         .to_string();
-    let socket_clone = socket.clone();
+    let unix_socket = std::fs::canonicalize(&unix_socket)
+        .unwrap_or_else(|_| std::path::PathBuf::from(unix_socket));
+
+    // TCP socket for REST interface
+    let port = matches
+        .value_of("port")
+        .map(|s| s.parse::<u16>().unwrap_or(TCP_PORT))
+        .unwrap_or(TCP_PORT);
+    let tcp_socket = format!("localhost:{}", port);
+
+    // Onboarding data
+    let name = matches.value_of("name").unwrap_or("master").to_string();
+    let onboard = armour_api::control::OnboardMasterRequest {
+        host: url::Url::parse(&tcp_socket).unwrap(), // TODO: public URL from command line
+        master: name.parse().unwrap(),
+        credentials: String::new(),
+    };
+    let onboard_clone = onboard.clone();
+
+    // start master actor, listening for connections on a Unix socket
+    let unix_socket_clone = unix_socket.clone();
     let listener =
-        Box::new(sys.block_on(async move { tokio::net::UnixListener::bind(socket_clone) })?);
-    let socket =
-        std::fs::canonicalize(&socket).unwrap_or_else(|_| std::path::PathBuf::from(socket));
-    log::info!("started Data Master on socket: {}", socket.display());
+        Box::new(sys.block_on(async { tokio::net::UnixListener::bind(unix_socket_clone) })?);
+    log::info!("started Data Master on socket: {}", unix_socket.display());
     let master = ArmourDataMaster::create(|ctx| {
         ctx.add_message_stream(
             Box::leak(listener)
                 .incoming()
                 .map(|st| UdsConnect(st.unwrap())),
         );
-        ArmourDataMaster::new(socket, pass_key)
+        ArmourDataMaster::new(unix_socket, pass_key)
     });
+    let master_clone = master.clone();
+
+    // onboard with control plane
+    if let Err(message) = sys.block_on(async move {
+        control_plane(
+            &actix_web::client::Client::default(),
+            http::Method::POST,
+            "on-board-master",
+            &onboard,
+        )
+        .await
+    }) {
+        log::warn!("failed to on-board with control plane: {}", message)
+    } else {
+        log::info!("on-boarded with control plane")
+    };
 
     // REST interface
-    let port = matches
-        .value_of("port")
-        .map(|s| s.parse::<u16>().unwrap_or(TCP_PORT))
-        .unwrap_or(TCP_PORT);
-    let socket = format!("127.0.0.1:{}", port);
-    let name = matches.value_of("name").unwrap_or("master").to_string();
-    let master_clone = master.clone();
     HttpServer::new(move || {
         App::new()
             .data(name.clone())
             .data(master_clone.clone())
             .wrap(middleware::Logger::default())
-            .service(rest_api::onboard)
+            .service(rest_api::on_board_services)
+            .service(rest_api::drop_services)
             .service(
                 web::scope("/master")
                     .service(rest_api::master::name)
@@ -116,7 +144,7 @@ fn main() -> io::Result<()> {
                     .service(rest_api::policy::update),
             )
     })
-    .bind(socket)?
+    .bind(&tcp_socket)?
     .run();
 
     // Interactive shell interface
@@ -148,7 +176,25 @@ fn main() -> io::Result<()> {
             .expect("failed to save history")
     });
 
-    sys.run()
+    sys.run()?;
+
+    // start new Actix system for sending a "drop-master" message to control plane
+    let mut sys = actix_rt::System::new("armour_master");
+    if let Err(message) = sys.block_on(async move {
+        control_plane(
+            &actix_web::client::Client::default(),
+            http::Method::DELETE,
+            "drop-master",
+            &onboard_clone,
+        )
+        .await
+    }) {
+        log::warn!("failed to notify control plane: {}", message)
+    } else {
+        log::info!("notified control plane")
+    };
+
+    Ok(())
 }
 
 const PASS_SALT: &str = "armour-master-salt";

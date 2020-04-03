@@ -4,9 +4,6 @@ use actix_web::{middleware, web, App, HttpServer};
 use armour_control::{restapi::*, ControlPlaneState};
 use listenfd::ListenFd;
 use mongodb::{options::ClientOptions, Client};
-#[macro_use]
-extern crate clap;
-use clap::crate_version;
 
 const DEFAULT_MONGO_DB: &str = "mongodb://localhost:27017";
 
@@ -19,9 +16,9 @@ async fn main() -> Result<(), Error> {
     std::env::set_var("RUST_BACKTRACE", "0");
     env_logger::init();
 
-    let yaml = load_yaml!("../resources/cli.yml");
+    let yaml = clap::load_yaml!("../resources/cli.yml");
     let matches = clap::App::from_yaml(yaml)
-        .version(crate_version!())
+        .version(clap::crate_version!())
         .get_matches();
 
     let mongo_url = matches.value_of("MONGODBURL").unwrap_or(DEFAULT_MONGO_DB);
@@ -37,6 +34,9 @@ async fn main() -> Result<(), Error> {
         log::info!("Failed to connect to Mongo. Start MongoDB");
         e
     })?;
+    // start from blank database
+    db_con.database("armour").drop(None)?;
+    log::info!("reset armour database");
     let state = web::Data::new(ControlPlaneState {
         db_endpoint,
         db_con,
@@ -48,8 +48,10 @@ async fn main() -> Result<(), Error> {
             .wrap(middleware::Logger::default())
             .service(
                 web::scope("/controlplane")
-                    .service(onboard_master)
-                    .service(onboard_service)
+                    .service(on_board_master)
+                    .service(drop_master)
+                    .service(on_board_service)
+                    .service(drop_service)
                     .service(update_policy)
                     .service(query_policy), // .service(index),
             )

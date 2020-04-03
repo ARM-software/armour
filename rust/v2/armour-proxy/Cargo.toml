@@ -1,6 +1,6 @@
 [package]
 name = "armour-proxy"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
 
@@ -13,10 +13,10 @@ actix = "0.9"
 actix-rt = "1.0"
 actix-web = "2.0"
 aead = "0.2"
-aes-gcm = "0.3"
+aes-gcm = "0.5"
 aes-soft = "0.3"
 argon2rs = "0.2"
-base64 = "0.11"
+base64 = "0.12"
 bytes = "0.5"
 clap = "2.33"
 dns-lookup = "1.0"
