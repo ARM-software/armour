@@ -66,11 +66,13 @@ pub async fn onboard_service(
     } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
         col.insert_one(document, None) // Insert into a MongoDB collection
             .map_err(|_| internal("Error inserting in MongoDB"))?;
+        // FIXME: We should return the policy if present, or a default otherwise.
         Ok(HttpResponse::Ok().body("success"))
     } else {
         Ok(internal("Error extracting document"))
     }
 }
+
 
 // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
 // Returns old policy if present, or new policy if not
