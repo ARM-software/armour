@@ -1,113 +1,108 @@
-use actix_web::{client, http::Method};
-use armour_api::control::OnboardServiceRequest;
-use armour_api::master::OnboardInformation;
-use armour_lang::labels::Label;
-use armour_serde::array_dict::ArrayDict;
-use std::collections::BTreeMap;
-
 type Master = actix_web::web::Data<actix::Addr<super::master::ArmourDataMaster>>;
 
-use actix_web::{delete, post, web, HttpResponse};
+pub mod launch {
+	use actix_web::{client, http::Method};
+	use actix_web::{delete, post, web, HttpResponse};
+	use armour_api::control::OnboardServiceRequest;
+	use armour_api::master::OnboardInformation;
+	use armour_lang::labels::Label;
+	use armour_serde::array_dict::ArrayDict;
+	use std::collections::BTreeMap;
 
-fn get_armour_id(labels: &ArrayDict) -> Result<Label, actix_web::Error> {
-	static ERR: &str = "failed to get Armour ID for service";
-	match labels {
-		ArrayDict::Array(a) => {
-			if a.len() == 1 {
-				Ok(a[0]
-					.parse()
-					.map_err(|_| HttpResponse::BadRequest().body(ERR))?)
-			} else {
-				Err(HttpResponse::BadRequest().body(ERR).into())
+	fn get_armour_id(labels: &ArrayDict) -> Result<Label, actix_web::Error> {
+		static ERR: &str = "failed to get Armour ID for service";
+		match labels {
+			ArrayDict::Array(a) => {
+				if a.len() == 1 {
+					Ok(a[0]
+						.parse()
+						.map_err(|_| HttpResponse::BadRequest().body(ERR))?)
+				} else {
+					Err(HttpResponse::BadRequest().body(ERR).into())
+				}
 			}
-		}
-		ArrayDict::Dict(d) => {
-			if let Some(v) = d.get("id") {
-				Ok(v.parse()
-					.map_err(|_| HttpResponse::BadRequest().body(ERR))?)
-			} else {
-				Err(HttpResponse::BadRequest().body(ERR).into())
+			ArrayDict::Dict(d) => {
+				if let Some(v) = d.get("id") {
+					Ok(v.parse()
+						.map_err(|_| HttpResponse::BadRequest().body(ERR))?)
+				} else {
+					Err(HttpResponse::BadRequest().body(ERR).into())
+				}
 			}
 		}
 	}
-}
 
-fn onboard_requests(
-	master: &Label,
-	info: OnboardInformation,
-) -> Result<BTreeMap<String, OnboardServiceRequest>, actix_web::Error> {
-	info.into_iter()
-		.map(|(k, v)| {
-			Ok((
-				k,
-				OnboardServiceRequest {
-					service: get_armour_id(&v.armour_labels)?,
-					master: master.to_owned(),
-				},
-			))
-		})
-		.collect()
-}
+	fn onboard_requests(
+		master: &Label,
+		info: OnboardInformation,
+	) -> Result<BTreeMap<String, OnboardServiceRequest>, actix_web::Error> {
+		info.into_iter()
+			.map(|(k, v)| {
+				Ok((
+					k,
+					OnboardServiceRequest {
+						service: get_armour_id(&v.armour_labels)?,
+						master: master.to_owned(),
+					},
+				))
+			})
+			.collect()
+	}
 
-#[post("/on-board-services")]
-pub async fn on_board_services(
-	name: web::Data<String>,
-	info: web::Json<OnboardInformation>,
-) -> Result<HttpResponse, actix_web::Error> {
-	let master: Label = name.parse().unwrap(); // fix
-	let client = client::Client::default();
-	for (service, req) in onboard_requests(&master, info.into_inner())? {
-		if let Err(message) =
-			super::control_plane(&client, Method::POST, "on-board-service", &req).await
-		{
-			return Err(HttpResponse::BadRequest()
-				.body(format!("onboarding failed for {}: {}", service, message))
-				.into());
-		} else {
+	#[post("/on-board-services")]
+	pub async fn on_board_services(
+		master: web::Data<Label>,
+		info: web::Json<OnboardInformation>,
+	) -> Result<HttpResponse, actix_web::Error> {
+		let client = client::Client::default();
+		for (service, req) in onboard_requests(&master, info.into_inner())? {
+			crate::control_plane(&client, Method::POST, "on-board-service", &req)
+				.await
+				.map_err(|message| {
+					HttpResponse::BadRequest().body(format!(
+						"on-boarding failed for service {}: {}",
+						service, message
+					))
+				})?;
 			log::info!("onboarded {}", service)
 		}
+		Ok(HttpResponse::Ok().finish())
 	}
-	Ok(HttpResponse::Ok().finish())
-}
 
-#[delete("/drop-services")]
-pub async fn drop_services(
-	name: web::Data<String>,
-	info: web::Json<OnboardInformation>,
-) -> Result<HttpResponse, actix_web::Error> {
-	let master: Label = name.parse().unwrap(); // fix
-	let client = client::Client::default();
-	for (service, req) in onboard_requests(&master, info.into_inner())? {
-		if let Err(message) =
-			super::control_plane(&client, Method::DELETE, "drop-service", &req).await
-		{
-			return Err(HttpResponse::BadRequest()
-				.body(format!("drop failed for service {}: {}", service, message))
-				.into());
-		} else {
+	#[delete("/drop-services")]
+	pub async fn drop_services(
+		master: web::Data<Label>,
+		info: web::Json<OnboardInformation>,
+	) -> Result<HttpResponse, actix_web::Error> {
+		let client = client::Client::default();
+		for (service, req) in onboard_requests(&master, info.into_inner())? {
+			crate::control_plane(&client, Method::DELETE, "drop-service", &req)
+				.await
+				.map_err(|message| {
+					HttpResponse::BadRequest()
+						.body(format!("drop failed for service {}: {}", service, message))
+				})?;
 			log::info!("dropped {}", service)
 		}
+		Ok(HttpResponse::Ok().finish())
 	}
-	Ok(HttpResponse::Ok().finish())
 }
 
 pub mod master {
 	use crate::master::List;
 	use actix_web::{get, web, HttpResponse};
 
-	#[get("/name")]
-	pub async fn name(name: web::Data<String>) -> HttpResponse {
-		HttpResponse::Ok().body(name.to_string())
+	#[get("/label")]
+	pub async fn label(label: web::Data<armour_lang::labels::Label>) -> HttpResponse {
+		HttpResponse::Ok().body(label.to_string())
 	}
 	#[get("/proxies")]
-	pub async fn proxies(master: super::Master) -> HttpResponse {
-		match master.send(List).await {
-			Ok(res) => HttpResponse::Ok().json2(&*res),
-			Err(err) => {
-				log::warn!("{}", err);
-				HttpResponse::InternalServerError().finish()
-			}
-		}
+	pub async fn proxies(master: super::Master) -> Result<HttpResponse, actix_web::Error> {
+		let res = master.send(List).await.map_err(|err| {
+			log::warn!("{}", err);
+			HttpResponse::InternalServerError()
+		})?;
+		Ok(HttpResponse::Ok().json2(&*res))
 	}
 }
 
@@ -120,77 +115,60 @@ pub mod policy {
 		proxy::{Policy, PolicyRequest},
 	};
 	use armour_lang::labels::Label;
-	use lazy_static::lazy_static;
 	use std::convert::TryFrom;
 
-	lazy_static! {
-		static ref MASTER_PROXY_LABEL: Label = "<master>::<proxy>".parse().unwrap();
-	}
-
-	fn match_label(label: &str, name: &str) -> Result<InstanceSelector, &'static str> {
-		if let Ok(label) = label.parse::<Label>() {
-			if let Some(m) = MASTER_PROXY_LABEL.match_with(&label) {
-				if m.get("master")
-					.map(|master_name| master_name == name)
-					.unwrap_or(true)
-				{
-					Ok(m.get("proxy")
-						.map(InstanceSelector::Name)
-						.unwrap_or(InstanceSelector::All))
-				} else {
-					Err("label not for this master")
-				}
+	fn instance_selector(label: &str, proxy: &Label) -> Result<InstanceSelector, &'static str> {
+		let label = label
+			.parse::<Label>()
+			.map_err(|_| "failed to parse label")?;
+		let (first, rest) = label.split_first().ok_or("bad label")?;
+		if first.matches_with(proxy) {
+			Ok(if let Some(proxy) = rest {
+				InstanceSelector::Label(proxy)
 			} else {
-				Err("expecting label of the form <master>::<proxy>")
-			}
+				InstanceSelector::All
+			})
 		} else {
-			Err("failed to parse label")
+			Err("label not for this master")
 		}
 	}
 
 	#[get("/query")]
 	pub async fn query(
-		name: web::Data<String>,
+		label: web::Data<Label>,
 		master: super::Master,
 		request: web::Json<String>,
-	) -> HttpResponse {
-		match match_label(&request, &name) {
-			Ok(instance) => match master.send(MetaData(instance)).await {
-				Ok(res) => HttpResponse::Ok().json2(&*res),
-				Err(err) => {
-					log::warn!("{}", err);
-					HttpResponse::InternalServerError().finish()
-				}
-			},
-			Err(err) => HttpResponse::BadRequest().body(err),
-		}
+	) -> Result<HttpResponse, actix_web::Error> {
+		let instance = instance_selector(&request, &label)
+			.map_err(|err| HttpResponse::BadRequest().body(err))?;
+		let res = master.send(MetaData(instance)).await.map_err(|err| {
+			log::warn!("{}", err);
+			HttpResponse::InternalServerError()
+		})?;
+		Ok(HttpResponse::Ok().json2(&*res))
 	}
 
 	#[post("/update")]
 	pub async fn update(
-		name: web::Data<String>,
+		label: web::Data<Label>,
 		master: super::Master,
 		request: web::Json<PolicyUpdate>,
-	) -> HttpResponse {
-		match match_label(&request.label, &name) {
-			Ok(instance) => match Policy::try_from(&request.policy) {
-				Ok(policy) => {
-					log::info!("sending policy: {}", policy);
-					match master
-						.send(PolicyCommand(instance, PolicyRequest::SetPolicy(policy)))
-						.await
-					{
-						Ok(None) => HttpResponse::Ok().finish(),
-						Ok(Some(err)) => HttpResponse::BadRequest().body(err),
-						Err(err) => {
-							log::warn!("{}", err);
-							HttpResponse::InternalServerError().finish()
-						}
-					}
-				}
-				Err(err) => HttpResponse::BadRequest().body(err),
-			},
-			Err(err) => HttpResponse::BadRequest().body(err),
+	) -> Result<HttpResponse, actix_web::Error> {
+		let instance = instance_selector(&request.label, &label)
+			.map_err(|err| HttpResponse::BadRequest().body(err))?;
+		let policy = Policy::try_from(&request.policy)
+			.map_err(|err| HttpResponse::BadRequest().body(err))?;
+		log::info!("sending policy: {}", policy);
+		let res = master
+			.send(PolicyCommand(instance, PolicyRequest::SetPolicy(policy)))
+			.await
+			.map_err(|err| {
+				log::warn!("{}", err);
+				HttpResponse::InternalServerError()
+			})?;
+		match res {
+			None => Ok(HttpResponse::Ok().finish()),
+			Some(err) => Ok(HttpResponse::BadRequest().body(err)),
 		}
 	}
 }

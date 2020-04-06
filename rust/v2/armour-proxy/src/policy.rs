@@ -73,7 +73,7 @@ type Aead = aes_gcm::Aes256Gcm;
 /// Armour policy actor
 #[allow(dead_code)] // TODO
 pub struct PolicyActor {
-    pub name: String,
+    pub label: labels::Label,
     pub connection_number: usize,
     // proxies
     pub http: HttpPolicy,
@@ -93,7 +93,7 @@ impl Actor for PolicyActor {
         // send a connection message to the data plane master
         self.uds_framed.write(PolicyResponse::Connect(
             std::process::id(),
-            self.name.to_string(),
+            self.label.clone(),
             self.http.hash(),
             self.tcp.hash(),
         ));
@@ -108,7 +108,7 @@ impl PolicyActor {
     /// Start a new policy actor that connects to a data plane master on a Unix socket.
     pub fn create_policy(
         stream: tokio::net::UnixStream,
-        name: &str,
+        label: labels::Label,
         key: [u8; 32],
     ) -> Addr<PolicyActor> {
         use aead::{generic_array::GenericArray, NewAead};
@@ -117,7 +117,7 @@ impl PolicyActor {
             let (r, w) = tokio::io::split(stream);
             ctx.add_stream(FramedRead::new(r, PolicyCodec));
             PolicyActor {
-                name: name.to_string(),
+                label,
                 connection_number: 0,
                 http: HttpPolicy::default(),
                 tcp: TcpPolicy::default(),
@@ -382,7 +382,7 @@ impl Handler<PolicyRequest> for PolicyActor {
             }
             PolicyRequest::Status => {
                 self.uds_framed.write(PolicyResponse::Status {
-                    name: self.name.clone(),
+                    label: self.label.clone(),
                     http: self.http.status(),
                     tcp: self.tcp.status(),
                 });

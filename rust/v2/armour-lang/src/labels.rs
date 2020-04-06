@@ -136,6 +136,12 @@ impl std::convert::From<&[Node]> for Label {
     }
 }
 
+impl std::convert::From<&Node> for Label {
+    fn from(n: &Node) -> Self {
+        [n.to_owned()].as_ref().into()
+    }
+}
+
 impl<T: AsRef<str>> std::convert::TryFrom<Vec<T>> for Label {
     type Error = &'static str;
 
@@ -174,10 +180,14 @@ impl PartialEq for Label {
 
 impl Eq for Label {}
 
+#[allow(clippy::len_without_is_empty)]
 impl Label {
     // pub fn wild(&self) -> bool {
     //     self.0.iter().any(|n| n.0 == NodeType::Any)
     // }
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
     pub fn get<I>(&self, index: I) -> Option<&<I as SliceIndex<[Node]>>::Output>
     where
         I: SliceIndex<[Node]>,
@@ -220,6 +230,18 @@ impl Label {
             }
         }
         Some(map)
+    }
+    pub fn split_first(&self) -> Option<(Self, Option<Self>)> {
+        self.0.split_first().map(|(first, rest)| {
+            (
+                first.into(),
+                if rest.is_empty() {
+                    None
+                } else {
+                    Some(rest.into())
+                },
+            )
+        })
     }
 }
 

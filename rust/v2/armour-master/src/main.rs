@@ -24,9 +24,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .author("Anthony Fox <anthony.fox@arm.com>")
         .about("Armour Data Plane Master")
         .arg(
-            Arg::with_name("name")
-                .short("n")
-                .long("name")
+            Arg::with_name("label")
+                .long("label")
                 .required(false)
                 .takes_value(true)
                 .help("Name of Armour master"),
@@ -87,10 +86,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let tcp_socket = format!("localhost:{}", port);
 
     // Onboarding data
-    let name = matches.value_of("name").unwrap_or("master").to_string();
+    let label: armour_lang::labels::Label = matches
+        .value_of("label")
+        .unwrap_or("master")
+        .parse()
+        .map_err(|_| "master name must be a valid label")?;
+    if label.len() != 1 {
+        return Err("master label not of the form `<name>`".into());
+    }
     let onboard = armour_api::control::OnboardMasterRequest {
         host: url::Url::parse(&tcp_socket).unwrap(), // TODO: public URL from command line
-        master: name.parse().unwrap(),
+        master: label.clone(),
         credentials: String::new(),
     };
     let onboard_clone = onboard.clone();
@@ -111,6 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let master_clone = master.clone();
 
     // onboard with control plane
+    let onboarded;
     if let Err(message) = sys.block_on(async move {
         control_plane(
             &actix_web::client::Client::default(),
@@ -120,22 +127,27 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         )
         .await
     }) {
+        onboarded = false;
         log::warn!("failed to on-board with control plane: {}", message)
     } else {
+        onboarded = true;
         log::info!("on-boarded with control plane")
     };
 
     // REST interface
     HttpServer::new(move || {
         App::new()
-            .data(name.clone())
+            .data(label.clone())
             .data(master_clone.clone())
             .wrap(middleware::Logger::default())
-            .service(rest_api::on_board_services)
-            .service(rest_api::drop_services)
+            .service(
+                web::scope("/launch")
+                    .service(rest_api::launch::on_board_services)
+                    .service(rest_api::launch::drop_services),
+            )
             .service(
                 web::scope("/master")
-                    .service(rest_api::master::name)
+                    .service(rest_api::master::label)
                     .service(rest_api::master::proxies),
             )
             .service(
@@ -178,21 +190,23 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     sys.run()?;
 
-    // start new Actix system for sending a "drop-master" message to control plane
-    let mut sys = actix_rt::System::new("armour_master");
-    if let Err(message) = sys.block_on(async move {
-        control_plane(
-            &actix_web::client::Client::default(),
-            http::Method::DELETE,
-            "drop-master",
-            &onboard_clone,
-        )
-        .await
-    }) {
-        log::warn!("failed to notify control plane: {}", message)
-    } else {
-        log::info!("notified control plane")
-    };
+    if onboarded {
+        // start new Actix system for sending a "drop-master" message to control plane
+        let mut sys = actix_rt::System::new("armour_master");
+        if let Err(message) = sys.block_on(async move {
+            control_plane(
+                &actix_web::client::Client::default(),
+                http::Method::DELETE,
+                "drop-master",
+                &onboard_clone,
+            )
+            .await
+        }) {
+            log::warn!("failed to notify control plane: {}", message)
+        } else {
+            log::info!("notified control plane")
+        }
+    }
 
     Ok(())
 }

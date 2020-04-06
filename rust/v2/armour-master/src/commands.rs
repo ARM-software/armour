@@ -15,7 +15,7 @@ use std::path::PathBuf;
 lazy_static! {
     static ref COMMAND: Regex = Regex::new(
         r"(?x)^(?i)\s*
-          (?P<instance>[[:alnum:]]+:\s+)?
+          (?P<instance>.+:\s+)?
           (?P<command>
             help |
             list |
@@ -41,21 +41,26 @@ lazy_static! {
 }
 
 /// get and parse "instance" block of regular expression capture
-fn instance_selector(caps: &regex::Captures) -> InstanceSelector {
+fn instance_selector(caps: &regex::Captures) -> Option<InstanceSelector> {
     match caps.name("instance") {
         Some(x) => {
             let s = x.as_str().trim_end().trim_end_matches(':');
             if let Ok(id) = s.parse::<usize>() {
-                InstanceSelector::ID(id)
+                Some(InstanceSelector::ID(id))
+            } else if let Ok(label) = s.parse::<armour_lang::labels::Label>() {
+                Some(InstanceSelector::Label(label))
             } else {
-                InstanceSelector::Name(s.to_string())
+                log::warn!("bad instance label: {}", s);
+                None
             }
         }
-        None => InstanceSelector::All,
+        None => Some(InstanceSelector::All),
     }
 }
 
-fn command<'a>(caps: &'a regex::Captures) -> (InstanceSelector, Option<&'a str>, Option<&'a str>) {
+fn command<'a>(
+    caps: &'a regex::Captures,
+) -> (Option<InstanceSelector>, Option<&'a str>, Option<&'a str>) {
     (
         instance_selector(caps),
         caps.name("command").map(|s| s.as_str()),
@@ -67,6 +72,10 @@ fn command<'a>(caps: &'a regex::Captures) -> (InstanceSelector, Option<&'a str>,
 #[allow(clippy::cognitive_complexity)]
 fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> bool {
     let (instance, command, args) = command(&caps);
+    if instance.is_none() {
+        return false;
+    };
+    let instance = instance.unwrap();
     let command = command.map(|s| s.to_lowercase());
     match (instance == InstanceSelector::All, command.as_deref(), args) {
         (true, Some("help"), None) => println!(
@@ -114,15 +123,15 @@ fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> boo
             }
         }
         (_, Some(s @ "launch"), None) | (_, Some(s @ "launch log"), None) => {
-            let name = match instance {
-                InstanceSelector::Name(name) => name,
+            let label = match instance {
+                InstanceSelector::Label(label) => label,
                 InstanceSelector::ID(id) => {
                     log::warn!("{} is not a valid proxy name", id);
                     return false;
                 }
-                InstanceSelector::All => "proxy".to_string(),
+                InstanceSelector::All => "proxy".parse().unwrap(),
             };
-            master.do_send(Launch(s.ends_with("log"), name))
+            master.do_send(Launch(s.ends_with("log"), label))
         }
         (_, Some("shutdown"), None) => {
             log::info!("sending shudown");

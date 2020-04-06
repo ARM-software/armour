@@ -16,12 +16,13 @@ pub async fn on_board_master(
     request: Json<OnboardMasterRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let master = &request.master;
-    log::info!("Onboarding master: {}", master);
+    let host = &request.host;
+    log::info!("Onboarding master: {} ({})", master, host);
     let col = collection(&state, MASTERS_COL);
 
     // Check if the master is already there
-    if present(&col, doc! { "host" : to_bson(master)? })? {
-        Ok(internal(format!("Master already present for {}", master)))
+    if present(&col, doc! { "master" : to_bson(master)? })? {
+        Ok(internal(format!(r#"Master "{}" already present"#, master)))
     } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
         col.insert_one(document, None)
             .on_err("Error inserting in MongoDB")?;
@@ -37,7 +38,8 @@ pub async fn drop_master(
     request: Json<OnboardMasterRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let master = &request.master;
-    log::info!("Dropping master: {}", master);
+    let host = &request.host;
+    log::info!("Dropping master: {} ({})", master, host);
     let col = collection(&state, MASTERS_COL);
 
     if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {

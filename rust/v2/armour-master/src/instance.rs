@@ -4,6 +4,7 @@ use super::master::{
 use actix::prelude::*;
 use armour_api::master::{self, MasterCodec, PolicyResponse};
 use armour_api::proxy::{PolicyRequest, Protocol};
+use armour_lang::labels::Label;
 use log::*;
 use std::collections::HashMap;
 use std::fmt;
@@ -12,14 +13,14 @@ use tokio::io::WriteHalf;
 #[derive(Clone, PartialEq)]
 pub enum InstanceSelector {
     All,
-    Name(String),
+    Label(Label),
     ID(usize),
 }
 
 #[derive(Clone)]
 pub struct Meta {
     pub pid: u32,
-    pub name: String,
+    pub label: Label,
     pub http: String, // hash of HTTP policy
     pub tcp: String,  // hash of TCP policy
 }
@@ -27,7 +28,7 @@ pub struct Meta {
 impl From<&Meta> for master::PolicyStatus {
     fn from(m: &Meta) -> Self {
         master::PolicyStatus {
-            name: m.name.to_string(),
+            label: m.label.to_owned(),
             http: m.http.to_string(),
             tcp: m.tcp.to_string(),
         }
@@ -35,10 +36,10 @@ impl From<&Meta> for master::PolicyStatus {
 }
 
 impl Meta {
-    fn new(pid: u32, name: String, http: String, tcp: String) -> Self {
+    fn new(pid: u32, label: Label, http: String, tcp: String) -> Self {
         Meta {
             pid,
-            name,
+            label,
             http,
             tcp,
         }
@@ -50,7 +51,7 @@ impl fmt::Display for Meta {
         write!(
             f,
             r#""{}"; pid: {}; http: {}; tcp: {}"#,
-            self.name, self.pid, self.http, self.tcp
+            self.label, self.pid, self.http, self.tcp
         )
     }
 }
@@ -135,10 +136,10 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
     fn handle(&mut self, msg: Result<PolicyResponse, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
             match msg {
-                PolicyResponse::Connect(pid, name, http, tcp) => {
-                    info!(r#"{}: connect with process "{}" {}"#, self.id, name, pid);
+                PolicyResponse::Connect(pid, label, http, tcp) => {
+                    info!(r#"{}: connect with process "{}" {}"#, self.id, label, pid);
                     self.master
-                        .do_send(RegisterProxy(self.id, Meta::new(pid, name, http, tcp)))
+                        .do_send(RegisterProxy(self.id, Meta::new(pid, label, http, tcp)))
                 }
                 PolicyResponse::Started => info!("{}: started a proxy", self.id),
                 PolicyResponse::Stopped => info!("{}: stopped a proxy", self.id),
@@ -162,10 +163,10 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
                 PolicyResponse::Labels(labels) => {
                     info!("{}:\n=== Labels ===\n{:?}", self.id, labels)
                 }
-                PolicyResponse::Status { name, http, tcp } => {
+                PolicyResponse::Status { label, http, tcp } => {
                     info!(
                         "{} {}:\n=== HTTP ===\n{}\n=== TCP ===\n{}",
-                        self.id, name, http, tcp
+                        self.id, label, http, tcp
                     );
                     self.master
                         .do_send(RegisterHttpHash(self.id, http.policy.blake3_string()));

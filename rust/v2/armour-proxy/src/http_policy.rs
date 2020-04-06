@@ -2,10 +2,14 @@
 use super::policy::{Policy, PolicyActor, ID};
 use actix::prelude::*;
 use armour_api::master::Status;
-use armour_lang::{expressions, interpret::Env, lang, literals, meta::IngressEgress};
+use armour_lang::{
+    expressions,
+    interpret::Env,
+    lang, literals,
+    meta::{IngressEgress, Meta},
+};
 use futures::future::{self, TryFutureExt};
 use std::boxed::Box;
-use std::convert::TryInto;
 use std::sync::Arc;
 
 /// Information about REST policies
@@ -170,7 +174,7 @@ impl Handler<EvalHttpFn> for PolicyActor {
             .2
             .map(|xarmour| PolicyActor::decrypt_meta(&self.aead, &xarmour))
             .flatten();
-        let meta = IngressEgress::new(ingress_meta, self.name.as_str().try_into().ok());
+        let meta = IngressEgress::new(ingress_meta, Some(Meta::new(self.label.clone())));
         let aead = self.aead.clone();
         Box::pin(
             self.http

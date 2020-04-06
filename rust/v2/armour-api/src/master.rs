@@ -2,7 +2,10 @@
 
 use super::{proxy, DeserializeDecoder, SerializeEncoder};
 use actix::prelude::*;
-use armour_lang::{labels::Labels, lang::Program};
+use armour_lang::{
+    labels::{Label, Labels},
+    lang::Program,
+};
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -42,7 +45,7 @@ pub struct PolicyQuery {
 /// Consists of proxy `name` and (blake3) hashes of current HTTP and TCP policies
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PolicyStatus {
-    pub name: String,
+    pub label: Label,
     pub http: String, // hash
     pub tcp: String,  // hash
 }
@@ -51,13 +54,13 @@ pub struct PolicyStatus {
 #[derive(Serialize, Deserialize, Message)]
 #[rtype("()")]
 pub enum PolicyResponse {
-    Connect(u32, String, String, String), // (PID, name, http hash, tcp hash)
+    Connect(u32, Label, String, String), // (PID, name, http hash, tcp hash)
     Labels(BTreeMap<String, Labels>),
     RequestFailed,
     ShuttingDown,
     Started,
     Status {
-        name: String,
+        label: Label,
         http: Box<Status>,
         tcp: Box<Status>,
     },

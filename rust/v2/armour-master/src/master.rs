@@ -4,6 +4,7 @@ use armour_api::{
     master::{self, MasterCodec},
     proxy::PolicyRequest,
 };
+use armour_lang::labels::Label;
 use log::*;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
@@ -39,18 +40,18 @@ impl ArmourDataMaster {
     }
     fn get_instances(&self, instances: InstanceSelector) -> Vec<&Instance> {
         match instances {
-            InstanceSelector::Name(instance_name) => {
+            InstanceSelector::Label(instance_label) => {
                 let v: Vec<&Instance> = self
                     .instances
                     .0
                     .iter()
                     .filter_map(|i| match &i.1.meta {
-                        Some(Meta { name, .. }) if *name == instance_name => Some(i.1),
+                        Some(Meta { label, .. }) if instance_label.matches_with(label) => Some(i.1),
                         _ => None,
                     })
                     .collect();
                 if v.is_empty() {
-                    warn!("there are no instances with name: {}", instance_name)
+                    warn!("there are no instances matching label: {}", instance_label)
                 };
                 v
             }
@@ -175,7 +176,7 @@ impl Handler<RegisterTcpHash> for ArmourDataMaster {
 // launch a new proxy
 #[derive(Message)]
 #[rtype("()")]
-pub struct Launch(pub bool, pub String);
+pub struct Launch(pub bool, pub Label);
 
 impl Handler<Launch> for ArmourDataMaster {
     type Result = ();
@@ -186,8 +187,8 @@ impl Handler<Launch> for ArmourDataMaster {
             .env("ARMOUR_PASS", base64::encode(&self.key))
             .arg("-l")
             .arg(log)
-            .arg("-n")
-            .arg(&msg.1)
+            .arg("--label")
+            .arg(&msg.1.to_string())
             .arg(&self.socket)
             .spawn()
         {
@@ -238,7 +239,7 @@ impl Handler<List> for ArmourDataMaster {
             .instances
             .0
             .values()
-            .filter_map(|i| i.meta.as_ref().map(|m| m.name.to_string()))
+            .filter_map(|i| i.meta.as_ref().map(|m| m.label.to_string()))
             .collect();
         Arc::new(list.into_iter().collect())
     }

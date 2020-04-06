@@ -1,7 +1,7 @@
 ### armour-master:> myproxy: launch log
 
 ### succeed
-GET http://localhost:8090/master/name HTTP/1.1
+GET http://localhost:8090/master/label HTTP/1.1
 
 ### succeed
 GET http://localhost:8090/master/proxies HTTP/1.1
@@ -97,6 +97,6 @@ content-type: application/json
   "label": "master::myproxy",
   "policy": {
     "Bincode": 
-    "H4sIAAAAAAAE/7WV247UMAyGUw7LQYDEQSDxDtyj3O4Nl4gXqEonuzOi0wxtCuINeSz8JXUnKd3dqx3FTePYv387bqYy6XeRJtP562s3PD2v6tG3Px7Oa6ZHPETeiTCarvO/67Y7uD7Up+ZP55vdM9l4IsKYVQR4IGtEJvNSHu9FGCmotSVIbvkGM5FL3/euDQffW9tPx+9u0ATAeysWjK+JhQAu5mrGvGKGRxIwoM5q14TG2s71eKBgE+F9CYCVGjDfCF1pNpWm0sS6DW4M9eB+TjITWistKrDAJKAWXeK5F6KAyEeZGV9COH1LCNZO/UGw6r1rdm5YYopZBiyrONgGKAc3kMgVGLyK5saMYbD2avDHegpXn5Ubc+4xGxtTaQAsjPw+rcHzFNWoJeIHsWYUubWbp5klphAxCV20BIEJeMqTJFQXPBG1d/IOw6oOXpGYEYBaHlHynHBgfYbeansOEFdte3oAO3RQ0Q65XPJdNzssEDxaDWbQaII0ilYGTE2vKOjRhb3f4QYQs7pI+ylS/FJfYyBSuJ+asMdJ9DH2ljP7ikR1WKu9Eg8eTRRVVcq3+ErGk+9HR4HPocbH0dFEmnonJZrJ3NoxNGEa88iZ++xtDKFplb+zRrESg9ENv9xQz5cZFLDFdFZdyDsQiLxGOuv7rQTJLe8+8vwQl+tn+4tYMYNNEjCgzkoa5H7uN41e1q8t/h+qCgoiz0UYmn/z36W4mGoX3dIZi632RMmhLP9irBzWp9WWlPW4OGiES3HrS67YJCdmKq5CYRAc17FW1LZiaf57ue71vcyvJEyPVzfXNW7fUsu4X+KXJKPBP/M1Pms/CAAA"
+    "H4sIAAAAAAAE/42U0W7bMAxF5a7LNmAbsA3Yhv3D3ge9FgP2vB8wXEdNgjqWaykt+vflsXMTu2jTBrqWSZG8JEWncONvMW6uiatV6N8fpTLF+vrNXmY742H4amBVTRPvyj6kbI+bne0fTC2PPtwgvjMVq6vum1gtEcV8jt6wrHL4aPsnwy8D61/O3f8wBPV+127srVyHahl6ZUGUCRcijhwTbBrckchUAdNnrA0p995f9XFb7vLVH4Vhn3qY4bgKEWCB6vfj4NMSZVTD+ANzw6y2OrZtqPMmtrJlnxQGnzm5oQjOEGpIdHKOxkAR0uUI4zfTsi4OJPtSc1QkdoBZzWPAtCbCIh9DMzJIyhIqeo7rOEbeMxYkiY5zDc3FJJV2t70MvdjZAR414XlxaFQggzLlVHmzhm5DXsclbvizy8Um8i06QEpfeDHM3Lsqr3Ey/cD9lDPnyonuIMteieeIBkBF/3i3CirvmzC7bLVp/4kosnN4qq9/V9bR5P3dpgtEGiCyQp2YfZKpi20KUB+LSIiPCBcWi0iygva76Vi6zhT629CX+xSx5hTLly8Wq5+YG8Zej5l5/9LwJ3XWDb0gd4vhXtNF7AYU0L+ui+q8Spp10/6BUh6+fsJiqi6caP7BnsGTvZJRb+1ic6E7WVh0DAT0AD2VnL6YAx/mABdytahubf+pyuH5EpmCsxMlDecPeXs0pz0GAAA="
   }
 }

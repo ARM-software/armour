@@ -43,7 +43,7 @@ async fn onboard_services(master_port: u16, info: &OnboardInformation) -> Result
     let client = Client::default();
     match client
         .post(format!(
-            "http://localhost:{}/on-board-services",
+            "http://localhost:{}/launch/on-board-services",
             master_port
         ))
         .send_json(info)
@@ -73,23 +73,22 @@ async fn onboard_services(master_port: u16, info: &OnboardInformation) -> Result
 
 async fn drop_services(master_port: u16, info: &OnboardInformation) -> Result<(), Error> {
     let client = Client::default();
-    match client
-        .delete(format!("http://localhost:{}/drop-services", master_port))
+    let res = client
+        .delete(format!(
+            "http://localhost:{}/launch/drop-services",
+            master_port
+        ))
         .send_json(info)
         .await
-    {
-        Ok(res) => {
-            if res.status().is_success() {
-                println!("drop services succeeded");
-                Ok(())
-            } else {
-                Err(message(res)
-                    .await
-                    .unwrap_or_else(|| "drop services failed".to_string())
-                    .into())
-            }
-        }
-        Err(e) => Err(format!("drop services failed: {}", e).into()),
+        .map_err(|err| format!("drop services failed: {}", err))?;
+    if res.status().is_success() {
+        println!("drop services succeeded");
+        Ok(())
+    } else {
+        Err(message(res)
+            .await
+            .unwrap_or_else(|| "drop services failed".to_string())
+            .into())
     }
 }
 
