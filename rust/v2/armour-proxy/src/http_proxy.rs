@@ -147,6 +147,19 @@ async fn request(
     }
 }
 
+fn response_builder(
+    res: &ClientResponse<impl Stream<Item = Result<web::Bytes, PayloadError>> + Unpin>,
+) -> actix_web::dev::HttpResponseBuilder {
+    let mut response_builder = HttpResponse::build(res.status());
+    for (header_name, header_value) in res.headers().iter().filter(|(h, _)| {
+        *h != "connection" && *h != "content-length" && *h != "content-encoding" && *h != X_ARMOUR
+    }) {
+        // log::debug!("header {}: {:?}", header_name, header_value);
+        response_builder.header(header_name.clone(), header_value.clone());
+    }
+    response_builder
+}
+
 /// Send server response back to client
 async fn response(
     p: HttpPolicyResponse,
@@ -158,16 +171,6 @@ async fn response(
 ) -> Result<HttpResponse, Error> {
     match res {
         Ok(mut res) => {
-            let mut response_builder = HttpResponse::build(res.status());
-            for (header_name, header_value) in res.headers().iter().filter(|(h, _)| {
-                *h != "connection"
-                    && *h != "content-length"
-                    && *h != "content-encoding"
-                    && *h != X_ARMOUR
-            }) {
-                // log::debug!("header {}: {:?}", header_name, header_value);
-                response_builder.header(header_name.clone(), header_value.clone());
-            }
             match p.status {
                 // check server response
                 PolicyStatus {
@@ -178,9 +181,11 @@ async fn response(
                     let server_payload = res.body().await?;
                     let args = match count {
                         0 => vec![],
-                        1 => vec![(&response_builder.finish(), &p.connection).to_expression()],
+                        1 => {
+                            vec![(&response_builder(&res).finish(), &p.connection).to_expression()]
+                        }
                         2 => vec![
-                            (&response_builder.finish(), &p.connection).to_expression(),
+                            (&response_builder(&res).finish(), &p.connection).to_expression(),
                             server_payload.as_ref().into(),
                         ],
                         _ => unreachable!(),
@@ -192,14 +197,15 @@ async fn response(
                     {
                         // allow
                         Ok(Ok((true, meta))) => {
+                            let mut builder = response_builder(&res);
                             // add X-Armour header
                             if let Some(meta) = meta {
-                                response_builder.header("x-armour", meta.as_str());
+                                builder.header("x-armour", meta.as_str());
                             };
                             if debug {
-                                log::debug!("{:?}", response_builder)
+                                log::debug!("{:?}", builder)
                             }
-                            Ok(response_builder.body(server_payload))
+                            Ok(builder.body(server_payload))
                         }
                         // reject
                         Ok(Ok((false, _meta))) => {
@@ -223,10 +229,11 @@ async fn response(
                     debug,
                     ..
                 } => {
+                    let mut builder = response_builder(&res);
                     if debug {
-                        log::debug!("{:?}", response_builder)
+                        log::debug!("{:?}", builder)
                     }
-                    Ok(response_builder.body(res.body().await?))
+                    Ok(builder.body(res.body().await?))
                 }
                 // deny
                 PolicyStatus {
