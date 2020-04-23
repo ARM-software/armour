@@ -9,9 +9,10 @@ edition = "2018"
 [dependencies]
 armour-api = { path = "../armour-api" }
 armour-lang = { path = "../armour-lang" }
-actix-rt = "1.0"
+actix-rt = "1.1"
 actix-web = "2.0"
 bson = "0.14"
+bytes = "0.5"
 env_logger = "0.7"
 listenfd = "0.3"
 log = "0.4"

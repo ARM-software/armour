@@ -1,5 +1,5 @@
-use armour_api::master::OnboardInformation;
-use armour_compose::Compose;
+use armour_api::master::{OnboardInformation, Proxies};
+use armour_compose::{Compose, OnboardInfo};
 use awc::Client;
 use clap::{crate_version, App, AppSettings, Arg, SubCommand};
 use std::process::Command;
@@ -26,27 +26,25 @@ async fn main() -> Result<(), Error> {
             // try to set IP addresses for containers (leaves containers in paused state)
             set_ip_addresses(&mut info).await;
             // notify data plane master - onboarding
-            onboard_services(master_port, &info).await
+            onboard_services(master_port, info).await
         }
     } else if let Some(down) = matches.subcommand_matches("down") {
         // create docker-compose.yml from armour-compose input file
         let info = read_armour(down.value_of("input file").unwrap())?;
         // try to run `docker-compose down` command
         docker_down()?;
-        drop_services(master_port, &info).await
+        drop_services(master_port, info.proxies).await
     } else {
         unreachable!()
     }
 }
 
-async fn onboard_services(master_port: u16, info: &OnboardInformation) -> Result<(), Error> {
+async fn onboard_services(master_port: u16, info: OnboardInfo) -> Result<(), Error> {
     let client = Client::default();
+    let onboard_info: OnboardInformation = (&info).into();
     match client
-        .post(format!(
-            "http://localhost:{}/launch/on-board-services",
-            master_port
-        ))
-        .send_json(info)
+        .post(format!("http://localhost:{}/service/on-board", master_port))
+        .send_json(&onboard_info)
         .await
     {
         Ok(res) => {
@@ -56,7 +54,7 @@ async fn onboard_services(master_port: u16, info: &OnboardInformation) -> Result
                 Ok(())
             } else {
                 docker_down()?;
-                drop_services(master_port, info).await?;
+                drop_services(master_port, info.proxies).await?;
                 Err(message(res)
                     .await
                     .unwrap_or_else(|| "onboarding failed".to_string())
@@ -65,30 +63,32 @@ async fn onboard_services(master_port: u16, info: &OnboardInformation) -> Result
         }
         Err(e) => {
             docker_down()?;
-            drop_services(master_port, info).await?;
+            drop_services(master_port, info.proxies).await?;
             Err(format!("onboarding failed: {}", e).into())
         }
     }
 }
 
-async fn drop_services(master_port: u16, info: &OnboardInformation) -> Result<(), Error> {
-    let client = Client::default();
-    let res = client
-        .delete(format!(
-            "http://localhost:{}/launch/drop-services",
-            master_port
-        ))
-        .send_json(info)
-        .await
-        .map_err(|err| format!("drop services failed: {}", err))?;
-    if res.status().is_success() {
-        println!("drop services succeeded");
+async fn drop_services(master_port: u16, proxies: Proxies) -> Result<(), Error> {
+    if proxies.is_empty() {
+        println!("no proxies to drop");
         Ok(())
     } else {
-        Err(message(res)
+        let client = Client::default();
+        let res = client
+            .delete(format!("http://localhost:{}/service/drop", master_port))
+            .send_json(&proxies.to_vec())
             .await
-            .unwrap_or_else(|| "drop services failed".to_string())
-            .into())
+            .map_err(|err| format!("drop services failed: {}", err))?;
+        if res.status().is_success() {
+            println!("drop services succeeded");
+            Ok(())
+        } else {
+            Err(message(res)
+                .await
+                .unwrap_or_else(|| "drop services failed".to_string())
+                .into())
+        }
     }
 }
 
@@ -135,7 +135,7 @@ fn docker_down() -> Result<(), Error> {
     }
 }
 
-fn read_armour<P: AsRef<std::path::Path>>(p: P) -> Result<OnboardInformation, Error> {
+fn read_armour<P: AsRef<std::path::Path>>(p: P) -> Result<OnboardInfo, Error> {
     // load armour compose file
     let (compose, info) = Compose::read_armour(p)?;
     // save as docker compose file
@@ -143,10 +143,10 @@ fn read_armour<P: AsRef<std::path::Path>>(p: P) -> Result<OnboardInformation, Er
     Ok(info)
 }
 
-async fn unpause_all(information: &OnboardInformation) {
+async fn unpause_all(information: OnboardInfo) {
     // try to get IP addresses for containers
     let docker = docker_api::Docker::new();
-    for name in information.keys() {
+    for name in information.services.keys() {
         if let Err(e) = docker.unpause_container(name).await {
             println!("warn: {}", e)
         } else {
@@ -155,10 +155,10 @@ async fn unpause_all(information: &OnboardInformation) {
     }
 }
 
-async fn already_running(information: &OnboardInformation) -> bool {
+async fn already_running(information: &OnboardInfo) -> bool {
     // try to get IP addresses for containers
     let docker = docker_api::Docker::new();
-    for name in information.keys() {
+    for name in information.services.keys() {
         if docker
             .inspect_container(&name)
             .await
@@ -171,10 +171,10 @@ async fn already_running(information: &OnboardInformation) -> bool {
     true
 }
 
-async fn set_ip_addresses(information: &mut OnboardInformation) {
+async fn set_ip_addresses(information: &mut OnboardInfo) {
     // try to get IP addresses for containers
     let docker = docker_api::Docker::new();
-    for (name, info) in information.iter_mut() {
+    for (name, info) in information.services.iter_mut() {
         if let Err(e) = docker.start_container(name).await {
             println!("warn: {}", e)
         } else if let Err(e) = docker.pause_container(name).await {

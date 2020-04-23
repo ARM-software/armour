@@ -1,22 +1,26 @@
 use super::instance::{ArmourDataInstance, Instance, InstanceSelector, Instances, Meta};
 use actix::prelude::*;
 use armour_api::{
+    control::{OnboardServiceRequest, PolicyQueryRequest, PolicyQueryResponse},
     master::{self, MasterCodec},
-    proxy::PolicyRequest,
+    proxy::{LabelOp, Policy, PolicyRequest},
 };
 use armour_lang::labels::Label;
 use log::*;
 use std::collections::{BTreeSet, HashMap};
+use std::convert::TryFrom;
 use std::sync::Arc;
 use tokio_util::codec::FramedRead;
 
 /// Actor that handles Unix socket connections
 pub struct ArmourDataMaster {
-    instances: Instances,                        // instance actor addresses and info
+    label: Label,         // master label (for communication with control plane)
+    onboarded: bool,      // did we succesfully on-board with control plane?
+    instances: Instances, // instance actor addresses and info
     children: HashMap<u32, std::process::Child>, // maps PID to child process
-    count: usize,                                // enumerates instances
-    socket: std::path::PathBuf,                  // path to master's UDS socket
-    key: [u8; 32],                               // master key
+    count: usize,         // enumerates instances
+    socket: std::path::PathBuf, // path to master's UDS socket
+    key: [u8; 32],        // master key (for metadata encryption)
 }
 
 impl Actor for ArmourDataMaster {
@@ -29,8 +33,10 @@ impl Actor for ArmourDataMaster {
 }
 
 impl ArmourDataMaster {
-    pub fn new(socket: std::path::PathBuf, key: [u8; 32]) -> Self {
+    pub fn new(label: &Label, onboarded: bool, socket: std::path::PathBuf, key: [u8; 32]) -> Self {
         ArmourDataMaster {
+            label: label.clone(),
+            onboarded,
             instances: Instances::default(),
             children: HashMap::new(),
             count: 0,
@@ -38,7 +44,7 @@ impl ArmourDataMaster {
             key,
         }
     }
-    fn get_instances(&self, instances: InstanceSelector) -> Vec<&Instance> {
+    fn get_instances(&self, instances: &InstanceSelector) -> Vec<&Instance> {
         match instances {
             InstanceSelector::Label(instance_label) => {
                 let v: Vec<&Instance> = self
@@ -50,24 +56,13 @@ impl ArmourDataMaster {
                         _ => None,
                     })
                     .collect();
-                if v.is_empty() {
-                    warn!("there are no instances matching label: {}", instance_label)
-                };
                 v
             }
             InstanceSelector::ID(id) => match self.instances.0.get(&id) {
-                None => {
-                    info!("instance {} does not exist", id);
-                    Vec::new()
-                }
+                None => Vec::new(),
                 Some(instance) => vec![instance],
             },
-            InstanceSelector::All => {
-                if self.instances.0.is_empty() {
-                    warn!("there are no instances")
-                };
-                self.instances.0.values().collect()
-            }
+            InstanceSelector::All => self.instances.0.values().collect(),
         }
     }
 }
@@ -120,13 +115,39 @@ pub struct Disconnect(pub usize);
 
 impl Handler<Disconnect> for ArmourDataMaster {
     type Result = ();
-    fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: Disconnect, ctx: &mut Context<Self>) -> Self::Result {
         info!("removing instance: {}", msg.0);
         if let Some(instance) = self.instances.0.remove(&msg.0) {
             if let Some(meta) = instance.meta {
                 if let Some(mut child) = self.children.remove(&meta.pid) {
                     if let Ok(code) = child.wait() {
-                        log::info!("{} exited with {}", meta, code)
+                        log::info!("{} exited with {}", meta, code);
+                        if self.onboarded {
+                            let onboard = OnboardServiceRequest {
+                                service: meta.label,
+                                master: self.label.clone(),
+                            };
+                            async move {
+                                crate::control_plane(
+                                    &actix_web::client::Client::default(),
+                                    http::Method::DELETE,
+                                    "service/drop",
+                                    &onboard,
+                                )
+                                .await
+                            }
+                            .into_actor(self)
+                            .then(|res, act, _ctx| {
+                                match res {
+                                    Ok(message) => {
+                                        log::info!("control plane dropped proxy: {}", message)
+                                    }
+                                    Err(err) => log::warn!("error dropping proxy: {}", err),
+                                };
+                                async {}.into_actor(act)
+                            })
+                            .wait(ctx)
+                        }
                     }
                 }
             }
@@ -140,9 +161,72 @@ pub struct RegisterProxy(pub usize, pub Meta);
 
 impl Handler<RegisterProxy> for ArmourDataMaster {
     type Result = ();
-    fn handle(&mut self, msg: RegisterProxy, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: RegisterProxy, ctx: &mut Context<Self>) -> Self::Result {
         if let Some(instance) = self.instances.0.get_mut(&msg.0) {
-            instance.set_meta(msg.1)
+            let label = msg.1.label.clone();
+            instance.set_meta(msg.1);
+            // if master on-boarded then notify control plane
+            if self.onboarded {
+                let instance = InstanceSelector::Label(label.clone());
+                let query = PolicyQueryRequest {
+                    label: label.clone(),
+                };
+                let onboard = OnboardServiceRequest {
+                    service: label,
+                    master: self.label.clone(),
+                };
+                // on-board
+                async move {
+                    crate::control_plane(
+                        &actix_web::client::Client::default(),
+                        http::Method::POST,
+                        "service/on-board",
+                        &onboard,
+                    )
+                    .await
+                }
+                .into_actor(self)
+                .then(|on_board_res, act, _ctx| {
+                    async move {
+                        match on_board_res {
+                            Ok(message) => log::info!("on-boarded with control plane: {}", message),
+                            Err(err) => log::warn!("on-boarding failed for service: {}", err),
+                        };
+                        // query policy
+                        crate::control_plane_deserialize::<_, PolicyQueryResponse>(
+                            &actix_web::client::Client::default(),
+                            http::Method::GET,
+                            "policy/query",
+                            &query,
+                        )
+                        .await
+                    }
+                    .into_actor(act)
+                    .then(|policy_res, act, ctx| {
+                        if let Ok(policy_response) = policy_res {
+                            // log::debug!("got labels: {:?}", policy_response.labels);
+                            ctx.notify(PolicyCommand::new(
+                                instance.clone(),
+                                PolicyRequest::Label(LabelOp::AddUri(
+                                    policy_response.labels.into_iter().collect(),
+                                )),
+                            ));
+                            if let Ok(policy) = Policy::try_from(&policy_response.policy) {
+                                ctx.notify(PolicyCommand::new(
+                                    instance,
+                                    PolicyRequest::SetPolicy(policy),
+                                ))
+                            } else {
+                                log::warn!("failed to install policy")
+                            }
+                        } else {
+                            log::warn!("failed to obtain policy")
+                        };
+                        async {}.into_actor(act)
+                    })
+                })
+                .wait(ctx)
+            }
         }
     }
 }
@@ -176,28 +260,50 @@ impl Handler<RegisterTcpHash> for ArmourDataMaster {
 // launch a new proxy
 #[derive(Message)]
 #[rtype("()")]
-pub struct Launch(pub bool, pub Label);
+pub struct Launch {
+    force: bool,
+    label: Label,
+    log: log::Level,
+    timeout: Option<u8>,
+}
+
+impl Launch {
+    pub fn new(label: Label, force: bool, log: log::Level, timeout: Option<u8>) -> Self {
+        Launch {
+            force,
+            label,
+            log,
+            timeout,
+        }
+    }
+}
 
 impl Handler<Launch> for ArmourDataMaster {
     type Result = ();
     fn handle(&mut self, msg: Launch, _ctx: &mut Context<Self>) -> Self::Result {
-        let log = if msg.0 { "debug" } else { "warn" };
-        let armour_proxy = armour_proxy();
-        match std::process::Command::new(&armour_proxy)
-            .env("ARMOUR_PASS", base64::encode(&self.key))
-            .arg("-l")
-            .arg(log)
-            .arg("--label")
-            .arg(&msg.1.to_string())
-            .arg(&self.socket)
-            .spawn()
-        {
-            Ok(child) => {
-                let pid = child.id();
-                self.children.insert(pid, child);
-                log::info!("launched proxy processs: {} {}", msg.1, pid)
+        let instance = InstanceSelector::Label(msg.label.clone());
+        if msg.force || self.get_instances(&instance).is_empty() {
+            let armour_proxy = armour_proxy();
+            let mut command = std::process::Command::new(&armour_proxy);
+            command
+                .env("ARMOUR_PASS", base64::encode(&self.key))
+                .arg("-l")
+                .arg(msg.log.to_string().to_lowercase())
+                .arg("--label")
+                .arg(&msg.label.to_string());
+            if let Some(secs) = msg.timeout {
+                command.arg("--timeout").arg(secs.to_string());
             }
-            Err(err) => log::warn!("failed to launch: {}\n{}", armour_proxy.display(), err),
+            match command.arg(&self.socket).spawn() {
+                Ok(child) => {
+                    let pid = child.id();
+                    log::info!("launched proxy processs: {} {}", msg.label, pid);
+                    self.children.insert(pid, child);
+                }
+                Err(err) => log::warn!("failed to launch: {}\n{}", armour_proxy.display(), err),
+            }
+        } else if !msg.force {
+            log::warn!(r#"proxy "{}" already exists"#, msg.label)
         }
     }
 }
@@ -253,7 +359,7 @@ impl Handler<MetaData> for ArmourDataMaster {
     type Result = Arc<Vec<master::PolicyStatus>>;
     fn handle(&mut self, msg: MetaData, _ctx: &mut Context<Self>) -> Self::Result {
         Arc::new(
-            self.get_instances(msg.0)
+            self.get_instances(&msg.0)
                 .iter()
                 .filter_map(|i| i.meta.as_ref().map(master::PolicyStatus::from))
                 .collect(),
@@ -263,21 +369,45 @@ impl Handler<MetaData> for ArmourDataMaster {
 
 #[derive(Message)]
 #[rtype("Option<&'static str>")]
-pub struct PolicyCommand(pub InstanceSelector, pub PolicyRequest);
+pub struct PolicyCommand(pub bool, pub InstanceSelector, pub PolicyRequest);
+
+impl PolicyCommand {
+    pub fn new(instance: InstanceSelector, req: PolicyRequest) -> Self {
+        PolicyCommand(false, instance, req)
+    }
+    pub fn new_with_retry(instance: InstanceSelector, req: PolicyRequest) -> Self {
+        PolicyCommand(true, instance, req)
+    }
+    fn second_attempt(self) -> Self {
+        PolicyCommand(false, self.1, self.2)
+    }
+}
 
 impl Handler<PolicyCommand> for ArmourDataMaster {
     type Result = Option<&'static str>;
-    fn handle(&mut self, msg: PolicyCommand, _ctx: &mut Context<Self>) -> Self::Result {
-        let selected = self.get_instances(msg.0);
+    fn handle(&mut self, msg: PolicyCommand, ctx: &mut Context<Self>) -> Self::Result {
+        let PolicyCommand(retry, instance, request) = &msg;
+        let selected = self.get_instances(instance);
         if selected.is_empty() {
-            Some("failed to select a proxy")
-        } else if msg.1.valid() {
+            if *retry {
+                ctx.notify_later(msg.second_attempt(), std::time::Duration::from_secs(1));
+                static MSG: &str = "failed to select a proxy: will try once more...";
+                log::warn!("{}", MSG);
+                Some(MSG)
+            } else {
+                static MSG: &str = "failed to select a proxy";
+                log::warn!("{}", MSG);
+                Some(MSG)
+            }
+        } else if request.valid() {
             for instance in selected {
-                instance.addr.do_send(msg.1.clone())
+                instance.addr.do_send(request.clone())
             }
             None
         } else {
-            Some("policy is empty")
+            static MSG: &str = "policy is empty";
+            log::warn!("{}", MSG);
+            Some(MSG)
         }
     }
 }

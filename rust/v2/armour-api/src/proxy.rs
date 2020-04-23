@@ -88,19 +88,17 @@ impl fmt::Display for Policy {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum LabelOp {
-    AddIp(std::net::Ipv4Addr, labels::Label),
-    AddUrl(url::Url, labels::Label),
+    AddIp(Vec<(std::net::Ipv4Addr, labels::Labels)>),
+    AddUri(Vec<(String, labels::Labels)>),
     RemoveIp(std::net::Ipv4Addr, Option<labels::Label>),
-    RemoveUrl(url::Url, Option<labels::Label>),
+    RemoveUri(String, Option<labels::Label>),
     Clear,
-    List,
 }
 
 /// Message to proxy instance
 #[derive(Serialize, Deserialize, Message, Clone)]
 #[rtype("()")]
 pub enum PolicyRequest {
-    Debug(Protocol, bool),
     Label(LabelOp),
     SetPolicy(Policy),
     Shutdown,

@@ -1,9 +1,10 @@
 // For MongoDB installation see: https://docs.mongodb.com/manual/tutorial/install-mongodb-on-os-x
 
-use actix_web::{middleware, web, App, HttpServer};
-use armour_control::{restapi::*, ControlPlaneState};
+use actix_web::{error, middleware, web, App, FromRequest, HttpRequest, HttpResponse, HttpServer};
+use armour_control::{rest_api, ControlPlaneState};
 use listenfd::ListenFd;
 use mongodb::{options::ClientOptions, Client};
+use tokio::stream::StreamExt;
 
 const DEFAULT_MONGO_DB: &str = "mongodb://localhost:27017";
 
@@ -47,14 +48,31 @@ async fn main() -> Result<(), Error> {
             .app_data(state.clone())
             .wrap(middleware::Logger::default())
             .service(
-                web::scope("/controlplane")
-                    .service(on_board_master)
-                    .service(drop_master)
-                    .service(on_board_service)
-                    .service(drop_service)
-                    .service(update_policy)
-                    .service(query_policy), // .service(index),
+                web::scope("/master")
+                    .service(rest_api::master::on_board)
+                    .service(rest_api::master::drop)
+                    .default_service(web::to(index)),
             )
+            .service(
+                web::scope("/service")
+                    .service(rest_api::service::on_board)
+                    .service(rest_api::service::drop)
+                    .default_service(web::to(index)),
+            )
+            .service(
+                web::scope("/policy")
+                    .service(rest_api::policy::update)
+                    .service(rest_api::policy::query)
+                    .service(rest_api::policy::drop)
+                    .service(rest_api::policy::drop_all)
+                    .default_service(web::to(index)),
+            )
+            .app_data(
+                web::Json::<armour_api::control::PolicyUpdateRequest>::configure(|cfg| {
+                    cfg.error_handler(json_error_handler)
+                }),
+            )
+            .default_service(web::to(index))
     });
 
     server = if let Some(l) = listenfd.take_tcp_listener(0).unwrap() {
@@ -71,4 +89,31 @@ async fn main() -> Result<(), Error> {
     server.run();
     tokio::signal::ctrl_c().await.unwrap_or_default();
     Ok(())
+}
+
+async fn index(
+    req: HttpRequest,
+    mut payload: actix_web::web::Payload,
+) -> Result<HttpResponse, actix_web::Error> {
+    let mut body = bytes::BytesMut::new();
+    while let Some(chunk) = payload.next().await {
+        let chunk = chunk?;
+        body.extend_from_slice(&chunk)
+    }
+    log::warn!("hello: {:?}\n{:?}", req, body);
+    Ok(actix_web::HttpResponse::BadRequest().finish())
+}
+
+fn json_error_handler(err: error::JsonPayloadError, _req: &HttpRequest) -> error::Error {
+    use actix_web::error::JsonPayloadError;
+
+    let detail = err.to_string();
+    let resp = match &err {
+        JsonPayloadError::ContentType => HttpResponse::UnsupportedMediaType().body(detail),
+        JsonPayloadError::Deserialize(json_err) if json_err.is_data() => {
+            HttpResponse::UnprocessableEntity().body(detail)
+        }
+        _ => HttpResponse::BadRequest().body(detail),
+    };
+    error::InternalError::from_response(err, resp).into()
 }

@@ -16,7 +16,6 @@ use std::sync::Arc;
 pub struct TcpPolicy {
     connect: lang::Policy,
     disconnect: lang::Policy,
-    debug: bool,
     program: Arc<lang::Program>,
     env: Env,
     proxy: Option<(Addr<tcp_proxy::TcpDataServer>, u16)>,
@@ -32,9 +31,6 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
             server.do_send(Stop);
         }
         self.proxy = None
-    }
-    fn set_debug(&mut self, b: bool) {
-        self.debug = b
     }
     fn set_policy(&mut self, p: lang::Program) {
         self.connect = p.policy(lang::ALLOW_TCP_CONNECTION);
@@ -54,13 +50,9 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
     fn env(&self) -> &Env {
         &self.env
     }
-    fn debug(&self) -> bool {
-        self.debug
-    }
     fn status(&self) -> Box<Status> {
         Box::new(Status {
             port: self.port(),
-            debug: self.debug(),
             policy: (*self.policy()).clone(),
         })
     }
@@ -72,7 +64,6 @@ impl Default for TcpPolicy {
         TcpPolicy {
             connect: lang::Policy::default(),
             disconnect: lang::Policy::default(),
-            debug: false,
             program: program.clone(),
             env: Env::new(&program),
             proxy: None,
@@ -164,7 +155,7 @@ impl Handler<ConnectionStats> for PolicyActor {
             };
             Box::pin(
                 self.tcp
-                    .evaluate(lang::ON_TCP_DISCONNECT, args, IngressEgress::default()) // TODO: meta
+                    .evaluate(lang::ON_TCP_DISCONNECT, args, IngressEgress::default())
                     .and_then(|((), _meta)| future::ok(()))
                     .map_err(|e| log::warn!("error: {}", e)),
             )

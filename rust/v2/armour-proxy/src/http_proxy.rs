@@ -7,7 +7,7 @@ use actix_web::{
     client::{Client, ClientRequest, ClientResponse, PayloadError, SendRequestError},
     http::header::{ContentEncoding, HeaderMap, HeaderName, HeaderValue},
     http::uri,
-    middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
+    middleware, web, App, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
 use armour_lang::lang::Policy;
 use armour_utils::own_ip;
@@ -47,7 +47,7 @@ async fn request(
     policy: web::Data<actix::Addr<PolicyActor>>,
     client: web::Data<Client>,
     proxy_port: web::Data<u16>,
-) -> Result<HttpResponse, Error> {
+) -> Result<HttpResponse, actix_web::Error> {
     if let Some(connection) = Connection::new(&req, **proxy_port) {
         if let Ok(p) = policy.send(GetHttpPolicy(connection.from_to())).await {
             // we succeeded in getting a policy
@@ -55,13 +55,10 @@ async fn request(
                 // check request
                 PolicyStatus {
                     request: Policy::Args(count),
-                    debug,
                     timeout,
                     ..
                 } => {
-                    if debug {
-                        log::debug!("{:?}", req)
-                    }
+                    log::debug!("{:?}", req);
                     let mut client_payload = BytesMut::new();
                     while let Some(chunk) = payload.next().await {
                         let chunk = chunk?;
@@ -85,7 +82,7 @@ async fn request(
                         Ok(Ok((true, meta))) => {
                             // build request
                             let client_request =
-                                build_request(client, connection.uri(), req, meta, timeout, debug);
+                                build_request(client, connection.uri(), req, meta, timeout);
                             // forward the request (with the original client payload)
                             let res = client_request.send_body(client_payload).await;
                             // send the response back to the client
@@ -108,13 +105,10 @@ async fn request(
                 // allow
                 PolicyStatus {
                     request: Policy::Allow,
-                    debug,
                     timeout,
                     ..
                 } => {
-                    if debug {
-                        log::debug!("{:?}", req)
-                    }
+                    log::debug!("{:?}", req);
                     let mut client_payload = BytesMut::new();
                     while let Some(chunk) = payload.next().await {
                         let chunk = chunk?;
@@ -122,7 +116,7 @@ async fn request(
                     }
                     // build request
                     let client_request =
-                        build_request(client, connection.uri(), req, None, timeout, debug);
+                        build_request(client, connection.uri(), req, None, timeout);
                     // forward the request (with the original client payload)
                     let res = client_request.send_body(client_payload).await;
                     // send the response back to the client
@@ -168,14 +162,13 @@ async fn response(
         ClientResponse<impl Stream<Item = Result<web::Bytes, PayloadError>> + Unpin>,
         SendRequestError,
     >,
-) -> Result<HttpResponse, Error> {
+) -> Result<HttpResponse, actix_web::Error> {
     match res {
         Ok(mut res) => {
             match p.status {
                 // check server response
                 PolicyStatus {
                     response: Policy::Args(count),
-                    debug,
                     ..
                 } => {
                     let server_payload = res.body().await?;
@@ -202,9 +195,7 @@ async fn response(
                             if let Some(meta) = meta {
                                 builder.header("x-armour", meta.as_str());
                             };
-                            if debug {
-                                log::debug!("{:?}", builder)
-                            }
+                            log::debug!("{:?}", builder);
                             Ok(builder.body(server_payload))
                         }
                         // reject
@@ -226,13 +217,10 @@ async fn response(
                 // allow
                 PolicyStatus {
                     response: Policy::Allow,
-                    debug,
                     ..
                 } => {
                     let mut builder = response_builder(&res);
-                    if debug {
-                        log::debug!("{:?}", builder)
-                    }
+                    log::debug!("{:?}", builder);
                     Ok(builder.body(res.body().await?))
                 }
                 // deny
@@ -271,7 +259,6 @@ fn build_request<U>(
     req: HttpRequest,
     meta: Option<String>,
     timeout: std::time::Duration,
-    debug: bool,
 ) -> ClientRequest
 where
     uri::Uri: TryFrom<U>,
@@ -308,9 +295,7 @@ where
     } else {
         headers.remove(X_ARMOUR)
     }
-    if debug {
-        log::debug!("{:?}", client_req)
-    };
+    log::debug!("{:?}", client_req);
     client_req.timeout(timeout)
 }
 
@@ -349,7 +334,7 @@ impl Connection {
     fn from_to(&self) -> (ID, ID) {
         (self.from.clone(), self.to.clone())
     }
-    fn forward_uri(req: &HttpRequest, proxy_port: u16) -> Result<uri::Uri, Error> {
+    fn forward_uri(req: &HttpRequest, proxy_port: u16) -> Result<uri::Uri, actix_web::Error> {
         let info = req.connection_info();
         // log::debug!("HOST is: {}", info.host());
         let mut uri = uri::Builder::new()
@@ -363,7 +348,9 @@ impl Connection {
                 if uri.port_u16().unwrap_or(80) == proxy_port
                     && uri.host().map(is_local_host).unwrap_or(true)
                 {
-                    Err("cannot proxy self".to_actix())
+                    Err(HttpResponse::InternalServerError()
+                        .body("cannot proxy self")
+                        .into())
                 } else {
                     Ok(uri)
                 }
@@ -406,16 +393,3 @@ fn is_local_host(host: &str) -> bool {
         LOCAL_HOST_NAMES.contains(&host.to_ascii_lowercase())
     }
 }
-
-/// Trait for converting errors into actix-web errors
-trait ToActixError {
-    fn to_actix(self) -> Error
-    where
-        Self: Into<Box<dyn std::error::Error + Send + Sync>>,
-    {
-        std::io::Error::new(std::io::ErrorKind::Other, self).into()
-    }
-}
-
-impl ToActixError for http::header::ToStrError {}
-impl ToActixError for &str {}

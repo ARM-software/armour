@@ -1,88 +1,106 @@
-type Master = actix_web::web::Data<actix::Addr<super::master::ArmourDataMaster>>;
+type Master = actix::Addr<super::master::ArmourDataMaster>;
 
-pub mod launch {
-	use actix_web::{client, http::Method};
+pub mod service {
+	use crate::instance::InstanceSelector;
+	use crate::master::{Launch, PolicyCommand};
 	use actix_web::{delete, post, web, HttpResponse};
-	use armour_api::control::OnboardServiceRequest;
-	use armour_api::master::OnboardInformation;
-	use armour_lang::labels::Label;
-	use armour_serde::array_dict::ArrayDict;
-	use std::collections::BTreeMap;
+	use armour_api::master::{OnboardInformation, Proxies, Proxy};
+	use armour_api::proxy::{LabelOp, PolicyRequest};
+	use armour_lang::labels::Labels;
 
-	fn get_armour_id(labels: &ArrayDict) -> Result<Label, actix_web::Error> {
-		static ERR: &str = "failed to get Armour ID for service";
-		match labels {
-			ArrayDict::Array(a) => {
-				if a.len() == 1 {
-					Ok(a[0]
-						.parse()
-						.map_err(|_| HttpResponse::BadRequest().body(ERR))?)
-				} else {
-					Err(HttpResponse::BadRequest().body(ERR).into())
-				}
-			}
-			ArrayDict::Dict(d) => {
-				if let Some(v) = d.get("id") {
-					Ok(v.parse()
-						.map_err(|_| HttpResponse::BadRequest().body(ERR))?)
-				} else {
-					Err(HttpResponse::BadRequest().body(ERR).into())
-				}
-			}
-		}
+	fn top_port(proxies: &[Proxy]) -> u16 {
+		proxies
+			.iter()
+			.filter_map(|proxy| proxy.port)
+			.max()
+			.unwrap_or(5999)
 	}
 
-	fn onboard_requests(
-		master: &Label,
-		info: OnboardInformation,
-	) -> Result<BTreeMap<String, OnboardServiceRequest>, actix_web::Error> {
-		info.into_iter()
-			.map(|(k, v)| {
-				Ok((
-					k,
-					OnboardServiceRequest {
-						service: get_armour_id(&v.armour_labels)?,
-						master: master.to_owned(),
-					},
-				))
-			})
-			.collect()
+	async fn launch_proxy(master: &super::Master, proxy: &Proxy) -> Result<(), actix_web::Error> {
+		// start a proxy (without forcing/duplication)
+		master
+			.send(Launch::new(
+				proxy.label.clone(),
+				false,
+				if proxy.debug {
+					log::Level::Debug
+				} else {
+					log::Level::Warn
+				},
+				proxy.timeout,
+			))
+			.await?;
+		Ok(())
 	}
 
-	#[post("/on-board-services")]
-	pub async fn on_board_services(
-		master: web::Data<Label>,
-		info: web::Json<OnboardInformation>,
+	async fn add_ip_labels(
+		master: &super::Master,
+		instance: &InstanceSelector,
+		ip_labels: &[(std::net::Ipv4Addr, Labels)],
+	) -> Result<(), actix_web::Error> {
+		master
+			.send(PolicyCommand::new_with_retry(
+				// retry needed in case proxy process is slow to start up
+				instance.clone(),
+				PolicyRequest::Label(LabelOp::AddIp(ip_labels.to_vec())),
+			))
+			.await?;
+		Ok(())
+	}
+
+	async fn start_proxy(
+		master: &super::Master,
+		instance: InstanceSelector,
+		port: u16,
+	) -> Result<(), actix_web::Error> {
+		master
+			.send(PolicyCommand::new_with_retry(
+				// retry needed in case proxy process is slow to start up
+				instance,
+				PolicyRequest::StartHttp(port),
+			))
+			.await?;
+		Ok(())
+	}
+
+	#[post("/on-board")]
+	pub async fn on_board(
+		master: web::Data<super::Master>,
+		information: web::Json<OnboardInformation>,
 	) -> Result<HttpResponse, actix_web::Error> {
-		let client = client::Client::default();
-		for (service, req) in onboard_requests(&master, info.into_inner())? {
-			crate::control_plane(&client, Method::POST, "on-board-service", &req)
-				.await
-				.map_err(|message| {
-					HttpResponse::BadRequest().body(format!(
-						"on-boarding failed for service {}: {}",
-						service, message
-					))
-				})?;
-			log::info!("onboarded {}", service)
+		let information = information.into_inner();
+		let mut port = top_port(&information.proxies);
+		for proxy in information.proxies {
+			// launch proxies (if not already launched)
+			launch_proxy(&master, &proxy).await?;
+			let instance = InstanceSelector::Label(proxy.label.clone());
+			// add service labels
+			add_ip_labels(&master, &instance, &information.labels).await?;
+			start_proxy(
+				&master,
+				instance,
+				proxy.port.unwrap_or_else(|| {
+					port += 1;
+					port
+				}),
+			)
+			.await?
 		}
+		log::info!("onboarded");
 		Ok(HttpResponse::Ok().finish())
 	}
 
-	#[delete("/drop-services")]
-	pub async fn drop_services(
-		master: web::Data<Label>,
-		info: web::Json<OnboardInformation>,
+	#[delete("/drop")]
+	pub async fn drop(
+		master: web::Data<super::Master>,
+		proxies: web::Json<Proxies>,
 	) -> Result<HttpResponse, actix_web::Error> {
-		let client = client::Client::default();
-		for (service, req) in onboard_requests(&master, info.into_inner())? {
-			crate::control_plane(&client, Method::DELETE, "drop-service", &req)
-				.await
-				.map_err(|message| {
-					HttpResponse::BadRequest()
-						.body(format!("drop failed for service {}: {}", service, message))
-				})?;
-			log::info!("dropped {}", service)
+		for proxy in proxies.into_inner() {
+			let instance = InstanceSelector::Label(proxy.label);
+			// shut down proxy
+			master
+				.send(PolicyCommand::new(instance, PolicyRequest::Shutdown))
+				.await?;
 		}
 		Ok(HttpResponse::Ok().finish())
 	}
@@ -97,7 +115,9 @@ pub mod master {
 		HttpResponse::Ok().body(label.to_string())
 	}
 	#[get("/proxies")]
-	pub async fn proxies(master: super::Master) -> Result<HttpResponse, actix_web::Error> {
+	pub async fn proxies(
+		master: web::Data<super::Master>,
+	) -> Result<HttpResponse, actix_web::Error> {
 		let res = master.send(List).await.map_err(|err| {
 			log::warn!("{}", err);
 			HttpResponse::InternalServerError()
@@ -117,30 +137,12 @@ pub mod policy {
 	use armour_lang::labels::Label;
 	use std::convert::TryFrom;
 
-	fn instance_selector(label: &str, proxy: &Label) -> Result<InstanceSelector, &'static str> {
-		let label = label
-			.parse::<Label>()
-			.map_err(|_| "failed to parse label")?;
-		let (first, rest) = label.split_first().ok_or("bad label")?;
-		if first.matches_with(proxy) {
-			Ok(if let Some(proxy) = rest {
-				InstanceSelector::Label(proxy)
-			} else {
-				InstanceSelector::All
-			})
-		} else {
-			Err("label not for this master")
-		}
-	}
-
 	#[get("/query")]
 	pub async fn query(
-		label: web::Data<Label>,
-		master: super::Master,
-		request: web::Json<String>,
+		master: web::Data<super::Master>,
+		request: web::Json<Label>,
 	) -> Result<HttpResponse, actix_web::Error> {
-		let instance = instance_selector(&request, &label)
-			.map_err(|err| HttpResponse::BadRequest().body(err))?;
+		let instance = InstanceSelector::Label(request.clone());
 		let res = master.send(MetaData(instance)).await.map_err(|err| {
 			log::warn!("{}", err);
 			HttpResponse::InternalServerError()
@@ -150,17 +152,18 @@ pub mod policy {
 
 	#[post("/update")]
 	pub async fn update(
-		label: web::Data<Label>,
-		master: super::Master,
+		master: web::Data<super::Master>,
 		request: web::Json<PolicyUpdate>,
 	) -> Result<HttpResponse, actix_web::Error> {
-		let instance = instance_selector(&request.label, &label)
-			.map_err(|err| HttpResponse::BadRequest().body(err))?;
+		let instance = InstanceSelector::Label(request.label.clone());
 		let policy = Policy::try_from(&request.policy)
 			.map_err(|err| HttpResponse::BadRequest().body(err))?;
 		log::info!("sending policy: {}", policy);
 		let res = master
-			.send(PolicyCommand(instance, PolicyRequest::SetPolicy(policy)))
+			.send(PolicyCommand::new(
+				instance,
+				PolicyRequest::SetPolicy(policy),
+			))
 			.await
 			.map_err(|err| {
 				log::warn!("{}", err);

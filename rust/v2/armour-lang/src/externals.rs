@@ -11,7 +11,6 @@ use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use std::time::Duration;
 
-// TODO: move more into Actor to avoid work
 pub struct ExternalActor {
     pub externals: Arc<Externals>,
 }

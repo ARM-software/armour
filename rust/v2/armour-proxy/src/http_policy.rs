@@ -15,7 +15,6 @@ use std::sync::Arc;
 /// Information about REST policies
 #[derive(Clone, MessageResponse)]
 pub struct PolicyStatus {
-    pub debug: bool,
     pub timeout: std::time::Duration,
     pub request: lang::Policy,
     pub response: lang::Policy,
@@ -33,7 +32,6 @@ impl PolicyStatus {
 impl Default for PolicyStatus {
     fn default() -> Self {
         PolicyStatus {
-            debug: false,
             timeout: std::time::Duration::from_secs(5),
             allow_all: false,
             request: lang::Policy::default(),
@@ -61,9 +59,6 @@ impl Policy<actix_web::dev::Server> for HttpPolicy {
         };
         self.proxy = None
     }
-    fn set_debug(&mut self, b: bool) {
-        self.status.debug = b
-    }
     fn set_policy(&mut self, p: lang::Program) {
         self.status.update_for_policy(&p);
         self.program = Arc::new(p);
@@ -81,13 +76,9 @@ impl Policy<actix_web::dev::Server> for HttpPolicy {
     fn env(&self) -> &Env {
         &self.env
     }
-    fn debug(&self) -> bool {
-        self.status.debug
-    }
     fn status(&self) -> Box<Status> {
         Box::new(Status {
             port: self.port(),
-            debug: self.debug(),
             policy: (*self.policy()).clone(),
         })
     }
@@ -109,8 +100,8 @@ impl HttpPolicy {
     fn get(&self) -> PolicyStatus {
         self.status.clone()
     }
-    pub fn set_timeout(&mut self, timeout: std::time::Duration) {
-        self.status.timeout = timeout
+    pub fn set_timeout(&mut self, secs: u8) {
+        self.status.timeout = std::time::Duration::from_secs(secs.into())
     }
 }
 

@@ -21,13 +21,11 @@ use tokio_util::codec::FramedRead;
 pub trait Policy<P> {
     fn start(&mut self, proxy: P, port: u16);
     fn stop(&mut self);
-    fn set_debug(&mut self, _: bool);
     fn set_policy(&mut self, p: lang::Program);
     fn port(&self) -> Option<u16>;
     fn policy(&self) -> Arc<lang::Program>;
     fn hash(&self) -> String;
     fn env(&self) -> &Env;
-    fn debug(&self) -> bool;
     fn status(&self) -> Box<Status>;
     fn evaluate<T: std::convert::TryFrom<literals::Literal> + Send + 'static>(
         &self,
@@ -35,13 +33,8 @@ pub trait Policy<P> {
         args: Vec<expressions::Expr>,
         meta: IngressEgress,
     ) -> BoxFuture<'static, Result<(T, Option<Meta>), expressions::Error>> {
-        let now = if self.debug() {
-            log::info!(r#"evaluting "{}""#, function);
-            // log::info!(r#"args "{:?}""#, args);
-            Some(std::time::Instant::now())
-        } else {
-            None
-        };
+        log::debug!(r#"evaluting "{}""#, function);
+        let now = std::time::Instant::now();
         let mut env = self.env().clone();
         env.set_meta(meta);
         async move {
@@ -49,10 +42,7 @@ pub trait Policy<P> {
                 .evaluate(env.clone())
                 .await?;
             let meta = env.egress().await;
-            if let Some(elapsed) = now.map(|t| t.elapsed()) {
-                log::info!("result: {}", result);
-                log::info!("evaluate time: {:?}", elapsed)
-            };
+            log::debug!("result ({:?}): {}", now.elapsed(), result);
             if let expressions::Expr::LitExpr(lit) = result {
                 if let Ok(r) = lit.try_into() {
                     // log::info!("meta is: {:?}", meta);
@@ -109,17 +99,20 @@ impl PolicyActor {
     pub fn create_policy(
         stream: tokio::net::UnixStream,
         label: labels::Label,
+        timeout: u8,
         key: [u8; 32],
     ) -> Addr<PolicyActor> {
         use aead::{generic_array::GenericArray, NewAead};
         use aes_gcm::Aes256Gcm;
+        let mut http = HttpPolicy::default();
+        http.set_timeout(timeout);
         PolicyActor::create(|ctx| {
             let (r, w) = tokio::io::split(stream);
             ctx.add_stream(FramedRead::new(r, PolicyCodec));
             PolicyActor {
                 label,
                 connection_number: 0,
-                http: HttpPolicy::default(),
+                http,
                 tcp: TcpPolicy::default(),
                 aead: Aes256Gcm::new(GenericArray::clone_from_slice(&key)),
                 identity: Identity::default(),
@@ -187,31 +180,73 @@ impl PolicyActor {
 }
 // identity/connection management
 impl PolicyActor {
+    fn get_port(u: &http::uri::Uri) -> Option<u16> {
+        u.port_u16().or_else(|| scheme_port(&u))
+    }
     fn id(&mut self, id: ID) -> literals::ID {
         match id {
             ID::Anonymous => literals::ID::default(),
             ID::Uri(u) => {
-                let labels = self.identity.uri_labels.get(&u);
-                // log::debug!("creating ID for {} with labels {:?}", u, labels);
-                if let Some(id) = self.identity.uri_cache.get(&u) {
-                    id.clone()
-                } else {
-                    let mut port = u.port_u16();
-                    if port.is_none() {
-                        port = scheme_port(&u)
+                if let Some(host) = u.host() {
+                    if let Some(id) = self.identity.host_cache.get(host) {
+                        id.clone()
+                    } else {
+                        let mut hosts = BTreeSet::new();
+                        let mut ips = BTreeSet::new();
+                        let mut labels: BTreeSet<labels::Label> = BTreeSet::new();
+                        if let Some(lbls) = self.identity.host_labels.get(host) {
+                            labels.extend(lbls.iter().cloned())
+                        }
+                        hosts.insert(host.to_string());
+                        if let Ok(host_ips) = dns_lookup::lookup_host(host) {
+                            for ip in host_ips.iter().filter(|ip| ip.is_ipv4()) {
+                                if let Some(lbls) = self.identity.ip_labels.get(&ip) {
+                                    labels.extend(lbls.iter().cloned())
+                                }
+                                ips.insert(*ip);
+                            }
+                        }
+                        log::debug!("creating ID for {} with labels {:?}", u, labels);
+                        let id = literals::ID::new(hosts, ips, PolicyActor::get_port(&u), labels);
+                        self.identity
+                            .host_cache
+                            .insert(host.to_string(), id.clone());
+                        id
                     }
-                    let id = literals::ID::from((u.host(), port, labels));
-                    self.identity.uri_cache.insert(u, id.clone());
-                    id
+                } else {
+                    // failed to get host name, so ID can at best consist of port number
+                    literals::ID::new(
+                        BTreeSet::new(),
+                        BTreeSet::new(),
+                        PolicyActor::get_port(&u),
+                        BTreeSet::new(),
+                    )
                 }
             }
             ID::SocketAddr(s) => {
                 let ip = s.ip();
-                let labels = self.identity.ip_labels.get(&ip);
+                let port = s.port();
                 if let Some(id) = self.identity.ip_cache.get(&ip) {
-                    id.set_port(s.port())
+                    id.set_port(port)
                 } else {
-                    let id = literals::ID::from((s, labels));
+                    let mut hosts = BTreeSet::new();
+                    let mut ips = BTreeSet::new();
+                    let mut labels: BTreeSet<labels::Label> = BTreeSet::new();
+                    // DNS lookup, with addition of labels
+                    if let Ok(host) = dns_lookup::lookup_addr(&ip) {
+                        if let Some(lbls) = self.identity.host_labels.get(&host) {
+                            labels.extend(lbls.iter().cloned())
+                        }
+                        hosts.insert(host);
+                    }
+                    if ip.is_ipv4() {
+                        if let Some(lbls) = self.identity.ip_labels.get(&ip) {
+                            labels.extend(lbls.iter().cloned())
+                        }
+                        ips.insert(ip);
+                    }
+                    log::debug!("creating ID for {} with labels {:?}", s, labels);
+                    let id = literals::ID::new(hosts, ips, Some(port), labels);
                     self.identity.ip_cache.insert(ip, id.clone());
                     id
                 }
@@ -231,28 +266,33 @@ impl PolicyActor {
 #[derive(Default)]
 struct Identity {
     /// map from IDs to Armour label set expressions
-    uri_labels: HashMap<uri::Uri, labels::Labels>,
+    host_labels: HashMap<String, labels::Labels>,
     ip_labels: HashMap<std::net::IpAddr, labels::Labels>,
-    uri_cache: HashMap<uri::Uri, literals::ID>,
+    host_cache: HashMap<String, literals::ID>,
     ip_cache: HashMap<std::net::IpAddr, literals::ID>,
 }
 
 impl Identity {
-    fn clear_labels(&mut self) {
-        self.uri_labels.clear();
-        self.ip_labels.clear();
-        self.uri_cache.clear();
+    fn clear_caches(&mut self) {
+        self.host_cache.clear();
         self.ip_cache.clear()
     }
-    fn add_uri(&mut self, uri: uri::Uri, label: labels::Label) {
-        if let Some(labels) = self.uri_labels.get_mut(&uri) {
-            labels.insert(label);
-        } else {
-            let mut labels = BTreeSet::new();
-            labels.insert(label);
-            self.uri_labels.insert(uri, labels);
+    fn clear_labels(&mut self) {
+        self.host_labels.clear();
+        self.ip_labels.clear();
+        self.clear_caches()
+    }
+    fn add_uri(&mut self, uri: &uri::Uri, label: labels::Label) {
+        if let Some(host) = uri.host() {
+            if let Some(labels) = self.host_labels.get_mut(host) {
+                labels.insert(label);
+            } else {
+                let mut labels = BTreeSet::new();
+                labels.insert(label);
+                self.host_labels.insert(host.to_string(), labels);
+            }
+            self.clear_caches()
         }
-        self.uri_cache.clear()
     }
     fn add_ip(&mut self, ip: std::net::IpAddr, label: labels::Label) {
         if let Some(labels) = self.ip_labels.get_mut(&ip) {
@@ -262,19 +302,21 @@ impl Identity {
             labels.insert(label);
             self.ip_labels.insert(ip, labels);
         }
-        self.ip_cache.clear()
+        self.clear_caches()
     }
     fn remove_uri(&mut self, uri: &uri::Uri, label: Option<labels::Label>) {
-        if let Some(label) = label {
-            if let Some(labels) = self.uri_labels.get_mut(uri) {
-                if labels.remove(&label) && labels.is_empty() {
-                    self.uri_labels.remove(uri);
+        if let Some(host) = uri.host() {
+            if let Some(label) = label {
+                if let Some(labels) = self.host_labels.get_mut(host) {
+                    if labels.remove(&label) && labels.is_empty() {
+                        self.host_labels.remove(host);
+                    }
                 }
+            } else {
+                self.host_labels.remove(host);
             }
-        } else {
-            self.uri_labels.remove(uri);
+            self.clear_caches()
         }
-        self.uri_cache.clear()
     }
     fn remove_ip(&mut self, ip: &std::net::IpAddr, label: Option<labels::Label>) {
         if let Some(label) = label {
@@ -286,7 +328,7 @@ impl Identity {
         } else {
             self.ip_labels.remove(ip);
         }
-        self.ip_cache.clear()
+        self.clear_caches()
     }
 }
 
@@ -364,25 +406,13 @@ impl Handler<PolicyRequest> for PolicyActor {
         match msg {
             PolicyRequest::Label(op) => self.handle_label_op(op),
             PolicyRequest::Timeout(secs) => {
-                self.http
-                    .set_timeout(std::time::Duration::from_secs(secs.into()));
+                self.http.set_timeout(secs);
                 log::info!("timeout: {:?}", secs)
-            }
-            PolicyRequest::Debug(Protocol::HTTP, debug) => {
-                self.http.set_debug(debug);
-                log::info!("HTTP debug: {}", debug)
-            }
-            PolicyRequest::Debug(Protocol::TCP, debug) => {
-                self.tcp.set_debug(debug);
-                log::info!("TCP debug: {}", debug)
-            }
-            PolicyRequest::Debug(Protocol::All, debug) => {
-                ctx.notify(PolicyRequest::Debug(Protocol::HTTP, debug));
-                ctx.notify(PolicyRequest::Debug(Protocol::TCP, debug))
             }
             PolicyRequest::Status => {
                 self.uds_framed.write(PolicyResponse::Status {
                     label: self.label.clone(),
+                    labels: self.labels(),
                     http: self.http.status(),
                     tcp: self.tcp.status(),
                 });
@@ -408,6 +438,13 @@ impl Handler<PolicyRequest> for PolicyActor {
                 ctx.notify(PolicyRequest::Stop(Protocol::TCP))
             }
             PolicyRequest::StartHttp(port) => {
+                if let Some(current_port) = self.http.port() {
+                    log::info!("HTTP proxy already started");
+                    self.uds_framed.write(PolicyResponse::RequestFailed);
+                    if port == current_port {
+                        return;
+                    }
+                }
                 self.http.stop();
                 http_proxy::start_proxy(ctx.address(), port)
                     .into_actor(self)
@@ -424,6 +461,13 @@ impl Handler<PolicyRequest> for PolicyActor {
                     .wait(ctx)
             }
             PolicyRequest::StartTcp(port) => {
+                if let Some(current_port) = self.http.port() {
+                    log::info!("TCP proxy already started");
+                    self.uds_framed.write(PolicyResponse::RequestFailed);
+                    if port == current_port {
+                        return;
+                    }
+                }
                 self.tcp.stop();
                 tcp_proxy::start_proxy(port, ctx.address())
                     .into_actor(self)
@@ -476,7 +520,7 @@ impl PolicyActor {
     // convert ID labels into exportable structure
     fn labels(&self) -> BTreeMap<String, labels::Labels> {
         let mut labels = BTreeMap::new();
-        for (k, v) in self.identity.uri_labels.iter() {
+        for (k, v) in self.identity.host_labels.iter() {
             labels.insert(k.to_string(), v.clone());
         }
         for (k, v) in self.identity.ip_labels.iter() {
@@ -484,44 +528,43 @@ impl PolicyActor {
         }
         labels
     }
-    // convert url::Url into uri::Uri by taking just the domain and port (when available)
-    fn url_to_uri(url: url::Url) -> Option<uri::Uri> {
-        if let Some(domain) = url.domain() {
-            let s = if let Some(port) = url.port_or_known_default() {
-                format!("{}:{}", domain, port)
-            } else {
-                domain.to_string()
-            };
-            s.parse::<http::uri::Uri>().ok()
-        } else {
-            None
-        }
-    }
     fn handle_label_op(&mut self, op: LabelOp) {
         match op {
-            LabelOp::AddUrl(url, label) => {
-                if let Some(uri) = PolicyActor::url_to_uri(url) {
-                    log::info!("adding label for: {}", uri);
-                    self.identity.add_uri(uri, label)
-                } else {
-                    log::warn!("failed to convert URL to Uri");
-                    self.uds_framed.write(PolicyResponse::RequestFailed)
+            LabelOp::AddUri(uri_labels) => {
+                for (s, labels) in uri_labels {
+                    match s.parse::<http::uri::Uri>() {
+                        Ok(uri) => {
+                            for label in labels {
+                                log::info!("adding label for: {}", uri);
+                                self.identity.add_uri(&uri, label)
+                            }
+                        }
+                        Err(err) => {
+                            log::warn!("failed to parse URI: {}", err);
+                            self.uds_framed.write(PolicyResponse::RequestFailed)
+                        }
+                    }
                 }
             }
-            LabelOp::AddIp(ip, label) => {
-                let ip = ip.into();
-                log::info!("adding label for: {}", ip);
-                self.identity.add_ip(ip, label)
+            LabelOp::AddIp(ip_labels) => {
+                for (ip, labels) in ip_labels {
+                    let ip = ip.into();
+                    for label in labels {
+                        log::info!("adding label for: {}", ip);
+                        self.identity.add_ip(ip, label)
+                    }
+                }
             }
-            LabelOp::RemoveUrl(url, label) => {
-                if let Some(uri) = PolicyActor::url_to_uri(url) {
+            LabelOp::RemoveUri(s, label) => match s.parse::<http::uri::Uri>() {
+                Ok(uri) => {
                     log::info!("removing label for: {}", uri);
                     self.identity.remove_uri(&uri, label)
-                } else {
-                    log::warn!("failed to convert URL to Uri");
+                }
+                Err(err) => {
+                    log::warn!("failed to parse URI: {}", err);
                     self.uds_framed.write(PolicyResponse::RequestFailed)
                 }
-            }
+            },
             LabelOp::RemoveIp(ip, label) => {
                 let ip = ip.into();
                 log::info!("removing label for: {}", ip);
@@ -531,7 +574,6 @@ impl PolicyActor {
                 log::info!("clearing all labels");
                 self.identity.clear_labels()
             }
-            LabelOp::List => self.uds_framed.write(PolicyResponse::Labels(self.labels())),
         }
     }
 }

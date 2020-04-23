@@ -1,4 +1,4 @@
-use armour_api::control;
+use armour_api::{control, master};
 use armour_lang::lang;
 use awc::http;
 #[macro_use]
@@ -31,8 +31,9 @@ async fn main() -> std::io::Result<()> {
             .ok_or_else(|| Error::new(ErrorKind::Other, "Wrong service"))?;
         let prog = lang::Program::from_file(file, None)?;
         let update_payload = control::PolicyUpdateRequest {
-            service: service.parse().unwrap(),
-            policy: prog.to_bincode()?,
+            label: service.parse().unwrap(),
+            policy: master::Policy::Bincode(prog.to_bincode()?),
+            labels: control::LabelMap::new(),
         };
 
         let req = client
@@ -51,7 +52,7 @@ async fn main() -> std::io::Result<()> {
             .ok_or_else(|| Error::new(ErrorKind::Other, "Wrong service"))?;
 
         let query_payload = control::PolicyQueryRequest {
-            service: service.parse().unwrap(),
+            label: service.parse().unwrap(),
         };
 
         let mut req = client

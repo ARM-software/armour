@@ -1,5 +1,4 @@
-use super::{capabilities, config, network, secret, volume};
-use armour_api::master::OnboardInfo;
+use super::{capabilities, config, network, secret, volume, ServiceInfo};
 use armour_serde::{
     array_dict, deserialize_from_str, is_default, string_or_list, string_or_struct,
 };
@@ -163,12 +162,12 @@ impl Service {
     pub fn armour_bridge_network(name: &str) -> String {
         format!("arm-{}", name)
     }
-    pub fn convert_for_armour(&mut self, name: &str) -> (OnboardInfo, network::Network) {
+    pub fn convert_for_armour(&mut self, name: &str) -> (ServiceInfo, network::Network) {
         let armour_bridge_network = Service::armour_bridge_network(name);
-        let info = OnboardInfo {
+        let info = ServiceInfo {
             armour_labels: self.armour.labels.clone(),
-            container_labels: self.labels.clone(),
-            network: armour_bridge_network.clone(),
+            // container_labels: self.labels.clone(),
+            // network: armour_bridge_network.clone(),
             ipv4_address: None,
         };
         // create a new (internal) bridge network for the service
@@ -232,17 +231,7 @@ impl std::str::FromStr for Build {
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Armour {
-    pub labels: array_dict::ArrayDict,
-}
-
-impl std::str::FromStr for Armour {
-    type Err = &'static str;
-
-    fn from_str(_s: &str) -> Result<Self, Self::Err> {
-        Ok(Armour {
-            labels: array_dict::ArrayDict::default(),
-        })
-    }
+    pub labels: armour_lang::labels::Labels,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]

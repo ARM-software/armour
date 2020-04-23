@@ -25,10 +25,43 @@ pub struct Compose {
     #[serde(skip_serializing)]
     secrets: Map<String, Option<secret::SecretConfig>>,
 
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub proxies: armour_api::master::Proxies,
+
     // capture everything else (future proofing)
     #[serde(skip_serializing)]
     #[serde(flatten)]
     _extras: Map<String, serde_yaml::Value>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OnboardInfo {
+    pub proxies: armour_api::master::Proxies,
+    pub services: Map<String, ServiceInfo>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ServiceInfo {
+    pub armour_labels: armour_lang::labels::Labels,
+    // pub container_labels: armour_serde::array_dict::ArrayDict,
+    // pub network: String,
+    pub ipv4_address: Option<std::net::Ipv4Addr>,
+}
+
+impl From<&OnboardInfo> for OnboardInformation {
+    fn from(info: &OnboardInfo) -> Self {
+        let mut labels = Vec::new();
+        for service in info.services.values() {
+            if let Some(ip) = service.ipv4_address {
+                labels.push((ip, service.armour_labels.clone()));
+            }
+        }
+        OnboardInformation {
+            proxies: info.proxies.clone(),
+            labels,
+        }
+    }
 }
 
 impl Compose {
@@ -38,23 +71,42 @@ impl Compose {
     }
     pub fn read_armour<P: AsRef<path::Path>>(
         p: P,
-    ) -> Result<(Self, OnboardInformation), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(Self, OnboardInfo), Box<dyn std::error::Error + Send + Sync>> {
         let mut compose = Compose::from_path(p)?;
         let info = compose.convert_for_armour()?;
         Ok((compose, info))
     }
-    fn convert_for_armour(&mut self) -> Result<OnboardInformation, String> {
-        let mut info = OnboardInformation::new();
+    fn convert_for_armour(&mut self) -> Result<OnboardInfo, String> {
+        let mut services = Map::new();
         let mut networks = Map::new();
-        for (name, service) in self.services.iter_mut() {
-            if name.len() > 12 {
-                return Err(format!("service name too long, max 12 chars: {}", name));
-            };
-            let (service_info, network) = service.convert_for_armour(name);
-            info.insert(name.to_string(), service_info);
-            networks.insert(service::Service::armour_bridge_network(name), network);
+        for (service_name, service) in self.services.iter_mut() {
+            if service_name.len() > 12 {
+                return Err(format!(
+                    "service name too long, max 12 chars: {}",
+                    service_name
+                ));
+            }
+            if let Some(ref container_name) = service.container_name {
+                if container_name != service_name {
+                    return Err(format!(
+                        "container name != service name: {} != {}",
+                        container_name, service_name
+                    ));
+                }
+            }
+            service.container_name = Some(service_name.to_string());
+            let (service_info, network) = service.convert_for_armour(service_name);
+            services.insert(service_name.to_string(), service_info);
+            networks.insert(
+                service::Service::armour_bridge_network(service_name),
+                network,
+            );
         }
         self.networks = networks;
+        let info = OnboardInfo {
+            proxies: self.proxies.drain(..).collect(),
+            services,
+        };
         Ok(info)
     }
     pub fn validate() -> bool {

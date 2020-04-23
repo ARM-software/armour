@@ -101,6 +101,23 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
     let onboard_clone = onboard.clone();
 
+    // onboard with control plane
+    let onboarded = if let Err(message) = sys.block_on(async move {
+        control_plane(
+            &actix_web::client::Client::default(),
+            http::Method::POST,
+            "master/on-board",
+            &onboard,
+        )
+        .await
+    }) {
+        log::warn!("failed to on-board with control plane: {}", message);
+        false
+    } else {
+        log::info!("on-boarded with control plane");
+        true
+    };
+
     // start master actor, listening for connections on a Unix socket
     let unix_socket_clone = unix_socket.clone();
     let listener =
@@ -112,27 +129,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .incoming()
                 .map(|st| UdsConnect(st.unwrap())),
         );
-        ArmourDataMaster::new(unix_socket, pass_key)
+        ArmourDataMaster::new(&label, onboarded, unix_socket, pass_key)
     });
     let master_clone = master.clone();
-
-    // onboard with control plane
-    let onboarded;
-    if let Err(message) = sys.block_on(async move {
-        control_plane(
-            &actix_web::client::Client::default(),
-            http::Method::POST,
-            "on-board-master",
-            &onboard,
-        )
-        .await
-    }) {
-        onboarded = false;
-        log::warn!("failed to on-board with control plane: {}", message)
-    } else {
-        onboarded = true;
-        log::info!("on-boarded with control plane")
-    };
 
     // REST interface
     HttpServer::new(move || {
@@ -141,9 +140,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .data(master_clone.clone())
             .wrap(middleware::Logger::default())
             .service(
-                web::scope("/launch")
-                    .service(rest_api::launch::on_board_services)
-                    .service(rest_api::launch::drop_services),
+                web::scope("/service")
+                    .service(rest_api::service::on_board)
+                    .service(rest_api::service::drop),
             )
             .service(
                 web::scope("/master")
@@ -197,7 +196,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             control_plane(
                 &actix_web::client::Client::default(),
                 http::Method::DELETE,
-                "drop-master",
+                "master/drop",
                 &onboard_clone,
             )
             .await

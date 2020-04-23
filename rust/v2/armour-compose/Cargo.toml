@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 armour-api = { path = "../armour-api" }
+armour-lang = { path = "../armour-lang" }
 armour-serde = { path = "../armour-serde" }
 
 serde = { version = "1.0",  features = ["derive"] }

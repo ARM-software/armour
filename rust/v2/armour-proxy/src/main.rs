@@ -23,6 +23,13 @@ fn main() -> std::io::Result<()> {
                 .help("label for proxy instance"),
         )
         .arg(
+            Arg::with_name("timeout")
+                .long("timeout")
+                .takes_value(true)
+                .required(false)
+                .help("HTTP timeout"),
+        )
+        .arg(
             Arg::with_name("log level")
                 .short("l")
                 .takes_value(true)
@@ -67,9 +74,14 @@ fn main() -> std::io::Result<()> {
     let master_socket = matches.value_of("master socket").unwrap().to_string();
     log::info!("connecting to: {}", master_socket);
     let stream = sys.block_on(tokio::net::UnixStream::connect(master_socket))?;
+    let timeout = matches
+        .value_of("timeout")
+        .map(|s| s.parse::<u8>().ok())
+        .flatten()
+        .unwrap_or(5);
     match matches.value_of("label").unwrap_or("proxy").parse() {
         Ok(label) => {
-            PolicyActor::create_policy(stream, label, key);
+            PolicyActor::create_policy(stream, label, timeout, key);
             sys.run()
         }
         Err(err) => {

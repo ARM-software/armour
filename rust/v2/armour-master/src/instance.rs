@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::fmt;
 use tokio::io::WriteHalf;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum InstanceSelector {
     All,
     Label(Label),
@@ -160,13 +160,15 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
                     self.master.do_send(Disconnect(self.id));
                     ctx.stop()
                 }
-                PolicyResponse::Labels(labels) => {
-                    info!("{}:\n=== Labels ===\n{:?}", self.id, labels)
-                }
-                PolicyResponse::Status { label, http, tcp } => {
+                PolicyResponse::Status {
+                    label,
+                    labels,
+                    http,
+                    tcp,
+                } => {
                     info!(
-                        "{} {}:\n=== HTTP ===\n{}\n=== TCP ===\n{}",
-                        self.id, label, http, tcp
+                        "{} {}:\n=== HTTP ===\n{}\n=== TCP ===\n{}\n=== Labels ===\n{:?}",
+                        self.id, label, http, tcp, labels
                     );
                     self.master
                         .do_send(RegisterHttpHash(self.id, http.policy.blake3_string()));

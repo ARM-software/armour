@@ -17,7 +17,7 @@ use tokio_util::codec::{Decoder, Encoder};
 /// 1. Allow all (HTTP, TCP or both)
 /// 2. Deny all (HTTP, TCP or both)
 /// 3. A policy program, encoded as a [String](https://doc.rust-lang.org/std/string/struct.String.html) using Bincode (serde), Gzip and Base64
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Policy {
     AllowAll(proxy::Protocol),
     DenyAll(proxy::Protocol),
@@ -29,14 +29,14 @@ pub enum Policy {
 /// Consists of a label, which should be of the form `<master>::<proxy>`, and a [Policy](enum.Policy.html) value
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PolicyUpdate {
-    pub label: String,
+    pub label: Label,
     pub policy: Policy,
 }
 
 /// Query current policy status
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PolicyQuery {
-    pub label: String,
+    pub label: Label,
     pub potocol: proxy::Protocol,
 }
 
@@ -55,12 +55,12 @@ pub struct PolicyStatus {
 #[rtype("()")]
 pub enum PolicyResponse {
     Connect(u32, Label, String, String), // (PID, name, http hash, tcp hash)
-    Labels(BTreeMap<String, Labels>),
     RequestFailed,
     ShuttingDown,
     Started,
     Status {
         label: Label,
+        labels: BTreeMap<String, Labels>,
         http: Box<Status>,
         tcp: Box<Status>,
     },
@@ -70,7 +70,6 @@ pub enum PolicyResponse {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Status {
-    pub debug: bool,
     pub policy: Program,
     pub port: Option<u16>,
 }
@@ -83,19 +82,25 @@ impl std::fmt::Display for Status {
         } else {
             writeln!(f, "inactive")?
         }
-        writeln!(f, "debug is {}", if self.debug { "on" } else { "off" })?;
         write!(f, "policy is: {}", self.policy.description())
     }
 }
 
-pub type OnboardInformation = BTreeMap<String, OnboardInfo>;
+pub type Proxies = Vec<Proxy>;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
-pub struct OnboardInfo {
-    pub armour_labels: armour_serde::array_dict::ArrayDict,
-    pub container_labels: armour_serde::array_dict::ArrayDict,
-    pub network: String,
-    pub ipv4_address: Option<std::net::Ipv4Addr>,
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct Proxy {
+    pub label: Label,
+    pub port: Option<u16>,
+    pub timeout: Option<u8>,
+    #[serde(default)]
+    pub debug: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OnboardInformation {
+    pub proxies: Proxies,
+    pub labels: Vec<(std::net::Ipv4Addr, Labels)>,
 }
 
 /// Tokio utils codec for `proxy` instance to `master` communication

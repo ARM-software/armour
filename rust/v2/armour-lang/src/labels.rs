@@ -32,7 +32,7 @@ impl fmt::Display for Node {
 }
 
 impl FromStr for Node {
-    type Err = &'static str;
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s == "*" {
@@ -44,7 +44,7 @@ impl FromStr for Node {
         } else if NODE_STR.with(|f| f.is_match(s)) {
             Ok(Node::Str(s.to_string()))
         } else {
-            Err("bad label")
+            Err(format!("bad label: {}", s))
         }
     }
 }
@@ -118,11 +118,30 @@ impl Node {
 }
 
 /// Label type representing sequences of [Node](enum.Node.html) elements
-#[derive(Serialize, Deserialize, Clone, PartialOrd, Ord)]
+#[derive(Clone, PartialOrd, Ord)]
 pub struct Label(Vec<Node>);
 
+impl<'de> Deserialize<'de> for Label {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for Label {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl FromStr for Label {
-    type Err = &'static str;
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let v: Result<Vec<Node>, Self::Err> = s.split("::").map(Node::from_str).collect();
@@ -143,7 +162,7 @@ impl std::convert::From<&Node> for Label {
 }
 
 impl<T: AsRef<str>> std::convert::TryFrom<Vec<T>> for Label {
-    type Error = &'static str;
+    type Error = String;
 
     fn try_from(s: Vec<T>) -> Result<Self, Self::Error> {
         let v: Result<Vec<Node>, Self::Error> =
@@ -246,6 +265,14 @@ impl Label {
 }
 
 pub type Labels = BTreeSet<Label>;
+
+impl From<Label> for Labels {
+    fn from(l: Label) -> Self {
+        let mut labels = Labels::new();
+        labels.insert(l);
+        labels
+    }
+}
 
 /* pub struct LabelMap<T>(Vec<(Label, T)>);
 

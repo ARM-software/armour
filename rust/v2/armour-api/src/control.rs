@@ -1,37 +1,40 @@
 //! Control plane API
 
-use armour_lang::labels::Label;
+use super::master::Policy;
+use armour_lang::labels::{Label, Labels};
 use serde::{Deserialize, Serialize};
-use url::Url;
 
 type Credentials = String;
-type ArmourProgram = String;
+// map from domains to labels
+pub type LabelMap = std::collections::BTreeMap<String, Labels>;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OnboardMasterRequest {
-    pub host: Url,
+    pub host: url::Url,
     pub master: Label,
     pub credentials: Credentials, // FIXME change types as needed
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct OnboardServiceRequest {
-    pub service: Label, // FIXME
-    pub master: Label,  // FIXME
+    pub service: Label,
+    pub master: Label,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct PolicyUpdateRequest {
-    pub service: Label, // FIXME
-    pub policy: ArmourProgram,
+    pub label: Label,
+    pub policy: Policy,
+    pub labels: LabelMap,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct PolicyQueryRequest {
-    pub service: Label, // FIXME
+    pub label: Label,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct PolicyQueryResponse {
-    pub policy: ArmourProgram, // FIXME
+    pub policy: Policy,
+    pub labels: LabelMap,
 }

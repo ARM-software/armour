@@ -156,6 +156,19 @@ pub struct ID {
 }
 
 impl ID {
+    pub fn new(
+        hosts: BTreeSet<String>,
+        ips: BTreeSet<std::net::IpAddr>,
+        port: Option<u16>,
+        labels: BTreeSet<labels::Label>,
+    ) -> Self {
+        ID {
+            hosts,
+            ips,
+            port,
+            labels,
+        }
+    }
     pub fn host(&self) -> Option<String> {
         if let Some(name) = self.hosts.iter().next() {
             if std::net::IpAddr::from_str(name).is_err() {
@@ -220,58 +233,6 @@ impl ID {
     }
     pub fn has_ip(&self, ip: &std::net::IpAddr) -> bool {
         self.ips.iter().any(|x| x == ip)
-    }
-}
-
-impl From<(std::net::IpAddr, Option<&BTreeSet<labels::Label>>)> for ID {
-    fn from(s: (std::net::IpAddr, Option<&BTreeSet<labels::Label>>)) -> Self {
-        let (ip, labels) = s;
-        let mut ips = BTreeSet::new();
-        if ip.is_ipv4() {
-            ips.insert(ip);
-        }
-        let mut hosts = BTreeSet::new();
-        // log::warn!("performing reverse DNS lookup!");
-        if let Ok(host) = dns_lookup::lookup_addr(&ip) {
-            hosts.insert(host);
-        }
-        ID {
-            hosts,
-            ips,
-            port: None,
-            labels: labels.cloned().unwrap_or_default(),
-        }
-    }
-}
-
-impl From<(std::net::SocketAddr, Option<&BTreeSet<labels::Label>>)> for ID {
-    fn from(s: (std::net::SocketAddr, Option<&BTreeSet<labels::Label>>)) -> Self {
-        let mut id = ID::from((s.0.ip(), s.1));
-        id.port = Some(s.0.port());
-        id
-    }
-}
-
-impl From<(Option<&str>, Option<u16>, Option<&BTreeSet<labels::Label>>)> for ID {
-    fn from(s: (Option<&str>, Option<u16>, Option<&BTreeSet<labels::Label>>)) -> Self {
-        let (host, port, labels) = s;
-        let mut hosts = BTreeSet::new();
-        let mut ips = BTreeSet::new();
-        if let Some(host) = host {
-            hosts.insert(host.to_string());
-            // log::warn!("performing DNS lookup!");
-            if let Ok(host_ips) = dns_lookup::lookup_host(host) {
-                for ip in host_ips.iter().filter(|ip| ip.is_ipv4()) {
-                    ips.insert(*ip);
-                }
-            }
-        }
-        ID {
-            hosts,
-            ips,
-            port,
-            labels: labels.cloned().unwrap_or_default(),
-        }
     }
 }
 
@@ -791,15 +752,15 @@ impl From<ID> for Literal {
 
 impl From<&ID> for Literal {
     fn from(id: &ID) -> Self {
-        Literal::Tuple(vec![id.hosts(), id.ips(), id.port()])
+        Literal::Tuple(vec![id.hosts(), id.ips(), id.port(), id.labels()])
     }
 }
 
-impl From<(std::net::SocketAddr, Option<&BTreeSet<labels::Label>>)> for Literal {
-    fn from(s: (std::net::SocketAddr, Option<&BTreeSet<labels::Label>>)) -> Self {
-        Literal::ID(s.into())
-    }
-}
+// impl From<(std::net::SocketAddr, Option<&BTreeSet<labels::Label>>)> for Literal {
+//     fn from(s: (std::net::SocketAddr, Option<&BTreeSet<labels::Label>>)) -> Self {
+//         Literal::ID(s.into())
+//     }
+// }
 
 impl From<usize> for Literal {
     fn from(n: usize) -> Self {

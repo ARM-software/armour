@@ -6,4 +6,4 @@ pub struct ControlPlaneState {
 }
 
 // pub mod data_model;
-pub mod restapi;
+pub mod rest_api;

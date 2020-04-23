@@ -7,9 +7,20 @@ services:
     image: nginx
     networks:
       - arm-srv-nginx
+  srv-nginx2:
+    container_name: srv-nginx2
+    hostname: srv-nginx2
+    image: nginx
+    networks:
+      - arm-srv-nginx2
 networks:
   arm-srv-nginx:
     driver: bridge
     driver_opts:
       com.docker.network.bridge.name: arm-srv-nginx
+    internal: true
+  arm-srv-nginx2:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: arm-srv-nginx2
     internal: true
