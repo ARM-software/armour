@@ -1,6 +1,7 @@
 use actix_web::{client, delete, get, post, web, web::Json, HttpResponse};
 use armour_api::control;
-use armour_api::master::PolicyUpdate;
+use armour_api::master::{Policy, PolicyUpdate};
+use armour_api::proxy::Protocol;
 use bson::{bson, doc};
 
 const ARMOUR_DB: &str = "armour";
@@ -105,6 +106,83 @@ pub mod service {
 
 pub mod policy {
     use super::*;
+    use armour_lang::labels::Label;
+    use std::collections::BTreeSet;
+
+    fn services(state: &State) -> Result<BTreeSet<Label>, actix_web::Error> {
+        let mut services = BTreeSet::new();
+        let policies_col = collection(state, POLICIES_COL);
+        for doc in policies_col
+            .find(doc! {}, None)
+            .on_err("error finding services")?
+            .filter_map(|doc| doc.ok())
+        {
+            let label = bson::from_bson::<control::PolicyUpdateRequest>(bson::Bson::Document(doc))
+                .on_err("Bson conversion error")?
+                .label;
+            services.insert(label);
+        }
+        Ok(services)
+    }
+
+    fn hosts(state: &State, label: &Label) -> Result<BTreeSet<url::Url>, actix_web::Error> {
+        let services_col = collection(state, SERVICES_COL);
+        let masters_col = collection(state, MASTERS_COL);
+        let mut hosts = BTreeSet::new();
+        // find masters for service
+        for doc in services_col
+            .find(doc! { "service" : to_bson(label)? }, None)
+            .on_err("Error notifying masters")?
+            .filter_map(|doc| doc.ok())
+        {
+            let master =
+                bson::from_bson::<control::OnboardServiceRequest>(bson::Bson::Document(doc))
+                    .on_err("Bson conversion error")?
+                    .master;
+            // find host for master
+            if let Ok(Some(doc)) =
+                masters_col.find_one(Some(doc! { "master" : to_bson(&master)? }), None)
+            {
+                hosts.insert(
+                    bson::from_bson::<control::OnboardMasterRequest>(bson::Bson::Document(doc))
+                        .on_err("Bson conversion error")?
+                        .host,
+                );
+            }
+        }
+        Ok(hosts)
+    }
+
+    pub async fn update_hosts(
+        state: &State,
+        label: &armour_lang::labels::Label,
+        policy: &armour_api::master::Policy,
+    ) -> Result<(), actix_web::Error> {
+        let client = client::Client::default();
+        let hosts = hosts(state, label)?;
+        // log::debug!("hosts: {:?}", hosts);
+        for host in hosts {
+            let req = PolicyUpdate {
+                label: label.clone(),
+                policy: policy.clone(),
+            };
+            match client
+                .post(format!("http://{}/policy/update", host))
+                .send_json(&req)
+                .await
+            {
+                Ok(res) => {
+                    if res.status().is_success() {
+                        log::info!("pushed policy to {}", host)
+                    } else {
+                        log::info!("failed to push policy to {}", host)
+                    }
+                }
+                Err(err) => log::warn!("{}", err),
+            }
+        }
+        Ok(())
+    }
 
     // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
     #[post("/update")]
@@ -125,45 +203,7 @@ pub mod policy {
             col.insert_one(document, None)
                 .on_err("error inserting new policy")?;
             // push policy to masters
-            let services_col = collection(&state, SERVICES_COL);
-            let masters_col = collection(&state, MASTERS_COL);
-            let client = client::Client::default();
-            for doc in services_col
-                .find(doc! { "service" : to_bson(label)? }, None)
-                .on_err("Error notifying masters")?
-                .filter_map(|doc| doc.ok())
-            {
-                let master =
-                    bson::from_bson::<control::OnboardServiceRequest>(bson::Bson::Document(doc))
-                        .on_err("Bson conversion error")?
-                        .master;
-                if let Ok(Some(doc)) =
-                    masters_col.find_one(Some(doc! { "master" : to_bson(&master)? }), None)
-                {
-                    let host =
-                        bson::from_bson::<control::OnboardMasterRequest>(bson::Bson::Document(doc))
-                            .on_err("Bson conversion error")?
-                            .host;
-                    let req = PolicyUpdate {
-                        label: label.clone(),
-                        policy: request.policy.clone(),
-                    };
-                    match client
-                        .post(format!("http://{}/policy/update", host))
-                        .send_json(&req)
-                        .await
-                    {
-                        Ok(res) => {
-                            if res.status().is_success() {
-                                log::info!("pushed policy to {}", host)
-                            } else {
-                                log::info!("failed to push policy to {}", host)
-                            }
-                        }
-                        Err(err) => log::warn!("{}", err),
-                    }
-                }
-            }
+            update_hosts(&state, label, &request.policy).await?;
             Ok(HttpResponse::Ok().finish())
         } else {
             log::warn!("Error converting the BSON object into a MongoDB document");
@@ -201,15 +241,20 @@ pub mod policy {
         let res = col
             .delete_one(doc! { "label" : label.to_string() }, None)
             .on_err("failed to drop policy")?;
+        update_hosts(&state, label, &Policy::DenyAll(Protocol::All)).await?;
         Ok(HttpResponse::Ok().body(format!("dropped {}", res.deleted_count)))
     }
 
     #[delete("/drop-all")]
     async fn drop_all(state: State) -> Result<HttpResponse, actix_web::Error> {
         log::info!("Dropping all policies");
+        let services = services(&state)?;
         collection(&state, POLICIES_COL)
             .drop(None)
             .on_err("failed to drop all policies")?;
+        for label in services {
+            update_hosts(&state, &label, &Policy::DenyAll(Protocol::All)).await?;
+        }
         Ok(HttpResponse::Ok().body("dropped all policies"))
     }
 }
