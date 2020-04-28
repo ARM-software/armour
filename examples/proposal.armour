@@ -18,7 +18,7 @@ request::i-f::integrity::low
 
 Policies:
 
-def i-f-service-confidentiality(from, to) {
+fn i-f-service-confidentiality(from, to) {
    if egress::has_label(service::i-f::confidentiality::high::from) and // from is self here
       egress::has_label(service::i-f::confidentiality::low::to) {
          return reject
@@ -26,7 +26,7 @@ def i-f-service-confidentiality(from, to) {
    return accept // although fall back would probably be better here
 }
 
-def i-f-service-integrity(from, to) {
+fn i-f-service-integrity(from, to) {
    if egress::has_label(service::i-f::confidentiality::low::from) and // from is self here
       egress::has_label(service::i-f::confidentiality::high::to) {
          return reject
@@ -34,9 +34,9 @@ def i-f-service-integrity(from, to) {
    return accept // although fall back would probably be better here
 }
 
-extern def labelize(req); // this has to be defined by the instantiations of the policy
+extern fn labelize(req); // this has to be defined by the instantiations of the policy
 
-def i-f-request-confidentiality(from, to, req) {
+fn i-f-request-confidentiality(from, to, req) {
    labelize(req);
    if egress::has_label(request::i-f::confidentiality::high) and
       egress::has_label(service::i-f::confidentiality::low) {
@@ -45,7 +45,7 @@ def i-f-request-confidentiality(from, to, req) {
    return accept // although fall back would probably be better here
 }
 
-def i-f-request-integrity(from, to, req) {
+fn i-f-request-integrity(from, to, req) {
    labelize(req);
    if egress::has_label(request::i-f::integrity::low) and
       egress::has_label(service::i-f::confidentiality::high) {
@@ -54,7 +54,7 @@ def i-f-request-integrity(from, to, req) {
    return accept // although fall back would probably be better here
 }
 
-def i-f-policy-confidentiality(from, to, req) {
+fn i-f-policy-confidentiality(from, to, req) {
     if not egress::has_label(global::i-f::confidentiality::true) {
        return accept
     }
@@ -67,7 +67,7 @@ def i-f-policy-confidentiality(from, to, req) {
     return accept
 }
 
-def i-f-policy-integrity(from, to, req) {
+fn i-f-policy-integrity(from, to, req) {
     if not egress::has_label(global::i-f::integrity::true) {
        return accept
     }
@@ -80,7 +80,7 @@ def i-f-policy-integrity(from, to, req) {
     return accept
 }
 
-def i-f-policy(from, to, req) {
+fn i-f-policy(from, to, req) {
     accept_all{
       i-f-policy-confidentiality(from, to, req), 
       i-f-policy-integrity(from, to, req)
