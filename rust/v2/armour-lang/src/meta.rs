@@ -1,33 +1,33 @@
 use super::{
     expressions::{Error, Expr},
     externals::Call,
-    labels,
+    labels::{Label, Labels},
     literals::Literal,
 };
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 
-#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Meta {
-    id: labels::Label,
+    id: Option<Label>,
     data: Vec<Vec<u8>>,
-    labels: labels::Labels,
+    labels: Labels,
 }
 
 impl Meta {
-    pub fn new(id: labels::Label) -> Self {
+    pub fn new(id: Label) -> Self {
         Meta {
-            id,
+            id: Some(id),
             data: Vec::new(),
             labels: BTreeSet::new(),
         }
     }
-    fn set_id(&mut self, l: labels::Label) {
-        self.id = l
+    fn set_id(&mut self, l: Label) {
+        self.id = Some(l)
     }
-    fn id(&self) -> labels::Label {
+    fn id(&self) -> Option<Label> {
         self.id.clone()
     }
     fn push_data(&mut self, d: &[u8]) {
@@ -39,53 +39,64 @@ impl Meta {
     fn data(&self) -> Vec<Vec<u8>> {
         self.data.clone()
     }
-    fn insert_label(&mut self, l: labels::Label) {
+    fn insert_label(&mut self, l: Label) {
         self.labels.insert(l);
     }
-    fn has_label(&self, label: &labels::Label) -> bool {
+    fn has_label(&self, label: &Label) -> bool {
         self.labels.iter().any(|x| label.matches_with(x))
     }
-    fn remove_label(&mut self, label: &labels::Label) {
+    fn remove_label(&mut self, label: &Label) {
         for l in self.labels.clone().iter() {
             if label.matches_with(l) {
                 self.labels.remove(l);
             }
         }
     }
+    fn wipe(&mut self) {
+        self.id = None;
+        self.data.clear();
+        self.labels.clear();
+    }
+    fn is_empty(&self) -> bool {
+        self.id.is_none() && self.data.is_empty() && self.labels.is_empty()
+    }
 }
 
-#[derive(PartialEq, Debug, Default, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub struct IngressEgress {
-    ingress: Option<Meta>,
-    egress: Option<Meta>,
+    ingress: Meta,
+    egress: Meta,
+    egress_id: Label,
 }
 
 impl Actor for IngressEgress {
     type Context = Context<Self>;
 }
 
+impl Default for IngressEgress {
+    fn default() -> Self {
+        IngressEgress {
+            ingress: Meta::default(),
+            egress: Meta::default(),
+            egress_id: "egress".parse().unwrap(),
+        }
+    }
+}
+
 impl IngressEgress {
-    pub fn new(ingress: Option<Meta>, egress: Option<Meta>) -> Self {
-        IngressEgress { ingress, egress }
+    pub fn new(ingress: Option<Meta>, egress_id: Label) -> Self {
+        IngressEgress {
+            ingress: ingress.unwrap_or_default(),
+            egress: Meta::default(),
+            egress_id,
+        }
     }
 }
 
 impl TryFrom<&str> for Meta {
     type Error = ();
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        s.parse::<labels::Label>().map(Meta::new).map_err(|_| ())
-    }
-}
-
-impl From<&str> for IngressEgress {
-    fn from(s: &str) -> Self {
-        IngressEgress::new(None, s.try_into().ok())
-    }
-}
-
-impl From<(&str, &str)> for IngressEgress {
-    fn from(s: (&str, &str)) -> Self {
-        IngressEgress::new(s.0.try_into().ok(), s.0.try_into().ok())
+        s.parse::<Label>().map(Meta::new).map_err(|_| ())
     }
 }
 
@@ -93,55 +104,46 @@ impl Handler<Call> for IngressEgress {
     type Result = Result<Expr, Error>;
     fn handle(&mut self, call: Call, _ctx: &mut Context<Self>) -> Self::Result {
         let (module, method, args) = call.split();
-        if let Some(meta) = match module {
-            "Ingress" => self.ingress.as_mut(),
-            "Egress" => self.egress.as_mut(),
+        let meta = match module {
+            "Ingress" => &mut self.ingress,
+            "Egress" => &mut self.egress,
             _ => {
                 return Err(Error::from(format!(
                     "eval, unknown module: {}",
                     call.path()
                 )))
             }
-        } {
-            // NOTE: type checking prevents mutatation of "ingress" metadata
-            match (method, args) {
-                ("id", []) => Ok(Expr::some(meta.id().into())),
-                ("data", []) => Ok(meta.data().into()),
-                ("set_id", [Literal::Label(l)]) => {
-                    meta.set_id(l.clone());
-                    Ok(().into())
-                }
-                ("push", [Literal::Data(d)]) => {
-                    meta.push_data(d);
-                    Ok(().into())
-                }
-                ("pop", []) => Ok(meta.pop_data().into()),
-                ("add_label", [Literal::Label(l)]) => {
-                    meta.insert_label(l.clone());
-                    Ok(().into())
-                }
-                ("remove_label", [Literal::Label(l)]) => {
-                    meta.remove_label(&l);
-                    Ok(().into())
-                }
-                ("has_label", [Literal::Label(l)]) => Ok(meta.has_label(l).into()),
-                ("wipe", []) => {
-                    self.egress = None;
-                    Ok(().into())
-                }
-                _ => Err(Error::from(format!(
-                    "eval, call: {}::{}: {:?}",
-                    module, method, args
-                ))),
+        };
+        // NOTE: type checking prevents mutatation of "ingress" metadata
+        match (method, args) {
+            ("id", []) => Ok(meta.id().into()),
+            ("data", []) => Ok(meta.data().into()),
+            ("set_id", []) => {
+                meta.set_id(self.egress_id.clone());
+                Ok(().into())
             }
-        } else {
-            // metadata is absent
-            match (method, args) {
-                ("id", []) | ("pop", []) => Ok(Literal::none().into()),
-                ("data", []) => Ok(Vec::<Vec<u8>>::new().into()),
-                ("has_label", [Literal::Label(_l)]) => Ok(false.into()),
-                _ => Ok(().into()),
+            ("push", [Literal::Data(d)]) => {
+                meta.push_data(d);
+                Ok(().into())
             }
+            ("pop", []) => Ok(meta.pop_data().into()),
+            ("add_label", [Literal::Label(l)]) => {
+                meta.insert_label(l.clone());
+                Ok(().into())
+            }
+            ("remove_label", [Literal::Label(l)]) => {
+                meta.remove_label(&l);
+                Ok(().into())
+            }
+            ("has_label", [Literal::Label(l)]) => Ok(meta.has_label(l).into()),
+            ("wipe", []) => {
+                meta.wipe();
+                Ok(().into())
+            }
+            _ => Err(Error::from(format!(
+                "eval, call: {}::{}: {:?}",
+                module, method, args
+            ))),
         }
     }
 }
@@ -153,9 +155,12 @@ pub struct Egress;
 impl Handler<Egress> for IngressEgress {
     type Result = Result<Meta, Error>;
     fn handle(&mut self, _: Egress, _ctx: &mut Context<Self>) -> Self::Result {
-        self.egress
-            .as_ref()
-            .cloned()
-            .ok_or_else(|| Error::new("no egress metadata"))
+        if self.egress.is_empty() {
+            Err("empty egress".to_string().into())
+        } else {
+            let mut egress = self.egress.clone();
+            egress.set_id(self.egress_id.clone());
+            Ok(egress)
+        }
     }
 }

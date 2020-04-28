@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 actix-http = "1.0"
-actix-rt = "1.0"
+actix-rt = "1.1"
 actix-web = "2.0"
 bytes = "0.5"
 clap = "2.33"

@@ -99,6 +99,7 @@ async fn main() -> std::io::Result<()> {
         // let bytes = include_bytes!("");
         match client.send_body(message).await {
             Ok(mut resp) => {
+                log::debug!("{:?}", resp);
                 let mut data = BytesMut::new();
                 while let Some(chunk) = resp.next().await {
                     let chunk = chunk.map_err(|e| {

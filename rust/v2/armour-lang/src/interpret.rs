@@ -20,12 +20,6 @@ pub struct Env {
     meta: Addr<IngressEgress>,
 }
 
-impl Default for Env {
-    fn default() -> Self {
-        Env::new(&Program::default())
-    }
-}
-
 impl Env {
     pub fn new(prog: &Program) -> Self {
         Env {

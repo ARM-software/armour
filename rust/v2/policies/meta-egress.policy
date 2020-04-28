@@ -5,11 +5,11 @@ external logger @ "log_sock" {
 // REST request allow/deny
 fn allow_rest_request() -> bool {
   Egress::add_label('egress-ok');
+  // Egress::set_id();
   true
 }
 
 // REST response allow/deny
 fn allow_rest_response() -> bool {
-  Egress::wipe();
   Ingress::has_label('ingress-ok')
 }

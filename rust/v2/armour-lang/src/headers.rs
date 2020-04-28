@@ -207,7 +207,7 @@ impl Headers {
             "Ingress::data" => sig(vec![], Typ::List(Box::new(Typ::Data))),
             "Ingress::has_label" => sig(vec![Typ::Label], Typ::Bool),
             "Egress::id" => sig(vec![], Typ::Label),
-            "Egress::set_id" => sig(vec![Typ::Label], Typ::Bool),
+            "Egress::set_id" => sig(vec![], Typ::Bool),
             "Egress::data" => sig(vec![], Typ::List(Box::new(Typ::Data))),
             "Egress::has_label" => sig(vec![Typ::Label], Typ::Bool),
             "Egress::push" => sig(vec![Typ::Data], Typ::Unit),

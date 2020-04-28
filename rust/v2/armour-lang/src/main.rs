@@ -12,10 +12,9 @@ struct Eval {
 
 impl Eval {
     fn new(prog: &lang::Program) -> Self {
-        let mut env = Env::new(prog);
-        // env.set_meta(("ingress-test", "egress-test").into());
-        env.set_meta("egress-test".into()); // no ingress metadata
-        Eval { env }
+        Eval {
+            env: Env::new(prog),
+        }
     }
 }
 

@@ -4,8 +4,8 @@ external logger @ "log_sock" {
 
 // REST request allow/deny
 fn allow_rest_request() -> bool {
-  Egress::wipe();
   Ingress::has_label('egress-ok')
+  // Ingress::id() == Some('egress')
 }
 
 // REST response allow/deny
