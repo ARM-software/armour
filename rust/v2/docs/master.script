@@ -1,6 +1,5 @@
-launch log
+launch debug
 wait 1
 label add http://localhost:8080 allowed
-debug on http
 policy http policies/label.policy
 start http 8000

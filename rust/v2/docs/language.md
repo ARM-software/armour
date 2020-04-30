@@ -284,6 +284,62 @@ external <external name> @ "<url>" {
 
 ## Builtin functions
 
+### Connection::
+
+function               | type
+---------------------- | ----------------------------------------
+| default              | `() -> Connection`                     |
+| new                  | `(ID, ID, i64) -> Connection`          |
+| from_to              | `Connection -> (ID, ID)`               |
+| from                 | `Connection -> ID`                     |
+| to                   | `Connection -> ID`                     |
+| number               | `Connection -> i64`                    |
+| set_from             | `(Connection, ID) -> Connection`       |
+| set_to               | `(Connection, ID) -> Connection`       |
+| set_number           | `(Connection, ID) -> Connection`       |
+
+### data::
+
+function               | type
+---------------------- | ----------------------------------------
+| len                  | `data -> i64`                          |
+| to_base64            | `data -> str`                          |
+
+### Egress::
+
+function               | type
+---------------------- | ----------------------------------------
+| id                   | `() -> Option<Label>`                  |
+| set_id               | `() -> ()`                             |
+| add_label            | `Label -> ()`                          |
+| has_label            | `Label -> bool`                        |
+| remove_label         | `Label -> ()`                          |
+| data                 | `() -> List<data>`                     |
+| pop                  | `() -> Option<data>`                   |
+| push                 | `data -> ()`                           |
+| wipe                 | `() -> ()`                             |
+
+### HttpResponse::
+
+function               | type
+---------------------- | ----------------------------------------------
+| new                  | `i64 -> HttpResponse`                        |
+| connection           | `HttpResponse -> Connection`                 |
+| from                 | `HttpResponse -> ID`                         |
+| to                   | `HttpResponse -> ID`                         |
+| status               | `HttpResponse -> i64`                        |
+| version              | `HttpResponse -> str`                        |
+| reason               | `HttpResponse -> Option<str>`                |
+| header               | `(HttpResponse, str) -> Option<List<data>>`  |
+| unique_header        | `(HttpResponse, str) -> Option<data>`        |
+| headers              | `HttpResponse -> List<str>`                  |
+| header_pairs         | `HttpResponse -> List<(str, data)>`          |
+| set_connection       | `(HttpResponse, Connection) -> HttpResponse` |
+| set_reason           | `(HttpResponse, str) -> HttpResponse `       |
+| set_header           | `(HttpResponse, str, data) -> HttpResponse`  |
+| set_from             | `(HttpResponse, ID) -> HttpResponse`         |
+| set_to               | `(HttpResponse, ID) -> HttpResponse`         |
+
 ### HttpRequest::
 
 function               | type
@@ -317,40 +373,15 @@ function               | type
 | set_from             | `(HttpRequest, ID) -> HttpRequest`        |
 | set_to               | `(HttpRequest, ID) -> HttpRequest`        |
 
-### HttpResponse::
-
-function               | type
----------------------- | ----------------------------------------------
-| new                  | `i64 -> HttpResponse`                        |
-| connection           | `HttpResponse -> Connection`                 |
-| from                 | `HttpResponse -> ID`                         |
-| to                   | `HttpResponse -> ID`                         |
-| status               | `HttpResponse -> i64`                        |
-| version              | `HttpResponse -> str`                        |
-| reason               | `HttpResponse -> Option<str>`                |
-| header               | `(HttpResponse, str) -> Option<List<data>>`  |
-| unique_header        | `(HttpResponse, str) -> Option<data>`        |
-| headers              | `HttpResponse -> List<str>`                  |
-| header_pairs         | `HttpResponse -> List<(str, data)>`          |
-| set_connection       | `(HttpResponse, Connection) -> HttpResponse` |
-| set_reason           | `(HttpResponse, str) -> HttpResponse `       |
-| set_header           | `(HttpResponse, str, data) -> HttpResponse`  |
-| set_from             | `(HttpResponse, ID) -> HttpResponse`         |
-| set_to               | `(HttpResponse, ID) -> HttpResponse`         |
-
-### Connection::
+### i64::
 
 function               | type
 ---------------------- | ----------------------------------------
-| default              | `() -> Connection`                     |
-| new                  | `(ID, ID, i64) -> Connection`          |
-| from_to              | `Connection -> (ID, ID)`               |
-| from                 | `Connection -> ID`                     |
-| to                   | `Connection -> ID`                     |
-| number               | `Connection -> i64`                    |
-| set_from             | `(Connection, ID) -> Connection`       |
-| set_to               | `(Connection, ID) -> Connection`       |
-| set_number           | `(Connection, ID) -> Connection`       |
+| abs                  | `i64 -> i64`                           |
+| pow                  | `(i64, i64) -> i64`                    |
+| min                  | `(i64, i64) -> i64`                    |
+| max                  | `(i64, i64) -> i64`                    |
+| to_str               | `i64 -> str`                           |
 
 ### ID::
 
@@ -369,6 +400,14 @@ function               | type
 | has_ip               | `(ID, IpAddr) -> bool`                 |
 | set_port             | `(ID, i64) -> ID`                      |
 
+### Ingress::
+
+function               | type
+---------------------- | ----------------------------------------
+| id                   | `() -> Option<Label>`                  |
+| has_label            | `Label -> bool`                        |
+| data                 | `() -> List<data>`                     |
+
 ### IpAddr::
 
 function               | type
@@ -379,52 +418,12 @@ function               | type
 | reverse_lookup       | `IpAddr -> Option<List<str>>`          |
 | lookup               | `str -> Option<List<IpAddr>>`          |
 
-### i64::
-
-function               | type
----------------------- | ----------------------------------------
-| abs                  | `i64 -> i64`                           |
-| pow                  | `(i64, i64) -> i64`                    |
-| min                  | `(i64, i64) -> i64`                    |
-| max                  | `(i64, i64) -> i64`                    |
-| to_str               | `i64 -> str`                           |
-
-### str::
-
-function               | type
----------------------- | ----------------------------------------
-| len                  | `str -> i64`                           |
-| to_lowercase         | `str -> str`                           |
-| to_uppercase         | `str -> str`                           |
-| trim_start           | `str -> str`                           |
-| trim_end             | `str -> str`                           |
-| to_base64            | `str -> str`                           |
-| as_bytes             | `str -> data`                          |
-| from_utf8 (lossy)    | `data -> str`                          |
-| starts_with          | `(str, str) -> bool`                   |
-| ends_with            | `(str, str) -> bool`                   |
-| contains             | `(str, str) -> bool`                   |
-| is_match             | `(str, Regex) -> bool`                 |
-
-### regex::
-
-function               | type
----------------------- | ----------------------------------------
-| is_match             | `(Regex, str) -> bool`                 |
-
 ### Label::
 
 function               | type
 ---------------------- | ----------------------------------------
 | captures             | `(Label, Label) -> List<(str, str)>`   |
 | parts                | `Label -> Option<List<str>>`           |
-
-### data::
-
-function               | type
----------------------- | ----------------------------------------
-| len                  | `data -> i64`                          |
-| to_base64            | `data -> str`                          |
 
 ### list::
 
@@ -443,3 +442,26 @@ function               | type
 ---------------------- | ----------------------------------------
 | is_some              | `Option<ty> -> bool`                   |
 | is_none              | `Option<ty> -> bool`                   |
+
+### regex::
+
+function               | type
+---------------------- | ----------------------------------------
+| is_match             | `(Regex, str) -> bool`                 |
+
+### str::
+
+function               | type
+---------------------- | ----------------------------------------
+| len                  | `str -> i64`                           |
+| to_lowercase         | `str -> str`                           |
+| to_uppercase         | `str -> str`                           |
+| trim_start           | `str -> str`                           |
+| trim_end             | `str -> str`                           |
+| to_base64            | `str -> str`                           |
+| as_bytes             | `str -> data`                          |
+| from_utf8 (lossy)    | `data -> str`                          |
+| starts_with          | `(str, str) -> bool`                   |
+| ends_with            | `(str, str) -> bool`                   |
+| contains             | `(str, str) -> bool`                   |
+| is_match             | `(str, Regex) -> bool`                 |
