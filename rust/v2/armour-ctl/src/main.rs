@@ -40,9 +40,8 @@ async fn main() -> std::io::Result<()> {
             .post(cp_url.to_owned() + "/update-policy")
             .header(http::header::CONTENT_TYPE, "application/json")
             .send_json(&update_payload);
-        match req.await {
-            r => println!("{:?}", r.unwrap()),
-        }
+        let r = req.await;
+        println!("{:?}", r.unwrap());
     }
 
     // Request to query a policy
@@ -98,9 +97,8 @@ async fn main() -> std::io::Result<()> {
             .post(cp_url.to_owned() + "/onboard-master")
             .header(http::header::CONTENT_TYPE, "application/json")
             .send_json(&master_payload);
-        match req.await {
-            r => println!("{:?}", r.unwrap()),
-        }
+        let r = req.await;
+        println!("{:?}", r.unwrap());
     }
 
     // Request to onboard a service
@@ -121,9 +119,8 @@ async fn main() -> std::io::Result<()> {
             .post(cp_url.to_owned() + "/onboard-service")
             .header(http::header::CONTENT_TYPE, "application/json")
             .send_json(&service_payload);
-        match req.await {
-            r => println!("{:?}", r.unwrap()),
-        }
+        let r = req.await;
+        println!("{:?}", r.unwrap());
     }
 
     Ok(())

@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Display};
 use std::str::FromStr;
-use url;
 
 #[derive(PartialEq, Debug, Display, Clone, Serialize, Deserialize)]
 pub enum Method {
