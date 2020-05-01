@@ -1,7 +1,0 @@
-[workspace]
-members = [
-        "actix-docker-client", 
-        "actix-docker-server", 
-        "actix-docker-lib", 
-        "actix-docker-cp-stub", 
-]
