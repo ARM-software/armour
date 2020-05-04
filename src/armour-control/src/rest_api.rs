@@ -2,7 +2,7 @@ use actix_web::{client, delete, get, post, web, web::Json, HttpResponse};
 use armour_api::control;
 use armour_api::master::{Policy, PolicyUpdate};
 use armour_api::proxy::Protocol;
-use bson::{bson, doc};
+use bson::doc;
 
 const ARMOUR_DB: &str = "armour";
 const MASTERS_COL: &str = "masters";
