@@ -50,7 +50,7 @@ impl Headers {
             "str::from_utf8" => sig(vec![Typ::Data], Typ::Str),
             "str::to_base64" => sig(vec![Typ::Str], Typ::Str),
             "str::is_match" => sig(vec![Typ::Str, Typ::Regex], Typ::Bool),
-            "Regex::is_match" => sig(vec![Typ::Regex, Typ::Str], Typ::Bool),
+            "regex::is_match" => sig(vec![Typ::Regex, Typ::Str], Typ::Bool),
             "data::to_base64" => sig(vec![Typ::Data], Typ::Str),
             "data::len" => sig(vec![Typ::Data], Typ::I64),
             "i64::pow" => sig(vec![Typ::I64, Typ::I64], Typ::I64),

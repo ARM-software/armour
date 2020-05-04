@@ -295,12 +295,12 @@ named!(lex_operator<Span, LocToken>,
         t @ LocatedSpan{fragment: "[", ..} => value!(LocToken::new(t, Token::LBracket)) |
         t @ LocatedSpan{fragment: "]", ..} => value!(LocToken::new(t, Token::RBracket)) |
 
-        LocatedSpan{fragment: "+", line: l, offset: o} => 
+        LocatedSpan{fragment: "+", line: l, offset: o} =>
             alt!(
                do_parse!(tag!("+") >> (LocToken::new_span(l, o, "++", Token::PlusPlus))) |
                value!(LocToken::new_span(l, o, "+", Token::Plus))
             ) |
-        LocatedSpan{fragment: ":", line: l, offset: o} => 
+        LocatedSpan{fragment: ":", line: l, offset: o} =>
             alt!(
                do_parse!(tag!(":") >> (LocToken::new_span(l, o, "::", Token::ColonColon))) |
                value!(LocToken::new_span(l, o, ":", Token::Colon))

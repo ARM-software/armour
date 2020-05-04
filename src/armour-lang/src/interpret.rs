@@ -209,7 +209,7 @@ impl Literal {
                 Some(Literal::Bool(i.ends_with(j)))
             }
             ("str::is_match", Literal::Str(s), Literal::Regex(r))
-            | ("Regex::is_match", Literal::Regex(r), Literal::Str(s)) => {
+            | ("regex::is_match", Literal::Regex(r), Literal::Str(s)) => {
                 Some(Literal::Bool(r.is_match(s)))
             }
             ("str::contains", Literal::Str(i), Literal::Str(j)) => {

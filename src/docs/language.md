@@ -1,224 +1,272 @@
 Armour Policy Language
 ======================
 
-## Command line REPL
+- [Read-Eval-Print-Loop](#repl)
+- [Types](#types)
+	- [Primitive](#primitive-types)
+	- [Composite](#composite-types)
+- [Expressions, blocks and statements](#expressions)
+	- [Comments](#comments)
+	- [Literals](#literals)
+	- [Variables](#variables)
+	- [Prefixes](#prefixes)
+	- [Infixes](#infixes)
+	- [Function call](#function-call)
+	- [Return](#return)
+	- [Sequences](#sequences)
+	- [Iteration](#iteration)
+	- Conditionals
+		- [if](#if)
+		- [if matches](#if-matches)
+		- [if let](#if-let)
+	- [Regular expressions](#regular-expressions)
+- [Function declaration](#functions)
+- Primitive functions
+	- [Connection](#connection)
+	- [Data](#data)
+	- [Egress](#egress)
+	- [HttpResponse](#http-response)
+	- [HttpRequest](#http-request)
+	- [i64](#i64)
+	- [ID](#id)
+	- [Ingress](#ingress)
+	- [IpAddr](#ipaddr)
+	- [Label](#label)
+	- [List](#list)
+	- [Option](#option)
+	- [regex](#regex)
+	- [str](#str)
+
+<a name="repl"></a>
+Read-Eval-Print-Loop (REPL)
+---------------------------
 
 You can run the policy language REPL with
 
 ```shell
-$ cd armour-policy
-$ cargo run [input file]
+$ cd armour/src
+$ cargo run -p armour-lang [input file]
 ```
 
-## Types
+<a name="types"></a>
+Types
+-----
 
+<a name="primitive-types"></a>
 ### Primitive
 
-- **`bool`**  
+- `bool`
+- `Connection`
+- `data`
+- `f64`
+- `HttpRequest`
+- `HttpResponse`
+- `ID`
+- `i64`
+- `IpAddr`
+- `Label`
+- `Regex`
+- `str`
+- `unit` or `()`
 
-    `true`, `false`
-
-- **`i64`**  
-
-    `-123`, `123`
-    
-- **`f64`**  
-
-    `1.0`, `-1.1e10`
-
-- **`str`**
-
-    `"hello, world!"`
-
-- **`data`**
-
-    `b"hello, world!"`
-
-- **`unit`** or **`()`**
-
-    `()`
-
-- **`Regex`**
-
-    `Regex("a" | "b".*)`
-
-- **`Label`**
-
-    `'<a>::b::*'`
-
-- **`ID`**
-
-- **`Connection`**
-
-- **`IpAddr`**
-
-- **`HttpRequest`**, **`HttpResponse`**
-
+<a name="composite-types"></a>
 ### Composite
 
 - Tuples: **`( ty0, ty1, ...)`**
 
     ```
-    (1, false, 2.3)
-    
-    ((2, 2.0), (false, "a", "b"))
+    > (1, false, 2.3)    
+    > ((2, 2.0), (false, "a", "b"))
     ```
 
 - Lists: **`List<ty>`**
 
     ```
-    [1, 2, 3]
-    
-    [("a", 1), ("b", 2), ("c", 3)]
+    > [1, 2, 3]    
+    > [("a", 1), ("b", 2), ("c", 3)]
     ```
 
 - Option: **`Option<ty>`**
 
     ```
-    Some(1)
+    > Some(1)    
+    > None
+    ```
+
+<a name="expressions"></a>
+Expressions, blocks and statements
+----------------------------------
+
+<a name="comments"></a>
+### Comments
+
+`... // comment ...`
+
+<a name="literals"></a>
+### Literals
+
+| type         | example literals    |
+---------------|----------------------
+| `bool`       | `true`, `false`     |
+| `data`       | `b"hello, world!"`  |
+| `f64`        | `1.0`, `-1.1e10`    |
+| `i64`        | `-123`, `123`       |
+| `Label`      | `'<a>::b::*'`       |
+| `regex`      | `Regex("a" | "b".*)`|
+| `str`        | `"hello, world!"`   |
+| `unit`, `()` | `()`                |
+
+<a name="literals"></a>
+### Variables
+
+`[a-zA-Z][a-zA-Z0-9_]*`
+
+<a name="prefixes"></a>
+### Prefixes
+
+| operation | symbol | type           |
+----------- | -------|-----------------
+| minus     | `-`    | `i64 -> i64`   |
+| not       | `!`    | `bool -> bool` |
+
+<a name="infixes"></a>
+### Infixes
+
+| operation       | symbol | type                              |
+----------------- | -------|------------------------------------
+| equality        | `==`   | `(<ty>, <ty>) -> bool`            |
+| inequality      | `!=`   | `(<ty>, <ty>) -> bool`            |
+| plus            | `+`    | `(i64, i64) -> i64`               |
+| minus           | `-`    | `(i64, i64) -> i64`               |
+| multiply        | `*`    | `(i64, i64) -> i64`               |
+| divide          | `/`    | `(i64, i64) -> i64`               |
+| remainder       | `%`    | `(i64, i64) -> i64`               |
+| compare         | `<, <=, >, >=` | `(i64, i64) -> bool`      |
+| and (shortcuts) | `&&`   | `(bool, bool) -> bool`            |
+| or (shortcuts)  | `||`   | `(bool, bool) -> bool`            |
+| concat string   | `++`   | `(str, str) -> str`               |
+| concat list     | `@`    | `(List<ty>, List<ty>) -> List<ty>`|
+| list membership | `in`   | `(ty, List<ty>) -> bool`          |
+
+<a name="function-call"></a>
+### Function call
+
+```
+> i64::pow(2, 8)
+: 256
     
-    None
-    ```
+> 2.pow(8)
+: 256
+```
 
-## Expressions, blocks and statements
+<a name="return"></a>
+### Return (early exit)  
 
-- Literals (see above)
-- Variables
+`return <expression>`
 
-    `[a-zA-Z][a-zA-Z0-9_]*`
+<a name="sequences"></a>
+### Sequences and immutable assignment (`;` and `let`)
 
-- Prefixes
-
-    | operation | symbol and type    |
-    ----------- | --------------------
-    | minus     | `- : i64 -> i64`   |
-    | not       | `! : bool -> bool` |
-
-- Infixes
-
-    | operation       | symbol and type                        |
-    ----------------- | ----------------------------------------
-    | equality        | `== : (<ty>, <ty>) -> bool`            |
-    | inequality      | `!= : (<ty>, <ty>) -> bool`            |
-    | plus            | `+ : (i64, i64) -> i64`                |
-    | minus           | `- : (i64, i64) -> i64`                |
-    | multiply        | `* : (i64, i64) -> i64`                |
-    | divide          | `/ : (i64, i64) -> i64`                |
-    | remainder       | `% : (i64, i64) -> i64`                |
-    | compare         | `<, <=, >, >= : (i64, i64) -> bool`    |
-    | and (shortcuts) | `&& : (bool, bool) -> bool`            |
-    | or (shortcuts)  | `|| : (bool, bool) -> bool`            |
-    | concat string   | `++ : (str, str) -> str`               |
-    | concat list     | `@ : (List<ty>, List<ty>) -> List<ty>` |
-    | list membership | `in : (ty, List<ty>) -> bool`          |
-
-- Function call
-
-    ```
-    > i64::pow(2, 8)
-    : 256
+```
+> { let x = 1; let y = 2; x + y }
+: 3
     
-    > 2.pow(8)
-    : 256
-    ```
+> { let (x, y) = ((), true); y; x }
+: ()
+```
 
-- Function exit  
+<a name="iteration"></a>
+### Iteration
 
-    `return <expression>`
+`all`, `any`, `filter`, `filter_map`, `foreach` and `map`
 
-- Sequences **;** and immutable **let** assignment
+```
+> all [1 < 2, 2 < 4]
+: true
 
-    ```
-    > { let x = 1; let y = 2; x + y }
-    : 3
+> all x in [1, 2, 4] { x < 3 }
+: false
+
+> all x in [1, 2, 4] { x - 2 < 3 }
+: true
+
+> any [3 < 2, 2 < 4]
+: true    
+
+> any (x, y) in [(1, true), (2, false), (4, false)] { x < 3 && y }
+: true
+
+> filter x in [("x", 1"), ("y", 2), ("x", 3)] { x.0 == "x" }
+: [("x", 1), ("x", 3)]
+
+> map x in [1, 2, 3] { x % 2 == 0 }
+: [false, true, false]
+
+> filter_map x in [1, 2, 3, 4] { if x % 2 == 0 { Some((x, 2 * x)) } else { None } }
+: [(2, 4), (4, 8)]
+```
+
+### Conditionals
+
+<a name="if"></a>
+#### `if`
+
+```
+if <bool-expression> { <unit-statement> }
     
-    > { let (x, y) = ((), true); y; x }
-    : true
-    ```
-
-- **all**, **any**, **filter**, **filter_map**, **foreach**, **map**
-
-    ```
-    > all [1 < 2, 2 < 4]
-    : true
-
-    > all x in [1, 2, 4] { x < 3 }
-    : false
-
-    > all x in [1, 2, 4] { x - 2 < 3 }
-    : true
-
-    > any [3 < 2, 2 < 4]
-    : true    
-
-    > any (x, y) in [(1, true), (2, false), (4, false)] { x < 3 && y }
-    : true
-
-    > filter x in [("x", 1"), ("y", 2), ("x", 3)] { x.0 == "x" }
-    : [("x", 1), ("x", 3)]
-
-    > map x in [1, 2, 3] { x % 2 == 0 }
-    : [false, true, false]
-
-    > filter_map x in [1, 2, 3, 4] { if x % 2 == 0 { Some((x, 2 * x)) } else { None } }
-    : [(2, 4), (4, 8)]
-    ```
-
-- **if**
-
-    ```
-    if <bool-expression> { <unit-statement> }
+if <bool-expression> { <statement> } else { <statement> }
     
-    if <bool-expression> { <statement> } else { <statement> }
+if <bool-expression> {
+    <unit-statement>
+} else if <bool-expression> {
+    <unit-statement>
+}
     
-    if <bool-expression> {
-        <unit-statement>
-    } else if <bool-expression> {
-        <unit-statement>
-    }
-    
-    if <bool-expression> {
-        <statement>
-    else if <bool-expression> {
-        <statement>
-    } else {
-        <statement>
-    }
-    ```
+if <bool-expression> {
+    <statement>
+else if <bool-expression> {
+    <statement>
+} else {
+    <statement>
+}
+```
 
-- **if match**
+<a name="if-matches"></a>
+#### `if .. matches ..`
 
-    ```
-    if <expression1> matches <exp1> &&
-       <expression2> matches <exp2> && ... {
-        <unit-statement>
-    }
+```
+if <expression1> matches <exp1> &&
+   <expression2> matches <exp2> && ... {
+    <unit-statement>
+}
 
-    if <expression1> matches <exp1> &&
-       <expression2> matches <exp2> && ... {
-        <statement>
-    } else {
-        <statement>
-    }
-    ```
+if <expression1> matches <exp1> &&
+   <expression2> matches <exp2> && ... {
+    <statement>
+} else {
+    <statement>
+}
+```
 
-    where each `expression<n>` and `expr<n>` are either a `str` and `Regex`, or a `Label` and a `Label`.
+where each `expression<n>` and `expr<n>` are either a `str` and `Regex`, or a `Label` and a `Label`.
 
-- **if let**
+<a name="if-let"></a>
+#### `if let`
 
-    ```
-    if let Some(<var>) = <expr> {
-        <unit-statement>
-    }
+```
+if let Some(<var>) = <expr> {
+    <unit-statement>
+}
 
-    if let Some(<var>) = <expr> {
-        <statement>
-    } else {
-        <statement>
-    }
-    ```
+if let Some(<var>) = <expr> {
+    <statement>
+} else {
+    <statement>
+}
+```
 
-## Regular expressions
+<a name="regular-expressions"></a>
+### Regular expressions
 
 - Literals
 
@@ -245,7 +293,7 @@ $ cargo run [input file]
 
 - Operations
 
-    | Symbol                   | Meaning           |
+    | symbol                   | meaning           |
     -------------------------- | -------------------
     | .                        | Any               |
     | `<regexp>`?              | Optional          |
@@ -256,7 +304,9 @@ $ cargo run [input file]
     | `<regexp>` `<regexp>`    | Sequence          |
     | `<regexp>` \| `<regexp>` | Either            |
 
-## Function declarations
+<a name="functions"></a>
+Function declaration
+--------------------
 
 ### Internal
 
@@ -282,8 +332,10 @@ external <external name> @ "<url>" {
 }
 ```
 
-## Builtin functions
+Primitive functions
+-------------------
 
+<a name="connection"></a>
 ### Connection::
 
 function               | type
@@ -298,6 +350,7 @@ function               | type
 | set_to               | `(Connection, ID) -> Connection`       |
 | set_number           | `(Connection, ID) -> Connection`       |
 
+<a name="data"></a>
 ### data::
 
 function               | type
@@ -305,6 +358,7 @@ function               | type
 | len                  | `data -> i64`                          |
 | to_base64            | `data -> str`                          |
 
+<a name="egress"></a>
 ### Egress::
 
 function               | type
@@ -319,6 +373,7 @@ function               | type
 | push                 | `data -> ()`                           |
 | wipe                 | `() -> ()`                             |
 
+<a name="http-response"></a>
 ### HttpResponse::
 
 function               | type
@@ -340,6 +395,7 @@ function               | type
 | set_from             | `(HttpResponse, ID) -> HttpResponse`         |
 | set_to               | `(HttpResponse, ID) -> HttpResponse`         |
 
+<a name="http-request"></a>
 ### HttpRequest::
 
 function               | type
@@ -373,6 +429,7 @@ function               | type
 | set_from             | `(HttpRequest, ID) -> HttpRequest`        |
 | set_to               | `(HttpRequest, ID) -> HttpRequest`        |
 
+<a name="i64"></a>
 ### i64::
 
 function               | type
@@ -383,6 +440,7 @@ function               | type
 | max                  | `(i64, i64) -> i64`                    |
 | to_str               | `i64 -> str`                           |
 
+<a name="id"></a>
 ### ID::
 
 function               | type
@@ -400,6 +458,7 @@ function               | type
 | has_ip               | `(ID, IpAddr) -> bool`                 |
 | set_port             | `(ID, i64) -> ID`                      |
 
+<a name="ingress"></a>
 ### Ingress::
 
 function               | type
@@ -408,6 +467,7 @@ function               | type
 | has_label            | `Label -> bool`                        |
 | data                 | `() -> List<data>`                     |
 
+<a name="ipaddr"></a>
 ### IpAddr::
 
 function               | type
@@ -418,6 +478,7 @@ function               | type
 | reverse_lookup       | `IpAddr -> Option<List<str>>`          |
 | lookup               | `str -> Option<List<IpAddr>>`          |
 
+<a name="label"></a>
 ### Label::
 
 function               | type
@@ -425,6 +486,7 @@ function               | type
 | captures             | `(Label, Label) -> List<(str, str)>`   |
 | parts                | `Label -> Option<List<str>>`           |
 
+<a name="list"></a>
 ### list::
 
 function               | type
@@ -436,6 +498,7 @@ function               | type
 | difference           | `(List<ty1>, List<ty2>) -> List<ty1>`  |
 | intersection         | `(List<ty1>, List<ty2>) -> List<ty1>`  |
 
+<a name="option"></a>
 ### option::
 
 function               | type
@@ -443,12 +506,14 @@ function               | type
 | is_some              | `Option<ty> -> bool`                   |
 | is_none              | `Option<ty> -> bool`                   |
 
+<a name="regex"></a>
 ### regex::
 
 function               | type
 ---------------------- | ----------------------------------------
 | is_match             | `(Regex, str) -> bool`                 |
 
+<a name="str"></a>
 ### str::
 
 function               | type
