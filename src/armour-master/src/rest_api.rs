@@ -8,14 +8,6 @@ pub mod service {
 	use armour_api::proxy::{LabelOp, PolicyRequest};
 	use armour_lang::labels::Labels;
 
-	fn top_port(proxies: &[Proxy]) -> u16 {
-		proxies
-			.iter()
-			.filter_map(|proxy| proxy.port)
-			.max()
-			.unwrap_or(5999)
-	}
-
 	async fn launch_proxy(master: &super::Master, proxy: &Proxy) -> Result<(), actix_web::Error> {
 		// start a proxy (without forcing/duplication)
 		master
@@ -69,7 +61,7 @@ pub mod service {
 		information: web::Json<OnboardInformation>,
 	) -> Result<HttpResponse, actix_web::Error> {
 		let information = information.into_inner();
-		let mut port = top_port(&information.proxies);
+		let mut port = information.top_port();
 		for proxy in information.proxies {
 			// launch proxies (if not already launched)
 			launch_proxy(&master, &proxy).await?;

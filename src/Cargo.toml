@@ -11,7 +11,9 @@ members = [
     "armour-control",
     "armour-serde",
     "armour-ctl",
-    "docker-api"
+    "docker-api",
+    "tools/logger",
+    "tools/arm-service"
 ]
 
 [profile.release]

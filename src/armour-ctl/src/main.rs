@@ -1,18 +1,15 @@
 use armour_api::{control, master};
+use armour_lang::labels::Label;
 use armour_lang::lang;
-use awc::http;
-#[macro_use]
-extern crate clap;
 use clap::{crate_version, App};
-use json::JsonValue;
-use std::io::{Error, ErrorKind};
-use url::Url;
 
-const DEFAULT_CONTROL_PLANE: &str = "http://127.0.0.1:8088/controlplane";
+const DEFAULT_CONTROL_PLANE: &str = "http://127.0.0.1:8088";
+
+type Error = Box<dyn std::error::Error + Send + Sync>;
 
 #[actix_rt::main]
-async fn main() -> std::io::Result<()> {
-    let yaml = load_yaml!("../resources/cli.yml");
+async fn main() -> Result<(), Error> {
+    let yaml = clap::load_yaml!("../resources/cli.yml");
     let matches = App::from_yaml(yaml).version(crate_version!()).get_matches();
 
     let cp_url = matches
@@ -23,105 +20,105 @@ async fn main() -> std::io::Result<()> {
 
     // Request to update a policy
     if let Some(update_matches) = matches.subcommand_matches("update") {
-        let file = update_matches
-            .value_of("POLICYFILE")
-            .ok_or_else(|| Error::new(ErrorKind::Other, "Wrong policy file"))?;
-        let service = update_matches
-            .value_of("SERVICE")
-            .ok_or_else(|| Error::new(ErrorKind::Other, "Wrong service"))?;
-        let prog = lang::Program::from_file(file, None)?;
+        let file = update_matches.value_of("POLICYFILE").unwrap();
+        let service = update_matches.value_of("SERVICE").unwrap();
+        let labels = labels(update_matches);
+        let prog = lang::Program::from_file(file, Some(&lang::TCP_HTTP_POLICY))?;
         let update_payload = control::PolicyUpdateRequest {
             label: service.parse().unwrap(),
             policy: master::Policy::Bincode(prog.to_bincode()?),
-            labels: control::LabelMap::new(),
+            labels,
         };
-
-        let req = client
-            .post(cp_url.to_owned() + "/update-policy")
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .send_json(&update_payload);
-        let r = req.await;
-        println!("{:?}", r.unwrap());
+        match client
+            .post(cp_url.to_owned() + "/policy/update")
+            .send_json(&update_payload)
+            .await
+        {
+            Ok(response) => println!("success: {}", response.status().is_success()),
+            Err(err) => println!("{}", err),
+        }
     }
-
     // Request to query a policy
-    if let Some(query_matches) = matches.subcommand_matches("query") {
-        let service = query_matches
-            .value_of("SERVICE")
-            .ok_or_else(|| Error::new(ErrorKind::Other, "Wrong service"))?;
-
+    else if let Some(query_matches) = matches.subcommand_matches("query") {
+        let service = query_matches.value_of("SERVICE").unwrap();
         let query_payload = control::PolicyQueryRequest {
-            label: service.parse().unwrap(),
+            label: service.parse()?,
         };
-
-        let mut req = client
-            .get(cp_url.to_owned() + "/query-policy")
-            .header(http::header::CONTENT_TYPE, "application/json")
+        match client
+            .get(cp_url.to_owned() + "/policy/query")
             .send_json(&query_payload)
             .await
-            .map_err(|_| Error::new(ErrorKind::Other, "Server error"))?;
-        let body = req
-            .body()
-            .await
-            .map_err(|_| Error::new(ErrorKind::Other, "Server error"))?;
-        match json::parse(
-            std::str::from_utf8(&body)
-                .map_err(|_| Error::new(ErrorKind::Other, "Parse policy error"))?,
-        )
-        .map_err(|_| Error::new(ErrorKind::Other, "Parse policy error"))?
         {
-            JsonValue::String(s) => {
-                println!("{}", lang::Program::from_bincode_raw(s.as_bytes()).unwrap())
+            Ok(mut response) => {
+                let body = response.body().await.map_err(|_| "Payload error")?;
+                if response.status().is_success() {
+                    let req: armour_api::control::PolicyUpdateRequest =
+                        serde_json::from_slice(body.as_ref())?;
+                    println!("{}", req.policy);
+                    println!("labels: {:?}", req.labels)
+                } else {
+                    println!("{}", string_from_bytes(body))
+                }
             }
-            _ => panic!("wrong string"),
-        };
+            Err(err) => println!("{}", err),
+        }
     }
-
-    // Request to onboard a master
-    if let Some(master_matches) = matches.subcommand_matches("fake-master-onboard") {
-        let master_url = master_matches
-            .value_of("MASTERURL")
-            .ok_or_else(|| Error::new(ErrorKind::Other, "Wrong master URL"))?;
-        let masterlabel = master_matches
-            .value_of("MASTER")
-            .ok_or_else(|| Error::new(ErrorKind::Other, "Wrong master label"))?;
-
-        let master_payload = control::OnboardMasterRequest {
-            host: Url::parse(&master_url.to_owned())
-                .map_err(|_| Error::new(ErrorKind::Other, "Wrong master label"))?,
-            master: masterlabel.parse().unwrap(),
-            credentials: "No Credential".to_string(),
+    // drop
+    else if let Some(drop_matches) = matches.subcommand_matches("drop") {
+        let service = drop_matches.value_of("SERVICE").unwrap();
+        let drop_payload = control::PolicyQueryRequest {
+            label: service.parse()?,
         };
-
-        let req = client
-            .post(cp_url.to_owned() + "/onboard-master")
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .send_json(&master_payload);
-        let r = req.await;
-        println!("{:?}", r.unwrap());
+        match client
+            .delete(cp_url.to_owned() + "/policy/drop")
+            .send_json(&drop_payload)
+            .await
+        {
+            Ok(response) => println!("success: {}", response.status().is_success()),
+            Err(err) => println!("{}", err),
+        }
     }
-
-    // Request to onboard a service
-    if let Some(service_matches) = matches.subcommand_matches("fake-service-onboard") {
-        let service = service_matches
-            .value_of("SERVICE")
-            .ok_or_else(|| Error::new(ErrorKind::Other, "Wrong service"))?;
-        let master = service_matches
-            .value_of("MASTER")
-            .ok_or_else(|| Error::new(ErrorKind::Other, "Wrong master"))?;
-
-        let service_payload = control::OnboardServiceRequest {
-            service: service.parse().unwrap(),
-            master: master.parse().unwrap(),
-        };
-
-        let req = client
-            .post(cp_url.to_owned() + "/onboard-service")
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .send_json(&service_payload);
-        let r = req.await;
-        println!("{:?}", r.unwrap());
+    // drop all
+    else if matches.subcommand_matches("drop-all").is_some() {
+        match client
+            .delete(cp_url.to_owned() + "/policy/drop-all")
+            .send()
+            .await
+        {
+            Ok(response) => println!("success: {}", response.status().is_success()),
+            Err(err) => println!("{}", err),
+        }
     }
 
     Ok(())
+}
+
+fn labels(matches: &clap::ArgMatches) -> control::LabelMap {
+    let mut labels = control::LabelMap::new();
+    if let Some(labelling) = matches.values_of("LABELS") {
+        for (url, label) in labelling
+            .clone()
+            .step_by(2)
+            .zip(
+                labelling
+                    .skip(1)
+                    .step_by(2)
+                    .map(|s| s.parse::<Label>().ok()),
+            )
+            .filter_map(|(url, l)| l.map(|l| (url.to_string(), l)))
+        {
+            if let Some(labels) = labels.get_mut(&url) {
+                labels.insert(label);
+            } else {
+                labels.insert(url, label.into());
+            }
+        }
+    }
+    labels
+}
+
+fn string_from_bytes(b: bytes::Bytes) -> String {
+    std::str::from_utf8(b.as_ref())
+        .unwrap_or_default()
+        .to_string()
 }

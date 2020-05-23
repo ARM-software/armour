@@ -13,8 +13,8 @@ capnpc = "0.12"
 
 [dependencies]
 actix = "0.9"
-actix-rt = "1.0"
-async-std = "1.4"
+actix-rt = "1.1"
+async-std = "1.5"
 capnp = "0.12"
 capnp-rpc = "0.12"
 futures = "0.3"

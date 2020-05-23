@@ -13,46 +13,45 @@ subcommands:
         - POLICYFILE:
             short: p
             long: policy
-            help: Input policy file
+            required: true
             takes_value: true
+            value_name: "policy filename"
+            help: Input policy file
         - SERVICE:
             short: s
             long: service
-            help: Service label
+            required: true
             takes_value: true
+            value_name: "service label"
+            help: Service label
+        - LABELS:
+            short: l
+            long: label
+            required: false
+            takes_value: true
+            multiple: true
+            number_of_values: 2
+            value_names:
+                - "url"
+                - "label"
+            help: Policy labels
   - query:
       about: Used to query policies
       args:
         - SERVICE:
             short: s
             long: service
+            required: true
+            takes_value: true
             help: Service label
-            takes_value: true
-
-  - fake-master-onboard:
-      about: Used to test the dataplane API
-      args:
-        - MASTERURL:
-            short: u
-            long: master-url
-            help: master url
-            takes_value: true
-        - MASTER:
-            short: m
-            long: master-label
-            help: Master label
-            takes_value: true
-
-  - fake-service-onboard:
-      about: Used to test the dataplane API
+  - drop-all:
+      about: Remove all policies
+  - drop:
+      about: Remove a policy
       args:
         - SERVICE:
             short: s
             long: service
+            required: true
+            takes_value: true
             help: Service label
-            takes_value: true
-        - MASTER:
-            short: m
-            long: master-label
-            help: Master label
-            takes_value: true

@@ -28,21 +28,21 @@ impl Protocol {
 impl fmt::Display for Protocol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Protocol::HTTP => write!(f, "HTTP"),
-            Protocol::TCP => write!(f, "TCP"),
-            Protocol::All => write!(f, "TCP+HTTP"),
+            Protocol::HTTP => write!(f, "http"),
+            Protocol::TCP => write!(f, "tcp"),
+            Protocol::All => write!(f, "all"),
         }
     }
 }
 
 impl FromStr for Protocol {
-    type Err = &'static str;
+    type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        match s {
             "tcp" => Ok(Protocol::TCP),
             "http" => Ok(Protocol::HTTP),
-            "tcp+http" => Ok(Protocol::All),
-            _ => Err("failed to parse protocol"),
+            "all" => Ok(Protocol::All),
+            _ => Err(format!("failed to parse protocol: {}", s)),
         }
     }
 }
@@ -63,12 +63,8 @@ impl std::convert::TryFrom<&master::Policy> for Policy {
             master::Policy::Bincode(s) => {
                 let prog = lang::Program::from_bincode_raw(s.as_bytes())
                     .map_err(|err| format!("failed to parse policy bincode:\n{}", err))?;
-                let protocol = prog.protocol();
-                if protocol.parse::<Protocol>().is_ok() {
-                    Ok(Policy::Program(prog))
-                } else {
-                    Err(format!("failed to parse protocol: {}", protocol))
-                }
+                let _protocol = prog.protocol().parse::<Protocol>()?;
+                Ok(Policy::Program(prog))
             }
         }
     }

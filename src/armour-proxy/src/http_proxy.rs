@@ -4,7 +4,7 @@ use super::http_policy::{EvalHttpFn, GetHttpPolicy, HttpFn, HttpPolicyResponse, 
 use super::policy::{PolicyActor, ID};
 use super::ToArmourExpression;
 use actix_web::{
-    client::{Client, ClientRequest, ClientResponse, PayloadError, SendRequestError},
+    client::{Client, ClientRequest, ClientResponse, Connector, PayloadError, SendRequestError},
     http::header::{ContentEncoding, HeaderMap, HeaderName, HeaderValue},
     http::uri,
     middleware, web, App, HttpRequest, HttpResponse, HttpServer, ResponseError,
@@ -23,9 +23,17 @@ pub async fn start_proxy(
 ) -> std::io::Result<actix_web::dev::Server> {
     let socket_address = format!("0.0.0.0:{}", port);
     let server = HttpServer::new(move || {
+        let config = actix_connect::resolver::ResolverConfig::default();
+        let mut opts = actix_connect::resolver::ResolverOpts::default();
+        opts.use_hosts_file = true;
+        let resolver = actix_connect::start_resolver(config, opts);
+        let connector = Connector::new()
+            .connector(actix_connect::new_connector(resolver))
+            .finish();
+        let client = Client::build().connector(connector).finish();
         App::new()
             .data(policy.clone())
-            .data(Client::new())
+            .data(client)
             .data(port)
             .wrap(middleware::Logger::default())
             .wrap(middleware::Compress::new(ContentEncoding::Identity))

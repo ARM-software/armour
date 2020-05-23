@@ -1,0 +1,10 @@
+fn allow_rest_request(req: HttpRequest) -> bool {
+    let (from, to) = req.from_to(); 
+    "server" in to.hosts() && to.port() == Some(80) &&
+    "client-1" in from.hosts() &&
+    req.method() == "GET" && req.path() == "private"
+}
+
+fn allow_rest_response(res: HttpResponse, payload: data) -> bool {
+    res.status() == 200
+}

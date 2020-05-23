@@ -101,6 +101,9 @@ impl Headers {
             "HttpRequest::connection" => sig(vec![Typ::HttpRequest], Typ::Connection),
             "HttpRequest::from" => sig(vec![Typ::HttpRequest], Typ::ID),
             "HttpRequest::to" => sig(vec![Typ::HttpRequest], Typ::ID),
+            "HttpRequest::from_to" => {
+                sig(vec![Typ::HttpRequest], Typ::Tuple(vec![Typ::ID, Typ::ID]))
+            }
             "HttpRequest::set_from" => sig(vec![Typ::HttpRequest, Typ::ID], Typ::HttpRequest),
             "HttpRequest::set_to" => sig(vec![Typ::HttpRequest, Typ::ID], Typ::HttpRequest),
             "HttpRequest::method" => sig(vec![Typ::HttpRequest], Typ::Str),
@@ -137,6 +140,9 @@ impl Headers {
             "HttpResponse::connection" => sig(vec![Typ::HttpResponse], Typ::Connection),
             "HttpResponse::from" => sig(vec![Typ::HttpResponse], Typ::ID),
             "HttpResponse::to" => sig(vec![Typ::HttpResponse], Typ::ID),
+            "HttpResponse::from_to" => {
+                sig(vec![Typ::HttpResponse], Typ::Tuple(vec![Typ::ID, Typ::ID]))
+            }
             "HttpResponse::set_from" => sig(vec![Typ::HttpResponse, Typ::ID], Typ::HttpResponse),
             "HttpResponse::set_to" => sig(vec![Typ::HttpResponse, Typ::ID], Typ::HttpResponse),
             "HttpResponse::status" => sig(vec![Typ::HttpResponse], Typ::I64),

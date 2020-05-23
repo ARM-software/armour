@@ -1,11 +1,6 @@
-external logger @ "log_sock" {
-  fn log(_) -> ()
-}
-
 // REST request allow/deny
 fn allow_rest_request() -> bool {
   Egress::add_label('egress-ok');
-  // Egress::set_id();
   true
 }
 

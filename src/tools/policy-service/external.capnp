@@ -1,1 +1,1 @@
-../../v2/armour-lang/external.capnp
+../../armour-lang/external.capnp

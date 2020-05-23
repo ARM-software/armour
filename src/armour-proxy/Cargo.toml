@@ -10,6 +10,7 @@ armour-lang = { path = "../armour-lang" }
 armour-utils = { path = "../armour-utils" }
 
 actix = "0.9"
+actix-connect = "1.0"
 actix-rt = "1.1"
 actix-web = "2.0"
 aead = "0.2"

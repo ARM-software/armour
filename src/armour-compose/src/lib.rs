@@ -77,8 +77,15 @@ impl Compose {
         Ok((compose, info))
     }
     fn convert_for_armour(&mut self) -> Result<OnboardInfo, String> {
+        // iterator for network subnets
+        let mut subnets = ipnet::Ipv4Subnets::new(
+            "172.18.0.0".parse().unwrap(),
+            "172.31.255.0".parse().unwrap(),
+            24,
+        );
         let mut services = Map::new();
         let mut networks = Map::new();
+        let mut extra_hosts = Map::new();
         for (service_name, service) in self.services.iter_mut() {
             if service_name.len() > 12 {
                 return Err(format!(
@@ -95,12 +102,45 @@ impl Compose {
                 }
             }
             service.container_name = Some(service_name.to_string());
-            let (service_info, network) = service.convert_for_armour(service_name);
+            let (service_info, network, ipv4_addr) =
+                service.convert_for_armour(service_name, &mut subnets);
             services.insert(service_name.to_string(), service_info);
             networks.insert(
                 service::Service::armour_bridge_network(service_name),
                 network,
             );
+            if let Some(hostname) = &service.hostname {
+                if let Some(ipv4_addr) = ipv4_addr {
+                    extra_hosts.insert(hostname.to_string(), ipv4_addr);
+                }
+            }
+        }
+        if !extra_hosts.is_empty() {
+            for (_, service) in self.services.iter_mut() {
+                let extra = extra_hosts
+                    .clone()
+                    .into_iter()
+                    .filter_map(|(name, ip)| {
+                        if Some(&name) == service.hostname.as_ref() {
+                            None
+                        } else {
+                            Some(format!("{}:{}", name, ip))
+                        }
+                    })
+                    .collect();
+                service.extra_hosts = armour_serde::array_dict::ArrayDict::Array(extra)
+            }
+        }
+        if self.proxies.is_empty() {
+            self.proxies = self
+                .services
+                .keys()
+                .filter_map(|name| {
+                    name.parse::<armour_lang::labels::Label>()
+                        .ok()
+                        .map(|label| label.into())
+                })
+                .collect()
         }
         self.networks = networks;
         let info = OnboardInfo {

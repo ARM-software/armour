@@ -497,6 +497,10 @@ impl Handler<PolicyRequest> for PolicyActor {
                 proxy::Policy::DenyAll(Protocol::HTTP) => self.install_http_deny_all(),
                 proxy::Policy::DenyAll(Protocol::TCP) => self.install_tcp_deny_all(),
                 proxy::Policy::Program(prog) => match prog.protocol().as_str() {
+                    "all" => {
+                        self.install_http(prog.clone());
+                        self.install_tcp(prog)
+                    }
                     "http" => self.install_http(prog),
                     "tcp" => self.install_tcp(prog),
                     s => {

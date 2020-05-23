@@ -28,7 +28,7 @@ deserialize_from_str!(Driver);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct IpamConfig {
-    pub subnet: ipnetwork::IpNetwork,
+    pub subnet: ipnet::Ipv4Net,
     //#[serde(skip_serializing)]
     //#[serde(flatten)]
     //#[serde(default)]
@@ -37,6 +37,8 @@ pub struct IpamConfig {
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Ipam {
+    #[serde(default)]
+    #[serde(skip_serializing_if = "is_default")]
     pub driver: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub config: Vec<IpamConfig>,
@@ -90,7 +92,7 @@ pub struct NetworkRecord {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     aliases: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    ipv4_address: Option<std::net::Ipv4Addr>,
+    pub ipv4_address: Option<std::net::Ipv4Addr>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ipv6_address: Option<std::net::Ipv6Addr>,
     // capture everything else (future proofing)

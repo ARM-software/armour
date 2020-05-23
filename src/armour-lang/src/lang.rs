@@ -293,7 +293,7 @@ lazy_static! {
         policy
     };
     pub static ref TCP_HTTP_POLICY: Interface = {
-        let mut policy = Interface::new("tcp+http");
+        let mut policy = Interface::new("all");
         policy.extend(&TCP_POLICY);
         policy.extend(&HTTP_POLICY);
         policy

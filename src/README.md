@@ -14,6 +14,23 @@
 - `armour-utils`: general library (shared code)
 - `docker-api`: provides interface to a local docker engine (used by `armour-launch`)
 
+## Preliminaries
+
+Install and start [MongoDB](https://www.mongodb.com). Detailed instructions are available [here](https://docs.mongodb.com/manual/tutorial/install-mongodb-on-os-x) for macOS but the following should suffice
+
+```
+% brew tap mongodb/brew
+% brew install mongodb-community
+% brew services start mongodb-community
+```
+
+You will also need [Cap'n Proto](https://capnproto.org) and [OpenSSL](https://www.openssl.org).
+
+```
+% brew install capnp
+% brew install openssl
+```
+
 ## Other directories
 
 - `docs/`: documentation and API testing

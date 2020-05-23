@@ -211,13 +211,12 @@ impl Handler<RegisterProxy> for ArmourDataMaster {
                                     policy_response.labels.into_iter().collect(),
                                 )),
                             ));
-                            if let Ok(policy) = Policy::try_from(&policy_response.policy) {
-                                ctx.notify(PolicyCommand::new(
+                            match Policy::try_from(&policy_response.policy) {
+                                Ok(policy) => ctx.notify(PolicyCommand::new(
                                     instance,
                                     PolicyRequest::SetPolicy(policy),
-                                ))
-                            } else {
-                                log::warn!("failed to install policy")
+                                )),
+                                Err(err) => log::warn!("failed to install policy: {}", err),
                             }
                         } else {
                             log::warn!("failed to obtain policy")

@@ -396,6 +396,9 @@ impl HttpRequest {
     pub fn to_lit(&self) -> Literal {
         self.connection.to_lit()
     }
+    pub fn from_to(&self) -> Literal {
+        self.connection.from_to()
+    }
     pub fn set_from(&self, from: &ID) -> Self {
         let mut req = self.clone();
         req.connection.from = from.clone();
@@ -500,6 +503,9 @@ impl HttpResponse {
     }
     pub fn to_lit(&self) -> Literal {
         self.connection.to_lit()
+    }
+    pub fn from_to(&self) -> Literal {
+        self.connection.from_to()
     }
     pub fn set_from(&self, from: &ID) -> Self {
         let mut res = self.clone();

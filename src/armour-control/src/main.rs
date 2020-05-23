@@ -100,7 +100,7 @@ async fn index(
         let chunk = chunk?;
         body.extend_from_slice(&chunk)
     }
-    log::warn!("hello: {:?}\n{:?}", req, body);
+    log::warn!("{:?}\n{:?}", req, body);
     Ok(actix_web::HttpResponse::BadRequest().finish())
 }
 

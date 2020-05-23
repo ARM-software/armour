@@ -1,1 +1,0 @@
-fn hello() -> str { "hello, world!" }

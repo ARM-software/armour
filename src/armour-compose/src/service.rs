@@ -134,8 +134,7 @@ pub struct Service {
     #[serde(skip_serializing_if = "is_default")]
     pub environment: array_dict::ArrayDict,
     #[serde(default)]
-    #[serde(skip_serializing)]
-    //#[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "is_default")]
     pub extra_hosts: array_dict::ArrayDict,
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
@@ -162,15 +161,15 @@ impl Service {
     pub fn armour_bridge_network(name: &str) -> String {
         format!("arm-{}", name)
     }
-    pub fn convert_for_armour(&mut self, name: &str) -> (ServiceInfo, network::Network) {
+    fn network(
+        name: &str,
+        subnets: &mut ipnet::Ipv4Subnets,
+    ) -> (
+        network::Network,
+        network::Networks,
+        Option<std::net::Ipv4Addr>,
+    ) {
         let armour_bridge_network = Service::armour_bridge_network(name);
-        let info = ServiceInfo {
-            armour_labels: self.armour.labels.clone(),
-            // container_labels: self.labels.clone(),
-            // network: armour_bridge_network.clone(),
-            ipv4_address: None,
-        };
-        // create a new (internal) bridge network for the service
         let mut network = network::Network::default();
         network.driver = Some(network::Driver::Bridge);
         network.driver_opts.insert(
@@ -178,11 +177,42 @@ impl Service {
             armour_bridge_network.clone(),
         );
         network.internal = true;
+        if let Some(subnet) = subnets.next() {
+            let mut ipam = network::Ipam::default();
+            ipam.config = vec![network::IpamConfig { subnet }];
+            network.ipam = Some(ipam);
+            let mut network_record = network::NetworkRecord::default();
+            let ipv4_addr = subnet.hosts().nth(1);
+            network_record.ipv4_address = ipv4_addr;
+            let mut dict = Map::new();
+            dict.insert(armour_bridge_network, network_record);
+            (network, network::Networks::Dict(dict), ipv4_addr)
+        } else {
+            (
+                network,
+                network::Networks::Array(vec![armour_bridge_network]),
+                None,
+            )
+        }
+    }
+    pub fn convert_for_armour(
+        &mut self,
+        name: &str,
+        subnets: &mut ipnet::Ipv4Subnets,
+    ) -> (ServiceInfo, network::Network, Option<std::net::Ipv4Addr>) {
+        let info = ServiceInfo {
+            armour_labels: self.armour.labels.clone(),
+            // container_labels: self.labels.clone(),
+            // network: armour_bridge_network.clone(),
+            ipv4_address: None,
+        };
+        // create a new (internal) bridge network for the service
+        let (network, networks, ipv4_addr) = Service::network(name, subnets);
         // wipe armour field
         self.armour = Armour::default();
         // use internal bridge network
-        self.networks = network::Networks::Array(vec![armour_bridge_network]);
-        (info, network)
+        self.networks = networks;
+        (info, network, ipv4_addr)
     }
 }
 

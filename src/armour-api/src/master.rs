@@ -9,6 +9,7 @@ use armour_lang::{
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::fmt;
 use tokio_util::codec::{Decoder, Encoder};
 
 /// Policy type during `control` plane to `master` communication
@@ -22,6 +23,24 @@ pub enum Policy {
     AllowAll(proxy::Protocol),
     DenyAll(proxy::Protocol),
     Bincode(String),
+}
+
+impl fmt::Display for Policy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Policy::AllowAll(proxy::Protocol::All) => write!(f, "allow all"),
+            Policy::AllowAll(proto) => write!(f, "allow all ({:?})", proto),
+            Policy::DenyAll(proxy::Protocol::All) => write!(f, "deny all"),
+            Policy::DenyAll(proto) => write!(f, "deny all ({:?})", proto),
+            Policy::Bincode(code) => {
+                if let Ok(prog) = armour_lang::lang::Program::from_bincode_raw(code.as_bytes()) {
+                    write!(f, "{}", prog)
+                } else {
+                    write!(f, "not a policy")
+                }
+            }
+        }
+    }
 }
 
 /// Request policy update
@@ -97,10 +116,31 @@ pub struct Proxy {
     pub debug: bool,
 }
 
+impl From<Label> for Proxy {
+    fn from(label: Label) -> Self {
+        Proxy {
+            label,
+            port: None,
+            timeout: None,
+            debug: false,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OnboardInformation {
     pub proxies: Proxies,
     pub labels: Vec<(std::net::Ipv4Addr, Labels)>,
+}
+
+impl OnboardInformation {
+    pub fn top_port(&self) -> u16 {
+        self.proxies
+            .iter()
+            .filter_map(|proxy| proxy.port)
+            .max()
+            .unwrap_or(5999)
+    }
 }
 
 /// Tokio utils codec for `proxy` instance to `master` communication

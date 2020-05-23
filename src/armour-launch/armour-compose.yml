@@ -29,6 +29,11 @@ services:
       labels: 
         - not-trusted
     image: nginx
+  srv-nginx3:
+    armour:
+      labels: 
+        - not-trusted
+    image: nginx
 
 networks:
   srv-net-1:
