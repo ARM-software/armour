@@ -3,12 +3,11 @@ use actix::prelude::*;
 use armour_api::{
     control::{OnboardServiceRequest, PolicyQueryRequest, PolicyQueryResponse},
     master::{self, MasterCodec},
-    proxy::{LabelOp, Policy, PolicyRequest},
+    proxy::{LabelOp, PolicyRequest},
 };
 use armour_lang::labels::Label;
 use log::*;
 use std::collections::{BTreeSet, HashMap};
-use std::convert::TryFrom;
 use std::sync::Arc;
 use tokio_util::codec::FramedRead;
 
@@ -203,23 +202,21 @@ impl Handler<RegisterProxy> for ArmourDataMaster {
                     }
                     .into_actor(act)
                     .then(|policy_res, act, ctx| {
-                        if let Ok(policy_response) = policy_res {
+                        match policy_res {
                             // log::debug!("got labels: {:?}", policy_response.labels);
-                            ctx.notify(PolicyCommand::new(
-                                instance.clone(),
-                                PolicyRequest::Label(LabelOp::AddUri(
-                                    policy_response.labels.into_iter().collect(),
-                                )),
-                            ));
-                            match Policy::try_from(&policy_response.policy) {
-                                Ok(policy) => ctx.notify(PolicyCommand::new(
+                            Ok(policy_response) => {
+                                ctx.notify(PolicyCommand::new(
+                                    instance.clone(),
+                                    PolicyRequest::Label(LabelOp::AddUri(
+                                        policy_response.labels.into_iter().collect(),
+                                    )),
+                                ));
+                                ctx.notify(PolicyCommand::new(
                                     instance,
-                                    PolicyRequest::SetPolicy(policy),
-                                )),
-                                Err(err) => log::warn!("failed to install policy: {}", err),
+                                    PolicyRequest::SetPolicy(policy_response.policy),
+                                ))
                             }
-                        } else {
-                            log::warn!("failed to obtain policy")
+                            Err(err) => log::warn!("failed to obtain policy: {}", err),
                         };
                         async {}.into_actor(act)
                     })
@@ -398,15 +395,11 @@ impl Handler<PolicyCommand> for ArmourDataMaster {
                 log::warn!("{}", MSG);
                 Some(MSG)
             }
-        } else if request.valid() {
+        } else {
             for instance in selected {
                 instance.addr.do_send(request.clone())
             }
             None
-        } else {
-            static MSG: &str = "policy is empty";
-            log::warn!("{}", MSG);
-            Some(MSG)
         }
     }
 }

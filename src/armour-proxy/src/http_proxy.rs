@@ -9,7 +9,7 @@ use actix_web::{
     http::uri,
     middleware, web, App, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
-use armour_lang::lang::Policy;
+use armour_lang::policies::FnPolicy;
 use armour_utils::own_ip;
 use bytes::BytesMut;
 use futures::{stream::Stream, StreamExt};
@@ -62,7 +62,7 @@ async fn request(
             match p.status {
                 // check request
                 PolicyStatus {
-                    request: Policy::Args(count),
+                    request: FnPolicy::Args(count),
                     timeout,
                     ..
                 } => {
@@ -112,7 +112,7 @@ async fn request(
                 }
                 // allow
                 PolicyStatus {
-                    request: Policy::Allow,
+                    request: FnPolicy::Allow,
                     timeout,
                     ..
                 } => {
@@ -132,11 +132,9 @@ async fn request(
                 }
                 // deny
                 PolicyStatus {
-                    request: Policy::Deny,
+                    request: FnPolicy::Deny,
                     ..
                 } => Ok(unauthorized("request denied")),
-                // cannot be Unit policy
-                _ => unreachable!(),
             }
         } else {
             // we failed to get a policy
@@ -176,7 +174,7 @@ async fn response(
             match p.status {
                 // check server response
                 PolicyStatus {
-                    response: Policy::Args(count),
+                    response: FnPolicy::Args(count),
                     ..
                 } => {
                     let server_payload = res.body().await?;
@@ -224,7 +222,7 @@ async fn response(
                 }
                 // allow
                 PolicyStatus {
-                    response: Policy::Allow,
+                    response: FnPolicy::Allow,
                     ..
                 } => {
                     let mut builder = response_builder(&res);
@@ -233,11 +231,9 @@ async fn response(
                 }
                 // deny
                 PolicyStatus {
-                    response: Policy::Deny,
+                    response: FnPolicy::Deny,
                     ..
                 } => Ok(unauthorized("request denied (bad server response)")),
-                // cannot be Unit policy
-                _ => unreachable!(),
             }
         }
         // error response when connecting to server

@@ -1,7 +1,7 @@
 use actix_web::{client, delete, get, post, web, web::Json, HttpResponse};
 use armour_api::control;
-use armour_api::master::{Policy, PolicyUpdate};
-use armour_api::proxy::Protocol;
+use armour_api::master::PolicyUpdate;
+use armour_lang::{labels::Label, policies::Policies};
 use bson::doc;
 
 const ARMOUR_DB: &str = "armour";
@@ -106,7 +106,6 @@ pub mod service {
 
 pub mod policy {
     use super::*;
-    use armour_lang::labels::Label;
     use std::collections::BTreeSet;
 
     fn services(state: &State) -> Result<BTreeSet<Label>, actix_web::Error> {
@@ -155,8 +154,8 @@ pub mod policy {
 
     pub async fn update_hosts(
         state: &State,
-        label: &armour_lang::labels::Label,
-        policy: &armour_api::master::Policy,
+        label: &Label,
+        policy: &Policies,
     ) -> Result<(), actix_web::Error> {
         let client = client::Client::default();
         let hosts = hosts(state, label)?;
@@ -241,7 +240,7 @@ pub mod policy {
         let res = col
             .delete_one(doc! { "label" : label.to_string() }, None)
             .on_err("failed to drop policy")?;
-        update_hosts(&state, label, &Policy::DenyAll(Protocol::All)).await?;
+        update_hosts(&state, label, &Policies::deny_all()).await?;
         Ok(HttpResponse::Ok().body(format!("dropped {}", res.deleted_count)))
     }
 
@@ -253,7 +252,7 @@ pub mod policy {
             .drop(None)
             .on_err("failed to drop all policies")?;
         for label in services {
-            update_hosts(&state, &label, &Policy::DenyAll(Protocol::All)).await?;
+            update_hosts(&state, &label, &Policies::deny_all()).await?;
         }
         Ok(HttpResponse::Ok().body("dropped all policies"))
     }

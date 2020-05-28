@@ -5,8 +5,11 @@ use super::{
     master::{ArmourDataMaster, Launch, List, PolicyCommand, Quit},
 };
 use actix::Addr;
-use armour_api::proxy::{LabelOp, Policy, PolicyRequest, Protocol};
-use armour_lang::{labels, lang};
+use armour_api::proxy::{LabelOp, PolicyRequest};
+use armour_lang::{
+    labels,
+    policies::{Policies, Protocol},
+};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::io::BufRead;
@@ -27,10 +30,10 @@ lazy_static! {
             status |
             label \s (add | rm) |
             labels \s rm |
-            deny \s all (\s (http | tcp))?  |
-            allow \s all (\s (http | tcp))?  |
+            deny \s all |
+            allow \s all |
             stop (\s (http | tcp))? |
-            policy (\s (http | tcp))? |
+            policy |
             start \s (http | tcp) |
             stop (\s (http | tcp))? |
             timeout)
@@ -85,16 +88,16 @@ fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> boo
     run <file>         run commands from <file>
     wait <seconds>     wait for <seconds> to elapse (up to 5s)
 
-    [<id>:] launch [log]              start a new slave instance
+    [<id>:] launch [log|debug]        start a new slave instance
     [<id>:] shutdown                  request slave shutdown
     [<id>:] start <proto> <port>      start proxy on <port>
     [<id>:] stop [<proto>]            stop proxy
     [<id>:] status                    retrieve and print status
     [<id>:] timeout <seconds>         set HTTP server response timeout
     
-    [<id>:] allow all [<proto>]       request allow all policy
-    [<id>:] deny all [<proto>]        request deny all policy
-    [<id>:] policy <proto> <file>     read policy <file> and send to instance
+    [<id>:] allow all                 request allow all policy
+    [<id>:] deny all                  request deny all policy
+    [<id>:] policy  <file>            read policy <file> and send to instance
 
     [<id>:] label add <host> <label>  add a label
     [<id>:] label rm <host> <label>   remove a label
@@ -147,7 +150,7 @@ fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> boo
         }
         (_, Some(s @ "start tcp"), Some(port)) | (_, Some(s @ "start http"), Some(port)) => {
             if let Ok(port) = port.parse::<u16>() {
-                let start = if is_http(s) {
+                let start = if s.ends_with("http") {
                     PolicyRequest::StartHttp(port)
                 } else {
                     PolicyRequest::StartTcp(port)
@@ -157,11 +160,23 @@ fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> boo
                 log::warn!("expecting port number, got {}", port);
             }
         }
-        (_, Some(s @ "stop"), None)
-        | (_, Some(s @ "stop http"), None)
-        | (_, Some(s @ "stop tcp"), None) => master.do_send(PolicyCommand::new(
+        (_, Some("stop"), None) => {
+            master.do_send(PolicyCommand::new(
+                instance.clone(),
+                PolicyRequest::Stop(Protocol::HTTP),
+            ));
+            master.do_send(PolicyCommand::new(
+                instance,
+                PolicyRequest::Stop(Protocol::TCP),
+            ))
+        }
+        (_, Some("stop http"), None) => master.do_send(PolicyCommand::new(
             instance,
-            PolicyRequest::Stop(protocol(s)),
+            PolicyRequest::Stop(Protocol::HTTP),
+        )),
+        (_, Some("stop tcp"), None) => master.do_send(PolicyCommand::new(
+            instance,
+            PolicyRequest::Stop(Protocol::TCP),
         )),
         (_, Some("timeout"), Some(secs)) => {
             if let Ok(secs) = secs.parse::<u8>() {
@@ -170,27 +185,15 @@ fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> boo
                 log::warn!("timeout <seconds>: expecting u8, got {}", secs);
             }
         }
-        (_, Some(s @ "policy http"), Some(file)) | (_, Some(s @ "policy tcp"), Some(file)) => {
+        (_, Some("policy"), Some(file)) => {
             let path = pathbuf(file);
-            let protocol = protocol(s);
-            match lang::Module::from_file(&path, Some(protocol.interface())) {
-                Ok(module) => set_policy(master, instance, Policy::Program(module.program)),
+            match Policies::from_file(&path) {
+                Ok(policies) => set_policy(master, instance, policies),
                 Err(err) => log::warn!(r#"{:?}: {}"#, path, err),
             }
         }
-        (_, Some(s @ "allow all"), None)
-        | (_, Some(s @ "allow all http"), None)
-        | (_, Some(s @ "allow all tcp"), None)
-        | (_, Some(s @ "deny all"), None)
-        | (_, Some(s @ "deny all http"), None)
-        | (_, Some(s @ "deny all tcp"), None) => {
-            let protocol = protocol(s);
-            if s.starts_with("allow") {
-                set_policy(master, instance, Policy::AllowAll(protocol))
-            } else {
-                set_policy(master, instance, Policy::DenyAll(protocol))
-            }
-        }
+        (_, Some("allow all"), None) => set_policy(master, instance, Policies::allow_all()),
+        (_, Some("deny all"), None) => set_policy(master, instance, Policies::deny_all()),
         (_, Some(s @ "label add"), Some(arg)) | (_, Some(s @ "label rm"), Some(arg)) => {
             if let [key, value] = arg.split(' ').collect::<Vec<&str>>().as_slice() {
                 if let Ok(label) = value.parse::<labels::Label>() {
@@ -278,29 +281,11 @@ pub fn run_script(master: &Addr<ArmourDataMaster>, script: &str) {
     }
 }
 
-fn is_http(s: &str) -> bool {
-    s.ends_with("http")
-}
-
-fn is_tcp(s: &str) -> bool {
-    s.ends_with("tcp")
-}
-
-fn protocol(s: &str) -> Protocol {
-    if is_http(s) {
-        Protocol::HTTP
-    } else if is_tcp(s) {
-        Protocol::TCP
-    } else {
-        Protocol::All
-    }
-}
-
-fn set_policy(master: &Addr<ArmourDataMaster>, instance: InstanceSelector, policy: Policy) {
-    log::info!("sending policy: {}", policy);
+fn set_policy(master: &Addr<ArmourDataMaster>, instance: InstanceSelector, policies: Policies) {
+    log::info!("sending policy: {}", policies);
     master.do_send(PolicyCommand::new(
         instance,
-        PolicyRequest::SetPolicy(policy),
+        PolicyRequest::SetPolicy(policies),
     ))
 }
 

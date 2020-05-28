@@ -28,6 +28,8 @@ pub mod literals;
 pub mod meta;
 /// Parser implemented using [nom](../nom/index.html)
 pub mod parser;
+/// Policies interface
+pub mod policies;
 /// Pretty-printer
 pub mod pretty;
 /// Type system

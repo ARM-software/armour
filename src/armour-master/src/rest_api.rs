@@ -122,12 +122,8 @@ pub mod policy {
 	use crate::instance::InstanceSelector;
 	use crate::master::{MetaData, PolicyCommand};
 	use actix_web::{get, post, web, HttpResponse};
-	use armour_api::{
-		master::PolicyUpdate,
-		proxy::{Policy, PolicyRequest},
-	};
+	use armour_api::{master::PolicyUpdate, proxy::PolicyRequest};
 	use armour_lang::labels::Label;
-	use std::convert::TryFrom;
 
 	#[get("/query")]
 	pub async fn query(
@@ -148,13 +144,11 @@ pub mod policy {
 		request: web::Json<PolicyUpdate>,
 	) -> Result<HttpResponse, actix_web::Error> {
 		let instance = InstanceSelector::Label(request.label.clone());
-		let policy = Policy::try_from(&request.policy)
-			.map_err(|err| HttpResponse::BadRequest().body(err))?;
-		log::info!("sending policy: {}", policy);
+		log::info!("sending policy: {}", request.policy);
 		let res = master
 			.send(PolicyCommand::new(
 				instance,
-				PolicyRequest::SetPolicy(policy),
+				PolicyRequest::SetPolicy(request.policy.clone()),
 			))
 			.await
 			.map_err(|err| {

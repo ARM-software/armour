@@ -3,12 +3,13 @@ use super::{http_policy::HttpPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_prox
 use actix::prelude::*;
 use actix_web::http::uri;
 use armour_api::master::{PolicyResponse, Status};
-use armour_api::proxy::{self, LabelOp, PolicyCodec, PolicyRequest, Protocol};
+use armour_api::proxy::{LabelOp, PolicyCodec, PolicyRequest};
 use armour_lang::{
     expressions,
     interpret::Env,
-    labels, lang, literals,
+    labels, literals,
     meta::{IngressEgress, Meta},
+    policies::{self, Protocol},
 };
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -21,9 +22,9 @@ use tokio_util::codec::FramedRead;
 pub trait Policy<P> {
     fn start(&mut self, proxy: P, port: u16);
     fn stop(&mut self);
-    fn set_policy(&mut self, p: lang::Program);
+    fn set_policy(&mut self, p: policies::Policy);
     fn port(&self) -> Option<u16>;
-    fn policy(&self) -> Arc<lang::Program>;
+    fn policy(&self) -> Arc<policies::Policy>;
     fn hash(&self) -> String;
     fn env(&self) -> &Env;
     fn status(&self) -> Box<Status>;
@@ -433,10 +434,6 @@ impl Handler<PolicyRequest> for PolicyActor {
                     self.uds_framed.write(PolicyResponse::Stopped)
                 }
             }
-            PolicyRequest::Stop(Protocol::All) => {
-                ctx.notify(PolicyRequest::Stop(Protocol::HTTP));
-                ctx.notify(PolicyRequest::Stop(Protocol::TCP))
-            }
             PolicyRequest::StartHttp(port) => {
                 if let Some(current_port) = self.http.port() {
                     log::info!("HTTP proxy already started");
@@ -483,32 +480,14 @@ impl Handler<PolicyRequest> for PolicyActor {
                     })
                     .wait(ctx)
             }
-            PolicyRequest::SetPolicy(policy) => match policy {
-                proxy::Policy::AllowAll(Protocol::All) => {
-                    self.install_http_allow_all();
-                    self.install_tcp_allow_all()
+            PolicyRequest::SetPolicy(policy) => {
+                if let Some(tcp_policy) = policy.policy(Protocol::TCP) {
+                    self.install_tcp(tcp_policy.clone())
                 }
-                proxy::Policy::AllowAll(Protocol::HTTP) => self.install_http_allow_all(),
-                proxy::Policy::AllowAll(Protocol::TCP) => self.install_tcp_allow_all(),
-                proxy::Policy::DenyAll(Protocol::All) => {
-                    self.install_http_deny_all();
-                    self.install_tcp_deny_all()
+                if let Some(http_policy) = policy.policy(Protocol::HTTP) {
+                    self.install_http(http_policy.clone())
                 }
-                proxy::Policy::DenyAll(Protocol::HTTP) => self.install_http_deny_all(),
-                proxy::Policy::DenyAll(Protocol::TCP) => self.install_tcp_deny_all(),
-                proxy::Policy::Program(prog) => match prog.protocol().as_str() {
-                    "all" => {
-                        self.install_http(prog.clone());
-                        self.install_tcp(prog)
-                    }
-                    "http" => self.install_http(prog),
-                    "tcp" => self.install_tcp(prog),
-                    s => {
-                        self.uds_framed.write(PolicyResponse::RequestFailed);
-                        log::info!("failed to install policy, unrecognized protocol: {}", s)
-                    }
-                },
-            },
+            }
             PolicyRequest::Shutdown => {
                 log::info!("shutting down");
                 self.uds_framed.write(PolicyResponse::ShuttingDown);
@@ -584,54 +563,18 @@ impl PolicyActor {
 
 // install policies
 impl PolicyActor {
-    fn install_http(&mut self, prog: lang::Program) {
-        let hash = prog.blake3_string();
-        self.http.set_policy(prog);
-        self.uds_framed.write(PolicyResponse::UpdatedPolicy(
-            armour_api::proxy::Protocol::HTTP,
-            hash,
-        ));
+    fn install_http(&mut self, policy: policies::Policy) {
+        let hash = policy.blake3();
+        self.http.set_policy(policy);
+        self.uds_framed
+            .write(PolicyResponse::UpdatedPolicy(Protocol::HTTP, hash));
         log::info!("installed HTTP policy")
     }
-    fn install_tcp(&mut self, prog: lang::Program) {
-        let hash = prog.blake3_string();
-        self.tcp.set_policy(prog);
-        self.uds_framed.write(PolicyResponse::UpdatedPolicy(
-            armour_api::proxy::Protocol::TCP,
-            hash,
-        ));
+    fn install_tcp(&mut self, policy: policies::Policy) {
+        let hash = policy.blake3();
+        self.tcp.set_policy(policy);
+        self.uds_framed
+            .write(PolicyResponse::UpdatedPolicy(Protocol::TCP, hash));
         log::info!("installed TCP policy")
-    }
-    fn install_http_allow_all(&mut self) {
-        if let Ok(prog) = lang::Program::allow_all(&lang::HTTP_POLICY) {
-            self.install_http(prog)
-        } else {
-            self.uds_framed.write(PolicyResponse::RequestFailed);
-            log::info!("failed to install HTTP allow all policy")
-        }
-    }
-    fn install_tcp_allow_all(&mut self) {
-        if let Ok(prog) = lang::Program::allow_all(&lang::TCP_POLICY) {
-            self.install_tcp(prog)
-        } else {
-            self.uds_framed.write(PolicyResponse::RequestFailed);
-            log::info!("failed to install TCP allow all policy")
-        }
-    }
-    fn install_http_deny_all(&mut self) {
-        if let Ok(prog) = lang::Program::deny_all(&lang::HTTP_POLICY) {
-            self.install_http(prog)
-        } else {
-            self.uds_framed.write(PolicyResponse::RequestFailed);
-            log::info!("failed to install HTTP deny all policy")
-        }
-    }
-    fn install_tcp_deny_all(&mut self) {
-        if let Ok(prog) = lang::Program::deny_all(&lang::TCP_POLICY) {
-            self.install_tcp(prog)
-        } else {
-            self.uds_framed.write(PolicyResponse::RequestFailed);
-            log::info!("failed to install TCP deny all policy")
-        }
     }
 }

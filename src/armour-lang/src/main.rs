@@ -1,6 +1,6 @@
 /// Armour policy language
 use actix::prelude::*;
-use armour_lang::{expressions, interpret::Env, lang};
+use armour_lang::{expressions, interpret::Env, lang, policies};
 use clap::{crate_version, App, Arg, SubCommand};
 use rustyline::{error::ReadlineError, Editor};
 use std::io;
@@ -54,58 +54,31 @@ async fn main() -> std::io::Result<()> {
         .author("Anthony Fox <anthony.fox@arm.com>")
         .about("Armour policy language REPL")
         .arg(
-            Arg::with_name("bincode")
-                .long("bincode")
-                .required(false)
-                .requires("input file")
-                .conflicts_with("protocol")
-                .help("Load policy from bincode input"),
-        )
-        .arg(
-            Arg::with_name("policy")
-                .long("policy")
-                .required(false)
-                .takes_value(true)
-                .conflicts_with("input file")
-                .requires("protocol")
-                .possible_values(&["allow", "deny"])
-                .help("Type of policy"),
-        )
-        .arg(
-            Arg::with_name("protocol")
-                .long("protocol")
-                .required(false)
-                .takes_value(true)
-                .possible_values(&["tcp", "http"])
-                .help("Type of protocol"),
-        )
-        .arg(
             Arg::with_name("input file")
                 .index(1)
                 .required(false)
                 .help("Policy file"),
         )
-        .arg(
-            Arg::with_name("timeout")
-                .long("timeout")
-                .takes_value(true)
-                .help("Timeout (seconds) for external RPCs\n(default: 3s)"),
-        )
         .subcommand(
             SubCommand::with_name("export")
                 .about("serialise programs")
                 .arg(
+                    Arg::with_name("policy")
+                        .short("p")
+                        .long("policy")
+                        .required(false)
+                        .takes_value(true)
+                        .conflicts_with("input file")
+                        .possible_values(&["allow", "deny"])
+                        .help("Type of policy"),
+                )
+                .arg(
                     Arg::with_name("format")
-                        .index(1)
-                        .required(true)
-                        .possible_values(&[
-                            "armour",
-                            "bincode",
-                            "blake3",
-                            "json",
-                            "pretty-json",
-                            "yaml",
-                        ]),
+                        .short("f")
+                        .long("format")
+                        .required(false)
+                        .takes_value(true)
+                        .possible_values(&["armour", "json", "yaml"]),
                 ),
         )
         .get_matches();
@@ -115,60 +88,42 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "0");
     pretty_env_logger::init();
 
-    // try to load code from an input file, or by using policy + protocol option
-    let file = matches.value_of("input file");
-    let mut prog = if matches.is_present("bincode") {
-        lang::Program::from_bincode(file.unwrap())?
-    } else {
-        match (
-            matches.value_of("policy"),
-            matches.value_of("protocol"),
-            file,
-        ) {
-            (Some("allow"), Some("tcp"), None) => lang::Program::allow_all(&lang::TCP_POLICY)?,
-            (Some("allow"), Some("http"), None) => lang::Program::allow_all(&lang::HTTP_POLICY)?,
-            (Some("deny"), Some("tcp"), None) | (None, Some("tcp"), None) => {
-                lang::Program::deny_all(&*lang::TCP_POLICY)?
-            }
-            (Some("deny"), Some("http"), None) | (None, Some("http"), None) => {
-                lang::Program::deny_all(&*lang::HTTP_POLICY)?
-            }
-            (None, Some("tcp"), Some(file)) => {
-                lang::Program::from_file(file, Some(&lang::TCP_POLICY))?
-            }
-            (None, Some("http"), Some(file)) => {
-                lang::Program::from_file(file, Some(&lang::HTTP_POLICY))?
-            }
-            (_, _, Some(file)) => lang::Program::from_file(file, None)?,
-            _ => lang::Program::default(),
-        }
-    };
-    if let Some(timeout) = matches.value_of("timeout") {
-        let d = Duration::from_secs(timeout.parse().map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "timeout (seconds) must be an integer",
-            )
-        })?);
-        prog.set_timeout(d)
-    }
-
-    if let Some(matches) = matches.subcommand_matches("export") {
-        let s = match matches.value_of("format").unwrap() {
-            "armour" => prog.to_string(),
-            "bincode" => prog.to_bincode().unwrap_or_else(|e| e.to_string()),
-            "blake3" => prog
-                .blake3_hash()
-                .map(|a| a.to_string())
-                .unwrap_or_else(|| "<failed to hash>".to_string()),
-            "json" => serde_json::to_string(&prog).unwrap_or_else(|e| e.to_string()),
-            "pretty-json" => serde_json::to_string_pretty(&prog).unwrap_or_else(|e| e.to_string()),
-            "yaml" => serde_yaml::to_string(&prog).unwrap_or_else(|e| e.to_string()),
+    if let Some(export_matches) = matches.subcommand_matches("export") {
+        let policy = match matches.value_of("input file") {
+            Some(file) => policies::Policies::from_file(file)?,
+            _ => match export_matches.value_of("policy").unwrap_or("deny") {
+                "allow" => policies::Policies::allow_all(),
+                _ => policies::Policies::deny_all(),
+            },
+        };
+        let s = match export_matches
+            .value_of("format")
+            .unwrap_or_else(|| "armour")
+        {
+            "armour" => policy.to_string(),
+            "json" => serde_json::to_string_pretty(&policy).unwrap_or_else(|e| e.to_string()),
+            "yaml" => serde_yaml::to_string(&policy).unwrap_or_else(|e| e.to_string()),
             _ => unreachable!(),
         };
         print!("{}", s)
     } else {
+        // try to load code from an input file
+        let file = matches.value_of("input file");
+        let mut prog = match file {
+            Some(file) => lang::Program::from_file(file)?,
+            _ => lang::Program::default(),
+        };
+        if let Some(timeout) = matches.value_of("timeout") {
+            let d = Duration::from_secs(timeout.parse().map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "timeout (seconds) must be an integer",
+                )
+            })?);
+            prog.set_timeout(d)
+        }
         prog.print();
+
         // start eval actor
         let headers = prog.headers.clone();
         let eval = Eval::new(&prog).start();

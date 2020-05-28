@@ -26,19 +26,19 @@ impl Literal {
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Literal::Int(i) => write!(f, "{}", i),
+            Literal::Int(i) => write!(f, "Int({})", i),
             Literal::Float(d) => {
                 if 8 < d.abs().log10() as usize {
-                    write!(f, "{:e}", d)
+                    write!(f, "Float({:e})", d)
                 } else if (d.trunc() - *d).abs() < std::f64::EPSILON {
-                    write!(f, "{:.1}", d)
+                    write!(f, "Float({:.1})", d)
                 } else {
-                    write!(f, "{}", d)
+                    write!(f, "Float({})", d)
                 }
             }
-            Literal::Bool(b) => write!(f, "{}", b),
-            Literal::Data(d) => write!(f, "{}", String::from_utf8_lossy(d)),
-            Literal::Str(s) => write!(f, r#""{}""#, s),
+            Literal::Bool(b) => write!(f, "Bool({})", b),
+            Literal::Data(d) => write!(f, "Data({})", String::from_utf8_lossy(d)),
+            Literal::Str(s) => write!(f, r#"Str("{}")"#, s),
             Literal::List(lits) | Literal::Tuple(lits) => {
                 let s = lits
                     .iter()
@@ -55,7 +55,7 @@ impl fmt::Display for Literal {
                     write!(f, "[{}]", s)
                 }
             }
-            Literal::Unit => write!(f, "()"),
+            Literal::Unit => write!(f, "Unit"),
         }
     }
 }

@@ -1,5 +1,5 @@
 external logger @ "log_sock" {
-//external logger @ "localhost:8081" {
+// external logger @ "localhost:8081" {
   fn log(_) -> ()
   fn ping(_) -> ()
   fn rest(i64, str, str, str, ID, ID, i64) -> ()
@@ -28,17 +28,14 @@ fn allow_rest_request(req: HttpRequest, payload: data) -> bool {
     to,
     payload.len()
   );
-  Egress::wipe();
   true
 }
 
 // REST response allow/deny
 fn allow_rest_response(res: HttpResponse, payload: data) -> bool {
   // async logger::log(res.header("date"));
-  async
-  logger::server_payload(res.connection().number(), payload.len());
+  async logger::server_payload(res.connection().number(), payload.len());
   // res.status() == 200
-  Egress::wipe();
   true
 }
 

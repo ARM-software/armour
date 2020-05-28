@@ -117,14 +117,16 @@ impl Externals {
         std::io::Error,
     > {
         if let Ok(mut p) = socket.to_socket_addrs() {
-            let stream = async_std::net::TcpStream::connect(&p.next().unwrap()).await?;
+            let pp = p.next().unwrap();
+            log::info!("trying to connect to TCP external: {}", pp);
+            let stream = async_std::net::TcpStream::connect(&pp).await?;
+            log::info!("connected to TCP external");
             Ok(Externals::get(stream))
         } else {
             let stream = async_std::os::unix::net::UnixStream::connect(socket)
                 .await
                 .map_err(move |e| std::io::Error::new(e.kind(), format!("{}: {}", socket, e)))?;
             Ok(Externals::get(stream))
-            // .map_err(move |e| std::io::Error::new(e.kind(), format!("{}: {}", socket, e))),
         }
     }
     fn get<S>(

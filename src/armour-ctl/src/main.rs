@@ -1,6 +1,6 @@
-use armour_api::{control, master};
+use armour_api::control;
 use armour_lang::labels::Label;
-use armour_lang::lang;
+use armour_lang::policies;
 use clap::{crate_version, App};
 
 const DEFAULT_CONTROL_PLANE: &str = "http://127.0.0.1:8088";
@@ -23,10 +23,10 @@ async fn main() -> Result<(), Error> {
         let file = update_matches.value_of("POLICYFILE").unwrap();
         let service = update_matches.value_of("SERVICE").unwrap();
         let labels = labels(update_matches);
-        let prog = lang::Program::from_file(file, Some(&lang::TCP_HTTP_POLICY))?;
+        let policy = policies::Policies::from_file(file)?;
         let update_payload = control::PolicyUpdateRequest {
             label: service.parse().unwrap(),
-            policy: master::Policy::Bincode(prog.to_bincode()?),
+            policy,
             labels,
         };
         match client

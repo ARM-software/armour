@@ -19,7 +19,7 @@ impl policy_service::rpc::Dispatcher for LoggerService {
             (
                 "rest",
                 [Literal::Int(number), Literal::Str(date), Literal::Str(method), Literal::Str(path), Literal::Tuple(from), Literal::Tuple(to), Literal::Int(size)],
-            ) if from.len() == 3 && to.len() == 3 => {
+            ) if from.len() == 4 && to.len() == 4 => {
                 if let (Some(from), Some(to)) = (
                     connections::Endpoint::from(from),
                     connections::Endpoint::to(to),
@@ -37,6 +37,12 @@ impl policy_service::rpc::Dispatcher for LoggerService {
                     self.log(name, args)
                 }
                 log::debug!("logged REST connection");
+                Ok(Literal::Unit)
+            }
+            ("server_payload", [Literal::Int(number), Literal::Int(size)]) => {
+                log::debug!("[{}]: server payload: {}", number, size);
+                let mut connections = self.0.lock().unwrap();
+                connections.set_received(*number as u64, *size as usize);
                 Ok(Literal::Unit)
             }
             ("tcp", [Literal::Int(number), Literal::Tuple(from), Literal::Tuple(to)])

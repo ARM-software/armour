@@ -1,62 +1,30 @@
 //! Data plane `master` API
 
-use super::{proxy, DeserializeDecoder, SerializeEncoder};
+use super::{DeserializeDecoder, SerializeEncoder};
 use actix::prelude::*;
 use armour_lang::{
     labels::{Label, Labels},
-    lang::Program,
+    policies,
 };
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::fmt;
 use tokio_util::codec::{Decoder, Encoder};
-
-/// Policy type during `control` plane to `master` communication
-///
-/// There are three main possibilities:
-/// 1. Allow all (HTTP, TCP or both)
-/// 2. Deny all (HTTP, TCP or both)
-/// 3. A policy program, encoded as a [String](https://doc.rust-lang.org/std/string/struct.String.html) using Bincode (serde), Gzip and Base64
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum Policy {
-    AllowAll(proxy::Protocol),
-    DenyAll(proxy::Protocol),
-    Bincode(String),
-}
-
-impl fmt::Display for Policy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Policy::AllowAll(proxy::Protocol::All) => write!(f, "allow all"),
-            Policy::AllowAll(proto) => write!(f, "allow all ({:?})", proto),
-            Policy::DenyAll(proxy::Protocol::All) => write!(f, "deny all"),
-            Policy::DenyAll(proto) => write!(f, "deny all ({:?})", proto),
-            Policy::Bincode(code) => {
-                if let Ok(prog) = armour_lang::lang::Program::from_bincode_raw(code.as_bytes()) {
-                    write!(f, "{}", prog)
-                } else {
-                    write!(f, "not a policy")
-                }
-            }
-        }
-    }
-}
 
 /// Request policy update
 ///
-/// Consists of a label, which should be of the form `<master>::<proxy>`, and a [Policy](enum.Policy.html) value
-#[derive(Serialize, Deserialize, Debug)]
+/// Consists of a label, which should be of the form `<master>::<proxy>`
+#[derive(Serialize, Deserialize)]
 pub struct PolicyUpdate {
     pub label: Label,
-    pub policy: Policy,
+    pub policy: policies::Policies,
 }
 
 /// Query current policy status
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct PolicyQuery {
     pub label: Label,
-    pub potocol: proxy::Protocol,
+    pub potocol: policies::Protocol,
 }
 
 /// Current policy status
@@ -84,24 +52,23 @@ pub enum PolicyResponse {
         tcp: Box<Status>,
     },
     Stopped,
-    UpdatedPolicy(proxy::Protocol, String), // hash of new policy
+    UpdatedPolicy(policies::Protocol, String), // hash of new policy
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Status {
-    pub policy: Program,
+    pub policy: policies::Policy,
     pub port: Option<u16>,
 }
 
 impl std::fmt::Display for Status {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        self.policy.print();
         if let Some(port) = self.port {
             writeln!(f, "active on port {}", port)?
         } else {
             writeln!(f, "inactive")?
         }
-        write!(f, "policy is: {}", self.policy.description())
+        write!(f, "policy is: {}", self.policy)
     }
 }
 

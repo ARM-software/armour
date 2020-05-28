@@ -3,8 +3,8 @@ use super::master::{
 };
 use actix::prelude::*;
 use armour_api::master::{self, MasterCodec, PolicyResponse};
-use armour_api::proxy::{PolicyRequest, Protocol};
-use armour_lang::labels::Label;
+use armour_api::proxy::PolicyRequest;
+use armour_lang::{labels::Label, policies::Protocol};
 use log::*;
 use std::collections::HashMap;
 use std::fmt;
@@ -148,10 +148,6 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
                     match protocol {
                         Protocol::HTTP => self.master.do_send(RegisterHttpHash(self.id, hash)),
                         Protocol::TCP => self.master.do_send(RegisterTcpHash(self.id, hash)),
-                        Protocol::All => {
-                            self.master.do_send(RegisterHttpHash(self.id, hash.clone()));
-                            self.master.do_send(RegisterTcpHash(self.id, hash))
-                        }
                     }
                 }
                 PolicyResponse::RequestFailed => info!("{}: request failed", self.id),
@@ -171,9 +167,9 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
                         self.id, label, http, tcp, labels
                     );
                     self.master
-                        .do_send(RegisterHttpHash(self.id, http.policy.blake3_string()));
+                        .do_send(RegisterHttpHash(self.id, http.policy.blake3()));
                     self.master
-                        .do_send(RegisterTcpHash(self.id, tcp.policy.blake3_string()))
+                        .do_send(RegisterTcpHash(self.id, tcp.policy.blake3()))
                 }
             }
         } else {

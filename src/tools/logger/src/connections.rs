@@ -29,7 +29,8 @@ impl Endpoint {
     }
     fn from_literal(v: &[Literal], service: bool) -> Option<Self> {
         match v {
-            [Literal::List(hosts), Literal::List(ips), Literal::Tuple(port)] => {
+            [Literal::List(hosts), Literal::List(ips), Literal::Tuple(port), Literal::List(_labels)] =>
+            {
                 let (port, suffix) = match port.as_slice() {
                     [Literal::Int(n)] => (
                         Some(*n as u16),
@@ -58,7 +59,10 @@ impl Endpoint {
                     port,
                 })
             }
-            _ => None,
+            _ => {
+                log::warn!("{:?}", v);
+                None
+            }
         }
     }
     pub fn from(v: &[Literal]) -> Option<Self> {

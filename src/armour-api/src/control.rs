@@ -1,7 +1,7 @@
 //! Control plane API
 
-use super::master::Policy;
 use armour_lang::labels::{Label, Labels};
+use armour_lang::policies::Policies;
 use serde::{Deserialize, Serialize};
 
 type Credentials = String;
@@ -24,7 +24,7 @@ pub struct OnboardServiceRequest {
 #[derive(Serialize, Deserialize)]
 pub struct PolicyUpdateRequest {
     pub label: Label,
-    pub policy: Policy,
+    pub policy: Policies,
     pub labels: LabelMap,
 }
 
@@ -35,6 +35,6 @@ pub struct PolicyQueryRequest {
 
 #[derive(Serialize, Deserialize)]
 pub struct PolicyQueryResponse {
-    pub policy: Policy,
+    pub policy: Policies,
     pub labels: LabelMap,
 }

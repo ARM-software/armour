@@ -7,16 +7,16 @@ use armour_api::master::Status;
 use armour_lang::{
     expressions::{Error, Expr},
     interpret::Env,
-    lang,
     meta::IngressEgress,
+    policies::{self, FnPolicy, Protocol},
 };
 use futures::future::{self, TryFutureExt};
 use std::sync::Arc;
 
 pub struct TcpPolicy {
-    connect: lang::Policy,
-    disconnect: lang::Policy,
-    program: Arc<lang::Program>,
+    connect: FnPolicy,
+    disconnect: FnPolicy,
+    policy: Arc<policies::Policy>,
     env: Env,
     proxy: Option<(Addr<tcp_proxy::TcpDataServer>, u16)>,
 }
@@ -32,20 +32,26 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
         }
         self.proxy = None
     }
-    fn set_policy(&mut self, p: lang::Program) {
-        self.connect = p.policy(lang::ALLOW_TCP_CONNECTION);
-        self.disconnect = p.policy(lang::ON_TCP_DISCONNECT);
-        self.program = Arc::new(p);
-        self.env = Env::new(&self.program)
+    fn set_policy(&mut self, p: policies::Policy) {
+        self.connect = p
+            .get(policies::ALLOW_TCP_CONNECTION)
+            .cloned()
+            .unwrap_or_default();
+        self.disconnect = p
+            .get(policies::ON_TCP_DISCONNECT)
+            .cloned()
+            .unwrap_or_default();
+        self.policy = Arc::new(p);
+        self.env = Env::new(&self.policy.program)
     }
     fn port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|p| p.1)
     }
-    fn policy(&self) -> Arc<lang::Program> {
-        self.program.clone()
+    fn policy(&self) -> Arc<policies::Policy> {
+        self.policy.clone()
     }
     fn hash(&self) -> String {
-        self.program.blake3_string()
+        self.policy.blake3()
     }
     fn env(&self) -> &Env {
         &self.env
@@ -60,12 +66,13 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
 
 impl Default for TcpPolicy {
     fn default() -> Self {
-        let program = Arc::new(lang::Program::deny_all(&lang::TCP_POLICY).unwrap_or_default());
+        let policy = Arc::new(policies::Policy::deny_all(Protocol::TCP));
+        let env = Env::new(&policy.program);
         TcpPolicy {
-            connect: lang::Policy::default(),
-            disconnect: lang::Policy::default(),
-            program: program.clone(),
-            env: Env::new(&program),
+            connect: FnPolicy::default(),
+            disconnect: FnPolicy::default(),
+            policy,
+            env,
             proxy: None,
         }
     }
@@ -86,15 +93,15 @@ impl Handler<GetTcpPolicy> for PolicyActor {
 
     fn handle(&mut self, msg: GetTcpPolicy, _ctx: &mut Context<Self>) -> Self::Result {
         match self.tcp.connect {
-            lang::Policy::Allow => {
+            FnPolicy::Allow => {
                 self.connection_number += 1;
                 Box::pin(future::ok(TcpPolicyStatus::Allow(Box::new(None))))
             }
-            lang::Policy::Deny => {
+            FnPolicy::Deny => {
                 log::info!("deny");
                 Box::pin(future::ok(TcpPolicyStatus::Block))
             }
-            lang::Policy::Args(n) if n == 1 => {
+            FnPolicy::Args(n) if n == 1 => {
                 let connection = self
                     .connection(ID::SocketAddr(msg.0), ID::SocketAddr(msg.1))
                     .into();
@@ -102,7 +109,7 @@ impl Handler<GetTcpPolicy> for PolicyActor {
                 Box::pin(
                     self.tcp
                         .evaluate(
-                            lang::ALLOW_TCP_CONNECTION,
+                            policies::ALLOW_TCP_CONNECTION,
                             vec![connection],
                             IngressEgress::default(), // TODO
                         )
@@ -144,7 +151,7 @@ impl Handler<ConnectionStats> for PolicyActor {
     type Result = ResponseFuture<Result<(), ()>>;
 
     fn handle(&mut self, msg: ConnectionStats, _ctx: &mut Context<Self>) -> Self::Result {
-        if let lang::Policy::Args(arg_count) = self.tcp.disconnect {
+        if let FnPolicy::Args(arg_count) = self.tcp.disconnect {
             let args = match arg_count {
                 3 => vec![
                     msg.connection,
@@ -155,7 +162,7 @@ impl Handler<ConnectionStats> for PolicyActor {
             };
             Box::pin(
                 self.tcp
-                    .evaluate(lang::ON_TCP_DISCONNECT, args, IngressEgress::default())
+                    .evaluate(policies::ON_TCP_DISCONNECT, args, IngressEgress::default())
                     .and_then(|((), _meta)| future::ok(()))
                     .map_err(|e| log::warn!("error: {}", e)),
             )

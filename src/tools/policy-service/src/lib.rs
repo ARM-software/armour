@@ -3,7 +3,6 @@ extern crate capnp_rpc;
 
 use actix::prelude::*;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
-use external_capnp::external::ToClient;
 use futures::{FutureExt, StreamExt};
 use log::*;
 
@@ -17,8 +16,8 @@ pub async fn start_uds_policy_service<S: rpc::Dispatcher + 'static>(
     service: S,
     socket: std::path::PathBuf,
 ) -> std::io::Result<Addr<PolicyService>> {
-    let external = ToClient::new(service).into_client::<capnp_rpc::Server>();
     let listener = Box::new(async_std::os::unix::net::UnixListener::bind(&socket).await?);
+    let external = capnp_rpc::new_client(service);
     log::info!(r#"starting UDS policy service at "{}""#, socket.display());
     Ok(PolicyService::create(|ctx| {
         ctx.add_message_stream(
@@ -37,12 +36,12 @@ pub async fn start_tcp_policy_service<S: rpc::Dispatcher + 'static, A: std::net:
     service: S,
     socket: A,
 ) -> std::io::Result<Addr<PolicyService>> {
-    let external = ToClient::new(service).into_client::<capnp_rpc::Server>();
     let addr = socket
         .to_socket_addrs()?
         .next()
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "bad socket address"))?;
     let listener = Box::new(async_std::net::TcpListener::bind(&addr).await?);
+    let external = capnp_rpc::new_client(service);
     log::info!(r#"starting TCP policy service at "{}""#, addr);
     Ok(PolicyService::create(|ctx| {
         ctx.add_message_stream(
