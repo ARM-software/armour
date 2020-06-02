@@ -1,10 +1,19 @@
-fn allow_rest_request(req: HttpRequest) -> bool {
+fn allow_rest_request(req: HttpRequest, payload: data) -> bool {
     let (from, to) = req.from_to(); 
-    "server" in to.hosts() && to.port() == Some(80) &&
-    "client-1" in from.hosts() &&
-    req.method() == "GET" && req.path() == "private"
+    server_ok(to) && from.has_label('allowed') &&
+    req.method() == "GET" && req.path() == "/private" && payload.len() == 0
 }
 
-fn allow_rest_response(res: HttpResponse, payload: data) -> bool {
+fn server_ok(id: ID) -> bool {
+  "server" in id.hosts() &&
+  if let Some(port) = id.port() {
+    port == 80
+  } else {
+    // default is port 80
+    true
+  }
+}
+
+fn allow_rest_response(res: HttpResponse) -> bool {
     res.status() == 200
 }

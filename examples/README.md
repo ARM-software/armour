@@ -20,8 +20,8 @@ Then install the docker compose plugin
 % vagrant plugin install vagrant-docker-compose
 ```
 
-Testbed
--------
+Setup
+-----
 
 The following brings up the Vagrant VM
 
@@ -30,12 +30,15 @@ The following brings up the Vagrant VM
 % ./setup.sh
 ```
 
-> Note: The VM can be paused, resumed and deleted with:  
-> `vagrant pause`  
-> `vagrant resume`  
-> `vagrant destroy`
+> Note: After the initial setup, the VM can be stopped, started, paused, resumed and deleted with:  
+> `% vagrant halt`  
+> `% vagrant up`  
+> `% vagrant pause`  
+> `% vagrant resume`  
+> `% vagrant destroy`
 
-Running Armour
---------------
+Armour Examples
+---------------
 
-See [data-plane](data-plane.md) for an example of running Armour without a control plane.
+- See [data-plane](data-plane.md) for an example of running Armour without a control plane.
+- See [control-plane](control-plane.md) for an example of running Armour with a control plane.
