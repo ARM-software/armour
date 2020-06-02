@@ -56,25 +56,15 @@ impl FnPolicies {
     }
 }
 
-// template policy for a function associated with a given protocol
-#[derive(Serialize, Deserialize, Clone)]
-struct ProtocolFnPolicy(Vec<Signature>);
-
-impl ProtocolFnPolicy {
-    fn new(signatures: Vec<Signature>) -> Self {
-        ProtocolFnPolicy(signatures)
-    }
-}
-
-// map from function name to `ProtocolFnPolicy`
+// map from function name to list of permitted types
 #[derive(Default)]
-struct ProtocolPolicy(BTreeMap<String, ProtocolFnPolicy>);
+struct ProtocolPolicy(BTreeMap<String, Vec<Signature>>);
 
 impl ProtocolPolicy {
     fn functions(&self) -> Vec<String> {
         self.0.keys().cloned().collect()
     }
-    fn insert(&mut self, name: &str, fn_policy: ProtocolFnPolicy) {
+    fn insert(&mut self, name: &str, fn_policy: Vec<Signature>) {
         self.0.insert(name.to_string(), fn_policy);
     }
     fn insert_bool(&mut self, name: &str, args: Vec<Vec<Typ>>) {
@@ -82,14 +72,14 @@ impl ProtocolPolicy {
             .into_iter()
             .map(|v| Signature::new(v, Typ::Bool))
             .collect();
-        self.insert(name, ProtocolFnPolicy::new(sigs))
+        self.insert(name, sigs)
     }
     fn insert_unit(&mut self, name: &str, args: Vec<Vec<Typ>>) {
         let sigs = args
             .into_iter()
             .map(|v| Signature::new(v, Typ::Unit))
             .collect();
-        self.insert(name, ProtocolFnPolicy::new(sigs))
+        self.insert(name, sigs)
     }
 }
 
@@ -245,7 +235,7 @@ impl Policy {
     ) -> Result<Self, expressions::Error> {
         use std::convert::TryFrom;
         let mut fn_policies = FnPolicies::default();
-        for (function, ProtocolFnPolicy(signatures)) in proto_policy.0.iter() {
+        for (function, signatures) in proto_policy.0.iter() {
             if let Some(sig) = program.headers.typ(function) {
                 if !signatures
                     .iter()
@@ -257,7 +247,7 @@ impl Policy {
                         .collect::<Vec<String>>()
                         .join("; ");
                     return Err(expressions::Error::new(format!(
-                        r#"unable to find suitable instance of function "{}". possible types are: {}"#,
+                        r#"possible types for function "{}" are: {}"#,
                         function, possible
                     )));
                 }
@@ -270,7 +260,7 @@ impl Policy {
                 }
             } else {
                 log::warn!("not present: {}", function);
-                fn_policies.0.insert(function.to_string(), FnPolicy::Deny);
+                fn_policies.0.insert(function.to_string(), FnPolicy::Allow);
             }
         }
         Ok(Policy {

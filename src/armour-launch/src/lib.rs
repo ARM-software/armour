@@ -1,6 +1,9 @@
 use armour_api::master::{OnboardInformation, Proxies};
 use armour_compose::{Compose, OnboardInfo};
 use awc::Client;
+use std::collections::BTreeMap;
+use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -175,4 +178,126 @@ fn get_ip_address(container: docker_api::rep::ContainerDetails) -> Option<std::n
         .next()
         .map(|(_, network)| network.ip_address.parse().ok())
         .flatten()
+}
+
+fn forward_rule1(delete: bool, port: u16) -> String {
+    format!(
+        "iptables -{} FORWARD -p tcp -d localhost --dport {} -j ACCEPT\n",
+        if delete { "D" } else { "A" },
+        port
+    )
+}
+
+fn forward_rule(delete: bool, ports: &str) -> String {
+    format!(
+        "iptables -{} FORWARD -p tcp -d localhost --match multiport --dports {} -j ACCEPT\n",
+        if delete { "D" } else { "A" },
+        ports
+    )
+}
+
+fn prerouting_rule(delete: bool, network_name: &str, port: u16) -> String {
+    let mut s = format!(
+        "iptables -t nat -{} PREROUTING -i {} -p tcp -j DNAT --to-destination 127.0.0.1:{}\n",
+        if delete { "D" } else { "I" },
+        network_name,
+        port
+    );
+    if !delete {
+        s.push_str(&format!(
+            "sysctl -w net.ipv4.conf.{}.route_localnet=1\n",
+            network_name
+        ))
+    }
+    s
+}
+
+fn etc_hosts_rule(delete: bool, ip: std::net::Ipv4Addr, hostname: &str) -> String {
+    if delete {
+        format!("sed -i.bak '/{} {}/d' /etc/hosts\n", ip, hostname)
+    } else {
+        format!("echo '{} {}' >> /etc/hosts\n", ip, hostname)
+    }
+}
+
+fn create_exe(stem: &std::ffi::OsStr, suffix: &str) -> std::io::Result<impl std::io::Write> {
+    let mut file = stem.to_os_string();
+    file.push(suffix);
+    let mut file: std::path::PathBuf = file.into();
+    file.set_extension("sh");
+    let file = std::fs::File::create(file)?;
+    let mut perms = file.metadata()?.permissions();
+    perms.set_mode(0o744);
+    file.set_permissions(perms)?;
+    Ok(file)
+}
+
+pub fn rules(
+    compose: armour_compose::Compose,
+    onboard_info: OnboardInformation,
+    stem: &std::ffi::OsStr,
+) -> Result<(), Error> {
+    let mut up_file = create_exe(stem, "_up")?;
+    let mut down_file = create_exe(stem, "_down")?;
+    let mut hosts_file = create_exe(stem, "_hosts")?;
+    let mut port = onboard_info.top_port();
+    let mut port_map = BTreeMap::new();
+    for proxy in onboard_info.proxies {
+        let proxy_port = proxy.port.unwrap_or_else(|| {
+            port += 1;
+            port
+        });
+        port_map.insert(proxy.label, proxy_port);
+    }
+    let ports: Vec<&u16> = port_map.values().collect();
+    let one_proxy = ports.len() == 1;
+    if one_proxy {
+        let port = *ports[0];
+        up_file.write_all(forward_rule1(false, port).as_bytes())?;
+        down_file.write_all(forward_rule1(true, port).as_bytes())?;
+    } else if !ports.is_empty() {
+        let port_list = ports
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<String>>()
+            .join(",");
+        up_file.write_all(forward_rule(false, &port_list).as_bytes())?;
+        down_file.write_all(forward_rule(true, &port_list).as_bytes())?;
+    }
+    for (service_name, service) in compose.services {
+        let s = format!("# {}\n", service_name);
+        let bytes = s.as_bytes();
+        up_file.write_all(bytes)?;
+        down_file.write_all(bytes)?;
+        if let armour_compose::network::Networks::Dict(dict) = &service.networks {
+            if let Ok(service_label) = service_name.parse() {
+                for (network_name, network) in dict {
+                    let proxy_port: Option<&u16> = if one_proxy {
+                        ports.get(0).copied()
+                    } else {
+                        port_map.get(&service_label)
+                    };
+                    if let Some(proxy_port) = proxy_port {
+                        up_file.write_all(
+                            prerouting_rule(false, network_name, *proxy_port).as_bytes(),
+                        )?;
+                        down_file.write_all(
+                            prerouting_rule(true, network_name, *proxy_port).as_bytes(),
+                        )?
+                    }
+                    if let (Some(ip), Some(hostname)) =
+                        (network.ipv4_address, service.hostname.as_ref())
+                    {
+                        hosts_file.write_all(etc_hosts_rule(false, ip, hostname).as_bytes())?;
+                        down_file.write_all(etc_hosts_rule(true, ip, hostname).as_bytes())?
+                    }
+                }
+            }
+        }
+    }
+    println!(
+        "generated files: {0}_up.sh, {0}_down.sh, {0}_hosts.sh",
+        stem.to_string_lossy()
+    );
+    Ok(())
 }

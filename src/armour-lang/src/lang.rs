@@ -60,8 +60,8 @@ impl CallGraph {
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Program {
-    pub externals: externals::Externals,
     pub code: Code,
+    pub externals: externals::Externals,
     pub headers: Headers,
 }
 
@@ -97,11 +97,6 @@ pub struct PreProgram {
 }
 
 impl PreProgram {
-    // fn arg_count(&self, name: &str) -> Option<u8> {
-    //     self.program
-    //         .typ(name)
-    //         .map(|sig| sig.args().unwrap_or_else(Vec::new).len() as u8)
-    // }
     fn add_decl(&mut self, decl: &parser::FnDecl) -> Result<(), Error> {
         // println!("{:#?}", decl);
         let (name, e, calls) = Expr::from_decl(decl, &self.program.headers)?;
