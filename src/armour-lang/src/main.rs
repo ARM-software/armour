@@ -61,7 +61,7 @@ async fn main() -> std::io::Result<()> {
         )
         .subcommand(
             SubCommand::with_name("export")
-                .about("serialise programs")
+                .about("Serialise policy")
                 .arg(
                     Arg::with_name("policy")
                         .short("p")
@@ -78,7 +78,8 @@ async fn main() -> std::io::Result<()> {
                         .long("format")
                         .required(false)
                         .takes_value(true)
-                        .possible_values(&["armour", "json", "yaml"]),
+                        .possible_values(&["armour", "json", "yaml"])
+                        .help("Format of policy"),
                 ),
         )
         .get_matches();

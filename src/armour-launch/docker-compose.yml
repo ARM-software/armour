@@ -34,7 +34,6 @@ networks:
     driver_opts:
       com.docker.network.bridge.name: arm-srv-nginx
     ipam:
-      driver: ""
       config:
         - subnet: 172.18.0.0/24
     internal: true
@@ -43,7 +42,6 @@ networks:
     driver_opts:
       com.docker.network.bridge.name: arm-srv-nginx2
     ipam:
-      driver: ""
       config:
         - subnet: 172.18.1.0/24
     internal: true
@@ -52,7 +50,6 @@ networks:
     driver_opts:
       com.docker.network.bridge.name: arm-srv-nginx3
     ipam:
-      driver: ""
       config:
         - subnet: 172.18.2.0/24
     internal: true

@@ -3,8 +3,6 @@ use armour_lang::labels::Label;
 use armour_lang::policies;
 use clap::{crate_version, App};
 
-const DEFAULT_CONTROL_PLANE: &str = "http://127.0.0.1:8088";
-
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
 #[actix_rt::main]
@@ -14,7 +12,8 @@ async fn main() -> Result<(), Error> {
 
     let cp_url = matches
         .value_of("CONTROLPLANEURL")
-        .unwrap_or(DEFAULT_CONTROL_PLANE);
+        .unwrap_or(control::CONTROL_PLANE);
+    let url = |s: &str| format!("http://{}/{}", cp_url, s);
 
     let client = awc::Client::build().finish();
 
@@ -30,7 +29,7 @@ async fn main() -> Result<(), Error> {
             labels,
         };
         match client
-            .post(cp_url.to_owned() + "/policy/update")
+            .post(url("policy/update"))
             .send_json(&update_payload)
             .await
         {
@@ -45,7 +44,7 @@ async fn main() -> Result<(), Error> {
             label: service.parse()?,
         };
         match client
-            .get(cp_url.to_owned() + "/policy/query")
+            .get(url("policy/query"))
             .send_json(&query_payload)
             .await
         {
@@ -70,7 +69,7 @@ async fn main() -> Result<(), Error> {
             label: service.parse()?,
         };
         match client
-            .delete(cp_url.to_owned() + "/policy/drop")
+            .delete(url("policy/drop"))
             .send_json(&drop_payload)
             .await
         {
@@ -80,11 +79,7 @@ async fn main() -> Result<(), Error> {
     }
     // drop all
     else if matches.subcommand_matches("drop-all").is_some() {
-        match client
-            .delete(cp_url.to_owned() + "/policy/drop-all")
-            .send()
-            .await
-        {
+        match client.delete(url("policy/drop-all")).send().await {
             Ok(response) => println!("success: {}", response.status().is_success()),
             Err(err) => println!("{}", err),
         }

@@ -15,14 +15,27 @@ use rustyline::{completion, error::ReadlineError, hint, validate::Validator, Edi
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    const UDS_SOCKET: &str = "armour";
-    const TCP_PORT: u16 = 8090;
-
     // Command Line Interface
     let matches = ClapApp::new("armour-master")
         .version(crate_version!())
         .author("Anthony Fox <anthony.fox@arm.com>")
         .about("Armour Data Plane Master")
+        .arg(
+            Arg::with_name("control")
+                .short("c")
+                .long("control")
+                .takes_value(true)
+                .value_name("URL")
+                .help("Control plane URL"),
+        )
+        .arg(
+            Arg::with_name("url")
+                .short("u")
+                .long("url")
+                .takes_value(true)
+                .value_name("URL")
+                .help("Data plane master URL (sent to control plane)"),
+        )
         .arg(
             Arg::with_name("label")
                 .long("label")
@@ -43,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .short("p")
                 .required(false)
                 .takes_value(true)
-                .help("TCP port for REST interface"),
+                .help("Port for HTTP interface"),
         )
         .arg(
             Arg::with_name("master socket")
@@ -70,10 +83,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     });
     let pass_key = argon2rs::argon2i_simple(&pass, PASS_SALT);
 
+    let control_url = matches
+        .value_of("control")
+        .unwrap_or(armour_api::control::CONTROL_PLANE)
+        .to_string();
+
     // Unix socket for proxy communication
     let unix_socket = matches
         .value_of("master socket")
-        .unwrap_or(UDS_SOCKET)
+        .unwrap_or(armour_api::master::UDS_SOCKET)
         .to_string();
     let unix_socket = std::fs::canonicalize(&unix_socket)
         .unwrap_or_else(|_| std::path::PathBuf::from(unix_socket));
@@ -81,8 +99,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // TCP socket for REST interface
     let port = matches
         .value_of("port")
-        .map(|s| s.parse::<u16>().unwrap_or(TCP_PORT))
-        .unwrap_or(TCP_PORT);
+        .map(|s| s.parse::<u16>().unwrap_or(armour_api::master::TCP_PORT))
+        .unwrap_or(armour_api::master::TCP_PORT);
     let tcp_socket = format!("localhost:{}", port);
 
     // Onboarding data
@@ -94,17 +112,24 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if label.len() != 1 {
         return Err("master label not of the form `<name>`".into());
     }
+    let host = url::Url::parse(
+        matches
+            .value_of("url")
+            .unwrap_or(armour_api::master::DATA_PLANE_MASTER),
+    )
+    .map_err(|_| "failed to parse URL".to_string())?;
     let onboard = armour_api::control::OnboardMasterRequest {
-        host: url::Url::parse(&tcp_socket).unwrap(), // TODO: public URL from command line
+        host,
         master: label.clone(),
         credentials: String::new(),
     };
     let onboard_clone = onboard.clone();
 
     // onboard with control plane
+    let control_url_clone = control_url.clone();
     let onboarded = if let Err(message) = sys.block_on(async move {
         control_plane(
-            &actix_web::client::Client::default(),
+            &control_url_clone,
             http::Method::POST,
             "master/on-board",
             &onboard,
@@ -129,7 +154,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .incoming()
                 .map(|st| UdsConnect(st.unwrap())),
         );
-        ArmourDataMaster::new(&label, onboarded, unix_socket, pass_key)
+        ArmourDataMaster::new(&control_url, &label, onboarded, unix_socket, pass_key)
     });
     let master_clone = master.clone();
 
@@ -194,7 +219,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut sys = actix_rt::System::new("armour_master");
         if let Err(message) = sys.block_on(async move {
             control_plane(
-                &actix_web::client::Client::default(),
+                &control_url,
                 http::Method::DELETE,
                 "master/drop",
                 &onboard_clone,

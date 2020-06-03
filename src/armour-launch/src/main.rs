@@ -9,11 +9,12 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 #[actix_rt::main]
 async fn main() -> Result<(), Error> {
     let matches = get_matches();
-    const TCP_PORT: u16 = 8090;
-    let master_port = matches
-        .value_of("port")
-        .map(|s| s.parse::<u16>().unwrap_or(TCP_PORT))
-        .unwrap_or(TCP_PORT);
+    let master_url = url::Url::parse(
+        matches
+            .value_of("master")
+            .unwrap_or(armour_api::master::DATA_PLANE_MASTER),
+    )
+    .map_err(|_| "failed to parse URL".to_string())?;
     const FILE: &str = "docker-compose.yml";
     let out_file = matches.value_of("file").unwrap_or(FILE);
     let in_file = matches.value_of("input file").unwrap();
@@ -29,14 +30,14 @@ async fn main() -> Result<(), Error> {
             // try to set IP addresses for containers (leaves containers in paused state)
             set_ip_addresses(&mut info).await;
             // notify data plane master - onboarding
-            onboard_services(master_port, info, out_file).await
+            onboard_services(master_url, info, out_file).await
         }
     } else if let Some(_down) = matches.subcommand_matches("down") {
         // create docker-compose.yml from armour-compose input file
         let info = read_armour(in_file, out_file)?;
         // try to run `docker-compose down` command
         docker_down(out_file)?;
-        drop_services(master_port, info.proxies).await
+        drop_services(master_url, info.proxies).await
     } else if let Some(rules_matches) = matches.subcommand_matches("rules") {
         let (compose, info) = armour_compose::Compose::read_armour(in_file)?;
         let rules_file = rules_matches.value_of("rules file").unwrap_or("rules");
@@ -55,11 +56,13 @@ fn get_matches<'a>() -> clap::ArgMatches<'a> {
         .about("Armour launcher")
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .arg(
-            Arg::with_name("port")
-                .short("p")
+            Arg::with_name("master")
+                .short("m")
+                .long("master")
                 .required(false)
                 .takes_value(true)
-                .help("TCP port for data plane master"),
+                .value_name("URL")
+                .help("data plane master URL"),
         )
         .arg(
             Arg::with_name("file")

@@ -3,12 +3,14 @@ version: "1.0"
 about: Armour control command line tool
 args:
   - CONTROLPLANEURL:
-      help: URL of the control plane
-      required: false
-      index: 1
+      help: control plane URL
+      short: c
+      long: control
+      takes_value: true
+      value_name: URL
 subcommands:
   - update:
-      about: Used to update policies
+      about: Update a policy
       args:
         - POLICYFILE:
             short: p
@@ -36,7 +38,7 @@ subcommands:
                 - "label"
             help: Policy labels
   - query:
-      about: Used to query policies
+      about: Query a policy
       args:
         - SERVICE:
             short: s

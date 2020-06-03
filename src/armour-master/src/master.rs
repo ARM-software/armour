@@ -13,6 +13,7 @@ use tokio_util::codec::FramedRead;
 
 /// Actor that handles Unix socket connections
 pub struct ArmourDataMaster {
+    url: String,                                 // control plane URL
     label: Label,         // master label (for communication with control plane)
     onboarded: bool,      // did we succesfully on-board with control plane?
     instances: Instances, // instance actor addresses and info
@@ -32,8 +33,15 @@ impl Actor for ArmourDataMaster {
 }
 
 impl ArmourDataMaster {
-    pub fn new(label: &Label, onboarded: bool, socket: std::path::PathBuf, key: [u8; 32]) -> Self {
+    pub fn new(
+        url: &str,
+        label: &Label,
+        onboarded: bool,
+        socket: std::path::PathBuf,
+        key: [u8; 32],
+    ) -> Self {
         ArmourDataMaster {
+            url: url.to_string(),
             label: label.clone(),
             onboarded,
             instances: Instances::default(),
@@ -126,9 +134,10 @@ impl Handler<Disconnect> for ArmourDataMaster {
                                 service: meta.label,
                                 master: self.label.clone(),
                             };
+                            let url = self.url.clone();
                             async move {
                                 crate::control_plane(
-                                    &actix_web::client::Client::default(),
+                                    &url,
                                     http::Method::DELETE,
                                     "service/drop",
                                     &onboard,
@@ -174,15 +183,12 @@ impl Handler<RegisterProxy> for ArmourDataMaster {
                     service: label,
                     master: self.label.clone(),
                 };
+                let url = self.url.clone();
+                let url_clone = self.url.clone();
                 // on-board
                 async move {
-                    crate::control_plane(
-                        &actix_web::client::Client::default(),
-                        http::Method::POST,
-                        "service/on-board",
-                        &onboard,
-                    )
-                    .await
+                    crate::control_plane(&url, http::Method::POST, "service/on-board", &onboard)
+                        .await
                 }
                 .into_actor(self)
                 .then(|on_board_res, act, _ctx| {
@@ -193,7 +199,7 @@ impl Handler<RegisterProxy> for ArmourDataMaster {
                         };
                         // query policy
                         crate::control_plane_deserialize::<_, PolicyQueryResponse>(
-                            &actix_web::client::Client::default(),
+                            &url_clone,
                             http::Method::GET,
                             "policy/query",
                             &query,

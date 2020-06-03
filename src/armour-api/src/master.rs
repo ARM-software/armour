@@ -11,6 +11,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tokio_util::codec::{Decoder, Encoder};
 
+pub const DATA_PLANE_MASTER: &str = "localhost:8090";
+pub const UDS_SOCKET: &str = "armour";
+pub const TCP_PORT: u16 = 8090;
+
 /// Request policy update
 ///
 /// Consists of a label, which should be of the form `<master>::<proxy>`

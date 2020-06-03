@@ -4,6 +4,8 @@ use armour_lang::labels::{Label, Labels};
 use armour_lang::policies::Policies;
 use serde::{Deserialize, Serialize};
 
+pub const CONTROL_PLANE: &str = "localhost:8088";
+
 type Credentials = String;
 // map from domains to labels
 pub type LabelMap = std::collections::BTreeMap<String, Labels>;

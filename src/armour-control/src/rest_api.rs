@@ -25,10 +25,11 @@ pub mod master {
         let col = collection(&state, MASTERS_COL);
 
         // Check if the master is already there
-        if present(&col, doc! { "master" : to_bson(master)? })? {
+        if present(&col, doc! { "master" : to_bson(master)? }).await? {
             Ok(internal(format!(r#"Master "{}" already present"#, master)))
         } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
             col.insert_one(document, None)
+                .await
                 .on_err("error inserting in MongoDB")?;
             Ok(HttpResponse::Ok().body("success"))
         } else {
@@ -48,10 +49,12 @@ pub mod master {
         let col = collection(&state, MASTERS_COL);
         if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
             col.delete_one(document, None)
+                .await
                 .on_err("error removing master from MongoDB")?;
             let col = collection(&state, SERVICES_COL);
             let filter = doc! { "master" : to_bson(&master)? };
             col.delete_many(filter, None)
+                .await
                 .on_err("error removing services from MongoDB")?;
 
             Ok(HttpResponse::Ok().body("success"))
@@ -74,10 +77,11 @@ pub mod service {
         let col = collection(&state, SERVICES_COL);
 
         // Check if the service is already there
-        if present(&col, doc! { "service" : to_bson(service)? })? {
+        if present(&col, doc! { "service" : to_bson(service)? }).await? {
             Ok(internal(format!("service label in use {}", service)))
         } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
             col.insert_one(document, None) // Insert into a MongoDB collection
+                .await
                 .on_err("error inserting in MongoDB")?;
             Ok(HttpResponse::Ok().body("success"))
         } else {
@@ -96,6 +100,7 @@ pub mod service {
 
         if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
             col.delete_one(document, None) // Insert into a MongoDB collection
+                .await
                 .on_err("error inserting in MongoDB")?;
             Ok(HttpResponse::Ok().body("success"))
         } else {
@@ -108,45 +113,51 @@ pub mod policy {
     use super::*;
     use std::collections::BTreeSet;
 
-    fn services(state: &State) -> Result<BTreeSet<Label>, actix_web::Error> {
+    async fn services(state: &State) -> Result<BTreeSet<Label>, actix_web::Error> {
+        use futures::StreamExt;
         let mut services = BTreeSet::new();
-        let policies_col = collection(state, POLICIES_COL);
-        for doc in policies_col
+        let mut docs = collection(state, POLICIES_COL)
             .find(doc! {}, None)
-            .on_err("error finding services")?
-            .filter_map(|doc| doc.ok())
-        {
-            let label = bson::from_bson::<control::PolicyUpdateRequest>(bson::Bson::Document(doc))
-                .on_err("Bson conversion error")?
-                .label;
-            services.insert(label);
+            .await
+            .on_err("error finding services")?;
+        while let Some(doc) = docs.next().await {
+            if let Ok(doc) = doc {
+                let label =
+                    bson::from_bson::<control::PolicyUpdateRequest>(bson::Bson::Document(doc))
+                        .on_err("Bson conversion error")?
+                        .label;
+                services.insert(label);
+            }
         }
         Ok(services)
     }
 
-    fn hosts(state: &State, label: &Label) -> Result<BTreeSet<url::Url>, actix_web::Error> {
-        let services_col = collection(state, SERVICES_COL);
+    async fn hosts(state: &State, label: &Label) -> Result<BTreeSet<url::Url>, actix_web::Error> {
+        use futures::StreamExt;
         let masters_col = collection(state, MASTERS_COL);
         let mut hosts = BTreeSet::new();
         // find masters for service
-        for doc in services_col
+        let mut docs = collection(state, SERVICES_COL)
             .find(doc! { "service" : to_bson(label)? }, None)
-            .on_err("Error notifying masters")?
-            .filter_map(|doc| doc.ok())
-        {
-            let master =
-                bson::from_bson::<control::OnboardServiceRequest>(bson::Bson::Document(doc))
-                    .on_err("Bson conversion error")?
-                    .master;
-            // find host for master
-            if let Ok(Some(doc)) =
-                masters_col.find_one(Some(doc! { "master" : to_bson(&master)? }), None)
-            {
-                hosts.insert(
-                    bson::from_bson::<control::OnboardMasterRequest>(bson::Bson::Document(doc))
+            .await
+            .on_err("Error notifying masters")?;
+        while let Some(doc) = docs.next().await {
+            if let Ok(doc) = doc {
+                let master =
+                    bson::from_bson::<control::OnboardServiceRequest>(bson::Bson::Document(doc))
                         .on_err("Bson conversion error")?
-                        .host,
-                );
+                        .master;
+                // find host for master
+                if let Ok(Some(doc)) = masters_col
+                    .find_one(Some(doc! { "master" : to_bson(&master)? }), None)
+                    .await
+                {
+                    hosts.insert(
+                        bson::from_bson::<control::OnboardMasterRequest>(bson::Bson::Document(doc))
+                            .on_err("Bson conversion error")?
+                            .host,
+                    );
+                }
             }
         }
         Ok(hosts)
@@ -158,8 +169,8 @@ pub mod policy {
         policy: &Policies,
     ) -> Result<(), actix_web::Error> {
         let client = client::Client::default();
-        let hosts = hosts(state, label)?;
-        // log::debug!("hosts: {:?}", hosts);
+        let hosts = hosts(state, label).await?;
+        log::debug!("hosts: {:?}", hosts);
         for host in hosts {
             let req = PolicyUpdate {
                 label: label.clone(),
@@ -177,7 +188,7 @@ pub mod policy {
                         log::info!("failed to push policy to {}", host)
                     }
                 }
-                Err(err) => log::warn!("{}", err),
+                Err(err) => log::warn!("{}: {}", host, err),
             }
         }
         Ok(())
@@ -198,8 +209,10 @@ pub mod policy {
             let col = collection(&state, POLICIES_COL);
             let filter = doc! { "label" : to_bson(label)? };
             col.delete_many(filter, None)
+                .await
                 .on_err("error removing old policies")?;
             col.insert_one(document, None)
+                .await
                 .on_err("error inserting new policy")?;
             // push policy to masters
             update_hosts(&state, label, &request.policy).await?;
@@ -219,7 +232,10 @@ pub mod policy {
         let label = &request.label;
         log::info!("Querying policy for {}", label);
         let col = collection(&state, POLICIES_COL);
-        if let Ok(Some(doc)) = col.find_one(Some(doc! { "label" : label.to_string() }), None) {
+        if let Ok(Some(doc)) = col
+            .find_one(Some(doc! { "label" : label.to_string() }), None)
+            .await
+        {
             let current =
                 bson::from_bson::<control::PolicyUpdateRequest>(bson::Bson::Document(doc))
                     .on_err("Bson conversion error")?;
@@ -239,6 +255,7 @@ pub mod policy {
         let col = collection(&state, POLICIES_COL);
         let res = col
             .delete_one(doc! { "label" : label.to_string() }, None)
+            .await
             .on_err("failed to drop policy")?;
         update_hosts(&state, label, &Policies::deny_all()).await?;
         Ok(HttpResponse::Ok().body(format!("dropped {}", res.deleted_count)))
@@ -247,25 +264,27 @@ pub mod policy {
     #[delete("/drop-all")]
     async fn drop_all(state: State) -> Result<HttpResponse, actix_web::Error> {
         log::info!("Dropping all policies");
-        let services = services(&state)?;
-        collection(&state, POLICIES_COL)
-            .drop(None)
-            .on_err("failed to drop all policies")?;
-        for label in services {
-            update_hosts(&state, &label, &Policies::deny_all()).await?;
+        let services = services(&state).await?;
+        if collection(&state, POLICIES_COL).drop(None).await.is_ok() {
+            for label in services {
+                update_hosts(&state, &label, &Policies::deny_all()).await?;
+            }
         }
         Ok(HttpResponse::Ok().body("dropped all policies"))
     }
 }
 
-fn present(
+async fn present(
     col: &mongodb::Collection,
     filter: impl Into<Option<bson::Document>>,
 ) -> Result<bool, actix_web::Error> {
+    use futures::StreamExt;
     Ok(col
         .find(filter, None)
+        .await
         .on_err("MongoDB query error")?
         .next()
+        .await
         .is_some())
 }
 

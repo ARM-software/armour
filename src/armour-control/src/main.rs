@@ -1,8 +1,8 @@
 // For MongoDB installation see: https://docs.mongodb.com/manual/tutorial/install-mongodb-on-os-x
 
 use actix_web::{error, middleware, web, App, FromRequest, HttpRequest, HttpResponse, HttpServer};
+use armour_api::control::CONTROL_PLANE;
 use armour_control::{rest_api, ControlPlaneState};
-use listenfd::ListenFd;
 use mongodb::{options::ClientOptions, Client};
 use tokio::stream::StreamExt;
 
@@ -12,21 +12,21 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 
 #[actix_rt::main]
 async fn main() -> Result<(), Error> {
+    // proceess command line arguments
+    let yaml = clap::load_yaml!("../resources/cli.yml");
+    let matches = clap::App::from_yaml(yaml)
+        .version(clap::crate_version!())
+        .get_matches();
+    let mongo_url = matches.value_of("MONGODBURL").unwrap_or(DEFAULT_MONGO_DB);
+    let control_plane_url = matches.value_of("URL").unwrap_or(CONTROL_PLANE);
+
     // enable logging
     std::env::set_var("RUST_LOG", "armour_control=info,actix_web=info");
     std::env::set_var("RUST_BACKTRACE", "0");
     env_logger::init();
 
-    let yaml = clap::load_yaml!("../resources/cli.yml");
-    let matches = clap::App::from_yaml(yaml)
-        .version(clap::crate_version!())
-        .get_matches();
-
-    let mongo_url = matches.value_of("MONGODBURL").unwrap_or(DEFAULT_MONGO_DB);
-
-    let mut listenfd = ListenFd::from_env();
-
-    let mut db_endpoint = ClientOptions::parse(mongo_url).map_err(|e| {
+    // connect to MongoDB
+    let mut db_endpoint = ClientOptions::parse(mongo_url).await.map_err(|e| {
         log::warn!("failed to get db_endpoint");
         e
     })?;
@@ -35,15 +35,17 @@ async fn main() -> Result<(), Error> {
         log::info!("Failed to connect to Mongo. Start MongoDB");
         e
     })?;
-    // start from blank database
-    db_con.database("armour").drop(None)?;
+
+    // start from empty database
+    db_con.database("armour").drop(None).await?;
     log::info!("reset armour database");
     let state = web::Data::new(ControlPlaneState {
         db_endpoint,
         db_con,
     });
 
-    let mut server = HttpServer::new(move || {
+    // start HTTP server
+    HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
             .wrap(middleware::Logger::default())
@@ -73,20 +75,13 @@ async fn main() -> Result<(), Error> {
                 }),
             )
             .default_service(web::to(index))
-    });
+    })
+    .bind(control_plane_url)?
+    .run();
 
-    server = if let Some(l) = listenfd.take_tcp_listener(0).unwrap() {
-        if let Ok(addr) = l.local_addr() {
-            log::info!("listening on: {} [via systemfd]", addr)
-        }
-        server.listen(l).unwrap()
-    } else {
-        const ADDR: &str = "127.0.0.1:8088";
-        log::info!("listening on: {}", ADDR);
-        server.bind(ADDR).unwrap()
-    };
+    log::info!("listening on: http://{}", control_plane_url);
 
-    server.run();
+    // await ^C
     tokio::signal::ctrl_c().await.unwrap_or_default();
     Ok(())
 }

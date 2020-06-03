@@ -31,6 +31,12 @@ You will also need [Cap'n Proto](https://capnproto.org) and [OpenSSL](https://ww
 % brew install openssl
 ```
 
+## Default URLs
+
+- `armour-control`: `localhost:8088`
+- `armour-master`: `localhost:8090`
+- `logger` (web interface): `localhost:9000`
+
 ## Other directories
 
 - `docs/`: documentation and API testing

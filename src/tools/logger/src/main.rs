@@ -27,7 +27,7 @@ fn main() -> std::io::Result<()> {
             ))?
         };
         // start web server
-        web::start_web_server(connections.clone(), 8080)?;
+        web::start_web_server(connections.clone(), 9000)?;
         // issue commands based on user input
         std::thread::spawn(move || {
             let mut rl = Editor::new();

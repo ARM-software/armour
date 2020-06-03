@@ -4,7 +4,7 @@ use actix_web::{middleware, web, App, HttpResponse, HttpServer};
 use std::sync::{Arc, Mutex};
 
 pub fn start_web_server(connections: Arc<Mutex<Connections>>, port: u16) -> std::io::Result<()> {
-    let socket_address = format!("127.0.0.1:{}", port);
+    let socket_address = format!("localhost:{}", port);
     let _server = HttpServer::new(move || {
         App::new()
             .data(connections.clone())

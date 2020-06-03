@@ -9,14 +9,14 @@ use std::process::Command;
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
 pub async fn onboard_services<P: AsRef<std::ffi::OsStr>>(
-    master_port: u16,
+    master_url: url::Url,
     info: OnboardInfo,
     out_file: P,
 ) -> Result<(), Error> {
     let client = Client::default();
     let onboard_info: OnboardInformation = (&info).into();
     match client
-        .post(format!("http://localhost:{}/service/on-board", master_port))
+        .post(format!("http://{}/service/on-board", master_url))
         .send_json(&onboard_info)
         .await
     {
@@ -27,7 +27,7 @@ pub async fn onboard_services<P: AsRef<std::ffi::OsStr>>(
                 Ok(())
             } else {
                 docker_down(out_file)?;
-                drop_services(master_port, info.proxies).await?;
+                drop_services(master_url, info.proxies).await?;
                 Err(message(res)
                     .await
                     .unwrap_or_else(|| "onboarding failed".to_string())
@@ -36,23 +36,23 @@ pub async fn onboard_services<P: AsRef<std::ffi::OsStr>>(
         }
         Err(e) => {
             docker_down(out_file)?;
-            drop_services(master_port, info.proxies).await?;
+            drop_services(master_url, info.proxies).await?;
             Err(format!("onboarding failed: {}", e).into())
         }
     }
 }
 
-pub async fn drop_services(master_port: u16, proxies: Proxies) -> Result<(), Error> {
+pub async fn drop_services(master_url: url::Url, proxies: Proxies) -> Result<(), Error> {
     if proxies.is_empty() {
         println!("no proxies to drop");
         Ok(())
     } else {
         let client = Client::default();
         let res = client
-            .delete(format!("http://localhost:{}/service/drop", master_port))
+            .delete(format!("http://{}/service/drop", master_url))
             .send_json(&proxies.to_vec())
             .await
-            .map_err(|err| format!("drop services failed: {}", err))?;
+            .map_err(|err| format!("{}: drop services failed: {}", master_url, err))?;
         if res.status().is_success() {
             println!("drop services succeeded");
             Ok(())
