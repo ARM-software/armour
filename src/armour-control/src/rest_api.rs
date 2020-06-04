@@ -26,7 +26,7 @@ pub mod master {
 
         // Check if the master is already there
         if present(&col, doc! { "master" : to_bson(master)? }).await? {
-            Ok(internal(format!(r#"Master "{}" already present"#, master)))
+            Ok(internal(format!(r#"master "{}" already present"#, master)))
         } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
             col.insert_one(document, None)
                 .await
@@ -44,7 +44,7 @@ pub mod master {
     ) -> Result<HttpResponse, actix_web::Error> {
         let master = request.master.clone();
         let host = &request.host;
-        log::info!("Dropping master: {} ({})", master, host);
+        log::info!("dropping master: {} ({})", master, host);
 
         let col = collection(&state, MASTERS_COL);
         if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
@@ -73,7 +73,7 @@ pub mod service {
         request: Json<control::OnboardServiceRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
         let service = &request.service;
-        log::info!("Onboarding service: {}", service);
+        log::info!("onboarding service: {}", service);
         let col = collection(&state, SERVICES_COL);
 
         // Check if the service is already there
@@ -95,7 +95,7 @@ pub mod service {
         request: Json<control::OnboardServiceRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
         let service = &request.service;
-        log::info!("Dropping service: {}", service);
+        log::info!("dropping service: {}", service);
         let col = collection(&state, SERVICES_COL);
 
         if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
@@ -140,7 +140,7 @@ pub mod policy {
         let mut docs = collection(state, SERVICES_COL)
             .find(doc! { "service" : to_bson(label)? }, None)
             .await
-            .on_err("Error notifying masters")?;
+            .on_err("error notifying masters")?;
         while let Some(doc) = docs.next().await {
             if let Ok(doc) = doc {
                 let master =
@@ -202,7 +202,7 @@ pub mod policy {
     ) -> Result<HttpResponse, actix_web::Error> {
         let request = request.into_inner();
         let label = &request.label.clone();
-        log::info!(r#"Updating policy for label "{}""#, label);
+        log::info!(r#"updating policy for label "{}""#, label);
 
         if let bson::Bson::Document(document) = to_bson(&request)? {
             // update policy in database
@@ -218,7 +218,7 @@ pub mod policy {
             update_hosts(&state, label, &request.policy).await?;
             Ok(HttpResponse::Ok().finish())
         } else {
-            log::warn!("Error converting the BSON object into a MongoDB document");
+            log::warn!("error converting the BSON object into a MongoDB document");
             Ok(internal("error inserting policy"))
         }
     }
@@ -230,7 +230,7 @@ pub mod policy {
         request: Json<control::PolicyQueryRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
         let label = &request.label;
-        log::info!("Querying policy for {}", label);
+        log::info!("querying policy for {}", label);
         let col = collection(&state, POLICIES_COL);
         if let Ok(Some(doc)) = col
             .find_one(Some(doc! { "label" : label.to_string() }), None)
@@ -251,7 +251,7 @@ pub mod policy {
         request: Json<control::PolicyQueryRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
         let label = &request.label;
-        log::info!("Dropping policy for {}", label);
+        log::info!("dropping policy for {}", label);
         let col = collection(&state, POLICIES_COL);
         let res = col
             .delete_one(doc! { "label" : label.to_string() }, None)
@@ -263,7 +263,7 @@ pub mod policy {
 
     #[delete("/drop-all")]
     async fn drop_all(state: State) -> Result<HttpResponse, actix_web::Error> {
-        log::info!("Dropping all policies");
+        log::info!("dropping all policies");
         let services = services(&state).await?;
         if collection(&state, POLICIES_COL).drop(None).await.is_ok() {
             for label in services {
@@ -312,6 +312,6 @@ where
     }
 }
 
-impl<T> OnErr<T, bson::DecoderError> for bson::DecoderResult<T> {}
-impl<T> OnErr<T, bson::EncoderError> for bson::EncoderResult<T> {}
+impl<T> OnErr<T, bson::de::Error> for bson::de::Result<T> {}
+impl<T> OnErr<T, bson::ser::Error> for bson::ser::Result<T> {}
 impl<T> OnErr<T, mongodb::error::Error> for mongodb::error::Result<T> {}
