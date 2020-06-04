@@ -40,5 +40,5 @@ The following brings up the Vagrant VM
 Armour Examples
 ---------------
 
-- See [data-plane](data-plane.md) for an example of running Armour without a control plane.
-- See [control-plane](control-plane.md) for an example of running Armour with a control plane.
+- See [data-plane/](data-plane/README.md) for an example of running Armour without a control plane.
+- See [control-plane/](control-plane/README.md) for an example of running Armour with a control plane.
