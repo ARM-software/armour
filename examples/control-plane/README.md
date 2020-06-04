@@ -88,7 +88,7 @@ This is similar to `id.policy` but it also checks the *method*, *path* and *payl
 
 ### Setup
 
-1. Setup and start the Vagrant VM, see [README](README.md).
+1. Setup and start the Vagrant VM, see [README](../README.md).
 1. Start four terminal windows and in each `ssh` into the vagrant VM:
 
    ```shell
