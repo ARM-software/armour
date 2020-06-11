@@ -131,6 +131,9 @@ impl Compose {
                 service.extra_hosts = armour_serde::array_dict::ArrayDict::Array(extra)
             }
         }
+        for proxy in self.proxies.iter_mut() {
+            proxy.set_ingress(&extra_hosts)?
+        }
         if self.proxies.is_empty() {
             self.proxies = self
                 .services

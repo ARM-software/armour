@@ -1,7 +1,6 @@
 // For MongoDB installation see: https://docs.mongodb.com/manual/tutorial/install-mongodb-on-os-x
 
 use actix_web::{error, middleware, web, App, FromRequest, HttpRequest, HttpResponse, HttpServer};
-use armour_api::control::CONTROL_PLANE;
 use armour_control::{rest_api, ControlPlaneState};
 use mongodb::{options::ClientOptions, Client};
 use tokio::stream::StreamExt;
@@ -18,7 +17,12 @@ async fn main() -> Result<(), Error> {
         .version(clap::crate_version!())
         .get_matches();
     let mongo_url = matches.value_of("MONGODBURL").unwrap_or(DEFAULT_MONGO_DB);
-    let control_plane_url = matches.value_of("URL").unwrap_or(CONTROL_PLANE);
+    let port = matches
+        .value_of("PORT")
+        .map(|s| s.parse().ok())
+        .flatten()
+        .unwrap_or(armour_api::control::TCP_PORT);
+    let control_plane = std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(0, 0, 0, 0), port);
 
     // enable logging
     std::env::set_var("RUST_LOG", "armour_control=info,actix_web=info");
@@ -76,10 +80,10 @@ async fn main() -> Result<(), Error> {
             )
             .default_service(web::to(index))
     })
-    .bind(control_plane_url)?
+    .bind(control_plane)?
     .run();
 
-    log::info!("listening on: http://{}", control_plane_url);
+    log::info!("listening on: http://{}", control_plane);
 
     // await ^C
     tokio::signal::ctrl_c().await.unwrap_or_default();

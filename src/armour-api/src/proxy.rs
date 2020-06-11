@@ -15,6 +15,27 @@ pub enum LabelOp {
     Clear,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum HttpConfig {
+    Port(u16),
+    Ingress(u16, std::net::SocketAddrV4),
+}
+
+impl HttpConfig {
+    pub fn port(&self) -> u16 {
+        match self {
+            HttpConfig::Port(p) => *p,
+            HttpConfig::Ingress(p, _) => *p,
+        }
+    }
+    pub fn ingress(&self) -> Option<std::net::SocketAddrV4> {
+        match self {
+            HttpConfig::Port(_p) => None,
+            HttpConfig::Ingress(_p, socket) => Some(*socket),
+        }
+    }
+}
+
 /// Message to proxy instance
 #[derive(Serialize, Deserialize, Message, Clone)]
 #[rtype("()")]
@@ -22,7 +43,7 @@ pub enum PolicyRequest {
     Label(LabelOp),
     SetPolicy(policies::Policies),
     Shutdown,
-    StartHttp(u16),
+    StartHttp(HttpConfig),
     StartTcp(u16),
     Status,
     Stop(policies::Protocol),

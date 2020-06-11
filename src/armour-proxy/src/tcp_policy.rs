@@ -60,6 +60,7 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
         Box::new(Status {
             port: self.port(),
             policy: (*self.policy()).clone(),
+            ingress: None,
         })
     }
 }

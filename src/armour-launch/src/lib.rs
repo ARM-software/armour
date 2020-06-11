@@ -240,44 +240,41 @@ pub fn rules(
     let mut up_file = create_exe(stem, "_up")?;
     let mut down_file = create_exe(stem, "_down")?;
     let mut hosts_file = create_exe(stem, "_hosts")?;
-    let mut port = onboard_info.top_port();
     let mut port_map = BTreeMap::new();
+    let port = onboard_info.top_port();
     for proxy in onboard_info.proxies {
-        let proxy_port = proxy.port.unwrap_or_else(|| {
-            port += 1;
-            port
-        });
+        let proxy_port = proxy.port(port);
         port_map.insert(proxy.label, proxy_port);
     }
-    let ports: Vec<&u16> = port_map.values().collect();
-    let one_proxy = ports.len() == 1;
-    if one_proxy {
-        let port = *ports[0];
+    // FORWARD rules for proxies
+    if port_map.len() == 1 {
+        let port = *port_map.values().next().unwrap();
         up_file.write_all(forward_rule1(false, port).as_bytes())?;
         down_file.write_all(forward_rule1(true, port).as_bytes())?;
-    } else if !ports.is_empty() {
-        let port_list = ports
-            .iter()
+    } else if !port_map.is_empty() {
+        let port_list = port_map
+            .values()
             .map(|p| p.to_string())
             .collect::<Vec<String>>()
             .join(",");
         up_file.write_all(forward_rule(false, &port_list).as_bytes())?;
         down_file.write_all(forward_rule(true, &port_list).as_bytes())?;
     }
+    // PREROUTING DNAT rules for services
     for (service_name, service) in compose.services {
-        let s = format!("# {}\n", service_name);
-        let bytes = s.as_bytes();
-        up_file.write_all(bytes)?;
-        down_file.write_all(bytes)?;
         if let armour_compose::network::Networks::Dict(dict) = &service.networks {
             if let Ok(service_label) = service_name.parse() {
                 for (network_name, network) in dict {
-                    let proxy_port: Option<&u16> = if one_proxy {
-                        ports.get(0).copied()
+                    let proxy_port: Option<&u16> = if port_map.len() == 1 {
+                        port_map.values().next()
                     } else {
                         port_map.get(&service_label)
                     };
                     if let Some(proxy_port) = proxy_port {
+                        let s = format!("# {}\n", service_name);
+                        let bytes = s.as_bytes();
+                        up_file.write_all(bytes)?;
+                        down_file.write_all(bytes)?;
                         up_file.write_all(
                             prerouting_rule(false, network_name, *proxy_port).as_bytes(),
                         )?;

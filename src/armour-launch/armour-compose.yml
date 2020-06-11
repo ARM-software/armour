@@ -7,6 +7,7 @@ proxies:
     debug: true
   - label: hello::ingress
     port: 6001
+    ingress: srv-nginx:80
   - label: no-service
     debug: true
 

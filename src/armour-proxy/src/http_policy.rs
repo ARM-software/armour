@@ -47,22 +47,46 @@ impl Default for PolicyStatus {
     }
 }
 
+struct HttpProxy {
+    server: actix_web::dev::Server,
+    port: u16,
+    ingress: Option<std::net::SocketAddrV4>,
+}
+
+impl HttpProxy {
+    fn new(
+        server: actix_web::dev::Server,
+        port: u16,
+        ingress: Option<std::net::SocketAddrV4>,
+    ) -> Self {
+        HttpProxy {
+            server,
+            port,
+            ingress,
+        }
+    }
+}
+
 pub struct HttpPolicy {
     policy: Arc<policies::Policy>,
     env: Env,
-    proxy: Option<(actix_web::dev::Server, u16)>,
+    proxy: Option<HttpProxy>,
     status: PolicyStatus,
 }
 
-impl Policy<actix_web::dev::Server> for HttpPolicy {
-    fn start(&mut self, server: actix_web::dev::Server, port: u16) {
-        self.proxy = Some((server, port))
+impl Policy<(actix_web::dev::Server, Option<std::net::SocketAddrV4>)> for HttpPolicy {
+    fn start(
+        &mut self,
+        server_config: (actix_web::dev::Server, Option<std::net::SocketAddrV4>),
+        port: u16,
+    ) {
+        self.proxy = Some(HttpProxy::new(server_config.0, port, server_config.1))
     }
     #[allow(unused_must_use)]
     fn stop(&mut self) {
-        if let Some((server, port)) = &self.proxy {
-            log::info!("stopping HTTP proxy on port {}", port);
-            server.stop(true);
+        if let Some(proxy) = &self.proxy {
+            log::info!("stopping HTTP proxy on port {}", proxy.port);
+            proxy.server.stop(true);
         };
         self.proxy = None
     }
@@ -72,7 +96,7 @@ impl Policy<actix_web::dev::Server> for HttpPolicy {
         self.env = Env::new(&self.policy.program)
     }
     fn port(&self) -> Option<u16> {
-        self.proxy.as_ref().map(|p| p.1)
+        self.proxy.as_ref().map(|p| p.port)
     }
     fn policy(&self) -> Arc<policies::Policy> {
         self.policy.clone()
@@ -87,6 +111,7 @@ impl Policy<actix_web::dev::Server> for HttpPolicy {
         Box::new(Status {
             port: self.port(),
             policy: (*self.policy()).clone(),
+            ingress: self.proxy.as_ref().map(|p| p.ingress).flatten(),
         })
     }
 }

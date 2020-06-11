@@ -434,20 +434,21 @@ impl Handler<PolicyRequest> for PolicyActor {
                     self.uds_framed.write(PolicyResponse::Stopped)
                 }
             }
-            PolicyRequest::StartHttp(port) => {
+            PolicyRequest::StartHttp(config) => {
+                let port = config.port();
                 if let Some(current_port) = self.http.port() {
                     log::info!("HTTP proxy already started");
-                    self.uds_framed.write(PolicyResponse::RequestFailed);
                     if port == current_port {
+                        self.uds_framed.write(PolicyResponse::RequestFailed);
                         return;
                     }
                 }
                 self.http.stop();
-                http_proxy::start_proxy(ctx.address(), port)
+                http_proxy::start_proxy(ctx.address(), config.clone())
                     .into_actor(self)
                     .then(move |server, act, _ctx| {
                         if let Ok(server) = server {
-                            act.http.start(server, port);
+                            act.http.start((server, config.ingress()), port);
                             act.uds_framed.write(PolicyResponse::Started)
                         } else {
                             // TODO: show error and port
@@ -460,8 +461,8 @@ impl Handler<PolicyRequest> for PolicyActor {
             PolicyRequest::StartTcp(port) => {
                 if let Some(current_port) = self.http.port() {
                     log::info!("TCP proxy already started");
-                    self.uds_framed.write(PolicyResponse::RequestFailed);
                     if port == current_port {
+                        self.uds_framed.write(PolicyResponse::RequestFailed);
                         return;
                     }
                 }

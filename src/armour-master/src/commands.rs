@@ -5,7 +5,7 @@ use super::{
     master::{ArmourDataMaster, Launch, List, PolicyCommand, Quit},
 };
 use actix::Addr;
-use armour_api::proxy::{LabelOp, PolicyRequest};
+use armour_api::proxy::{HttpConfig, LabelOp, PolicyRequest};
 use armour_lang::{
     labels,
     policies::{Policies, Protocol},
@@ -34,7 +34,7 @@ lazy_static! {
             allow \s all |
             stop (\s (http | tcp))? |
             policy |
-            start \s (http | tcp) |
+            start \s (http | tcp | ingress) |
             stop (\s (http | tcp))? |
             timeout)
           (?P<arg>\s+.+)?\s*$"
@@ -88,20 +88,21 @@ fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> boo
     run <file>         run commands from <file>
     wait <seconds>     wait for <seconds> to elapse (up to 5s)
 
-    [<id>:] launch [log|debug]        start a new slave instance
-    [<id>:] shutdown                  request slave shutdown
-    [<id>:] start <proto> <port>      start proxy on <port>
-    [<id>:] stop [<proto>]            stop proxy
-    [<id>:] status                    retrieve and print status
-    [<id>:] timeout <seconds>         set HTTP server response timeout
+    [<id>:] launch [log|debug]         start a new slave instance
+    [<id>:] shutdown                   request slave shutdown
+    [<id>:] start <proto> <port>       start proxy on <port>
+    [<id>:] start http <port> <socket> start ingress proxy for <socket> on <port>
+    [<id>:] stop [<proto>]             stop proxy
+    [<id>:] status                     retrieve and print status
+    [<id>:] timeout <seconds>          set HTTP server response timeout
     
-    [<id>:] allow all                 request allow all policy
-    [<id>:] deny all                  request deny all policy
-    [<id>:] policy  <file>            read policy <file> and send to instance
+    [<id>:] allow all                  request allow all policy
+    [<id>:] deny all                   request deny all policy
+    [<id>:] policy  <file>             read policy <file> and send to instance
 
-    [<id>:] label add <host> <label>  add a label
-    [<id>:] label rm <host> <label>   remove a label
-    [<id>:] labels rm [<host>]        remove labels (for <host> or all)
+    [<id>:] label add <host> <label>   add a label
+    [<id>:] label rm <host> <label>    remove a label
+    [<id>:] labels rm [<host>]         remove labels (for <host> or all)
 
     <id>    instance ID number
     <proto> http or tcp"
@@ -148,16 +149,34 @@ fn master_command(master: &Addr<ArmourDataMaster>, caps: regex::Captures) -> boo
         (_, Some("status"), None) => {
             master.do_send(PolicyCommand::new(instance, PolicyRequest::Status))
         }
-        (_, Some(s @ "start tcp"), Some(port)) | (_, Some(s @ "start http"), Some(port)) => {
-            if let Ok(port) = port.parse::<u16>() {
+        (_, Some(s @ "start tcp"), Some(port_socket))
+        | (_, Some(s @ "start http"), Some(port_socket)) => {
+            if let Ok(port) = port_socket.parse::<u16>() {
                 let start = if s.ends_with("http") {
-                    PolicyRequest::StartHttp(port)
+                    PolicyRequest::StartHttp(HttpConfig::Port(port))
                 } else {
                     PolicyRequest::StartTcp(port)
                 };
                 master.do_send(PolicyCommand::new(instance, start))
+            } else if s.ends_with("http") {
+                match port_socket.split(' ').collect::<Vec<&str>>().as_slice() {
+                    [port, socket] => {
+                        if let Ok(socket) = socket.parse::<std::net::SocketAddrV4>() {
+                            if let Ok(port) = port.parse::<u16>() {
+                                let start =
+                                    PolicyRequest::StartHttp(HttpConfig::Ingress(port, socket));
+                                master.do_send(PolicyCommand::new(instance, start))
+                            } else {
+                                log::warn!("expecting <port>, got {}", port);
+                            }
+                        } else {
+                            log::warn!("expecting <socket>, got {}", socket);
+                        }
+                    }
+                    _ => log::warn!("expecting <port> [<socket>], got {}", port_socket),
+                }
             } else {
-                log::warn!("expecting port number, got {}", port);
+                log::warn!("expecting <port>, got {}", port_socket)
             }
         }
         (_, Some("stop"), None) => {

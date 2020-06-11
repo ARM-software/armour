@@ -5,6 +5,7 @@ use armour_lang::policies::Policies;
 use serde::{Deserialize, Serialize};
 
 pub const CONTROL_PLANE: &str = "localhost:8088";
+pub const TCP_PORT: u16 = 8088;
 
 type Credentials = String;
 // map from domains to labels

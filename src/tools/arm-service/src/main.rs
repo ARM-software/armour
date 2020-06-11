@@ -118,14 +118,14 @@ async fn main() -> std::io::Result<()> {
     }
     // start up the service server
     if let Some(port) = own_port {
-        let socket = format!("0.0.0.0:{}", port);
+        let socket = std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(0, 0, 0, 0), port);
         HttpServer::new(move || {
             App::new()
                 .data(port)
                 // .wrap(middleware::Logger::default())
                 .default_service(web::route().to(service))
         })
-        .bind(socket.clone())
+        .bind(socket)
         .unwrap_or_else(|_| panic!("failed to bind to http://{}", socket))
         .run();
         info!("started listening on: {}", socket);

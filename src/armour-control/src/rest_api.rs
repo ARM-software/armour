@@ -172,23 +172,26 @@ pub mod policy {
         let hosts = hosts(state, label).await?;
         log::debug!("hosts: {:?}", hosts);
         for host in hosts {
-            let req = PolicyUpdate {
-                label: label.clone(),
-                policy: policy.clone(),
-            };
-            match client
-                .post(format!("http://{}/policy/update", host))
-                .send_json(&req)
-                .await
-            {
-                Ok(res) => {
-                    if res.status().is_success() {
-                        log::info!("pushed policy to {}", host)
-                    } else {
-                        log::info!("failed to push policy to {}", host)
+            if let Some(host_str) = host.host_str() {
+                let req = PolicyUpdate {
+                    label: label.clone(),
+                    policy: policy.clone(),
+                };
+                let url = format!(
+                    "http://{}:{}/policy/update",
+                    host_str,
+                    host.port().unwrap_or(8090)
+                );
+                match client.post(url).send_json(&req).await {
+                    Ok(res) => {
+                        if res.status().is_success() {
+                            log::info!("pushed policy to {}", host)
+                        } else {
+                            log::info!("failed to push policy to {}", host)
+                        }
                     }
+                    Err(err) => log::warn!("{}: {}", host, err),
                 }
-                Err(err) => log::warn!("{}: {}", host, err),
             }
         }
         Ok(())

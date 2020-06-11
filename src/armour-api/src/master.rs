@@ -1,6 +1,7 @@
 //! Data plane `master` API
 
-use super::{DeserializeDecoder, SerializeEncoder};
+use crate::proxy::HttpConfig;
+use crate::{DeserializeDecoder, SerializeEncoder};
 use actix::prelude::*;
 use armour_lang::{
     labels::{Label, Labels},
@@ -12,8 +13,8 @@ use std::collections::BTreeMap;
 use tokio_util::codec::{Decoder, Encoder};
 
 pub const DATA_PLANE_MASTER: &str = "localhost:8090";
-pub const UDS_SOCKET: &str = "armour";
 pub const TCP_PORT: u16 = 8090;
+pub const UDS_SOCKET: &str = "armour";
 
 /// Request policy update
 ///
@@ -63,6 +64,7 @@ pub enum PolicyResponse {
 pub struct Status {
     pub policy: policies::Policy,
     pub port: Option<u16>,
+    pub ingress: Option<std::net::SocketAddrV4>,
 }
 
 impl std::fmt::Display for Status {
@@ -71,6 +73,9 @@ impl std::fmt::Display for Status {
             writeln!(f, "active on port {}", port)?
         } else {
             writeln!(f, "inactive")?
+        }
+        if let Some(ingress) = self.ingress {
+            writeln!(f, "ingress for: {}", ingress)?
         }
         write!(f, "policy is: {}", self.policy)
     }
@@ -81,10 +86,53 @@ pub type Proxies = Vec<Proxy>;
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Proxy {
     pub label: Label,
-    pub port: Option<u16>,
+    port: Option<u16>,
     pub timeout: Option<u8>,
     #[serde(default)]
     pub debug: bool,
+    ingress: Option<String>,
+}
+
+impl Proxy {
+    pub fn port(&self, mut p: u16) -> u16 {
+        self.port.unwrap_or_else(|| {
+            p += 1;
+            p
+        })
+    }
+    pub fn set_ingress(
+        &mut self,
+        hosts: &BTreeMap<String, std::net::Ipv4Addr>,
+    ) -> Result<(), String> {
+        if self.ingress().is_none() {
+            if let Some(ingress) = self.ingress.as_mut() {
+                match ingress.split(':').collect::<Vec<&str>>().as_slice() {
+                    [host, port] => match (hosts.get(&(*host).to_string()), port.parse::<u16>()) {
+                        (Some(host_ip), Ok(port)) => {
+                            *ingress = std::net::SocketAddrV4::new(*host_ip, port).to_string();
+                        }
+                        _ => return Err(format!("failed to set ingress: {}", ingress)),
+                    },
+                    _ => return Err(format!("failed to set ingress: {}", ingress)),
+                }
+            }
+        };
+        Ok(())
+    }
+    pub fn ingress(&self) -> Option<std::net::SocketAddrV4> {
+        self.ingress
+            .as_ref()
+            .map(|s| s.parse::<std::net::SocketAddrV4>().ok())
+            .flatten()
+    }
+    pub fn config(&self, p: u16) -> HttpConfig {
+        let port = self.port(p);
+        if let Some(ingress) = self.ingress() {
+            HttpConfig::Ingress(port, ingress)
+        } else {
+            HttpConfig::Port(port)
+        }
+    }
 }
 
 impl From<Label> for Proxy {
@@ -94,6 +142,7 @@ impl From<Label> for Proxy {
             port: None,
             timeout: None,
             debug: false,
+            ingress: None,
         }
     }
 }

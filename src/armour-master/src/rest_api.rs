@@ -5,7 +5,7 @@ pub mod service {
 	use crate::master::{Launch, PolicyCommand};
 	use actix_web::{delete, post, web, HttpResponse};
 	use armour_api::master::{OnboardInformation, Proxies, Proxy};
-	use armour_api::proxy::{LabelOp, PolicyRequest};
+	use armour_api::proxy::{HttpConfig, LabelOp, PolicyRequest};
 	use armour_lang::labels::Labels;
 
 	async fn launch_proxy(master: &super::Master, proxy: &Proxy) -> Result<(), actix_web::Error> {
@@ -17,7 +17,7 @@ pub mod service {
 				if proxy.debug {
 					log::Level::Debug
 				} else {
-					log::Level::Warn
+					log::Level::Info
 				},
 				proxy.timeout,
 			))
@@ -43,13 +43,13 @@ pub mod service {
 	async fn start_proxy(
 		master: &super::Master,
 		instance: InstanceSelector,
-		port: u16,
+		config: HttpConfig,
 	) -> Result<(), actix_web::Error> {
 		master
 			.send(PolicyCommand::new_with_retry(
 				// retry needed in case proxy process is slow to start up
 				instance,
-				PolicyRequest::StartHttp(port),
+				PolicyRequest::StartHttp(config),
 			))
 			.await?;
 		Ok(())
@@ -61,22 +61,15 @@ pub mod service {
 		information: web::Json<OnboardInformation>,
 	) -> Result<HttpResponse, actix_web::Error> {
 		let information = information.into_inner();
-		let mut port = information.top_port();
+		let port = information.top_port();
 		for proxy in information.proxies {
 			// launch proxies (if not already launched)
 			launch_proxy(&master, &proxy).await?;
 			let instance = InstanceSelector::Label(proxy.label.clone());
 			// add service labels
 			add_ip_labels(&master, &instance, &information.labels).await?;
-			start_proxy(
-				&master,
-				instance,
-				proxy.port.unwrap_or_else(|| {
-					port += 1;
-					port
-				}),
-			)
-			.await?
+			let config = proxy.config(port);
+			start_proxy(&master, instance, config).await?
 		}
 		log::info!("onboarded");
 		Ok(HttpResponse::Ok().finish())

@@ -108,7 +108,7 @@ This is similar to `id.policy` but it also checks the *method*, *path* and *payl
 
 Perform the following sequence of commands:
 
-1. Start MongoDB and generate `iptables` rules scripts.
+1. Start MongoDB and generate `iptables` scripts.
 	
 	**Admin [1]**
 	
@@ -233,5 +233,5 @@ Perform the following sequence of commands:
 	**Control plane [2]**
 
 	```
-	$ ^C
+	^C
 	```

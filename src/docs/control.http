@@ -1,6 +1,6 @@
 ### -*- restclient -*-
 ###
-POST http://127.0.0.1:8088/master/on-board
+POST http://localhost:8088/master/on-board
 Content-Type: application/json
 
 {
@@ -10,7 +10,7 @@ Content-Type: application/json
 }
 
 ###
-POST http://127.0.0.1:8088/service/on-board
+POST http://localhost:8088/service/on-board
 Content-Type: application/json
 
 {
@@ -19,7 +19,7 @@ Content-Type: application/json
 }
 
 ###
-POST http://127.0.0.1:8088/policy/update
+POST http://localhost:8088/policy/update
 Content-Type: application/json
 
 {
@@ -34,7 +34,7 @@ Content-Type: application/json
 }
 
 ###
-POST http://127.0.0.1:8088/policy/update
+POST http://localhost:8088/policy/update
 Content-Type: application/json
 
 {
@@ -47,7 +47,7 @@ Content-Type: application/json
 }
 
 ###
-GET http://127.0.0.1:8088/policy/query
+GET http://localhost:8088/policy/query
 Content-Type: application/json
 
 {
@@ -56,7 +56,7 @@ Content-Type: application/json
 
 
 ###
-DELETE http://127.0.0.1:8088/policy/drop
+DELETE http://localhost:8088/policy/drop
 Content-Type: application/json
 
 {
@@ -64,4 +64,4 @@ Content-Type: application/json
 }
 
 ###
-DELETE http://127.0.0.1:8088/policy/drop-all
+DELETE http://localhost:8088/policy/drop-all

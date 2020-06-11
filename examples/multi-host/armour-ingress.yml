@@ -1,0 +1,17 @@
+version: "3.0"
+
+proxies:
+  - label: server
+    debug: true
+    ingress: server:80
+
+services:
+  server:
+    container_name: server
+    hostname: server
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: python server.py
+    volumes:
+      - ../server/:/app

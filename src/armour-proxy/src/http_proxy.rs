@@ -9,6 +9,7 @@ use actix_web::{
     http::uri,
     middleware, web, App, HttpRequest, HttpResponse, HttpServer, ResponseError,
 };
+use armour_api::proxy::HttpConfig;
 use armour_lang::policies::FnPolicy;
 use armour_utils::own_ip;
 use bytes::BytesMut;
@@ -19,9 +20,10 @@ use std::convert::TryFrom;
 
 pub async fn start_proxy(
     policy: actix::Addr<PolicyActor>,
-    port: u16,
+    http_config: HttpConfig,
 ) -> std::io::Result<actix_web::dev::Server> {
-    let socket_address = format!("0.0.0.0:{}", port);
+    let socket =
+        std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(0, 0, 0, 0), http_config.port());
     let server = HttpServer::new(move || {
         let config = actix_connect::resolver::ResolverConfig::default();
         let mut opts = actix_connect::resolver::ResolverOpts::default();
@@ -34,14 +36,14 @@ pub async fn start_proxy(
         App::new()
             .data(policy.clone())
             .data(client)
-            .data(port)
+            .data(http_config.clone())
             .wrap(middleware::Logger::default())
             .wrap(middleware::Compress::new(ContentEncoding::Identity))
             .default_service(web::route().to(request))
     })
-    .bind(&socket_address)?
+    .bind(socket)?
     .run();
-    log::info!("starting proxy server: http://{}", socket_address);
+    log::info!("starting proxy server: http://{}", socket);
     Ok(server)
 }
 
@@ -54,9 +56,9 @@ async fn request(
     mut payload: web::Payload,
     policy: web::Data<actix::Addr<PolicyActor>>,
     client: web::Data<Client>,
-    proxy_port: web::Data<u16>,
+    config: web::Data<HttpConfig>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    if let Some(connection) = Connection::new(&req, **proxy_port) {
+    if let Some(connection) = Connection::new(&req, &config.into_inner()) {
         if let Ok(p) = policy.send(GetHttpPolicy(connection.from_to())).await {
             // we succeeded in getting a policy
             match p.status {
@@ -311,9 +313,9 @@ struct Connection {
 }
 
 impl Connection {
-    fn new(req: &HttpRequest, proxy_port: u16) -> Option<Connection> {
+    fn new(req: &HttpRequest, config: &HttpConfig) -> Option<Connection> {
         // obtain the forwarding URI
-        match Connection::forward_uri(req, proxy_port) {
+        match Connection::forward_uri(req, config) {
             Ok(uri) => {
                 let to = uri.clone().into();
                 Some(Connection {
@@ -338,28 +340,28 @@ impl Connection {
     fn from_to(&self) -> (ID, ID) {
         (self.from.clone(), self.to.clone())
     }
-    fn forward_uri(req: &HttpRequest, proxy_port: u16) -> Result<uri::Uri, actix_web::Error> {
+    fn forward_uri(req: &HttpRequest, config: &HttpConfig) -> Result<uri::Uri, actix_web::Error> {
         let info = req.connection_info();
-        // log::debug!("HOST is: {}", info.host());
-        let mut uri = uri::Builder::new()
+        let host = config
+            .ingress()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| info.host().to_string());
+        // log::debug!("HOST is: {}", host);
+        let mut uri_builder = uri::Builder::new()
             .scheme(info.scheme())
-            .authority(info.host());
+            .authority(host.as_str());
         if let Some(p_and_q) = req.uri().path_and_query() {
-            uri = uri.path_and_query(p_and_q.clone());
+            uri_builder = uri_builder.path_and_query(p_and_q.clone());
         }
-        match uri.build() {
-            Ok(uri) => {
-                if uri.port_u16().unwrap_or(80) == proxy_port
-                    && uri.host().map(is_local_host).unwrap_or(true)
-                {
-                    Err(HttpResponse::InternalServerError()
-                        .body("cannot proxy self")
-                        .into())
-                } else {
-                    Ok(uri)
-                }
-            }
-            Err(err) => Err(err.into()),
+        let uri = uri_builder.build()?;
+        if uri.port_u16().unwrap_or(80) == config.port()
+            && uri.host().map(is_local_host).unwrap_or(true)
+        {
+            Err(HttpResponse::InternalServerError()
+                .body("cannot proxy self")
+                .into())
+        } else {
+            Ok(uri)
         }
     }
 }

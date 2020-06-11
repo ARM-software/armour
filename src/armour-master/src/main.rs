@@ -101,7 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .value_of("port")
         .map(|s| s.parse::<u16>().unwrap_or(armour_api::master::TCP_PORT))
         .unwrap_or(armour_api::master::TCP_PORT);
-    let tcp_socket = format!("localhost:{}", port);
+    let tcp_socket = std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(0, 0, 0, 0), port);
 
     // Onboarding data
     let label: armour_lang::labels::Label = matches
@@ -180,7 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     .service(rest_api::policy::update),
             )
     })
-    .bind(&tcp_socket)?
+    .bind(tcp_socket)?
     .run();
 
     // Interactive shell interface

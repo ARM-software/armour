@@ -2,11 +2,11 @@ name: armour-control
 version: "1.0"
 about: Armour control plane server
 args:
-  - URL:
-      help: Control plane URL
+  - PORT:
+      help: Control plane port
       required: false
-      short: u
-      long: url
+      short: p
+      long: port
       takes_value: true
   - MONGODBURL:
       help: MongoDB URL
