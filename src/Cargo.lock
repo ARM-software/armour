@@ -501,6 +501,7 @@ dependencies = [
  "actix-web",
  "armour-api",
  "armour-lang",
+ "armour-utils",
  "awc",
  "bytes 0.5.4",
  "clap",
@@ -556,6 +557,7 @@ dependencies = [
  "actix-rt",
  "armour-api",
  "armour-compose",
+ "armour-utils",
  "awc",
  "bytes 0.5.4",
  "clap",
@@ -576,6 +578,7 @@ dependencies = [
  "armour-api",
  "armour-lang",
  "armour-serde",
+ "armour-utils",
  "base64 0.12.1",
  "bytes 0.5.4",
  "clap",
@@ -644,6 +647,7 @@ dependencies = [
  "get_if_addrs",
  "lazy_static",
  "serde",
+ "url",
 ]
 
 [[package]]

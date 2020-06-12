@@ -192,6 +192,8 @@ pub mod policy {
                     }
                     Err(err) => log::warn!("{}: {}", host, err),
                 }
+            } else {
+                log::warn!("failed to contact host: {}", host)
             }
         }
         Ok(())

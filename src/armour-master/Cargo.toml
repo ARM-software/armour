@@ -17,6 +17,7 @@ edition = "2018"
 armour-api = { path = "../armour-api" }
 armour-lang = { path = "../armour-lang" }
 armour-serde = { path = "../armour-serde" }
+armour-utils = { path = "../armour-utils" }
 
 actix = "0.9"
 actix-rt = "1.1"

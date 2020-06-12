@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 armour-api = { path = "../armour-api" }
 armour-compose = { path = "../armour-compose" }
+armour-utils = { path = "../armour-utils" }
 docker-api = { path = "../docker-api" }
 
 actix-rt = "1.1"

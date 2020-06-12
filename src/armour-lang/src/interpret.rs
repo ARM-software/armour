@@ -513,7 +513,8 @@ impl Expr {
                     _ => Err(Error::new("eval, infix")),
                 },
                 Expr::InfixExpr(op, e1, e2) => {
-                    match (e1.eval(env.clone()).await?, e2.eval(env).await?) {
+                    let r1 = e1.eval(env.clone()).await?;
+                    match (r1, e2.eval(env).await?) {
                         (r @ Expr::ReturnExpr(_), _) => Ok(r),
                         (_, r @ Expr::ReturnExpr(_)) => Ok(r),
                         (Expr::LitExpr(l1), Expr::LitExpr(l2)) => match l1.eval_infix(&op, &l2) {

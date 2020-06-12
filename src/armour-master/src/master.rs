@@ -13,7 +13,7 @@ use tokio_util::codec::FramedRead;
 
 /// Actor that handles Unix socket connections
 pub struct ArmourDataMaster {
-    url: String,                                 // control plane URL
+    url: url::Url,                               // control plane URL
     label: Label,         // master label (for communication with control plane)
     onboarded: bool,      // did we succesfully on-board with control plane?
     instances: Instances, // instance actor addresses and info
@@ -34,14 +34,14 @@ impl Actor for ArmourDataMaster {
 
 impl ArmourDataMaster {
     pub fn new(
-        url: &str,
+        url: &url::Url,
         label: &Label,
         onboarded: bool,
         socket: std::path::PathBuf,
         key: [u8; 32],
     ) -> Self {
         ArmourDataMaster {
-            url: url.to_string(),
+            url: url.to_owned(),
             label: label.clone(),
             onboarded,
             instances: Instances::default(),

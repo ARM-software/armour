@@ -163,7 +163,7 @@ Perform the following sequence of commands:
 
 	```
 	$ ARMOUR_PASS=password armour-master --label client-master \
-	    -c 10.0.2.2:8088 -u http://10.0.2.2:8090
+	    -c 10.0.2.2:8088 -u 10.0.2.2:8090
 	```
 	
 1. Start the client service and set the `iptables` rules.

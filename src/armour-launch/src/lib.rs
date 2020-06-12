@@ -13,32 +13,37 @@ pub async fn onboard_services<P: AsRef<std::ffi::OsStr>>(
     info: OnboardInfo,
     out_file: P,
 ) -> Result<(), Error> {
-    let client = Client::default();
-    let onboard_info: OnboardInformation = (&info).into();
-    match client
-        .post(format!("http://{}/service/on-board", master_url))
-        .send_json(&onboard_info)
-        .await
-    {
-        Ok(res) => {
-            if res.status().is_success() {
-                println!("onboarding succeeded");
-                unpause_all(info).await;
-                Ok(())
-            } else {
+    if let Some(host_str) = master_url.host_str() {
+        let client = Client::default();
+        let onboard_info: OnboardInformation = (&info).into();
+        let url = format!(
+            "http://{}:{}/service/on-board",
+            host_str,
+            master_url.port().unwrap_or(8090)
+        );
+        match client.post(url).send_json(&onboard_info).await {
+            Ok(res) => {
+                if res.status().is_success() {
+                    println!("onboarding succeeded");
+                    unpause_all(info).await;
+                    Ok(())
+                } else {
+                    docker_down(out_file)?;
+                    drop_services(master_url, info.proxies).await?;
+                    Err(message(res)
+                        .await
+                        .unwrap_or_else(|| "onboarding failed".to_string())
+                        .into())
+                }
+            }
+            Err(e) => {
                 docker_down(out_file)?;
                 drop_services(master_url, info.proxies).await?;
-                Err(message(res)
-                    .await
-                    .unwrap_or_else(|| "onboarding failed".to_string())
-                    .into())
+                Err(format!("onboarding failed: {}", e).into())
             }
         }
-        Err(e) => {
-            docker_down(out_file)?;
-            drop_services(master_url, info.proxies).await?;
-            Err(format!("onboarding failed: {}", e).into())
-        }
+    } else {
+        Err(format!("onboarding failed, bad master URL: {}", master_url).into())
     }
 }
 
@@ -46,10 +51,15 @@ pub async fn drop_services(master_url: url::Url, proxies: Proxies) -> Result<(),
     if proxies.is_empty() {
         println!("no proxies to drop");
         Ok(())
-    } else {
+    } else if let Some(host_str) = master_url.host_str() {
+        let url = format!(
+            "http://{}:{}/service/drop",
+            host_str,
+            master_url.port().unwrap_or(8090)
+        );
         let client = Client::default();
         let res = client
-            .delete(format!("http://{}/service/drop", master_url))
+            .delete(url)
             .send_json(&proxies.to_vec())
             .await
             .map_err(|err| format!("{}: drop services failed: {}", master_url, err))?;
@@ -62,6 +72,8 @@ pub async fn drop_services(master_url: url::Url, proxies: Proxies) -> Result<(),
                 .unwrap_or_else(|| "drop services failed".to_string())
                 .into())
         }
+    } else {
+        Err(format!("bad master URL: {}", master_url).into())
     }
 }
 
@@ -180,22 +192,6 @@ fn get_ip_address(container: docker_api::rep::ContainerDetails) -> Option<std::n
         .flatten()
 }
 
-fn forward_rule1(delete: bool, port: u16) -> String {
-    format!(
-        "iptables -{} FORWARD -p tcp -d localhost --dport {} -j ACCEPT\n",
-        if delete { "D" } else { "A" },
-        port
-    )
-}
-
-fn forward_rule(delete: bool, ports: &str) -> String {
-    format!(
-        "iptables -{} FORWARD -p tcp -d localhost --match multiport --dports {} -j ACCEPT\n",
-        if delete { "D" } else { "A" },
-        ports
-    )
-}
-
 fn prerouting_rule(delete: bool, network_name: &str, port: u16) -> String {
     let mut s = format!(
         "iptables -t nat -{} PREROUTING -i {} -p tcp -j DNAT --to-destination 127.0.0.1:{}\n",
@@ -245,20 +241,6 @@ pub fn rules(
     for proxy in onboard_info.proxies {
         let proxy_port = proxy.port(port);
         port_map.insert(proxy.label, proxy_port);
-    }
-    // FORWARD rules for proxies
-    if port_map.len() == 1 {
-        let port = *port_map.values().next().unwrap();
-        up_file.write_all(forward_rule1(false, port).as_bytes())?;
-        down_file.write_all(forward_rule1(true, port).as_bytes())?;
-    } else if !port_map.is_empty() {
-        let port_list = port_map
-            .values()
-            .map(|p| p.to_string())
-            .collect::<Vec<String>>()
-            .join(",");
-        up_file.write_all(forward_rule(false, &port_list).as_bytes())?;
-        down_file.write_all(forward_rule(true, &port_list).as_bytes())?;
     }
     // PREROUTING DNAT rules for services
     for (service_name, service) in compose.services {

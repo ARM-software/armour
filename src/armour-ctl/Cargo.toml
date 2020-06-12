@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 armour-lang = {path = "../armour-lang"}
 armour-api = {path = "../armour-api"}
+armour-utils = {path = "../armour-utils"}
 
 actix = "0.9"
 actix-rt = "1.1"

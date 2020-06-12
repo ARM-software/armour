@@ -1,6 +1,7 @@
 use armour_api::control;
 use armour_lang::labels::Label;
 use armour_lang::policies;
+use armour_utils::parse_http_url;
 use clap::{crate_version, App};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -10,10 +11,15 @@ async fn main() -> Result<(), Error> {
     let yaml = clap::load_yaml!("../resources/cli.yml");
     let matches = App::from_yaml(yaml).version(crate_version!()).get_matches();
 
-    let cp_url = matches
-        .value_of("CONTROLPLANEURL")
-        .unwrap_or(control::CONTROL_PLANE);
-    let url = |s: &str| format!("http://{}/{}", cp_url, s);
+    let cp_url = parse_http_url(
+        matches
+            .value_of("CONTROLPLANEURL")
+            .unwrap_or(control::CONTROL_PLANE),
+        8088,
+    )?;
+    let host = cp_url.host_str().unwrap();
+    let port = cp_url.port().unwrap();
+    let url = |s: &str| format!("http://{}:{}/{}", host, port, s);
 
     let client = awc::Client::build().finish();
 

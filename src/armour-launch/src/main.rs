@@ -2,6 +2,7 @@ use armour_launch::{
     already_running, docker_down, docker_up, drop_services, onboard_services, read_armour, rules,
     set_ip_addresses,
 };
+use armour_utils::parse_http_url;
 use clap::{crate_version, App, AppSettings, Arg, SubCommand};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -9,12 +10,13 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 #[actix_rt::main]
 async fn main() -> Result<(), Error> {
     let matches = get_matches();
-    let master_url = url::Url::parse(
+    let master_url = parse_http_url(
         matches
             .value_of("master")
             .unwrap_or(armour_api::master::DATA_PLANE_MASTER),
-    )
-    .map_err(|_| "failed to parse URL".to_string())?;
+        8090,
+    )?;
+
     const FILE: &str = "docker-compose.yml";
     let out_file = matches.value_of("file").unwrap_or(FILE);
     let in_file = matches.value_of("input file").unwrap();

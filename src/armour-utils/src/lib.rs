@@ -68,3 +68,30 @@ pub fn bincode_gz_base64_dec<R: std::io::Read, D: serde::de::DeserializeOwned>(
     bincode::deserialize_from(flate2::read::GzDecoder::new(&bytes[..]))
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }
+
+pub fn parse_http_url(s: &str, default_port: u16) -> Result<url::Url, String> {
+    let err = || format!("failed to parse HTTP URL: {}", s);
+    if let Ok(socket) = s.parse::<std::net::SocketAddrV4>() {
+        format!("http://{}", socket)
+            .parse::<url::Url>()
+            .map_err(|_| err())
+    } else {
+        let mut url = s.parse::<url::Url>().map_err(|_| err())?;
+        if url.host_str().is_some() {
+            if url.scheme() == "http" {
+                if url.port().is_none() {
+                    url.set_port(Some(default_port)).map_err(|_| err())?
+                }
+                Ok(url)
+            } else {
+                Err(err())
+            }
+        } else if url.scheme() == "localhost" {
+            format!("http://{}", s)
+                .parse::<url::Url>()
+                .map_err(|_| err())
+        } else {
+            Err(err())
+        }
+    }
+}

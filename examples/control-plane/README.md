@@ -154,6 +154,8 @@ Perform the following sequence of commands:
    $ sudo ./rules_up.sh
 	```
 
+   > Note: the launch command will take some time on the first call, as docker images will be pulled.
+
 1. Make some requests
 	
 	**Client [4]**

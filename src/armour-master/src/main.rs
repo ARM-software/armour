@@ -9,6 +9,7 @@ use armour_master::{
     master::{ArmourDataMaster, Quit, UdsConnect},
     rest_api,
 };
+use armour_utils::parse_http_url;
 use clap::{crate_version, App as ClapApp, Arg};
 use futures::StreamExt;
 use rustyline::{completion, error::ReadlineError, hint, validate::Validator, Editor};
@@ -83,10 +84,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     });
     let pass_key = argon2rs::argon2i_simple(&pass, PASS_SALT);
 
-    let control_url = matches
-        .value_of("control")
-        .unwrap_or(armour_api::control::CONTROL_PLANE)
-        .to_string();
+    let control_url = parse_http_url(
+        matches
+            .value_of("control")
+            .unwrap_or(armour_api::control::CONTROL_PLANE),
+        8088,
+    )?;
 
     // Unix socket for proxy communication
     let unix_socket = matches
@@ -112,12 +115,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if label.len() != 1 {
         return Err("master label not of the form `<name>`".into());
     }
-    let host = url::Url::parse(
+    let host = parse_http_url(
         matches
             .value_of("url")
             .unwrap_or(armour_api::master::DATA_PLANE_MASTER),
-    )
-    .map_err(|_| "failed to parse URL".to_string())?;
+        8090,
+    )?;
     let onboard = armour_api::control::OnboardMasterRequest {
         host,
         master: label.clone(),
