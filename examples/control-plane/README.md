@@ -92,8 +92,8 @@ This is similar to `id.policy` but it also checks the *method*, *path* and *payl
 1. Start four terminal windows and in each `ssh` into the vagrant VM:
 
    ```shell
-   % cd armour/examples
-   % vagrant ssh
+   host% cd armour/examples
+   host% vagrant ssh
    ```
 
 	The terminals correspond with the following
@@ -113,9 +113,9 @@ Perform the following sequence of commands:
 	**Admin [1]**
 	
 	```
-   $ sudo systemctl start mongod
-   $ cd examples/control-plane
-   $ armour-launch armour-compose.yml rules
+   vagrant$ sudo systemctl start mongod
+   vagrant$ cd examples/control-plane
+   vagrant$ armour-launch armour-compose.yml rules
    generated files: rules_up.sh, rules_down.sh, rules_hosts.sh
 	```
 
@@ -124,7 +124,7 @@ Perform the following sequence of commands:
 	**Control plane [2]**
 
 	```
-	$ armour-control
+	vagrant$ armour-control
 	```
 
 1. Install `id.policy` and then query the control plane to check if it is installed.
@@ -132,8 +132,8 @@ Perform the following sequence of commands:
 	**Admin [1]**
 	
 	```
-   $ armour-ctl update -p policies/id.policy -s armour
-   $ armour-ctl query -s armour
+   vagrant$ armour-ctl update -p policies/id.policy -s armour
+   vagrant$ armour-ctl query -s armour
 	```
 
 1. Start the data plane
@@ -141,7 +141,7 @@ Perform the following sequence of commands:
 	**Data plane [3]**
 
 	```
-	$ ARMOUR_PASS=password armour-master
+	vagrant$ ARMOUR_PASS=password armour-master
 	```
 
 1. Start the services and apply the `iptables` rules.
@@ -149,9 +149,9 @@ Perform the following sequence of commands:
 	**Admin [1]**
 	
 	```
-   $ sudo ./rules_hosts.sh
-   $ armour-launch armour-compose.yml up
-   $ sudo ./rules_up.sh
+   vagrant$ sudo ./rules_hosts.sh
+   vagrant$ armour-launch armour-compose.yml up
+   vagrant$ sudo ./rules_up.sh
 	```
 
    > Note: the launch command will take some time on the first call, as docker images will be pulled.
@@ -161,9 +161,9 @@ Perform the following sequence of commands:
 	**Client [4]**
 	
 	```
-   $ docker exec -ti client-1 curl http://server:80
+   vagrant$ docker exec -ti client-1 curl http://server:80
    response!
-   $ docker exec -ti client-2 curl http://server:80
+   vagrant$ docker exec -ti client-2 curl http://server:80
    bad client request
 	```
 
@@ -172,8 +172,8 @@ Perform the following sequence of commands:
 	**Admin [1]**
 	
 	```
-   $ armour-ctl update -p policies/log.policy -s armour
-   $ logger ../../log_sock
+   vagrant$ armour-ctl update -p policies/log.policy -s armour
+   vagrant$ logger ../../log_sock
 	```
 
 1. Make some requests
@@ -181,9 +181,9 @@ Perform the following sequence of commands:
 	**Client [4]**
 	
 	```
-   $ docker exec -ti client-1 curl http://server:80
+   vagrant$ docker exec -ti client-1 curl http://server:80
    response!
-   $ docker exec -ti client-2 curl http://server:80
+   vagrant$ docker exec -ti client-2 curl http://server:80
    response!
 	```
 
@@ -193,7 +193,7 @@ Perform the following sequence of commands:
 	
 	```
    logger:> quit
-   $ armour-ctl update -p policies/method.policy -s armour
+   vagrant$ armour-ctl update -p policies/method.policy -s armour
 	```
 
 1. Make some requests
@@ -201,15 +201,15 @@ Perform the following sequence of commands:
 	**Client [4]**
 	
 	```
-   $ docker exec -ti client-1 curl http://server:80
+   vagrant$ docker exec -ti client-1 curl http://server:80
    bad client request
-   $ docker exec -ti client-1 curl http://server:80/private
+   vagrant$ docker exec -ti client-1 curl http://server:80/private
    private area
-   $ docker exec -ti client-1 curl --request POST http://server:80/private
+   vagrant$ docker exec -ti client-1 curl --request POST http://server:80/private
    bad client request
-   $ docker exec -ti client-1 curl --request GET --data hello http://server:80/private
+   vagrant$ docker exec -ti client-1 curl --request GET --data hello http://server:80/private
    bad client request
-   $ docker exec -ti client-2 curl http://server:80/private
+   vagrant$ docker exec -ti client-2 curl http://server:80/private
    bad client request
 	```
 
@@ -218,8 +218,8 @@ Perform the following sequence of commands:
 	**Admin [1]**
 	
 	```
-   $ armour-launch armour-compose.yml down
-   $ sudo ./rules_down.sh
+   vagrant$ armour-launch armour-compose.yml down
+   vagrant$ sudo ./rules_down.sh
 	```
 
 1. Stop the data plane

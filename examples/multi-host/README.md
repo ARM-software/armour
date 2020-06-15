@@ -69,15 +69,15 @@ This setup is initialised as follows:
 1. Setup and start a second Vagrant VM
 
 	```shell
-	% cd armour/examples/multi-host
-	% ./setup.sh
+	host% cd armour/examples/multi-host
+	host% ./setup.sh
 	```
 
 1. Start three terminal windows that `ssh` into the first Vagrant VM (server side):
 
    ```shell
-   % cd armour/examples
-   % vagrant ssh
+   host% cd armour/examples
+   host% vagrant ssh
    ```
 
 	The terminals will correspond with the following
@@ -89,8 +89,8 @@ This setup is initialised as follows:
 1. Start another three terminal windows that `ssh` into the second Vagrant VM (client side):
 
    ```shell
-   % cd armour/examples/multi-host
-   % vagrant ssh
+   host% cd armour/examples/multi-host
+   host% vagrant ssh
    ```
 
 	The terminals will correspond with the following
@@ -112,7 +112,7 @@ Perform the following sequence of commands:
 	**Admin [1.1]**
 	
 	```
-   $ sudo systemctl start mongod
+   vagrant$ sudo systemctl start mongod
 	```
 
 1. Start the control plane
@@ -120,7 +120,7 @@ Perform the following sequence of commands:
 	**Control plane [1.2]**
 
 	```
-	$ armour-control
+	vagrant$ armour-control
 	```
 
 1. Start the data plane
@@ -128,7 +128,7 @@ Perform the following sequence of commands:
 	**Data plane [1.3]**
 
 	```
-	$ ARMOUR_PASS=password armour-master
+	vagrant$ ARMOUR_PASS=password armour-master
 	```
 
 1. Install `ingress.policy` and `egress.policy`, and then start the server.
@@ -136,10 +136,10 @@ Perform the following sequence of commands:
 	**Admin [1.1]**
 	
 	```
-	$ cd examples/multi-host
-	$ armour-ctl update -p policies/ingress.policy -s server
-	$ armour-ctl update -p policies/egress.policy -s client
-	$ armour-launch armour-ingress.yml up
+	vagrant$ cd examples/multi-host
+	vagrant$ armour-ctl update -p policies/ingress.policy -s server
+	vagrant$ armour-ctl update -p policies/egress.policy -s client
+	vagrant$ armour-launch armour-ingress.yml up
 	```
 
 #### Client side
@@ -149,10 +149,10 @@ Perform the following sequence of commands:
 	**Admin [2.1]**
 	
 	```
-   $ cd examples/multi-host
-   $ armour-launch armour-egress.yml rules
+   vagrant$ cd examples/multi-host
+   vagrant$ armour-launch armour-egress.yml rules
    generated files: rules_up.sh, rules_down.sh, rules_hosts.sh
-	$ netstat -rn
+	vagrant$ netstat -rn
 	```
 	
 	The host IP is the *gateway* IP for destination `0.0.0.0`. Below we assume the host IP is `10.0.2.2`.
@@ -162,8 +162,8 @@ Perform the following sequence of commands:
 	**Data plane [2.2]**
 
 	```
-	$ ARMOUR_PASS=password armour-master --label client-master \
-	    -c 10.0.2.2:8088 -u 10.0.2.2:8090
+	vagrant$ ARMOUR_PASS=password armour-master --label client-master \
+	           -c 10.0.2.2:8088 -u 10.0.2.2:8090
 	```
 	
 1. Start the client service and set the `iptables` rules.
@@ -171,8 +171,8 @@ Perform the following sequence of commands:
 	**Admin [2.1]**
 	
 	```
-	$ armour-launch armour-egress.yml up
-	$ sudo ./rules_up.sh
+	vagrant$ armour-launch armour-egress.yml up
+	vagrant$ sudo ./rules_up.sh
 	```
 
 1. Try to make a request from the client
@@ -180,7 +180,7 @@ Perform the following sequence of commands:
 	**Client [2.3]**
 
 	```
-	$ docker exec -ti client curl http://10.0.2.2:8092
+	vagrant$ docker exec -ti client curl http://10.0.2.2:8092
 	response!
 	```
 	
@@ -189,7 +189,7 @@ Perform the following sequence of commands:
 	**Admin [2.1]**
 
 	```
-	$ curl http://10.0.2.2:8092
+	vagrant$ curl http://10.0.2.2:8092
 	bad client request
 	```
 
@@ -205,7 +205,7 @@ Perform the following sequence of commands:
 	**Admin [2.1]**
 
 	```
-	$ armour-ctl -c 10.0.2.2:8088 update -p policies/egress-private.policy -s client
+	vagrant$ armour-ctl -c 10.0.2.2:8088 update -p policies/egress-private.policy -s client
 	```
 
 1. Try to make requests from the client
@@ -213,9 +213,9 @@ Perform the following sequence of commands:
 	**Client [2.3]**
 
 	```
-	$ docker exec -ti client curl http://10.0.2.2:8092
+	vagrant$ docker exec -ti client curl http://10.0.2.2:8092
 	bad client request
-	$ docker exec -ti client curl http://10.0.2.2:8092/private
+	vagrant$ docker exec -ti client curl http://10.0.2.2:8092/private
 	private area
 	```
 	
@@ -224,8 +224,8 @@ Perform the following sequence of commands:
 	**Admin [2.1]**
 
 	```
-	$ armour-launch armour-egress.yml down
-	$ sudo ./rules_down.sh
+	vagrant$ armour-launch armour-egress.yml down
+	vagrant$ sudo ./rules_down.sh
 	```
 
 1. Stop the data plane.
@@ -243,7 +243,7 @@ Perform the following sequence of commands:
 	**Admin [1.1]**
 	
 	```
-   $ armour-launch armour-ingress.yml down
+   vagrant$ armour-launch armour-ingress.yml down
 	```
 
 1. Stop the data plane.

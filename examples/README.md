@@ -11,13 +11,13 @@ Download and install [Vagrant](https://www.vagrantup.com/downloads.html). By def
 Alternatively, you can also manage the Vagrant installation using [Homebrew](https://brew.sh).
 
 ```shell
-% brew cask install vagrant
+host% brew cask install vagrant
 ```
 
 Then install the docker compose plugin
 
 ```shell
-% vagrant plugin install vagrant-docker-compose
+host% vagrant plugin install vagrant-docker-compose
 ```
 
 Setup
@@ -26,16 +26,16 @@ Setup
 The following brings up the Vagrant VM
 
 ```shell
-% cd armour/examples
-% ./setup.sh
+host% cd armour/examples
+host% ./setup.sh
 ```
 
 > Note: After the initial setup, the VM can be stopped, started, paused, resumed and deleted with:  
-> `% vagrant halt`  
-> `% vagrant up`  
-> `% vagrant pause`  
-> `% vagrant resume`  
-> `% vagrant destroy`
+> `host% vagrant halt`  
+> `host% vagrant up`  
+> `host% vagrant pause`  
+> `host% vagrant resume`  
+> `host% vagrant destroy`
 
 Armour Examples
 ---------------

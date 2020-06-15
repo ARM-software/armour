@@ -9,8 +9,8 @@ The following demonstrates the Armour data plane running without a control plane
 1. Start three terminal windows and in each `ssh` into the vagrant VM:
 
    ```shell
-   % cd armour/examples
-   % vagrant ssh
+   host% cd armour/examples
+   host% vagrant ssh
    ```
 
 	The terminals correspond with the following
@@ -28,9 +28,9 @@ Perform the following sequence of commands:
 	**Admin [1]**
 
 	```shell
-	$ cd examples/data-plane
-	$ docker-compose up -d
-	$ sudo ./rules.sh
+	vagrant$ cd examples/data-plane
+	vagrant$ docker-compose up -d
+	vagrant$ sudo ./rules.sh
 	```
 
 1. Start the data plane
@@ -38,7 +38,7 @@ Perform the following sequence of commands:
 	**Data plane [2]**
 
 	```shell
-	$ ARMOUR_PASS=password armour-master
+	vagrant$ ARMOUR_PASS=password armour-master
 	armour-master:> launch log
 	armour-master:> start http 6002
 	```
@@ -48,7 +48,7 @@ Perform the following sequence of commands:
 	**Client [3]**
 	
 	```
-   $ docker exec -ti client-1 curl http://server:80
+   vagrant$ docker exec -ti client-1 curl http://server:80
    request denied
 	```
 
@@ -65,7 +65,7 @@ Perform the following sequence of commands:
 	**Client [3]**
 	
 	```
-   $ docker exec -ti client-1 curl http://server:80
+   vagrant$ docker exec -ti client-1 curl http://server:80
    response!
 	```
 	
@@ -74,7 +74,7 @@ Perform the following sequence of commands:
 	**Admin [1]**
 
 	```shell
-	$ docker-compose down
+	vagrant$ docker-compose down
 	```
 
 1. Stop the data plane
