@@ -1,4 +1,3 @@
-iptables -A FORWARD -p tcp -d 127.0.0.1 --dport 6002 -j ACCEPT
 iptables -t nat -I PREROUTING -i srv-net+ -p tcp -j DNAT --to-destination 127.0.0.1:6002
 iptables -t nat -I PREROUTING -i cl-net+ -p tcp -j DNAT --to-destination 127.0.0.1:6002
 sysctl -w net.ipv4.conf.srv-net.route_localnet=1

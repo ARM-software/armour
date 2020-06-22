@@ -1,130 +1,174 @@
 ## Armour on Arm
 
-We'll run a simple demo application on a single raspberrypi emulated using QEMU inside an Ubuntu VM.
+We'll run a simple demo application on a single Raspberry Pi emulated using QEMU inside an Ubuntu VM.
 
-In case you have a Raspberry Pi available, skip the part of setting up QEMU and just transfer Armour component binaries to your pi.
+In case you have a Raspberry Pi available, skip the part of setting up QEMU and just transfer Armour binaries to your Pi.
  
-### Requirements
+### Vagrant Setup
 
-Download and install [vagrant](https://www.vagrantup.com/downloads.html).
-### Host: Ubuntu VM
+Download and install [Vagrant](https://www.vagrantup.com/downloads.html). For example:
 
-Run the following commands too start the VM with Armour src files inside:
-> This could take few minutes.
+```shell
+host% brew cask install vagrant
+```
 
-	vagrant up
-	vagrant ssh
+Then bring up a Vagrant VM:
+
+```
+host% cd examples/arm-demo
+host% vagrant up
+```
+
+### Build Armour for Arm
+
+The following uses [`cross`](https://github.com/rust-embedded/cross) to build Armour binaries for Arm:
+
+```
+host% vagrant ssh
+vagrant$ cd ~/build
+vagrant$ ./setup.sh
+```
 
 
-#### Cross Compile Armour for Arm:
+### QEMU and Pi setup
 
-- Install the GNU Arm tooolchain:
+The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.com/emulate-raspberry-pi-with-qemu/).
 
-        rustup target add arm-unknown-linux-gnueabihf
-        sudo apt-get install gcc-arm-linux-gnueabihf
+- Download a QEMU compatible kernel and an official Raspbian image:
+
+	```
+	host% vagrant ssh
+	vagrant$ cd ~/rpi
+	vagrant$ ./setup.sh
+	```
+
+- Start QEMU
+
+	```
+	vagrant$ ./qemu-init.sh
+	```
+	> Booting may take a while
+
+   and then login at the serial console as user `pi` with password `raspberry`:
+
+	```
+	raspberrypi login: pi
+	password: raspberry
+	```
+
+- Extend the file space on the Pi:
+
+	```
+	pi$ sudo cfdisk /dev/sdb
+	```
 	
-- Configure Cargo for cross-compilation:
-
-		mkdir -p ~/.cargo
-		
-	- Append the following lines to `~/.cargo/config` :
-						
-			[target.arm-unknown-linux-gnueabihf]
-			linker = "arm-linux-gnueabihf-gcc"
-
-	- Build Armour component for Arm:
+	delete the second partition (`/dev/sdb2`) and create a `[New]` primary partition with all of the available space. Once new partition is created, use `[Write]` to commit the changes, then `[Quit]` to exit `cfdisk`. 
 	
-			cd ~/armour
-			mkdir bin && cd src
-			cargo build --target=arm-unknown-linux-gnueabihf --release
-			cp ~/armour/src/target/arm-unknown-linux-gnueabihf/release/{armour-proxy,armour-master} ~/armour/bin
-			cp ~/armour/examples/data-plane ~/armour/bin
-			
+	```
+	pi$ sudo e2fsck -f /dev/sdb2
+	pi$ sudo resize2fs /dev/sdb2
+	pi$ sudo halt
+	```
+	> The kernel will panic after running `halt`, so `killall qemu-system-arm` using another vagrant terminal.
 
-### QEMU set up:
-- Create a new folder for the demo
+   From now on QEMU can be started with `~/rpi/qemu.sh`.
 
-		mkdir ~/rpi-demo && cd ~/rpi-demo
+- Boot the Pi again and enable `ssh`:
 
-- Installing QEMU:
+	```	
+	vagrant$ ./qemu.sh
+	raspberrypi login: pi
+	password: raspberry
+	pi$ sudo systemctl enable ssh
+	pi$ sudo systemctl start ssh
+	```
 
-		sudo apt-get install qemu-system
+- Send Armour binaries and examples from the Vagrant VM to the Pi:
 
-- Get a QEMU compatible kernel to boot our system
+	```
+	vagrant$ scp -P 5555 -rp ~/bin pi@localhost:
+	vagrant$ ssh -p 5555 pi@localhost 'mkdir -p arm-demo'
+	vagrant$ scp -P 5555 -rp ~/{Dockerfile,server,data-plane} pi@localhost:arm-demo
+	```
 
-		wget https://github.com/vfdev-5/qemu-rpi2-vexpress/raw/master/kernel-qemu-4.4.1-vexpress
-		wget https://github.com/vfdev-5/qemu-rpi2-vexpress/raw/master/vexpress-v2p-ca15-tc1.dtb
-- Download the official Raspbian image
+### Docker setup:
 
-		wget -O raspbian_lite_latest.zip https://downloads.raspberrypi.org/raspbian_lite_latest
-		unzip raspbian_lite_latest.zip
-- Convert it from the raw image to a qcow2 image and add more storage space
->Change the size as you see fit
-		
-		qemu-img convert -f raw -O qcow2 2020-02-13-raspbian-buster-lite.img rasbian.qcow2
-		qemu-img resize rasbian.qcow2 +5G
-- start qemu
+- Install docker:
 
-		qemu-system-arm -m 2048M -M vexpress-a15 -cpu cortex-a15 \
- 		 -kernel kernel-qemu-4.4.1-vexpress -no-reboot \
- 		 -smp 2 -serial stdio \
- 		 -dtb vexpress-v2p-ca15-tc1.dtb -sd rasbian.qcow2 \
- 		 -append "root=/dev/mmcblk0p2 rw rootfstype=ext4 console=ttyAMA0,15200 loglevel=8" \
- 		 -nic user,hostfwd=tcp::5555-:22
-- login at the serial console as user pi with password raspberry
-- enable ssh
-		
-		sudo systemctl enable ssh
-- resize partition and filesystem (inside raspi)
-
-		parted /dev/mmcblk0 resizepart 2 100%
-		resize2fs /dev/mmcblk0p2
-
-  		
-- From your Ubuntu VM you can access the raspberry VM using:
+	> Make sure the Pi is booted first.
 	
-		ssh pi@127.0.0.1 -p 5555
-	>password: raspberry
-		
-### Demo setup
+	```
+	vagrant$ ssh pi@localhost -p 5555
+	pi$ curl -fsSL https://get.docker.com -o get-docker.sh
+	pi$ sudo sh get-docker.sh
+	pi$ sudo usermod -aG docker pi
+	pi$ logout
+	```
+	> Docker installation may take a while.
 
-- Since the demo uses Docker containers, we'll need to install docker and docker-compose:
+- Connect to the Pi again, start docker and check that it is running:
 
-		sudo apt-get update && sudo apt-get upgrade
-		curl -fsSL https://get.docker.com -o get-docker.sh
-		sudo sh get-docker.sh
-		sudo usermod -aG docker Pi
-		sudo curl -L "https://github.com/docker/compose/releases/download/1.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-		sudo chmod +x /usr/local/bin/docker-compose
-- Send Armour binaries and examples from the ubuntu VM to the pi:
+	```
+	vagrant$ ssh pi@localhost -p 5555	
+	pi$ sudo systemctl start docker.service
+	pi$ sudo systemctl status docker.service
+	```
 
-		scp -P 5555 -rp ~/armour/bin pi@127.0.0.1:~/bin
+- Install docker compose:
 
-- Inside the Pi: Strat the containers and set the `iptables` rules which will forward all containers traffic to Armour's data-plane
-		
-		cd ~/bin
-		docker-compose up -d
-		sudo ./rules.sh
-		
-- At this point, open 2 terminal windows both ssh inside the Pi:
+	```
+	pi$ sudo apt-get install python3-pip
+	pi$ sudo pip3 install docker-compose
+	```
 
-	1. Terminal 1: Armour data-plane
-			
-			cd ~/bin
-			$ ARMOUR_PASS=password ./armour-master
-			armour-master:> launch log
-			armour-master:> start http 6002
+### Demo
 
-	2. Terminal 2: Client
+1. Inside the Pi, start the containers and set the `iptables` rules that will forward all container traffic to Armour's data-plane
+
+	**Terminal 1: Admin**
 	
-			docker exec -ti client-1 curl http://server:80
-		>you should get: request denied
+	```		
+	vagrant$ ssh pi@localhost -p 5555
+	pi$ cd ~/arm-demo/data-plane
+	pi$ COMPOSE_HTTP_TIMEOUT=100 docker-compose up -d
+	pi$ sudo ./rules.sh
+	```
+	> `docker-compose up` will be slow on the first call as images are pulled and built.
 
-	3. Terminal 1: Change the policy to allow the traffic
-			
-			armour-master:> allow all
-			
-	4. Terminal 2: Try the request again
+1. Open a second terminal windows and `ssh` into the Pi
+
+	**Terminal 2: Armour data-plane**
+
+	```
+	host% vagrant ssh
+	vagrant$ ssh pi@localhost -p 5555
+	pi$ ARMOUR_PASS=password ~/bin/armour-master
+	armour-master:> launch log
+	armour-master:> start http 6002
+	```
+
+2. Make a request
+
+	**Terminal 1: Client**
+
+	```
+	pi$ docker exec -ti client-1 curl http://server:80
+	```
+	>you should get: `request denied`
+
+3. Change the policy to allow the traffic
+
+	**Terminal 2: Armour data-plane**
+
+	```
+	armour-master:> allow all
+	```
 		
-			docker exec -ti client-1 curl http://server:80
-		>you should get: response!
+4. Try the request again
+
+	**Terminal 1: Client**
+
+	```
+	pi$ docker exec -ti client-1 curl http://server:80
+	```
+	>you should get: `response!`
