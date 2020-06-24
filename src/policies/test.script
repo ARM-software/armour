@@ -1,0 +1,6 @@
+launch debug
+wait 1
+label add localhost allowed
+policy policies/test.policy
+start http 8000
+status

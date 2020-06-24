@@ -98,7 +98,7 @@ fn host_command(host: &Addr<ArmourDataHost>, caps: regex::Captures) -> bool {
     
     [<id>:] allow all                  request allow all policy
     [<id>:] deny all                   request deny all policy
-    [<id>:] policy  <file>             read policy <file> and send to instance
+    [<id>:] policy <file>              read policy <file> and send to instance
 
     [<id>:] label add <host> <label>   add a label
     [<id>:] label rm <host> <label>    remove a label
