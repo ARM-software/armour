@@ -128,7 +128,7 @@ Perform the following sequence of commands:
 	**Data plane [1.3]**
 
 	```
-	vagrant$ ARMOUR_PASS=password armour-master
+	vagrant$ ARMOUR_PASS=password armour-host
 	```
 
 1. Install `ingress.policy` and `egress.policy`, and then start the server.
@@ -162,7 +162,7 @@ Perform the following sequence of commands:
 	**Data plane [2.2]**
 
 	```
-	vagrant$ ARMOUR_PASS=password armour-master --label client-master \
+	vagrant$ ARMOUR_PASS=password armour-host --label client-host \
 	           -c 10.0.2.2:8088 -u 10.0.2.2:8090
 	```
 	
@@ -233,7 +233,7 @@ Perform the following sequence of commands:
 	**Data plane [2.2]**
 
 	```
-	armour-master:> quit
+	armour-host:> quit
 	```
 
 #### Server side
@@ -251,7 +251,7 @@ Perform the following sequence of commands:
 	**Data plane [1.2]**
 
 	```
-	armour-master:> quit
+	armour-host:> quit
 	```
 
 1. Stop the control plane.

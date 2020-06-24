@@ -12,16 +12,16 @@ type Credentials = String;
 pub type LabelMap = std::collections::BTreeMap<String, Labels>;
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct OnboardMasterRequest {
+pub struct OnboardHostRequest {
     pub host: url::Url,
-    pub master: Label,
+    pub label: Label,
     pub credentials: Credentials, // FIXME change types as needed
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct OnboardServiceRequest {
     pub service: Label,
-    pub master: Label,
+    pub host: Label,
 }
 
 #[derive(Serialize, Deserialize)]

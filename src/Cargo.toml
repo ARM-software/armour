@@ -7,7 +7,7 @@ members = [
     "armour-launch",
     "armour-lang",
     "armour-proxy",
-    "armour-master",
+    "armour-host",
     "armour-control",
     "armour-serde",
     "armour-ctl",

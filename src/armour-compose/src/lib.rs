@@ -1,4 +1,4 @@
-use armour_api::master::OnboardInformation;
+use armour_api::host::OnboardInformation;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap as Map;
 use std::{fs, io, path};
@@ -27,7 +27,7 @@ pub struct Compose {
 
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub proxies: armour_api::master::Proxies,
+    pub proxies: armour_api::host::Proxies,
 
     // capture everything else (future proofing)
     #[serde(skip_serializing)]
@@ -37,7 +37,7 @@ pub struct Compose {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OnboardInfo {
-    pub proxies: armour_api::master::Proxies,
+    pub proxies: armour_api::host::Proxies,
     pub services: Map<String, ServiceInfo>,
 }
 

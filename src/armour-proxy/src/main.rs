@@ -10,10 +10,10 @@ fn main() -> std::io::Result<()> {
         .author("Anthony Fox <anthony.fox@arm.com> and Gustavo Petri <gustavo.petri@arm.com>")
         .about("Armour Proxy, with support for Security Policies")
         .arg(
-            Arg::with_name("master socket")
+            Arg::with_name("host socket")
                 .index(1)
                 .required(true)
-                .help("Unix socket of data plane master"),
+                .help("Unix socket of data plane host"),
         )
         .arg(
             Arg::with_name("label")
@@ -71,9 +71,9 @@ fn main() -> std::io::Result<()> {
     // start up policy actor
     // (should possibly use actix::sync::SyncArbiter)
     // install the CLI policy
-    let master_socket = matches.value_of("master socket").unwrap().to_string();
-    log::info!("connecting to: {}", master_socket);
-    let stream = sys.block_on(tokio::net::UnixStream::connect(master_socket))?;
+    let host_socket = matches.value_of("host socket").unwrap().to_string();
+    log::info!("connecting to: {}", host_socket);
+    let stream = sys.block_on(tokio::net::UnixStream::connect(host_socket))?;
     let timeout = matches
         .value_of("timeout")
         .map(|s| s.parse::<u8>().ok())

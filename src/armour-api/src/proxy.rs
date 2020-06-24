@@ -1,5 +1,5 @@
-/// Communication interface between data plane master and proxy instances
-use super::{master, DeserializeDecoder, SerializeEncoder};
+/// Communication interface between data plane host and proxy instances
+use super::{host, DeserializeDecoder, SerializeEncoder};
 use actix::prelude::*;
 use armour_lang::{labels, policies};
 use bytes::BytesMut;
@@ -50,11 +50,11 @@ pub enum PolicyRequest {
     Timeout(u8),
 }
 
-/// Transport codec for Master to Proxy instance communication
+/// Transport codec for Host to Proxy instance communication
 pub struct PolicyCodec;
 
 impl DeserializeDecoder<PolicyRequest, std::io::Error> for PolicyCodec {}
-impl SerializeEncoder<master::PolicyResponse, std::io::Error> for PolicyCodec {}
+impl SerializeEncoder<host::PolicyResponse, std::io::Error> for PolicyCodec {}
 
 impl Decoder for PolicyCodec {
     type Item = PolicyRequest;
@@ -65,7 +65,7 @@ impl Decoder for PolicyCodec {
 }
 
 impl Encoder for PolicyCodec {
-    type Item = master::PolicyResponse;
+    type Item = host::PolicyResponse;
     type Error = std::io::Error;
     fn encode(&mut self, msg: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
         self.serialize_encode(msg, dst)

@@ -10,10 +10,10 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 #[actix_rt::main]
 async fn main() -> Result<(), Error> {
     let matches = get_matches();
-    let master_url = parse_http_url(
+    let host_url = parse_http_url(
         matches
-            .value_of("master")
-            .unwrap_or(armour_api::master::DATA_PLANE_MASTER),
+            .value_of("host")
+            .unwrap_or(armour_api::host::DATA_PLANE_HOST),
         8090,
     )?;
 
@@ -31,15 +31,15 @@ async fn main() -> Result<(), Error> {
             docker_up(out_file)?;
             // try to set IP addresses for containers (leaves containers in paused state)
             set_ip_addresses(&mut info).await;
-            // notify data plane master - onboarding
-            onboard_services(master_url, info, out_file).await
+            // notify data plane host - onboarding
+            onboard_services(host_url, info, out_file).await
         }
     } else if let Some(_down) = matches.subcommand_matches("down") {
         // create docker-compose.yml from armour-compose input file
         let info = read_armour(in_file, out_file)?;
         // try to run `docker-compose down` command
         docker_down(out_file)?;
-        drop_services(master_url, info.proxies).await
+        drop_services(host_url, info.proxies).await
     } else if let Some(rules_matches) = matches.subcommand_matches("rules") {
         let (compose, info) = armour_compose::Compose::read_armour(in_file)?;
         let rules_file = rules_matches.value_of("rules file").unwrap_or("rules");
@@ -58,13 +58,13 @@ fn get_matches<'a>() -> clap::ArgMatches<'a> {
         .about("Armour launcher")
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .arg(
-            Arg::with_name("master")
+            Arg::with_name("host")
                 .short("m")
-                .long("master")
+                .long("host")
                 .required(false)
                 .takes_value(true)
                 .value_name("URL")
-                .help("data plane master URL"),
+                .help("data plane host URL"),
         )
         .arg(
             Arg::with_name("file")

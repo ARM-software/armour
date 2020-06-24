@@ -6,6 +6,6 @@ cargo install cross
 docker build -t arm-unknown-linux-musleabihf .
 cd ~/src
 cross build --target=arm-unknown-linux-musleabihf -p armour-proxy
-cross build --target=arm-unknown-linux-musleabihf -p armour-master
+cross build --target=arm-unknown-linux-musleabihf -p armour-host
 mkdir ~/bin
-ln -s ~/src/target/arm-unknown-linux-musleabihf/debug/{armour-proxy,armour-master} ~/bin
+ln -s ~/src/target/arm-unknown-linux-musleabihf/debug/{armour-proxy,armour-host} ~/bin

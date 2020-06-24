@@ -1,11 +1,11 @@
 ### -*- restclient -*-
 ###
-POST http://localhost:8088/master/on-board
+POST http://localhost:8088/host/on-board
 Content-Type: application/json
 
 {
         "host": "http://localhost",
-        "master": "armour::master-1",
+        "label": "armour::host-1",
         "credentials": "no-creds"
 }
 
@@ -15,7 +15,7 @@ Content-Type: application/json
 
 {
   "service": "armour::service-1",
-  "master": "armour::master-one"
+  "host": "armour::host-1"
 }
 
 ###

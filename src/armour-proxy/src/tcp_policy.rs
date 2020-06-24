@@ -3,7 +3,7 @@ use super::policy::{Policy, PolicyActor, ID};
 use super::tcp_proxy;
 use super::Stop;
 use actix::prelude::*;
-use armour_api::master::Status;
+use armour_api::host::Status;
 use armour_lang::{
     expressions::{Error, Expr},
     interpret::Env,

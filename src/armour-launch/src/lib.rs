@@ -1,4 +1,4 @@
-use armour_api::master::{OnboardInformation, Proxies};
+use armour_api::host::{OnboardInformation, Proxies};
 use armour_compose::{Compose, OnboardInfo};
 use awc::Client;
 use std::collections::BTreeMap;
@@ -9,17 +9,17 @@ use std::process::Command;
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
 pub async fn onboard_services<P: AsRef<std::ffi::OsStr>>(
-    master_url: url::Url,
+    host_url: url::Url,
     info: OnboardInfo,
     out_file: P,
 ) -> Result<(), Error> {
-    if let Some(host_str) = master_url.host_str() {
+    if let Some(host_str) = host_url.host_str() {
         let client = Client::default();
         let onboard_info: OnboardInformation = (&info).into();
         let url = format!(
             "http://{}:{}/service/on-board",
             host_str,
-            master_url.port().unwrap_or(8090)
+            host_url.port().unwrap_or(8090)
         );
         match client.post(url).send_json(&onboard_info).await {
             Ok(res) => {
@@ -29,7 +29,7 @@ pub async fn onboard_services<P: AsRef<std::ffi::OsStr>>(
                     Ok(())
                 } else {
                     docker_down(out_file)?;
-                    drop_services(master_url, info.proxies).await?;
+                    drop_services(host_url, info.proxies).await?;
                     Err(message(res)
                         .await
                         .unwrap_or_else(|| "onboarding failed".to_string())
@@ -38,31 +38,31 @@ pub async fn onboard_services<P: AsRef<std::ffi::OsStr>>(
             }
             Err(e) => {
                 docker_down(out_file)?;
-                drop_services(master_url, info.proxies).await?;
+                drop_services(host_url, info.proxies).await?;
                 Err(format!("onboarding failed: {}", e).into())
             }
         }
     } else {
-        Err(format!("onboarding failed, bad master URL: {}", master_url).into())
+        Err(format!("onboarding failed, bad host URL: {}", host_url).into())
     }
 }
 
-pub async fn drop_services(master_url: url::Url, proxies: Proxies) -> Result<(), Error> {
+pub async fn drop_services(host_url: url::Url, proxies: Proxies) -> Result<(), Error> {
     if proxies.is_empty() {
         println!("no proxies to drop");
         Ok(())
-    } else if let Some(host_str) = master_url.host_str() {
+    } else if let Some(host_str) = host_url.host_str() {
         let url = format!(
             "http://{}:{}/service/drop",
             host_str,
-            master_url.port().unwrap_or(8090)
+            host_url.port().unwrap_or(8090)
         );
         let client = Client::default();
         let res = client
             .delete(url)
             .send_json(&proxies.to_vec())
             .await
-            .map_err(|err| format!("{}: drop services failed: {}", master_url, err))?;
+            .map_err(|err| format!("{}: drop services failed: {}", host_url, err))?;
         if res.status().is_success() {
             println!("drop services succeeded");
             Ok(())
@@ -73,7 +73,7 @@ pub async fn drop_services(master_url: url::Url, proxies: Proxies) -> Result<(),
                 .into())
         }
     } else {
-        Err(format!("bad master URL: {}", master_url).into())
+        Err(format!("bad host URL: {}", host_url).into())
     }
 }
 

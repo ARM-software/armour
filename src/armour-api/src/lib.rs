@@ -4,7 +4,7 @@ use byteorder::{BigEndian, ByteOrder};
 use bytes::{Buf, BufMut, BytesMut};
 
 pub mod control;
-pub mod master;
+pub mod host;
 pub mod proxy;
 
 trait DeserializeDecoder<T: serde::de::DeserializeOwned, E: std::convert::From<std::io::Error>> {

@@ -2,7 +2,7 @@
 use super::{http_policy::HttpPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_proxy};
 use actix::prelude::*;
 use actix_web::http::uri;
-use armour_api::master::{PolicyResponse, Status};
+use armour_api::host::{PolicyResponse, Status};
 use armour_api::proxy::{LabelOp, PolicyCodec, PolicyRequest};
 use armour_lang::{
     expressions,
@@ -73,7 +73,7 @@ pub struct PolicyActor {
     pub aead: Aead,
     // ID information
     identity: Identity,
-    // connection to master
+    // connection to host
     uds_framed: actix::io::FramedWrite<WriteHalf<tokio::net::UnixStream>, PolicyCodec>,
 }
 
@@ -81,7 +81,7 @@ pub struct PolicyActor {
 impl Actor for PolicyActor {
     type Context = Context<Self>;
     fn started(&mut self, _ctx: &mut Self::Context) {
-        // send a connection message to the data plane master
+        // send a connection message to the data plane host
         self.uds_framed.write(PolicyResponse::Connect(
             std::process::id(),
             self.label.clone(),
@@ -96,7 +96,7 @@ impl Actor for PolicyActor {
 }
 
 impl PolicyActor {
-    /// Start a new policy actor that connects to a data plane master on a Unix socket.
+    /// Start a new policy actor that connects to a data plane host on a Unix socket.
     pub fn create_policy(
         stream: tokio::net::UnixStream,
         label: labels::Label,
@@ -394,12 +394,12 @@ impl StreamHandler<Result<PolicyRequest, std::io::Error>> for PolicyActor {
         }
     }
     fn finished(&mut self, _ctx: &mut Context<Self>) {
-        log::info!("lost connection to master");
+        log::info!("lost connection to host");
         System::current().stop()
     }
 }
 
-// handle messages from the data plane master
+// handle messages from the data plane host
 impl Handler<PolicyRequest> for PolicyActor {
     type Result = ();
 

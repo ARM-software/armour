@@ -38,9 +38,9 @@ Perform the following sequence of commands:
 	**Data plane [2]**
 
 	```shell
-	vagrant$ ARMOUR_PASS=password armour-master
-	armour-master:> launch log
-	armour-master:> start http 6002
+	vagrant$ ARMOUR_PASS=password armour-host
+	armour-host:> launch log
+	armour-host:> start http 6002
 	```
 
 1. Make a requests
@@ -57,7 +57,7 @@ Perform the following sequence of commands:
 	**Data plane [2]**
 
 	```
-	armour-master:> allow all
+	armour-host:> allow all
 	```
 
 1. Try the request again
@@ -82,5 +82,5 @@ Perform the following sequence of commands:
 	**Data plane [2]**
 
 	```
-	armour-master:> quit
+	armour-host:> quit
 	```

@@ -513,6 +513,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "armour-host"
+version = "0.3.0"
+dependencies = [
+ "actix",
+ "actix-rt",
+ "actix-web",
+ "argon2rs",
+ "armour-api",
+ "armour-lang",
+ "armour-serde",
+ "armour-utils",
+ "base64 0.12.1",
+ "bytes 0.5.4",
+ "clap",
+ "futures 0.3.5",
+ "http",
+ "lazy_static",
+ "log",
+ "openssl",
+ "pretty_env_logger",
+ "regex",
+ "rpassword",
+ "rustyline",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util 0.2.0",
+ "url",
+]
+
+[[package]]
 name = "armour-lang"
 version = "0.3.0"
 dependencies = [
@@ -565,37 +596,6 @@ dependencies = [
  "docker-api",
  "futures 0.3.5",
  "serde_yaml",
- "url",
-]
-
-[[package]]
-name = "armour-master"
-version = "0.3.0"
-dependencies = [
- "actix",
- "actix-rt",
- "actix-web",
- "argon2rs",
- "armour-api",
- "armour-lang",
- "armour-serde",
- "armour-utils",
- "base64 0.12.1",
- "bytes 0.5.4",
- "clap",
- "futures 0.3.5",
- "http",
- "lazy_static",
- "log",
- "openssl",
- "pretty_env_logger",
- "regex",
- "rpassword",
- "rustyline",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util 0.2.0",
  "url",
 ]
 

@@ -1,21 +1,3 @@
-// The following is needed for testing:
-
-// Terminal 1 (for armour-master)
-// - docker-machine create --virtualbox-cpu-count "2" --virtualbox-memory "4096" armour
-// - docker-machine ssh armour
-// - sudo iptables -t nat -I PREROUTING -i armour -p tcp --dport 443 -j DNAT --to-destination 127.0.0.1:8443
-// - sudo iptables -t nat -I PREROUTING -i armour -p tcp --dport 5001 -j DNAT --to-destination 127.0.0.1:6000
-// - sudo sysctl -w net.ipv4.conf.armour.route_localnet=1
-// - $TARGET_PATH/armour-master
-
-// Terminal 2 (for client)
-// - eval `docker-machine env armour`
-// - docker network create --subnet 10.0.0.0/28 -o "com.docker.network.bridge.name"="armour" armour
-// - docker run -ti --rm --net armour --ip 10.0.0.2 ubuntu
-//     - apt update
-//     - apt install curl
-//     - curl https://...
-
 use super::{
     policy,
     tcp_codec::{client, server},
@@ -56,7 +38,7 @@ pub async fn start_proxy(
 
 /// Actor that handles Unix socket connections.
 ///
-/// When new data plane instances arrive, we give them the address of the master.
+/// When new data plane instances arrive, we give them the address of the armour-host.
 pub struct TcpDataServer {
     policy: Addr<PolicyActor>,
     pub port: u16,

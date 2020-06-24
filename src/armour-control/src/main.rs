@@ -54,9 +54,9 @@ async fn main() -> Result<(), Error> {
             .app_data(state.clone())
             .wrap(middleware::Logger::default())
             .service(
-                web::scope("/master")
-                    .service(rest_api::master::on_board)
-                    .service(rest_api::master::drop)
+                web::scope("/host")
+                    .service(rest_api::host::on_board)
+                    .service(rest_api::host::drop)
                     .default_service(web::to(index)),
             )
             .service(

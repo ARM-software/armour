@@ -1,7 +1,7 @@
 //! actix-web support for Armour policies
 use super::policy::{Policy, PolicyActor, ID};
 use actix::prelude::*;
-use armour_api::master::Status;
+use armour_api::host::Status;
 use armour_lang::{
     expressions,
     interpret::Env,

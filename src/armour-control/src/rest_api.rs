@@ -1,32 +1,35 @@
 use actix_web::{client, delete, get, post, web, web::Json, HttpResponse};
 use armour_api::control;
-use armour_api::master::PolicyUpdate;
+use armour_api::host::PolicyUpdate;
 use armour_lang::{labels::Label, policies::Policies};
 use bson::doc;
 
 const ARMOUR_DB: &str = "armour";
-const MASTERS_COL: &str = "masters";
+const HOSTS_COL: &str = "hosts";
 const SERVICES_COL: &str = "services";
 const POLICIES_COL: &str = "policies";
 
 type State = web::Data<super::ControlPlaneState>;
 
-pub mod master {
+pub mod host {
     use super::*;
 
     #[post("/on-board")]
     pub async fn on_board(
         state: State,
-        request: Json<control::OnboardMasterRequest>,
+        request: Json<control::OnboardHostRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
-        let master = &request.master;
+        let label = &request.label;
         let host = &request.host;
-        log::info!("Onboarding master: {} ({})", master, host);
-        let col = collection(&state, MASTERS_COL);
+        log::info!("Onboarding host: {} ({})", label, host);
+        let col = collection(&state, HOSTS_COL);
 
-        // Check if the master is already there
-        if present(&col, doc! { "master" : to_bson(master)? }).await? {
-            Ok(internal(format!(r#"master "{}" already present"#, master)))
+        // Check if the host is already there
+        if present(&col, doc! { "label" : to_bson(label)? }).await? {
+            Ok(internal(format!(
+                r#"host label "{}" already present"#,
+                label
+            )))
         } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
             col.insert_one(document, None)
                 .await
@@ -40,19 +43,19 @@ pub mod master {
     #[delete("/drop")]
     pub async fn drop(
         state: State,
-        request: Json<control::OnboardMasterRequest>,
+        request: Json<control::OnboardHostRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
-        let master = request.master.clone();
+        let label = request.label.clone();
         let host = &request.host;
-        log::info!("dropping master: {} ({})", master, host);
+        log::info!("dropping host: {} ({})", label, host);
 
-        let col = collection(&state, MASTERS_COL);
+        let col = collection(&state, HOSTS_COL);
         if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
             col.delete_one(document, None)
                 .await
-                .on_err("error removing master from MongoDB")?;
+                .on_err("error removing host from MongoDB")?;
             let col = collection(&state, SERVICES_COL);
-            let filter = doc! { "master" : to_bson(&master)? };
+            let filter = doc! { "label" : to_bson(&label)? };
             col.delete_many(filter, None)
                 .await
                 .on_err("error removing services from MongoDB")?;
@@ -134,26 +137,26 @@ pub mod policy {
 
     async fn hosts(state: &State, label: &Label) -> Result<BTreeSet<url::Url>, actix_web::Error> {
         use futures::StreamExt;
-        let masters_col = collection(state, MASTERS_COL);
+        let hosts_col = collection(state, HOSTS_COL);
         let mut hosts = BTreeSet::new();
-        // find masters for service
+        // find hosts for service
         let mut docs = collection(state, SERVICES_COL)
             .find(doc! { "service" : to_bson(label)? }, None)
             .await
-            .on_err("error notifying masters")?;
+            .on_err("error notifying hosts")?;
         while let Some(doc) = docs.next().await {
             if let Ok(doc) = doc {
-                let master =
+                let host =
                     bson::from_bson::<control::OnboardServiceRequest>(bson::Bson::Document(doc))
                         .on_err("Bson conversion error")?
-                        .master;
-                // find host for master
-                if let Ok(Some(doc)) = masters_col
-                    .find_one(Some(doc! { "master" : to_bson(&master)? }), None)
+                        .host;
+                // find host
+                if let Ok(Some(doc)) = hosts_col
+                    .find_one(Some(doc! { "label" : to_bson(&host)? }), None)
                     .await
                 {
                     hosts.insert(
-                        bson::from_bson::<control::OnboardMasterRequest>(bson::Bson::Document(doc))
+                        bson::from_bson::<control::OnboardHostRequest>(bson::Bson::Document(doc))
                             .on_err("Bson conversion error")?
                             .host,
                     );
@@ -219,7 +222,7 @@ pub mod policy {
             col.insert_one(document, None)
                 .await
                 .on_err("error inserting new policy")?;
-            // push policy to masters
+            // push policy to hosts
             update_hosts(&state, label, &request.policy).await?;
             Ok(HttpResponse::Ok().finish())
         } else {

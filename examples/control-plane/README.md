@@ -141,7 +141,7 @@ Perform the following sequence of commands:
 	**Data plane [3]**
 
 	```
-	vagrant$ ARMOUR_PASS=password armour-master
+	vagrant$ ARMOUR_PASS=password armour-host
 	```
 
 1. Start the services and apply the `iptables` rules.
@@ -227,7 +227,7 @@ Perform the following sequence of commands:
 	**Data plane [3]**
 
 	```
-	armour-master:> quit
+	armour-host:> quit
 	```
 
 1. Stop the control plane

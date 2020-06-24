@@ -110,8 +110,8 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 	```
 	vagrant$ ssh pi@localhost -p 5555	
-	pi$ sudo systemctl start docker.service
-	pi$ sudo systemctl status docker.service
+	pi$ sudo systemctl start docker
+	pi$ sudo systemctl status docker
 	```
 
 - Install docker compose:
@@ -142,9 +142,9 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 	```
 	host% vagrant ssh
 	vagrant$ ssh pi@localhost -p 5555
-	pi$ ARMOUR_PASS=password ~/bin/armour-master
-	armour-master:> launch log
-	armour-master:> start http 6002
+	pi$ ARMOUR_PASS=password ~/bin/armour-host
+	armour-host:> launch log
+	armour-host:> start http 6002
 	```
 
 2. Make a request
@@ -161,7 +161,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 	**Terminal 2: Armour data-plane**
 
 	```
-	armour-master:> allow all
+	armour-host:> allow all
 	```
 		
 4. Try the request again

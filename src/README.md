@@ -8,7 +8,7 @@
 - `armour-ctl/`: command line tool for communicating with `armour-control`
 - `amrour-lang/`: implementation of Armour policy language (provides REPL for testing)
 - `armour-lauch/`: tool, similar to docker-compose, for starting and stopping Armour secured services
-- `armour-master`: data plane master. Manages communication between `armour-control`, `armour-proxy` and `armour-launch`. Provides interactive shell and RESTful interface.
+- `armour-host`: data plane host. Manages communication between `armour-control`, `armour-proxy` and `armour-launch`. Provides interactive shell and RESTful interface.
 - `armour-proxy`: data plane proxy. Enforces Armour policies.
 - `armour-serde`: additional library code for working with [serde](https://serde.rs)
 - `armour-utils`: general library (shared code)
@@ -34,7 +34,7 @@ You will also need [Cap'n Proto](https://capnproto.org) and [OpenSSL](https://ww
 ## Default URLs
 
 - `armour-control`: `localhost:8088`
-- `armour-master`: `localhost:8090`
+- `armour-host`: `localhost:8090`
 - `logger` (web interface): `localhost:9000`
 
 ## Other directories
