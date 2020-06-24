@@ -1,8 +1,6 @@
 ## Armour on Arm
 
-We'll run a simple demo application on a single Raspberry Pi emulated using QEMU inside an Ubuntu VM.
-
-In case you have a Raspberry Pi available, skip the part of setting up QEMU and just transfer Armour binaries to your Pi.
+The following demos Arm running on single Raspberry Pi emulated using QEMU inside a VM. If you have a Raspberry Pi (running Raspbian Stretch) available then you can skip the **QEMU and Pi setup** section and proceed to installing docker and transferring the Armour binaries to your Pi.
  
 ### Vagrant Setup
 
@@ -83,14 +81,6 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 	pi$ sudo systemctl start ssh
 	```
 
-- Send Armour binaries and examples from the Vagrant VM to the Pi:
-
-	```
-	vagrant$ scp -P 5555 -rp ~/bin pi@localhost:
-	vagrant$ ssh -p 5555 pi@localhost 'mkdir -p arm-demo'
-	vagrant$ scp -P 5555 -rp ~/{Dockerfile,server,data-plane} pi@localhost:arm-demo
-	```
-
 ### Docker setup:
 
 - Install docker:
@@ -122,6 +112,14 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 	```
 
 ### Demo
+
+1. Send Armour binaries and examples from the Vagrant VM to the Pi:
+
+	```
+	vagrant$ scp -P 5555 -rp ~/bin pi@localhost:
+	vagrant$ ssh -p 5555 pi@localhost 'mkdir -p arm-demo'
+	vagrant$ scp -P 5555 -rp ~/{Dockerfile,server,data-plane} pi@localhost:arm-demo
+	```
 
 1. Inside the Pi, start the containers and set the `iptables` rules that will forward all container traffic to Armour's data-plane
 
