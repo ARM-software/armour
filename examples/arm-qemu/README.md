@@ -1,6 +1,6 @@
 ## Armour on Arm
 
-The following demos Arm running on single Raspberry Pi emulated using QEMU inside a VM. If you have a Raspberry Pi (running Raspbian Stretch) available then you can skip the **QEMU and Pi setup** section and proceed to installing docker and transferring the Armour binaries to your Pi.
+The following demos running Armour on a Raspberry Pi emulated using QEMU inside a VM. If you have a Raspberry Pi (running Raspbian Stretch) available then you can skip the **QEMU and Pi setup** section and proceed to installing docker and transferring the Armour binaries to your Pi.
  
 ### Vagrant Setup
 
