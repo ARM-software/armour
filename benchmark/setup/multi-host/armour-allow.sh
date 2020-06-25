@@ -28,7 +28,7 @@ server=$(aws ec2 describe-instances --filters "Name=ip-address,Values=$ip"   --r
 elif [ "$i" -eq 13 ]; then
   ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
 cd /home/ec2-user/binaries
-screen -d -m -S test-armour ./armour-master --run proxy-allow.conf
+screen -d -m -S test-armour ./armour-host --run proxy-allow.conf
 SHELL
 proxy=$(aws ec2 describe-instances --filters "Name=ip-address,Values=$ip"   --region eu-west-2 --query 'Reservations[*].Instances[*].[PrivateIpAddress]' --output text)
 elif [ "$i" -eq 14 ]; then

@@ -100,7 +100,7 @@ elif [ "$i" -eq 13 ]; then
   #proxy
   ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
 cd /home/ec2-user/binaries
-screen -d -m -S test-armour ./armour-data-master --run proxy-allow.conf
+screen -d -m -S test-armour ./armour-host --run proxy-allow.conf
 SHELL
 proxy=$(aws ec2 describe-instances --filters "Name=ip-address,Values=$ip"   --region eu-west-2 --query 'Reservations[*].Instances[*].[PrivateIpAddress]' --output text)
 elif [ "$i" -eq 14 ]; then
@@ -119,7 +119,7 @@ ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKey
 cd /home/ec2-user/binaries
 screen -d -m -S log ./logger log_sock
 cd /home/ec2-user/binaries 
-screen -d -m -S test ./armour-data-master --run proxy-log.conf
+screen -d -m -S test ./armour-host --run proxy-log.conf
 SHELL
 proxy=$(aws ec2 describe-instances --filters "Name=ip-address,Values=$ip"   --region eu-west-2 --query 'Reservations[*].Instances[*].[PrivateIpAddress]' --output text)
 elif [ "$i" -eq 17 ]; then
@@ -136,7 +136,7 @@ elif [ "$i" -eq 19 ]; then
   #proxy
   ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
 cd /home/ec2-user/binaries
-screen -d -m -S test-armour ./armour-data-master --run proxy-all.conf
+screen -d -m -S test-armour ./armour-host --run proxy-all.conf
 SHELL
 proxy=$(aws ec2 describe-instances --filters "Name=ip-address,Values=$ip"   --region eu-west-2 --query 'Reservations[*].Instances[*].[PrivateIpAddress]' --output text)
 elif [ "$i" -eq 20 ]; then
@@ -155,7 +155,7 @@ ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKey
 cd /home/ec2-user/binaries
 screen -d -m -S log ./logger log_sock
 cd /home/ec2-user/binaries 
-screen -d -m -S test ./armour-data-master --run proxy-all-log.conf
+screen -d -m -S test ./armour-host --run proxy-all-log.conf
 SHELL
 proxy=$(aws ec2 describe-instances --filters "Name=ip-address,Values=$ip"   --region eu-west-2 --query 'Reservations[*].Instances[*].[PrivateIpAddress]' --output text)
 elif [ "$i" -eq 23 ]; then

@@ -32,7 +32,7 @@ elif [ "$i" -eq 16 ]; then
   ssh -i ~/Downloads/some-key.pem -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user@$ip <<SHELL
 cd /home/ec2-user/binaries
 sudo sed -i "s/srv-hyper/$server/g" all.policy
-screen -d -m -S test-armour ./armour-master --run proxy-all.conf
+screen -d -m -S test-armour ./armour-host --run proxy-all.conf
 SHELL
 proxy=$(aws ec2 describe-instances --filters "Name=ip-address,Values=$ip"   --region eu-west-2 --query 'Reservations[*].Instances[*].[PrivateIpAddress]' --output text)
 elif [ "$i" -eq 17 ]; then
