@@ -4,10 +4,10 @@ Dynamic authentication and authorisation for "services" using a custom policy la
 
 ### Repository contents
 
-- `benchmark/`: Armour performance analysis
-- `design/`: Armour design documents (markdown and keynote) and project proposal (LaTeX)
-- `examples/`: examples, including Vagrant development testbed and Vagrant & docker-compose version of the Healthcare PoC
-- `src/`: Armour source code
+- **`benchmark/`**: Armour performance analysis
+- **`design/`**: Armour design documents (markdown and keynote) and project proposal (LaTeX)
+- **`examples/`**: examples, including Vagrant development testbed and Vagrant & docker-compose version of the Healthcare PoC
+- **`src/`**: Armour source code
 
 ### Table of contents
 
@@ -39,7 +39,7 @@ The `examples/` directory contains a couple of [getting started](examples/README
 <a name="micro-benchmark"></a>
 ### Micro-benchmark
 
-We tested the performance of the `data plane` against other related solutions, `envoy`, `linkerd`, `nginx`, whilst using various policies and oracles. Here are the [results](benchmark/results/README.md).
+We tested the performance of the *data plane* against other related solutions (`envoy`, `linkerd` and `nginx`) whilst using various policies and oracles. Here are the [results](benchmark/results/README.md).
 
 <a name="future-work"></a>
 ### Future work
