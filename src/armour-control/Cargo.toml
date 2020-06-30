@@ -11,14 +11,14 @@ armour-api = { path = "../armour-api" }
 armour-lang = { path = "../armour-lang" }
 actix-rt = "1.1"
 actix-web = "2.0"
-bson = "0.15"
+bson = "1.0"
 bytes = "0.5"
 clap = {version = "2.33", features = ["yaml"]}
 env_logger = "0.7"
 futures = "0.3"
 json = "0.12"
 log = "0.4"
-mongodb = "0.11"
+mongodb = "1.0"
 serde = "1.0"
 serde_json = "1.0"
 tokio = "0.2"

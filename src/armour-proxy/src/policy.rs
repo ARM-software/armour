@@ -115,7 +115,7 @@ impl PolicyActor {
                 connection_number: 0,
                 http,
                 tcp: TcpPolicy::default(),
-                aead: Aes256Gcm::new(GenericArray::clone_from_slice(&key)),
+                aead: Aes256Gcm::new(&GenericArray::clone_from_slice(&key)),
                 identity: Identity::default(),
                 uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
             }
@@ -129,7 +129,7 @@ impl PolicyActor {
             .ok()
     }
     fn encrypt(aead: &Aead, message: &str) -> Option<String> {
-        use aead::{generic_array::GenericArray, Aead};
+        use aead::{generic_array::GenericArray, AeadInPlace};
         let nonce = PolicyActor::nonce()?;
         let mut block = message.to_string().into_bytes();
         if aead
@@ -146,7 +146,7 @@ impl PolicyActor {
         }
     }
     fn decrypt(aead: &Aead, message: &str) -> Option<Vec<u8>> {
-        use aead::{generic_array::GenericArray, Aead};
+        use aead::{generic_array::GenericArray, AeadInPlace};
         let res: Result<Vec<Vec<u8>>, base64::DecodeError> =
             message.split(';').map(base64::decode).collect();
         match res.ok()?.as_slice() {
