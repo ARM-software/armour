@@ -1,6 +1,6 @@
 fn allow_rest_request(req: HttpRequest, payload: data) -> bool {
     let (from, to) = req.from_to(); 
-    server_ok(to) && from.has_label('allowed') &&
+    to.server_ok() && from.has_label('allowed') &&
     req.method() == "GET" && req.path() == "/private" && payload.len() == 0
 }
 

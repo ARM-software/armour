@@ -7,11 +7,11 @@ The following demonstrates Armour running with a control plane.
 
 ### Policies
 
-Three policies, located in `policies/`, will be used in this example.
+Three policies are used in this example. They are located in `examples/control-plane/policies/`.
 
 #### `id.policy`
 
-```
+```rust
 fn allow_rest_request(req: HttpRequest) -> bool {
   let (from, to) = req.from_to();
   server_ok(to) && from.has_label('allowed')
@@ -35,29 +35,13 @@ This will allow requests to the host `server` on port `80`, provided the source 
 </center>
 
 > Note: only service `client-1` is tagged as `allowed` in the `armour-compose.yml` file.
-
-
-#### `log.policy`
-
-```
-external logger @ "log_sock" {
-  fn log(_) -> ()
-}
-
-fn allow_rest_request(req: HttpRequest) -> bool {
-  logger::log(req);
-  true
-}
-```
-All request are accepted and the request details are also sent to a logger service.
-<center>
-![ID](pictures/log.png)
-</center>
+> 
+> Tags can also come from interacting with the `armour-control` and `armour-host` components.
 
 
 #### `method.policy`
 
-```
+```rust
 fn allow_rest_request(req: HttpRequest, payload: data) -> bool {
     let (from, to) = req.from_to();
     server_ok(to) && from.has_label('allowed') &&
@@ -83,6 +67,24 @@ This is similar to `id.policy` but it also checks the *method*, *path* and *payl
 <center>
 ![ID](pictures/method.png)
 </center>
+
+#### `log.policy`
+
+```rust
+external logger @ "log_sock" {
+  fn log(_) -> ()
+}
+
+fn allow_rest_request(req: HttpRequest) -> bool {
+  logger::log(req);
+  true
+}
+```
+All request are accepted. However, request details are sent to a logger service.
+<center>
+![ID](pictures/log.png)
+</center>
+
 
 ---
 
@@ -112,7 +114,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1]**
 	
-	```
+	```shell
    vagrant$ sudo systemctl start mongod
    vagrant$ cd examples/control-plane
    vagrant$ armour-launch armour-compose.yml rules
@@ -123,7 +125,7 @@ Perform the following sequence of commands:
 
 	**Control plane [2]**
 
-	```
+	```shell
 	vagrant$ armour-control
 	```
 
@@ -131,7 +133,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1]**
 	
-	```
+	```shell
    vagrant$ armour-ctl update -p policies/id.policy -s armour
    vagrant$ armour-ctl query -s armour
 	```
@@ -140,7 +142,7 @@ Perform the following sequence of commands:
 
 	**Data plane [3]**
 
-	```
+	```shell
 	vagrant$ ARMOUR_PASS=password armour-host
 	```
 
@@ -148,7 +150,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1]**
 	
-	```
+	```shell
    vagrant$ sudo ./rules_hosts.sh
    vagrant$ armour-launch armour-compose.yml up
    vagrant$ sudo ./rules_up.sh
@@ -160,7 +162,7 @@ Perform the following sequence of commands:
 	
 	**Client [4]**
 	
-	```
+	```shell
    vagrant$ docker exec -ti client-1 curl http://server:80
    response!
    vagrant$ docker exec -ti client-2 curl http://server:80
@@ -171,7 +173,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1]**
 	
-	```
+	```shell
    vagrant$ armour-ctl update -p policies/log.policy -s armour
    vagrant$ logger ../../log_sock
 	```
@@ -180,7 +182,7 @@ Perform the following sequence of commands:
 	
 	**Client [4]**
 	
-	```
+	```shell
    vagrant$ docker exec -ti client-1 curl http://server:80
    response!
    vagrant$ docker exec -ti client-2 curl http://server:80
@@ -191,7 +193,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1]**
 	
-	```
+	```shell
    logger:> quit
    vagrant$ armour-ctl update -p policies/method.policy -s armour
 	```
@@ -200,7 +202,7 @@ Perform the following sequence of commands:
 
 	**Client [4]**
 	
-	```
+	```shell
    vagrant$ docker exec -ti client-1 curl http://server:80
    bad client request
    vagrant$ docker exec -ti client-1 curl http://server:80/private
@@ -217,7 +219,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1]**
 	
-	```
+	```shell
    vagrant$ armour-launch armour-compose.yml down
    vagrant$ sudo ./rules_down.sh
 	```
@@ -226,7 +228,7 @@ Perform the following sequence of commands:
 
 	**Data plane [3]**
 
-	```
+	```shell
 	armour-host:> quit
 	```
 

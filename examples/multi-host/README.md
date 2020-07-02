@@ -7,11 +7,11 @@ The following demonstrates Armour running separate hosts (VMs).
 
 ### Policies
 
-Two policies, located in `policies/`, will be used in this example.
+Three policies, located in `examples/multi-host/policies/`, will be used in this example.
 
 #### `egress.policy`
 
-```
+```rust
 fn allow_rest_request() -> bool {
   Egress::add_label('egress-ok');
   true
@@ -26,7 +26,7 @@ This will add *egress* meta-data to the request (label `egress-ok`) and check th
 
 #### `egress-private.policy`
 
-```
+```rust
 fn allow_rest_request(req: HttpRequest) -> bool {
   Egress::add_label('egress-ok');
   req.path() == "/private"
@@ -41,7 +41,7 @@ This is the same as `egress.policy` but it also checks that the path of the requ
 
 #### `ingress.policy`
 
-```
+```rust
 fn allow_rest_request() -> bool {
   Ingress::has_label('egress-ok')
 }

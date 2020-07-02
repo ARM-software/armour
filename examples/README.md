@@ -1,14 +1,23 @@
-Setup
-=====
+Armour Examples
+===============
 
-The following has been tested with a Mac setup (though this is not essential).
+The following examples are available:
 
-Vagrant
+- [data-plane/](data-plane/README.md) : a minimal example without a control plane.
+- [control-plane/](control-plane/README.md) : an example of Armour running with a control plane.
+- [multi-host/](multi-host/README.md) : an example of Armour running with a distributed setup (two VMs).
+- [arm-qemu/](arm-qemu/README.md) : an example of Armour running on *Raspbian Pi OS* using the QEMU Arm emulator.
+
+Each of these examples has been tested on a Mac (though this is not essential) that is setup as follows.
+
+Vagrant Installation and Setup
 -------
 
-Download and install [Vagrant](https://www.vagrantup.com/downloads.html). By default it will be installed under `/opt/vagrant`. To uninstall follow [these instructions](https://www.vagrantup.com/docs/installation/uninstallation.html).
+Download and install [Vagrant](https://www.vagrantup.com/downloads.html).
+> By default Vagrant will be installed under `/opt/vagrant`.  
+> To uninstall follow [these instructions](https://www.vagrantup.com/docs/installation/uninstallation.html).
 
-Alternatively, you can also manage the Vagrant installation using [Homebrew](https://brew.sh).
+Alternatively, you can install Vagrant using [Homebrew](https://brew.sh):
 
 ```shell
 host% brew cask install vagrant
@@ -20,10 +29,7 @@ Then install the docker compose plugin
 host% vagrant plugin install vagrant-docker-compose
 ```
 
-Setup
------
-
-The following brings up the Vagrant VM
+The following brings up the Vagrant VM. The script also installs `rust` and builds Armour binaries within the VM.
 
 ```shell
 host% cd armour/examples
@@ -36,11 +42,3 @@ host% ./setup.sh
 > `host% vagrant pause`  
 > `host% vagrant resume`  
 > `host% vagrant destroy`
-
-Armour Examples
----------------
-
-- See [data-plane/](data-plane/README.md) for a minimal example without a control plane.
-- See [control-plane/](control-plane/README.md) for an example of Armour running with a control plane.
-- See [multi-host/](multi-host/README.md) for an example of Armour running with a distributed setup (two VMs).
-- See [arm-qemu/](arm-qemu/README.md) for an example of Armour running on *Raspbian Pi OS* using the QEMU Arm emulator.
