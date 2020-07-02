@@ -310,6 +310,12 @@ impl Policies {
             .insert(Protocol::HTTP, Policy::deny_all(Protocol::HTTP));
         policies
     }
+    pub fn is_allow_all(&self) -> bool {
+        self.0.values().all(|p| p.is_allow_all())
+    }
+    pub fn is_deny_all(&self) -> bool {
+        self.0.values().all(|p| p.is_deny_all())
+    }
     pub fn policy(&self, p: Protocol) -> Option<&Policy> {
         self.0.get(&p)
     }

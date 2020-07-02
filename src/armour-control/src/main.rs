@@ -55,18 +55,21 @@ async fn main() -> Result<(), Error> {
             .wrap(middleware::Logger::default())
             .service(
                 web::scope("/host")
+                    .service(rest_api::host::list)
                     .service(rest_api::host::on_board)
                     .service(rest_api::host::drop)
                     .default_service(web::to(index)),
             )
             .service(
                 web::scope("/service")
+                    .service(rest_api::service::list)
                     .service(rest_api::service::on_board)
                     .service(rest_api::service::drop)
                     .default_service(web::to(index)),
             )
             .service(
                 web::scope("/policy")
+                    .service(rest_api::policy::list)
                     .service(rest_api::policy::update)
                     .service(rest_api::policy::query)
                     .service(rest_api::policy::drop)

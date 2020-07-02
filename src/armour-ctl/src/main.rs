@@ -90,6 +90,25 @@ async fn main() -> Result<(), Error> {
             Err(err) => println!("{}", err),
         }
     }
+    if let Some(list_matches) = matches.subcommand_matches("list") {
+        let path = match list_matches.value_of("ENTITY").unwrap() {
+            "hosts" => "host/list",
+            "services" => "service/list",
+            "policies" => "policy/list",
+            _ => unreachable!(),
+        };
+        match client.get(url(path)).send().await {
+            Ok(mut response) => {
+                let body = response.body().await.map_err(|_| "Payload error")?;
+                if body.is_empty() {
+                    println!("<none>")
+                } else {
+                    print!("{}", string_from_bytes(body))
+                }
+            }
+            Err(err) => println!("{}", err),
+        }
+    }
 
     Ok(())
 }

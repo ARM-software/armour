@@ -9,6 +9,15 @@ args:
       takes_value: true
       value_name: URL
 subcommands:
+  - list:
+      about: List hosts, services or policies
+      args:
+        - ENTITY:
+            index: 1
+            possible_values: 
+                - hosts
+                - services
+                - policies
   - update:
       about: Update a policy
       args:

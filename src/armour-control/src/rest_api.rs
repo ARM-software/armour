@@ -14,6 +14,26 @@ type State = web::Data<super::ControlPlaneState>;
 pub mod host {
     use super::*;
 
+    #[get("/list")]
+    pub async fn list(state: State) -> Result<HttpResponse, actix_web::Error> {
+        use futures::StreamExt;
+        let col = collection(&state, HOSTS_COL);
+        let mut docs = col
+            .find(doc! {}, None)
+            .await
+            .on_err("error listing hosts")?;
+        let mut s = String::new();
+        while let Some(doc) = docs.next().await {
+            if let Ok(doc) = doc {
+                let host =
+                    bson::from_bson::<control::OnboardHostRequest>(bson::Bson::Document(doc))
+                        .on_err("Bson conversion error")?;
+                s.push_str(format!("{} ({})\n", host.label, host.host).as_str())
+            }
+        }
+        Ok(HttpResponse::Ok().body(s))
+    }
+
     #[post("/on-board")]
     pub async fn on_board(
         state: State,
@@ -69,6 +89,26 @@ pub mod host {
 
 pub mod service {
     use super::*;
+
+    #[get("/list")]
+    pub async fn list(state: State) -> Result<HttpResponse, actix_web::Error> {
+        use futures::StreamExt;
+        let col = collection(&state, SERVICES_COL);
+        let mut docs = col
+            .find(doc! {}, None)
+            .await
+            .on_err("error listing services")?;
+        let mut s = String::new();
+        while let Some(doc) = docs.next().await {
+            if let Ok(doc) = doc {
+                let service =
+                    bson::from_bson::<control::OnboardServiceRequest>(bson::Bson::Document(doc))
+                        .on_err("Bson conversion error")?;
+                s.push_str(format!("{} ({})\n", service.service, service.host).as_str())
+            }
+        }
+        Ok(HttpResponse::Ok().body(s))
+    }
 
     #[post("/on-board")]
     pub async fn on_board(
@@ -202,7 +242,33 @@ pub mod policy {
         Ok(())
     }
 
-    // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
+    #[get("/list")]
+    pub async fn list(state: State) -> Result<HttpResponse, actix_web::Error> {
+        use futures::StreamExt;
+        let col = collection(&state, POLICIES_COL);
+        let mut docs = col
+            .find(doc! {}, None)
+            .await
+            .on_err("error listing policies")?;
+        let mut s = String::new();
+        while let Some(doc) = docs.next().await {
+            if let Ok(doc) = doc {
+                let policy =
+                    bson::from_bson::<control::PolicyUpdateRequest>(bson::Bson::Document(doc))
+                        .on_err("Bson conversion error")?;
+                let pol = if policy.policy.is_allow_all() {
+                    "(allow all)"
+                } else if policy.policy.is_deny_all() {
+                    "(deny all)"
+                } else {
+                    ""
+                };
+                s.push_str(format!("{}{}\n", policy.label, pol).as_str())
+            }
+        }
+        Ok(HttpResponse::Ok().body(s))
+    }
+
     #[post("/update")]
     pub async fn update(
         state: State,
@@ -231,7 +297,6 @@ pub mod policy {
         }
     }
 
-    // FIXME: Not clear that we need shared data in the server. I think I prefer to have a DB.
     #[get("/query")]
     async fn query(
         state: State,
