@@ -94,8 +94,8 @@ All request are accepted. However, request details are sent to a logger service.
 1. Start four terminal windows and in each `ssh` into the vagrant VM:
 
    ```sh
-   host% cd armour/examples
-   host% vagrant ssh
+   host$ cd armour/examples
+   host$ vagrant ssh
    ```
 
 	The terminals correspond with the following

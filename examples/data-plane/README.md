@@ -9,8 +9,8 @@ The following demonstrates the Armour data plane running without a control plane
 1. Start three terminal windows and in each `ssh` into the vagrant VM:
 
    ```sh
-   host% cd armour/examples
-   host% vagrant ssh
+   host$ cd armour/examples
+   host$ vagrant ssh
    ```
 
 	The terminals correspond with the following

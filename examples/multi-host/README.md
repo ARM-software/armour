@@ -69,15 +69,15 @@ This setup is initialised as follows:
 1. Setup and start a second Vagrant VM
 
 	```sh
-	host% cd armour/examples/multi-host
-	host% ./setup.sh
+	host$ cd armour/examples/multi-host
+	host$ ./setup.sh
 	```
 
 1. Start three terminal windows that `ssh` into the first Vagrant VM (server side):
 
    ```sh
-   host% cd armour/examples
-   host% vagrant ssh
+   host$ cd armour/examples
+   host$ vagrant ssh
    ```
 
 	The terminals will correspond with the following
@@ -89,8 +89,8 @@ This setup is initialised as follows:
 1. Start another three terminal windows that `ssh` into the second Vagrant VM (client side):
 
    ```sh
-   host% cd armour/examples/multi-host
-   host% vagrant ssh
+   host$ cd armour/examples/multi-host
+   host$ vagrant ssh
    ```
 
 	The terminals will correspond with the following

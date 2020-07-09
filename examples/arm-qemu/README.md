@@ -7,14 +7,14 @@ The following demos running Armour on a Raspberry Pi emulated using QEMU inside 
 Download and install [Vagrant](https://www.vagrantup.com/downloads.html). For example:
 
 ```sh
-host% brew cask install vagrant
+host$ brew cask install vagrant
 ```
 
 Then bring up a Vagrant VM:
 
 ```sh
-host% cd examples/arm-demo
-host% vagrant up
+host$ cd examples/arm-demo
+host$ vagrant up
 ```
 
 ### Build Armour for Arm
@@ -22,7 +22,7 @@ host% vagrant up
 The following uses [`cross`](https://github.com/rust-embedded/cross) to build Armour binaries for Arm:
 
 ```sh
-host% vagrant ssh
+host$ vagrant ssh
 vagrant$ cd ~/build
 vagrant$ ./setup.sh
 ```
@@ -35,7 +35,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 - Download a QEMU compatible kernel and an official Raspbian image:
 
 	```sh
-	host% vagrant ssh
+	host$ vagrant ssh
 	vagrant$ cd ~/rpi
 	vagrant$ ./setup.sh
 	```
@@ -138,7 +138,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 	**Terminal 2: Armour data-plane**
 
 	```sh
-	host% vagrant ssh
+	host$ vagrant ssh
 	vagrant$ ssh pi@localhost -p 5555
 	pi$ ARMOUR_PASS=password ~/bin/armour-host
 	armour-host:> launch log
