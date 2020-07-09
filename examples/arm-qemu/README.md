@@ -6,13 +6,13 @@ The following demos running Armour on a Raspberry Pi emulated using QEMU inside 
 
 Download and install [Vagrant](https://www.vagrantup.com/downloads.html). For example:
 
-```shell
+```sh
 host% brew cask install vagrant
 ```
 
 Then bring up a Vagrant VM:
 
-```
+```sh
 host% cd examples/arm-demo
 host% vagrant up
 ```
@@ -21,7 +21,7 @@ host% vagrant up
 
 The following uses [`cross`](https://github.com/rust-embedded/cross) to build Armour binaries for Arm:
 
-```
+```sh
 host% vagrant ssh
 vagrant$ cd ~/build
 vagrant$ ./setup.sh
@@ -34,7 +34,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 - Download a QEMU compatible kernel and an official Raspbian image:
 
-	```
+	```sh
 	host% vagrant ssh
 	vagrant$ cd ~/rpi
 	vagrant$ ./setup.sh
@@ -42,7 +42,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 - Start QEMU
 
-	```
+	```sh
 	vagrant$ ./qemu-init.sh
 	```
 	> Booting may take a while
@@ -56,13 +56,13 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 - Extend the file space on the Pi:
 
-	```
+	```sh
 	pi$ sudo cfdisk /dev/sdb
 	```
 	
 	delete the second partition (`/dev/sdb2`) and create a `[New]` primary partition with all of the available space. Once new partition is created, use `[Write]` to commit the changes, then `[Quit]` to exit `cfdisk`. 
 	
-	```
+	```sh
 	pi$ sudo e2fsck -f /dev/sdb2
 	pi$ sudo resize2fs /dev/sdb2
 	pi$ sudo halt
@@ -73,7 +73,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 - Boot the Pi again and enable `ssh`:
 
-	```	
+	```	sh
 	vagrant$ ./qemu.sh
 	raspberrypi login: pi
 	password: raspberry
@@ -87,7 +87,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 	> Make sure the Pi is booted first.
 	
-	```
+	```sh
 	vagrant$ ssh pi@localhost -p 5555
 	pi$ curl -fsSL https://get.docker.com -o get-docker.sh
 	pi$ sudo sh get-docker.sh
@@ -98,7 +98,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 - Connect to the Pi again, start docker and check that it is running:
 
-	```
+	```sh
 	vagrant$ ssh pi@localhost -p 5555	
 	pi$ sudo systemctl start docker
 	pi$ sudo systemctl status docker
@@ -106,7 +106,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 - Install docker compose:
 
-	```
+	```sh
 	pi$ sudo apt-get install python3-pip
 	pi$ sudo pip3 install docker-compose
 	```
@@ -115,7 +115,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 1. Send Armour binaries and examples from the Vagrant VM to the Pi:
 
-	```
+	```sh
 	vagrant$ scp -P 5555 -rp ~/bin pi@localhost:
 	vagrant$ ssh -p 5555 pi@localhost 'mkdir -p arm-demo'
 	vagrant$ scp -P 5555 -rp ~/{Dockerfile,server,data-plane} pi@localhost:arm-demo
@@ -125,7 +125,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 	**Terminal 1: Admin**
 	
-	```		
+	```	sh
 	vagrant$ ssh pi@localhost -p 5555
 	pi$ cd ~/arm-demo/data-plane
 	pi$ COMPOSE_HTTP_TIMEOUT=100 docker-compose up -d
@@ -137,7 +137,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 	**Terminal 2: Armour data-plane**
 
-	```
+	```sh
 	host% vagrant ssh
 	vagrant$ ssh pi@localhost -p 5555
 	pi$ ARMOUR_PASS=password ~/bin/armour-host
@@ -149,7 +149,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 	**Terminal 1: Client**
 
-	```
+	```sh
 	pi$ docker exec -ti client-1 curl http://server:80
 	```
 	>you should get: `request denied`
@@ -166,7 +166,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 
 	**Terminal 1: Client**
 
-	```
+	```sh
 	pi$ docker exec -ti client-1 curl http://server:80
 	```
 	>you should get: `response!`

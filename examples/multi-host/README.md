@@ -68,14 +68,14 @@ This setup is initialised as follows:
 1. Setup and start the first Vagrant VM, see [README](../README.md).
 1. Setup and start a second Vagrant VM
 
-	```shell
+	```sh
 	host% cd armour/examples/multi-host
 	host% ./setup.sh
 	```
 
 1. Start three terminal windows that `ssh` into the first Vagrant VM (server side):
 
-   ```shell
+   ```sh
    host% cd armour/examples
    host% vagrant ssh
    ```
@@ -88,7 +88,7 @@ This setup is initialised as follows:
 
 1. Start another three terminal windows that `ssh` into the second Vagrant VM (client side):
 
-   ```shell
+   ```sh
    host% cd armour/examples/multi-host
    host% vagrant ssh
    ```
@@ -111,7 +111,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1.1]**
 	
-	```
+	```sh
    vagrant$ sudo systemctl start mongod
 	```
 
@@ -119,7 +119,7 @@ Perform the following sequence of commands:
 
 	**Control plane [1.2]**
 
-	```
+	```sh
 	vagrant$ armour-control
 	```
 
@@ -127,7 +127,7 @@ Perform the following sequence of commands:
 
 	**Data plane [1.3]**
 
-	```
+	```sh
 	vagrant$ ARMOUR_PASS=password armour-host
 	```
 
@@ -135,7 +135,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1.1]**
 	
-	```
+	```sh
 	vagrant$ cd examples/multi-host
 	vagrant$ armour-ctl update -p policies/ingress.policy -s server
 	vagrant$ armour-ctl update -p policies/egress.policy -s client
@@ -148,7 +148,7 @@ Perform the following sequence of commands:
 	
 	**Admin [2.1]**
 	
-	```
+	```sh
    vagrant$ cd examples/multi-host
    vagrant$ armour-launch armour-egress.yml rules
    generated files: rules_up.sh, rules_down.sh, rules_hosts.sh
@@ -161,7 +161,7 @@ Perform the following sequence of commands:
 
 	**Data plane [2.2]**
 
-	```
+	```sh
 	vagrant$ ARMOUR_PASS=password armour-host --label client-host \
 	           -c 10.0.2.2:8088 -u 10.0.2.2:8090
 	```
@@ -170,7 +170,7 @@ Perform the following sequence of commands:
 	
 	**Admin [2.1]**
 	
-	```
+	```sh
 	vagrant$ armour-launch armour-egress.yml up
 	vagrant$ sudo ./rules_up.sh
 	```
@@ -179,7 +179,7 @@ Perform the following sequence of commands:
 
 	**Client [2.3]**
 
-	```
+	```sh
 	vagrant$ docker exec -ti client curl http://10.0.2.2:8092
 	response!
 	```
@@ -188,14 +188,14 @@ Perform the following sequence of commands:
 
 	**Admin [2.1]**
 
-	```
+	```sh
 	vagrant$ curl http://10.0.2.2:8092
 	bad client request
 	```
 
 1. Try to make a request from the host machine
 
-	```
+	```sh
 	% curl http://localhost:8092
 	bad client request
 	```
@@ -204,7 +204,7 @@ Perform the following sequence of commands:
 
 	**Admin [2.1]**
 
-	```
+	```sh
 	vagrant$ armour-ctl -c 10.0.2.2:8088 update -p policies/egress-private.policy -s client
 	```
 
@@ -212,7 +212,7 @@ Perform the following sequence of commands:
 
 	**Client [2.3]**
 
-	```
+	```sh
 	vagrant$ docker exec -ti client curl http://10.0.2.2:8092
 	bad client request
 	vagrant$ docker exec -ti client curl http://10.0.2.2:8092/private
@@ -223,7 +223,7 @@ Perform the following sequence of commands:
 
 	**Admin [2.1]**
 
-	```
+	```sh
 	vagrant$ armour-launch armour-egress.yml down
 	vagrant$ sudo ./rules_down.sh
 	```
@@ -242,7 +242,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1.1]**
 	
-	```
+	```sh
    vagrant$ armour-launch armour-ingress.yml down
 	```
 

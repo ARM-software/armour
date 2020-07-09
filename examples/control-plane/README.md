@@ -93,7 +93,7 @@ All request are accepted. However, request details are sent to a logger service.
 1. Setup and start the Vagrant VM, see [README](../README.md).
 1. Start four terminal windows and in each `ssh` into the vagrant VM:
 
-   ```shell
+   ```sh
    host% cd armour/examples
    host% vagrant ssh
    ```
@@ -114,7 +114,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1]**
 	
-	```shell
+	```sh
    vagrant$ sudo systemctl start mongod
    vagrant$ cd examples/control-plane
    vagrant$ armour-launch armour-compose.yml rules
@@ -125,7 +125,7 @@ Perform the following sequence of commands:
 
 	**Control plane [2]**
 
-	```shell
+	```sh
 	vagrant$ armour-control
 	```
 
@@ -133,7 +133,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1]**
 	
-	```shell
+	```sh
    vagrant$ armour-ctl update -p policies/id.policy -s armour
    vagrant$ armour-ctl query -s armour
 	```
@@ -142,7 +142,7 @@ Perform the following sequence of commands:
 
 	**Data plane [3]**
 
-	```shell
+	```sh
 	vagrant$ ARMOUR_PASS=password armour-host
 	```
 
@@ -150,7 +150,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1]**
 	
-	```shell
+	```sh
    vagrant$ sudo ./rules_hosts.sh
    vagrant$ armour-launch armour-compose.yml up
    vagrant$ sudo ./rules_up.sh
@@ -162,7 +162,7 @@ Perform the following sequence of commands:
 	
 	**Client [4]**
 	
-	```shell
+	```sh
    vagrant$ docker exec -ti client-1 curl http://server:80
    response!
    vagrant$ docker exec -ti client-2 curl http://server:80
@@ -173,7 +173,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1]**
 	
-	```shell
+	```sh
    vagrant$ armour-ctl update -p policies/log.policy -s armour
    vagrant$ logger ../../log_sock
 	```
@@ -182,7 +182,7 @@ Perform the following sequence of commands:
 	
 	**Client [4]**
 	
-	```shell
+	```sh
    vagrant$ docker exec -ti client-1 curl http://server:80
    response!
    vagrant$ docker exec -ti client-2 curl http://server:80
@@ -193,7 +193,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1]**
 	
-	```shell
+	```sh
    logger:> quit
    vagrant$ armour-ctl update -p policies/method.policy -s armour
 	```
@@ -202,7 +202,7 @@ Perform the following sequence of commands:
 
 	**Client [4]**
 	
-	```shell
+	```sh
    vagrant$ docker exec -ti client-1 curl http://server:80
    bad client request
    vagrant$ docker exec -ti client-1 curl http://server:80/private
@@ -219,7 +219,7 @@ Perform the following sequence of commands:
 	
 	**Admin [1]**
 	
-	```shell
+	```sh
    vagrant$ armour-launch armour-compose.yml down
    vagrant$ sudo ./rules_down.sh
 	```
@@ -228,7 +228,7 @@ Perform the following sequence of commands:
 
 	**Data plane [3]**
 
-	```shell
+	```sh
 	armour-host:> quit
 	```
 

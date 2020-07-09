@@ -19,19 +19,19 @@ Download and install [Vagrant](https://www.vagrantup.com/downloads.html).
 
 Alternatively, you can install Vagrant using [Homebrew](https://brew.sh):
 
-```shell
+```sh
 host% brew cask install vagrant
 ```
 
 Then install the docker compose plugin
 
-```shell
+```sh
 host% vagrant plugin install vagrant-docker-compose
 ```
 
 The following brings up the Vagrant VM. The script also installs `rust` and builds Armour binaries within the VM.
 
-```shell
+```sh
 host% cd armour/examples
 host% ./setup.sh
 ```
