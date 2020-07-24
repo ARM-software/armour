@@ -115,7 +115,7 @@ Perform the following sequence of commands:
 	**Admin [1]**
 	
 	```sh
-   vagrant$ sudo systemctl start mongod
+	vagrant$ sudo systemctl start mongod
    vagrant$ cd examples/control-plane
    vagrant$ armour-launch armour-compose.yml rules
    generated files: rules_up.sh, rules_down.sh, rules_hosts.sh
@@ -126,6 +126,7 @@ Perform the following sequence of commands:
 	**Control plane [2]**
 
 	```sh
+	vagrant$ cd examples
 	vagrant$ armour-control
 	```
 
@@ -143,6 +144,7 @@ Perform the following sequence of commands:
 	**Data plane [3]**
 
 	```sh
+	vagrant$ cd examples
 	vagrant$ ARMOUR_PASS=password armour-host
 	```
 
@@ -175,7 +177,7 @@ Perform the following sequence of commands:
 	
 	```sh
    vagrant$ armour-ctl update -p policies/log.policy -s armour
-   vagrant$ logger ../../log_sock
+   vagrant$ logger ../log_sock
 	```
 
 1. Make some requests

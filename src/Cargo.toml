@@ -2,15 +2,16 @@
 
 members = [
     "armour-api",
+    "armour-certs",
     "armour-compose",
-    "armour-utils",
-    "armour-launch",
-    "armour-lang",
-    "armour-proxy",
-    "armour-host",
     "armour-control",
-    "armour-serde",
     "armour-ctl",
+    "armour-host",
+    "armour-lang",
+    "armour-launch",
+    "armour-proxy",
+    "armour-serde",
+    "armour-utils",
     "docker-api",
     "tools/logger",
     "tools/arm-service"

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tokio_util::codec::{Decoder, Encoder};
 
-pub const DATA_PLANE_HOST: &str = "http://localhost:8090";
+pub const DATA_PLANE_HOST: &str = "https://localhost:8090";
 pub const TCP_PORT: u16 = 8090;
 pub const UDS_SOCKET: &str = "armour";
 

@@ -10,15 +10,15 @@ fn string_from_bytes(b: bytes::Bytes) -> String {
 }
 
 pub async fn control_plane<S: serde::Serialize>(
+    client: actix_web::client::Client,
     url: &url::Url,
     method: http::Method,
     path: &str,
     value: &S,
 ) -> Result<String, String> {
     if let Some(host_str) = url.host_str() {
-        let client = actix_web::client::Client::default();
         let full_path = format!(
-            "http://{}:{}/{}",
+            "https://{}:{}/{}",
             host_str,
             url.port().unwrap_or(8088),
             path
@@ -51,6 +51,7 @@ pub async fn control_plane<S: serde::Serialize>(
 }
 
 pub async fn control_plane_deserialize<S, D>(
+    client: actix_web::client::Client,
     url: &url::Url,
     method: http::Method,
     path: &str,
@@ -60,6 +61,6 @@ where
     S: serde::Serialize,
     D: serde::de::DeserializeOwned,
 {
-    let res = control_plane(url, method, path, value).await?;
+    let res = control_plane(client, url, method, path, value).await?;
     serde_json::from_slice(res.as_ref()).map_err(|_| res)
 }

@@ -1258,7 +1258,10 @@ named!(parse_postfix_pat<Tokens, Pat>,
 named!(parse_pat_seq<Tokens, Pat>,
     do_parse!(
         p: many1!(parse_postfix_pat) >>
-        (if p.len() == 1 {p.clone().pop().unwrap()} else {Pat::Seq(p)})
+        (if p.len() == 1 {
+            #[allow(clippy::redundant_clone)]
+            p.clone().pop().unwrap()
+         } else {Pat::Seq(p)})
     )
 );
 

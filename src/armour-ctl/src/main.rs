@@ -1,7 +1,7 @@
 use armour_api::control;
 use armour_lang::labels::Label;
 use armour_lang::policies;
-use armour_utils::parse_http_url;
+use armour_utils::parse_https_url;
 use clap::{crate_version, App};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -11,7 +11,7 @@ async fn main() -> Result<(), Error> {
     let yaml = clap::load_yaml!("../resources/cli.yml");
     let matches = App::from_yaml(yaml).version(crate_version!()).get_matches();
 
-    let cp_url = parse_http_url(
+    let cp_url = parse_https_url(
         matches
             .value_of("CONTROLPLANEURL")
             .unwrap_or(control::CONTROL_PLANE),
@@ -19,9 +19,22 @@ async fn main() -> Result<(), Error> {
     )?;
     let host = cp_url.host_str().unwrap();
     let port = cp_url.port().unwrap();
-    let url = |s: &str| format!("http://{}:{}/{}", host, port, s);
+    let url = |s: &str| format!("https://{}:{}/{}", host, port, s);
 
-    let client = awc::Client::build().finish();
+    // enable logging
+    std::env::set_var("RUST_LOG", "armour_utils=info");
+    std::env::set_var("RUST_BACKTRACE", "0");
+    env_logger::init();
+
+    // build client for HTTPS connections
+    let ca = matches
+        .value_of("CA")
+        .unwrap_or("certificates/armour-ca.pem");
+    let certificate_password = matches.value_of("CERTIFICATE_PASSWORD").unwrap_or("armour");
+    let certificate = matches
+        .value_of("CERTIFICATE")
+        .unwrap_or("certificates/armour-ctl.p12");
+    let client = armour_utils::client(ca, certificate_password, certificate)?;
 
     // Request to update a policy
     if let Some(update_matches) = matches.subcommand_matches("update") {

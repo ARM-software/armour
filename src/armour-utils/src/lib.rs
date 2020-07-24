@@ -69,16 +69,16 @@ pub fn bincode_gz_base64_dec<R: std::io::Read, D: serde::de::DeserializeOwned>(
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }
 
-pub fn parse_http_url(s: &str, default_port: u16) -> Result<url::Url, String> {
-    let err = || format!("failed to parse HTTP URL: {}", s);
+pub fn parse_https_url(s: &str, default_port: u16) -> Result<url::Url, String> {
+    let err = || format!("failed to parse HTTPS URL: {}", s);
     if let Ok(socket) = s.parse::<std::net::SocketAddrV4>() {
-        format!("http://{}", socket)
+        format!("https://{}", socket)
             .parse::<url::Url>()
             .map_err(|_| err())
     } else {
         let mut url = s.parse::<url::Url>().map_err(|_| err())?;
         if url.host_str().is_some() {
-            if url.scheme() == "http" {
+            if url.scheme() == "https" {
                 if url.port().is_none() {
                     url.set_port(Some(default_port)).map_err(|_| err())?
                 }
@@ -87,11 +87,65 @@ pub fn parse_http_url(s: &str, default_port: u16) -> Result<url::Url, String> {
                 Err(err())
             }
         } else if url.scheme() == "localhost" {
-            format!("http://{}", s)
+            format!("https://{}", s)
                 .parse::<url::Url>()
                 .map_err(|_| err())
         } else {
             Err(err())
         }
     }
+}
+
+pub fn ssl_builder<P: AsRef<std::path::Path>>(
+    ca: P,
+    certificate_password: &str,
+    certificate: P,
+    mtls: bool,
+) -> Result<openssl::ssl::SslAcceptorBuilder, Box<dyn std::error::Error + Send + Sync>> {
+    use openssl::ssl::{SslAcceptor, SslMethod, SslVerifyMode};
+    use std::io::Read;
+    let mut certificate_file = std::fs::File::open(certificate.as_ref()).map_err(|err| {
+        log::warn!(
+            "failed to read certificate: {}",
+            certificate.as_ref().display()
+        );
+        err
+    })?;
+    let mut bytes = Vec::new();
+    certificate_file.read_to_end(&mut bytes)?;
+    let p12 = openssl::pkcs12::Pkcs12::from_der(&bytes)?.parse(certificate_password)?;
+    let mut ssl_builder = SslAcceptor::mozilla_modern(SslMethod::tls())?;
+    ssl_builder.set_private_key(&p12.pkey)?;
+    ssl_builder.set_certificate(&p12.cert)?;
+    ssl_builder.set_ca_file(ca)?;
+    if mtls {
+        ssl_builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT)
+    }
+    Ok(ssl_builder)
+}
+
+pub fn client<P: AsRef<std::path::Path>>(
+    ca: P,
+    certificate_password: &str,
+    certificate: P,
+) -> Result<awc::Client, Box<dyn std::error::Error + Send + Sync>> {
+    use std::io::Read;
+    let mut certificate_file = std::fs::File::open(certificate.as_ref()).map_err(|err| {
+        log::warn!(
+            "failed to read certificate: {}",
+            certificate.as_ref().display()
+        );
+        err
+    })?;
+    let mut bytes = Vec::new();
+    certificate_file.read_to_end(&mut bytes)?;
+    let p12 = openssl::pkcs12::Pkcs12::from_der(&bytes)?.parse(certificate_password)?;
+    let mut ssl_builder =
+        openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls_client())?;
+    ssl_builder.set_private_key(&p12.pkey)?;
+    ssl_builder.set_certificate(&p12.cert)?;
+    ssl_builder.set_ca_file(ca)?;
+    Ok(awc::Client::build()
+        .connector(awc::Connector::new().ssl(ssl_builder.build()).finish())
+        .finish())
 }

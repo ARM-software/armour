@@ -7,5 +7,6 @@ docker build -t arm-unknown-linux-musleabihf .
 cd ~/src
 cross build --target=arm-unknown-linux-musleabihf -p armour-proxy --release
 cross build --target=arm-unknown-linux-musleabihf -p armour-host --release
+cross build --target=arm-unknown-linux-musleabihf -p armour-certs --release
 mkdir ~/bin
-ln -s ~/src/target/arm-unknown-linux-musleabihf/release/{armour-proxy,armour-host} ~/bin
+ln -s ~/src/target/arm-unknown-linux-musleabihf/release/{armour-certs,armour-proxy,armour-host} ~/bin

@@ -38,6 +38,7 @@ Perform the following sequence of commands:
 	**Data plane [2]**
 
 	```sh
+	vagrant$ cd examples
 	vagrant$ ARMOUR_PASS=password armour-host
 	armour-host:> launch log
 	armour-host:> start http 6002

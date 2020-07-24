@@ -1,5 +1,5 @@
 [package]
-name = "armour-utils"
+name = "armour-certs"
 version = "0.1.0"
 authors = ["Anthony Fox <anthony.fox@arm.com>"]
 edition = "2018"
@@ -7,14 +7,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-awc = { version = "1.0", features=["openssl"] }
-base64 = "0.12"
-bincode = "1.3"
 clap = "2.33"
-flate2 = "1.0"
-get_if_addrs = "0.5"
-lazy_static = "1.4"
-log = "0.4"
-serde = "1.0"
-openssl = "0.10"
-url = "2.1"
+openssl = { version = "0.10", features = ["vendored"] }
+rpassword = "4.0"

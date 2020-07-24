@@ -15,3 +15,25 @@ args:
       long: mongo
       takes_value: true
       value_name: URL
+  - CA:
+      help: Certificate Authority certificate for mTLS
+      required: false
+      long: ca
+      value_name: PEM file
+      takes_value: true
+  - CERTIFICATE_PASSWORD:
+      help: Password for certificate
+      required: false
+      long: pass
+      takes_value: true
+  - CERTIFICATE:
+      help: Certificate for HTTPS
+      required: false
+      long: cert
+      value_name: pkcs12 file
+      takes_value: true
+  - NO_MTLS:
+      help: Do not require mTLS
+      required: false
+      long: no-mtls
+      takes_value: false

@@ -25,7 +25,10 @@ async fn main() -> Result<(), Error> {
     let control_plane = std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(0, 0, 0, 0), port);
 
     // enable logging
-    std::env::set_var("RUST_LOG", "armour_control=info,actix_web=info");
+    std::env::set_var(
+        "RUST_LOG",
+        "armour_control=info,armour_utils=info,actix_web=info",
+    );
     std::env::set_var("RUST_BACKTRACE", "0");
     env_logger::init();
 
@@ -49,8 +52,27 @@ async fn main() -> Result<(), Error> {
     });
 
     // start HTTP server
+    let ca = matches
+        .value_of("CA")
+        .unwrap_or("certificates/armour-ca.pem");
+    let certificate_password = matches.value_of("CERTIFICATE_PASSWORD").unwrap_or("armour");
+    let certificate = matches
+        .value_of("CERTIFICATE")
+        .unwrap_or("certificates/armour-control.p12");
+    let ssl_builder = armour_utils::ssl_builder(
+        ca,
+        certificate_password,
+        certificate,
+        !matches.is_present("NO_MTLS"),
+    )?;
+    let ca = ca.to_string();
+    let certificate_password = certificate_password.to_string();
+    let certificate = certificate.to_string();
     HttpServer::new(move || {
+        let client = armour_utils::client(&ca, &certificate_password, &certificate)
+            .expect("failed to build HTTP client");
         App::new()
+            .data(client)
             .app_data(state.clone())
             .wrap(middleware::Logger::default())
             .service(
@@ -83,10 +105,10 @@ async fn main() -> Result<(), Error> {
             )
             .default_service(web::to(index))
     })
-    .bind(control_plane)?
+    .bind_openssl(control_plane, ssl_builder)?
     .run();
 
-    log::info!("listening on: http://{}", control_plane);
+    log::info!("listening on: https://{}", control_plane);
 
     // await ^C
     tokio::signal::ctrl_c().await.unwrap_or_default();

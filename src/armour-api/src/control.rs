@@ -4,7 +4,7 @@ use armour_lang::labels::{Label, Labels};
 use armour_lang::policies::Policies;
 use serde::{Deserialize, Serialize};
 
-pub const CONTROL_PLANE: &str = "http://localhost:8088";
+pub const CONTROL_PLANE: &str = "https://localhost:8088";
 pub const TCP_PORT: u16 = 8088;
 
 type Credentials = String;

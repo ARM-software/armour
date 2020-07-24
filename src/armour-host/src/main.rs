@@ -9,7 +9,7 @@ use armour_host::{
     host::{ArmourDataHost, Quit, UdsConnect},
     rest_api,
 };
-use armour_utils::parse_http_url;
+use armour_utils::parse_https_url;
 use clap::{crate_version, App as ClapApp, Arg};
 use futures::StreamExt;
 use rustyline::{completion, error::ReadlineError, hint, validate::Validator, Editor};
@@ -28,6 +28,36 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .takes_value(true)
                 .value_name("URL")
                 .help("Control plane URL"),
+        )
+        .arg(
+            Arg::with_name("ca")
+                .long("ca")
+                .required(false)
+                .takes_value(true)
+                .value_name("PEM file")
+                .help("Certificate Authority for HTTPS"),
+        )
+        .arg(
+            Arg::with_name("certificate password")
+                .long("pass")
+                .required(false)
+                .takes_value(true)
+                .help("Password for certificate"),
+        )
+        .arg(
+            Arg::with_name("certificate")
+                .long("cert")
+                .required(false)
+                .takes_value(true)
+                .value_name("pkcs12 file")
+                .help("Certificate for mTLS"),
+        )
+        .arg(
+            Arg::with_name("no mtls")
+                .long("no-mtls")
+                .required(false)
+                .takes_value(false)
+                .help("Do not require mTLS for REST API"),
         )
         .arg(
             Arg::with_name("url")
@@ -68,7 +98,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .get_matches();
 
     // enable logging
-    env::set_var("RUST_LOG", "armour_host=debug,armour_lang=debug,actix=info");
+    env::set_var(
+        "RUST_LOG",
+        "armour_host=debug,armour_lang=debug,armour_utils=info,actix=info",
+    );
     env::set_var("RUST_BACKTRACE", "1");
     pretty_env_logger::init();
 
@@ -81,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     });
     let pass_key = argon2rs::argon2i_simple(&pass, PASS_SALT);
 
-    let control_url = parse_http_url(
+    let control_url = parse_https_url(
         matches
             .value_of("control")
             .unwrap_or(armour_api::control::CONTROL_PLANE),
@@ -112,7 +145,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if label.len() != 1 {
         return Err("host label not of the form `<name>`".into());
     }
-    let host = parse_http_url(
+    let host = parse_https_url(
         matches
             .value_of("url")
             .unwrap_or(armour_api::host::DATA_PLANE_HOST),
@@ -125,10 +158,23 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
     let onboard_clone = onboard.clone();
 
+    // HTTP clients
+    let ca = matches
+        .value_of("ca")
+        .unwrap_or("certificates/armour-ca.pem");
+    let certificate_password = matches.value_of("certificate password").unwrap_or("armour");
+    let certificate = matches
+        .value_of("certificate")
+        .unwrap_or("certificates/armour-host.p12");
+    let client1 = armour_utils::client(&ca, &certificate_password, &certificate)?;
+    let client2 = client1.clone();
+    let client3 = armour_utils::client(&ca, &certificate_password, &certificate)?;
+
     // onboard with control plane
     let control_url_clone = control_url.clone();
     let onboarded = if let Err(message) = sys.block_on(async move {
         control_plane(
+            client1,
             &control_url_clone,
             http::Method::POST,
             "host/on-board",
@@ -154,11 +200,24 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .incoming()
                 .map(|st| UdsConnect(st.unwrap())),
         );
-        ArmourDataHost::new(&control_url, &label, onboarded, unix_socket, pass_key)
+        ArmourDataHost::new(
+            client2,
+            &control_url,
+            &label,
+            onboarded,
+            unix_socket,
+            pass_key,
+        )
     });
     let host_clone = host.clone();
 
     // REST interface
+    let ssl_builder = armour_utils::ssl_builder(
+        ca,
+        certificate_password,
+        certificate,
+        !matches.is_present("no mtls"),
+    )?;
     HttpServer::new(move || {
         App::new()
             .data(label.clone())
@@ -180,7 +239,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     .service(rest_api::policy::update),
             )
     })
-    .bind(tcp_socket)?
+    .bind_openssl(tcp_socket, ssl_builder)?
     .run();
 
     // Interactive shell interface
@@ -219,6 +278,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut sys = actix_rt::System::new("armour_host");
         if let Err(message) = sys.block_on(async move {
             control_plane(
+                client3,
                 &control_url,
                 http::Method::DELETE,
                 "host/drop",

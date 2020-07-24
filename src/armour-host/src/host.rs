@@ -13,6 +13,7 @@ use tokio_util::codec::FramedRead;
 
 /// Actor that handles Unix socket connections
 pub struct ArmourDataHost {
+    client: actix_web::client::Client,
     url: url::Url,                               // control plane URL
     label: Label,         // host label (for communication with control plane)
     onboarded: bool,      // did we succesfully on-board with control plane?
@@ -34,6 +35,7 @@ impl Actor for ArmourDataHost {
 
 impl ArmourDataHost {
     pub fn new(
+        client: actix_web::client::Client,
         url: &url::Url,
         label: &Label,
         onboarded: bool,
@@ -41,6 +43,7 @@ impl ArmourDataHost {
         key: [u8; 32],
     ) -> Self {
         ArmourDataHost {
+            client,
             url: url.to_owned(),
             label: label.clone(),
             onboarded,
@@ -135,8 +138,10 @@ impl Handler<Disconnect> for ArmourDataHost {
                                 host: self.label.clone(),
                             };
                             let url = self.url.clone();
+                            let client = self.client.clone();
                             async move {
                                 crate::control_plane(
+                                    client,
                                     &url,
                                     http::Method::DELETE,
                                     "service/drop",
@@ -185,20 +190,33 @@ impl Handler<RegisterProxy> for ArmourDataHost {
                 };
                 let url = self.url.clone();
                 let url_clone = self.url.clone();
+                let client = self.client.clone();
                 // on-board
                 async move {
-                    crate::control_plane(&url, http::Method::POST, "service/on-board", &onboard)
-                        .await
+                    crate::control_plane(
+                        client,
+                        &url,
+                        http::Method::POST,
+                        "service/on-board",
+                        &onboard,
+                    )
+                    .await
                 }
                 .into_actor(self)
                 .then(|on_board_res, act, _ctx| {
+                    let client = act.client.clone();
                     async move {
                         match on_board_res {
-                            Ok(message) => log::info!("on-boarded with control plane: {}", message),
-                            Err(err) => log::warn!("on-boarding failed for service: {}", err),
+                            Ok(message) => {
+                                log::info!("registered service with control plane: {}", message)
+                            }
+                            Err(err) => {
+                                log::warn!("failed to register service with control plane: {}", err)
+                            }
                         };
                         // query policy
                         crate::control_plane_deserialize::<_, PolicyQueryResponse>(
+                            client,
                             &url_clone,
                             http::Method::GET,
                             "policy/query",

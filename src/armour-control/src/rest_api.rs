@@ -207,11 +207,11 @@ pub mod policy {
     }
 
     pub async fn update_hosts(
+        client: &client::Client,
         state: &State,
         label: &Label,
         policy: &Policies,
     ) -> Result<(), actix_web::Error> {
-        let client = client::Client::default();
         let hosts = hosts(state, label).await?;
         log::debug!("hosts: {:?}", hosts);
         for host in hosts {
@@ -221,7 +221,7 @@ pub mod policy {
                     policy: policy.clone(),
                 };
                 let url = format!(
-                    "http://{}:{}/policy/update",
+                    "https://{}:{}/policy/update",
                     host_str,
                     host.port().unwrap_or(8090)
                 );
@@ -271,6 +271,7 @@ pub mod policy {
 
     #[post("/update")]
     pub async fn update(
+        client: web::Data<client::Client>,
         state: State,
         request: Json<control::PolicyUpdateRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
@@ -289,7 +290,7 @@ pub mod policy {
                 .await
                 .on_err("error inserting new policy")?;
             // push policy to hosts
-            update_hosts(&state, label, &request.policy).await?;
+            update_hosts(&client.into_inner(), &state, label, &request.policy).await?;
             Ok(HttpResponse::Ok().finish())
         } else {
             log::warn!("error converting the BSON object into a MongoDB document");
@@ -320,6 +321,7 @@ pub mod policy {
 
     #[delete("/drop")]
     async fn drop(
+        client: web::Data<client::Client>,
         state: State,
         request: Json<control::PolicyQueryRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
@@ -330,17 +332,21 @@ pub mod policy {
             .delete_one(doc! { "label" : label.to_string() }, None)
             .await
             .on_err("failed to drop policy")?;
-        update_hosts(&state, label, &Policies::deny_all()).await?;
+        update_hosts(&client.into_inner(), &state, label, &Policies::deny_all()).await?;
         Ok(HttpResponse::Ok().body(format!("dropped {}", res.deleted_count)))
     }
 
     #[delete("/drop-all")]
-    async fn drop_all(state: State) -> Result<HttpResponse, actix_web::Error> {
+    async fn drop_all(
+        client: web::Data<client::Client>,
+        state: State,
+    ) -> Result<HttpResponse, actix_web::Error> {
         log::info!("dropping all policies");
         let services = services(&state).await?;
+        let client = client.into_inner();
         if collection(&state, POLICIES_COL).drop(None).await.is_ok() {
             for label in services {
-                update_hosts(&state, &label, &Policies::deny_all()).await?;
+                update_hosts(&client, &state, &label, &Policies::deny_all()).await?;
             }
         }
         Ok(HttpResponse::Ok().body("dropped all policies"))

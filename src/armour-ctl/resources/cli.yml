@@ -8,6 +8,23 @@ args:
       long: control
       takes_value: true
       value_name: URL
+  - CA:
+      help: Certificate Authority certificate for HTTPS
+      required: false
+      long: ca
+      value_name: PEM file
+      takes_value: true
+  - CERTIFICATE_PASSWORD:
+      help: Password for certificate
+      required: false
+      long: pass
+      takes_value: true
+  - CERTIFICATE:
+      help: Certificate for HTTPS
+      required: false
+      long: cert
+      value_name: pkcs12 file
+      takes_value: true
 subcommands:
   - list:
       about: List hosts, services or policies

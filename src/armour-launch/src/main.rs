@@ -2,15 +2,20 @@ use armour_launch::{
     already_running, docker_down, docker_up, drop_services, onboard_services, read_armour, rules,
     set_ip_addresses,
 };
-use armour_utils::parse_http_url;
+use armour_utils::parse_https_url;
 use clap::{crate_version, App, AppSettings, Arg, SubCommand};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
 #[actix_rt::main]
 async fn main() -> Result<(), Error> {
+    // enable logging
+    std::env::set_var("RUST_LOG", "armour_utils=info");
+    std::env::set_var("RUST_BACKTRACE", "0");
+    env_logger::init();
+
     let matches = get_matches();
-    let host_url = parse_http_url(
+    let host_url = parse_https_url(
         matches
             .value_of("host")
             .unwrap_or(armour_api::host::DATA_PLANE_HOST),
@@ -20,6 +25,16 @@ async fn main() -> Result<(), Error> {
     const FILE: &str = "docker-compose.yml";
     let out_file = matches.value_of("file").unwrap_or(FILE);
     let in_file = matches.value_of("input file").unwrap();
+    let client = || {
+        let ca = matches
+            .value_of("ca")
+            .unwrap_or("certificates/armour-ca.pem");
+        let certificate_password = matches.value_of("certificate password").unwrap_or("armour");
+        let certificate = matches
+            .value_of("certificate")
+            .unwrap_or("certificates/armour-launch.p12");
+        armour_utils::client(&ca, &certificate_password, &certificate)
+    };
     if let Some(_up) = matches.subcommand_matches("up") {
         // read armour-compose from input file and write docker-compose.yml file
         let mut info = read_armour(in_file, out_file)?;
@@ -32,14 +47,14 @@ async fn main() -> Result<(), Error> {
             // try to set IP addresses for containers (leaves containers in paused state)
             set_ip_addresses(&mut info).await;
             // notify data plane host - onboarding
-            onboard_services(host_url, info, out_file).await
+            onboard_services(client()?, host_url, info, out_file).await
         }
     } else if let Some(_down) = matches.subcommand_matches("down") {
         // create docker-compose.yml from armour-compose input file
         let info = read_armour(in_file, out_file)?;
         // try to run `docker-compose down` command
         docker_down(out_file)?;
-        drop_services(host_url, info.proxies).await
+        drop_services(client()?, host_url, info.proxies).await
     } else if let Some(rules_matches) = matches.subcommand_matches("rules") {
         let (compose, info) = armour_compose::Compose::read_armour(in_file)?;
         let rules_file = rules_matches.value_of("rules file").unwrap_or("rules");
@@ -57,6 +72,29 @@ fn get_matches<'a>() -> clap::ArgMatches<'a> {
         )
         .about("Armour launcher")
         .setting(AppSettings::SubcommandRequiredElseHelp)
+        .arg(
+            Arg::with_name("ca")
+                .long("ca")
+                .required(false)
+                .takes_value(true)
+                .value_name("PEM file")
+                .help("Certificate Authority for HTTPS"),
+        )
+        .arg(
+            Arg::with_name("certificate password")
+                .long("pass")
+                .required(false)
+                .takes_value(true)
+                .help("Password for certificate"),
+        )
+        .arg(
+            Arg::with_name("certificate")
+                .long("cert")
+                .required(false)
+                .takes_value(true)
+                .value_name("pkcs12 file")
+                .help("Certificate for mTLS"),
+        )
         .arg(
             Arg::with_name("host")
                 .short("m")

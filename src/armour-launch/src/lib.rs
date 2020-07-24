@@ -9,15 +9,15 @@ use std::process::Command;
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
 pub async fn onboard_services<P: AsRef<std::ffi::OsStr>>(
+    client: Client,
     host_url: url::Url,
     info: OnboardInfo,
     out_file: P,
 ) -> Result<(), Error> {
     if let Some(host_str) = host_url.host_str() {
-        let client = Client::default();
         let onboard_info: OnboardInformation = (&info).into();
         let url = format!(
-            "http://{}:{}/service/on-board",
+            "https://{}:{}/service/on-board",
             host_str,
             host_url.port().unwrap_or(8090)
         );
@@ -29,7 +29,7 @@ pub async fn onboard_services<P: AsRef<std::ffi::OsStr>>(
                     Ok(())
                 } else {
                     docker_down(out_file)?;
-                    drop_services(host_url, info.proxies).await?;
+                    drop_services(client, host_url, info.proxies).await?;
                     Err(message(res)
                         .await
                         .unwrap_or_else(|| "onboarding failed".to_string())
@@ -38,7 +38,7 @@ pub async fn onboard_services<P: AsRef<std::ffi::OsStr>>(
             }
             Err(e) => {
                 docker_down(out_file)?;
-                drop_services(host_url, info.proxies).await?;
+                drop_services(client, host_url, info.proxies).await?;
                 Err(format!("onboarding failed: {}", e).into())
             }
         }
@@ -47,17 +47,20 @@ pub async fn onboard_services<P: AsRef<std::ffi::OsStr>>(
     }
 }
 
-pub async fn drop_services(host_url: url::Url, proxies: Proxies) -> Result<(), Error> {
+pub async fn drop_services(
+    client: Client,
+    host_url: url::Url,
+    proxies: Proxies,
+) -> Result<(), Error> {
     if proxies.is_empty() {
         println!("no proxies to drop");
         Ok(())
     } else if let Some(host_str) = host_url.host_str() {
         let url = format!(
-            "http://{}:{}/service/drop",
+            "https://{}:{}/service/drop",
             host_str,
             host_url.port().unwrap_or(8090)
         );
-        let client = Client::default();
         let res = client
             .delete(url)
             .send_json(&proxies.to_vec())

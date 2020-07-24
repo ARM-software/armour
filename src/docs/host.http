@@ -1,19 +1,19 @@
 ### armour-host:> launch log
 
 ### succeed
-GET http://localhost:8090/host/label HTTP/1.1
+GET https://localhost:8090/host/label HTTP/1.1
 
 ### succeed
-GET http://localhost:8090/host/proxies HTTP/1.1
+GET https://localhost:8090/host/proxies HTTP/1.1
 
 ### succeed
-GET http://localhost:8090/policy/query HTTP/1.1
+GET https://localhost:8090/policy/query HTTP/1.1
 content-type: application/json
 
 "proxy"
 
 ### succeed
-POST http://localhost:8090/policy/update HTTP/1.1
+POST https://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
@@ -25,7 +25,7 @@ content-type: application/json
 }
 
 ### fail (no matches)
-POST http://localhost:8090/policy/update HTTP/1.1
+POST https://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {
@@ -37,7 +37,7 @@ content-type: application/json
 }
 
 ### fail (not valid base64)
-POST http://localhost:8090/policy/update HTTP/1.1
+POST https://localhost:8090/policy/update HTTP/1.1
 content-type: application/json
 
 {

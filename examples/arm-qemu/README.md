@@ -107,7 +107,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 - Install docker compose:
 
 	```sh
-	pi$ sudo apt-get install python3-pip
+	pi$ sudo apt-get install python3-pip python3-dev libffi-dev
 	pi$ sudo pip3 install docker-compose
 	```
 
@@ -140,6 +140,7 @@ The following is based on [emulate-raspberry-pi-with-qemu](https://azeria-labs.c
 	```sh
 	host$ vagrant ssh
 	vagrant$ ssh pi@localhost -p 5555
+	pi$ ARMOUR_PASS=armour ~/bin/armour-certs
 	pi$ ARMOUR_PASS=password ~/bin/armour-host
 	armour-host:> launch log
 	armour-host:> start http 6002

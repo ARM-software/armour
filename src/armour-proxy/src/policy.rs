@@ -62,7 +62,6 @@ pub trait Policy<P> {
 type Aead = aes_gcm::Aes256Gcm;
 
 /// Armour policy actor
-#[allow(dead_code)] // TODO
 pub struct PolicyActor {
     pub label: labels::Label,
     pub connection_number: usize,

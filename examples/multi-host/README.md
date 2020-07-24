@@ -120,6 +120,7 @@ Perform the following sequence of commands:
 	**Control plane [1.2]**
 
 	```sh
+	vagrant$ cd examples
 	vagrant$ armour-control
 	```
 
@@ -128,6 +129,7 @@ Perform the following sequence of commands:
 	**Data plane [1.3]**
 
 	```sh
+	vagrant$ cd examples
 	vagrant$ ARMOUR_PASS=password armour-host
 	```
 
@@ -162,7 +164,8 @@ Perform the following sequence of commands:
 	**Data plane [2.2]**
 
 	```sh
-	vagrant$ ARMOUR_PASS=password armour-host --label client-host \
+   vagrant$ cd examples
+   vagrant$ ARMOUR_PASS=password armour-host --label client-host \
 	           -c 10.0.2.2:8088 -u 10.0.2.2:8090
 	```
 	
@@ -196,7 +199,7 @@ Perform the following sequence of commands:
 1. Try to make a request from the host machine
 
 	```sh
-	% curl http://localhost:8092
+	host$ curl http://localhost:8092
 	bad client request
 	```
 
