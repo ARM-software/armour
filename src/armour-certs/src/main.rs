@@ -194,6 +194,7 @@ fn signed_x509<P: AsRef<std::path::Path>>(
     Ok(x509)
 }
 
+// passwords from env or shell
 fn password(name: &str) -> Result<String, Error> {
     std::env::var("ARMOUR_PASS").or_else(|_| {
         std::env::var(format!("{}_PASS", name.to_uppercase())).or_else(|_| {
@@ -213,15 +214,6 @@ fn ip_dns_arg(name: &'static str) -> clap::Arg<'static, 'static> {
 }
 
 fn main() -> Result<(), Error> {
-    // passwords from env or shell
-    //
-    // dir (optional)
-    //
-    // control (multi - IP, DNS)
-    // ctl (multi - IP, DNS)
-    // host (multi - IP, DNS)
-    // launch (multi - IP, DNS)
-
     let matches = App::new("armour-certs")
         .version(crate_version!())
         .author("Anthony Fox <anthony.fox@arm.com>")
