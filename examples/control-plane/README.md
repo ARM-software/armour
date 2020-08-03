@@ -14,7 +14,7 @@ Three policies are used in this example. They are located in `examples/control-p
 ```rust
 fn allow_rest_request(req: HttpRequest) -> bool {
   let (from, to) = req.from_to();
-  server_ok(to) && from.has_label('allowed')
+  to.server_ok() && from.has_label('allowed')
 }
 
 fn server_ok(id: ID) -> bool {
@@ -44,7 +44,7 @@ This will allow requests to the host `server` on port `80`, provided the source 
 ```rust
 fn allow_rest_request(req: HttpRequest, payload: data) -> bool {
     let (from, to) = req.from_to();
-    server_ok(to) && from.has_label('allowed') &&
+    to.server_ok() && from.has_label('allowed') &&
     req.method() == "GET" && req.path() == "/private" && payload.len() == 0
 }
 
