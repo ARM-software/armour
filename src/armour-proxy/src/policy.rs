@@ -59,7 +59,8 @@ pub trait Policy<P> {
     }
 }
 
-type Aead = aes_gcm::Aes256Gcm;
+// type Aead = aes_gcm::Aes256Gcm;
+type Aead = chacha20poly1305::ChaChaPoly1305<chacha20::ChaCha20>;
 
 /// Armour policy actor
 pub struct PolicyActor {
@@ -103,7 +104,7 @@ impl PolicyActor {
         key: [u8; 32],
     ) -> Addr<PolicyActor> {
         use aead::{generic_array::GenericArray, NewAead};
-        use aes_gcm::Aes256Gcm;
+        // use aes_gcm::Aes256Gcm;
         let mut http = HttpPolicy::default();
         http.set_timeout(timeout);
         PolicyActor::create(|ctx| {
@@ -114,7 +115,8 @@ impl PolicyActor {
                 connection_number: 0,
                 http,
                 tcp: TcpPolicy::default(),
-                aead: Aes256Gcm::new(&GenericArray::clone_from_slice(&key)),
+                // aead: Aes256Gcm::new(&GenericArray::clone_from_slice(&key)),
+                aead: chacha20poly1305::ChaChaPoly1305::new(&GenericArray::clone_from_slice(&key)),
                 identity: Identity::default(),
                 uds_framed: actix::io::FramedWrite::new(w, PolicyCodec, ctx),
             }
