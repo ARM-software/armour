@@ -10,7 +10,7 @@ armour-serde = { path = "../armour-serde" }
 
 actix = "0.9"
 bincode = "1.3"
-bson = "1.0"
+bson = "1.1"
 byteorder = "1.3"
 bytes = "0.5"
 http = "0.2"

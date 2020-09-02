@@ -9,4 +9,4 @@ edition = "2018"
 [dependencies]
 clap = "2.33"
 openssl = { version = "0.10", features = ["vendored"] }
-rpassword = "4.0"
+rpassword = "5.0"
