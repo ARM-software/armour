@@ -1,0 +1,54 @@
+Vagrant.configure(2) do |config|
+  config.vm.define "vm02" do |node|
+    node.vm.box = "ubuntu/focal64"
+      node.vm.hostname = "vm02"
+      node.vm.network "private_network", ip: "172.42.42.102"
+      node.vm.provision :docker
+      node.vm.provider "virtualbox" do |v|
+        v.name = "vm02"
+        v.memory = 2048
+        v.cpus = 1
+      end
+    node.vm.provision "shell", inline: <<-SHELL
+        sudo apt-get update
+        sudo apt-get install -y git capnproto build-essential pkg-config
+        curl https://sh.rustup.rs -sSf | sh -s -- -y
+        source $HOME/.cargo/env
+        sudo DEBIAN_FRONTEND=noninteractive apt-get -yq install openssl
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq libssl-dev
+        rustup toolchain install 1.45.2
+        rustup override set 1.45.2
+        git clone https://git.research.arm.com/antfox02/armour.git
+        cd /home/vagrant/armour/src/
+        cargo build -p armour-control -p armour-ctl -p armour-host -p armour-proxy -p armour-certs --release
+        cp /home/vagrant/armour/src/target/release/armour-proxy /home/vagrant/armour/src/target/release/armour-host /vagrant/armour-proxy
+        cp /home/vagrant/armour/src/target/release/armour-ctl /home/vagrant/armour/src/target/release/armour-control /vagrant
+        mkdir /home/vagrant/bin
+        cd /home/vagrant/armour/src/target/release/
+        sudo ARMOUR_PASS=armour ./armour-certs --dir /home/vagrant/bin/certificates --control localhost 127.0.0.1 10.0.2.15 172.42.42.101 --host localhost 127.0.0.1 10.0.2.15 172.42.42.102
+        cp -r /home/vagrant/bin/certificates/ /vagrant/
+        cd /vagrant/armour-proxy
+        docker build -t armour-proxy .
+        cd /vagrant/armour-init
+        docker build -t armour-init .
+    SHELL
+  end
+  config.vm.define "vm01" do |node|
+    node.vm.box = "ubuntu/focal64"
+      node.vm.hostname = "vm01"
+      node.vm.network "private_network", ip: "172.42.42.101"
+      node.vm.provision :docker
+      node.vm.provider "virtualbox" do |v|
+        v.name = "vm01"
+        v.memory = 2048
+        v.cpus = 1
+      end
+    node.vm.provision "shell", inline: <<-SHELL
+        sudo apt-get update
+        wget -qO - https://www.mongodb.org/static/pgp/server-4.4.asc | sudo apt-key add -
+        echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/4.4 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.4.list
+        sudo apt-get update
+        sudo apt-get install -y mongodb-org
+    SHELL
+  end
+end
