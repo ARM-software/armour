@@ -3,12 +3,14 @@ Vagrant.configure("2") do |config|
     vb.name = "armour-examples"
     vb.memory = 4096
     vb.cpus = 1
+    vb.customize [ "modifyvm", :id, "--uartmode1", "disconnected" ]
   end
   config.vm.box = "ubuntu/bionic64"
   config.vm.network "forwarded_port", guest: 8088, host: 8088
-  config.vm.network "forwarded_port", guest: 6000, host: 8092
+# config.vm.network "forwarded_port", guest: 6000, host: 8092
   config.vm.provision :docker
   config.vm.provision :docker_compose
+  config.vm.synced_folder ".", "/vagrant", disabled: true
   config.vm.provision "file", source: "../src", destination: "$HOME/src"
   config.vm.provision "file", source: ".", destination: "$HOME/examples"
   config.vm.provision "shell", inline: <<-SHELL
