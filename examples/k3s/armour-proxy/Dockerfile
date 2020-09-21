@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y vim &&\
     usermod -aG sudo armour &&\
     su - armour &&\
     mkdir /home/armour/certificates
-COPY armour-host armour-proxy script.sh /home/armour/
+COPY armour-host armour-proxy script.sh sc-egress.sh /home/armour/
 RUN chmod 755 /home/armour/script.sh
+RUN chmod 755 /home/armour/sc-egress.sh
 WORKDIR /home/armour

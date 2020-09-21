@@ -63,7 +63,11 @@ There are few design choices of how to integrate Armour's data-plane in the work
 > [This document](https://wecode.wepay.com/posts/scds-battle-of-containerization) explains the difference between the 2 setups and highlights the pros and cons of each.
 
 #### Sidecar proxy
-<img src="pictures/sidecar.png" width="250"/>
+
+| design         |   details  |
+---------------|----------------------
+|<img src="pictures/sidecar.png" width="350"/>    |   This setup allow each container to have it own data-plane, a single `armour-host` and a single `armour-proxy` that manages both ingress and egress container traffic.   |
+|<img src="pictures/sidecar-egress.png" width="350"/>    |   This setup allow each container to have it own data-plane, a single `armour-host` and two `armour-proxy` the first manages ingress traffic and the second manages egress traffic.   |
 
 
  Start three terminal windows and in each `ssh` into the server node VM:
@@ -94,6 +98,16 @@ The terminals correspond with the following
  vagrant@vm01:/vagrant$ ./armour-ctl update -p allow.policy -s client
  vagrant@vm01:/vagrant$ ./armour-ctl update -p allow.policy -s server
  ```
+ > In case you want to run the egress-ingress demo, run these `armour-ctl` commands instead:  
+ **Armour-ctl commands [2]**
+ >
+ ```sh
+ vagrant@vm01:~$ cd /vagrant 
+ vagrant@vm01:/vagrant$ ./armour-ctl update -p allow.policy -s client-in
+ vagrant@vm01:/vagrant$ ./armour-ctl update -p allow.policy -s client-eg
+ vagrant@vm01:/vagrant$ ./armour-ctl update -p allow.policy -s server-in
+ vagrant@vm01:/vagrant$ ./armour-ctl update -p allow.policy -s server-eg
+ ```
 
 **K3s demo application [3]**
 
@@ -101,6 +115,14 @@ The terminals correspond with the following
  vagrant@vm01:~$ cd /vagrant
  vagrant@vm01:/vagrant$ kubectl apply -f demo.yaml
  ```
+  > In case you want to run the egress-ingress demo, run these commands instead:  
+ **K3s demo application [3]**
+ >
+  ```sh
+ vagrant@vm01:~$ cd /vagrant
+ vagrant@vm01:/vagrant$ kubectl apply -f demo-egress.yaml
+  ```
+ 
  At this point, on terminal **[1]** you should see the armour-hosts and proxies getting onboarded. Wait couple of seconds and Run:
  
  **K3s demo application [3]**
@@ -127,6 +149,12 @@ Response!
 
  ```sh
  vagrant@vm01:/vagrant$ ./armour-ctl update -p deny.policy -s client
+ ```
+  > In case you want to run the egress-ingress demo, run these `armour-ctl` commands instead:  
+ **Armour-ctl commands [2]**
+ >
+ ```sh
+ vagrant@vm01:/vagrant$ ./armour-ctl update -p allow.policy -s client-eg
  ```
  
   **K3s demo application [3]**

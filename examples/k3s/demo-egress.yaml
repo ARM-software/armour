@@ -64,7 +64,7 @@ spec:
       - name: INGRESS
         value: "6000"
       - name: EGRESS
-        value: "6000"
+        value: "6001"
       - name: APP
         value: "80"
     command: ["/bin/bash", "./iptables.sh"]
@@ -81,12 +81,21 @@ spec:
     env:
       - name: ARMOUR_PASS
         value: password
+      - name: INGRESS
+        value: "6000"
+      - name: EGRESS
+        value: "6001"
     command: ["/bin/bash", "-c"]
-    args: ["./script.sh server & ./armour-host --label server-host -c 172.42.42.101:8088 -u 172.42.42.102:32000 -p 32000 --run cp"]
+    args: ["./sc-egress.sh server & ./armour-host --label server-host -c 172.42.42.101:8088 -u 172.42.42.102:32000 -p 32000 --run cp"]
     securityContext:
       runAsUser: 1337
     ports:
     - containerPort: 6000
+      name: proxy-in
+    - containerPort: 6001
+      name: proxy-eg
+    - containerPort: 32000
+      name: armour-port
     volumeMounts:
       - mountPath: /home/armour/certificates
         name: certificates
@@ -116,7 +125,7 @@ spec:
       - name: INGRESS
         value: "6000"
       - name: EGRESS
-        value: "6000"
+        value: "6001"
       - name: APP
         value: "80"
     command: ["/bin/bash", "./iptables.sh"]
@@ -133,13 +142,19 @@ spec:
     env:
       - name: ARMOUR_PASS
         value: password
+      - name: INGRESS
+        value: "6000"
+      - name: EGRESS
+        value: "6001"
     command: ["/bin/bash", "-c"]
-    args: ["./script.sh client & ./armour-host --label client-host -c 172.42.42.101:8088 -u 172.42.42.102:32001 -p 32001 --run cp"]
+    args: ["./sc-egress.sh client & ./armour-host --label client-host -c 172.42.42.101:8088 -u 172.42.42.102:32001 -p 32001 --run cp"]
     securityContext:
       runAsUser: 1337
     ports:
     - containerPort: 6000
-      name: proxy
+      name: proxy-in
+    - containerPort: 6001
+      name: proxy-eg
     - containerPort: 32001
       name: armour-port
     volumeMounts:
