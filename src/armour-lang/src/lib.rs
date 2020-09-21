@@ -30,10 +30,13 @@ pub mod meta;
 pub mod parser;
 /// Policies interface
 pub mod policies;
+pub mod policies_cp;
 /// Pretty-printer
 pub mod pretty;
 /// Type system
 pub mod types;
+pub mod types_cp;
+ 
 
 pub mod labels;
 

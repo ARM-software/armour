@@ -36,6 +36,12 @@ pub enum Typ {
     Tuple(Vec<Typ>),
 }
 
+#[derive(Debug, Clone)]
+pub enum CPTyp {
+    Atom(LocIdent),
+    DPTyp(Typ),
+}
+
 pub struct Head {
     id: LocIdent,
     typs: Option<Vec<Typ>>,

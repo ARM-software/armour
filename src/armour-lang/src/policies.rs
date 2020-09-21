@@ -29,7 +29,7 @@ impl Default for FnPolicy {
 
 // map from function name to `FnPolicy`
 #[derive(Serialize, Deserialize, Clone, Default)]
-struct FnPolicies(BTreeMap<String, FnPolicy>);
+pub struct FnPolicies(BTreeMap<String, FnPolicy>);
 
 impl FnPolicies {
     fn allow_all(names: &[String]) -> Self {
@@ -58,13 +58,13 @@ impl FnPolicies {
 
 // map from function name to list of permitted types
 #[derive(Default)]
-struct ProtocolPolicy(BTreeMap<String, Vec<Signature>>);
+struct ProtocolPolicy(BTreeMap<String, Vec<Signature<Typ>>>);
 
 impl ProtocolPolicy {
     fn functions(&self) -> Vec<String> {
         self.0.keys().cloned().collect()
     }
-    fn insert(&mut self, name: &str, fn_policy: Vec<Signature>) {
+    fn insert(&mut self, name: &str, fn_policy: Vec<Signature<Typ>>) {
         self.0.insert(name.to_string(), fn_policy);
     }
     fn insert_bool(&mut self, name: &str, args: Vec<Vec<Typ>>) {
@@ -215,14 +215,14 @@ impl Policy {
     pub fn from_bincode<R: std::io::Read>(r: R) -> Result<Self, std::io::Error> {
         armour_utils::bincode_gz_base64_dec(r)
     }
-    fn type_check(function: &str, sig1: &Signature, sig2: &Signature) -> bool {
+    fn type_check(function: &str, sig1: &Signature<Typ>, sig2: &Signature<Typ>) -> bool {
         let (args1, ty1) = sig1.split_as_ref();
         let (args2, ty2) = sig2.split_as_ref();
-        Typ::type_check(function, vec![(None, ty1)], vec![(None, ty2)]).is_ok()
+        Typ::type_check(function, vec![(None, ty1.clone())], vec![(None, ty2.clone())]).is_ok()
             && match (args1, args2) {
                 (Some(a1), Some(a2)) => {
-                    let a1 = a1.iter().map(|t| (None, t)).collect();
-                    let a2 = a2.iter().map(|t| (None, t)).collect();
+                    let a1 = a1.iter().map(|t| (None, t.clone())).collect();
+                    let a2 = a2.iter().map(|t| (None, t.clone())).collect();
                     Typ::type_check(function, a1, a2).is_ok()
                 }
                 (Some(_), None) => false,

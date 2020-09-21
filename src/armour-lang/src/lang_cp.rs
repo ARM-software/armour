@@ -1,3 +1,5 @@
+
+//duplicated
 /// policy language
 use super::expressions::{Error, Expr};
 use super::{externals, headers, lexer, parser, types};
@@ -79,7 +81,7 @@ impl Program {
         self.headers.cut(set);
         self.code.cut(set);
     }
-    pub fn typ(&self, name: &str) -> Option<types::Signature<types::Typ>> {
+    pub fn typ(&self, name: &str) -> Option<types::Signature> {
         self.headers.typ(name)
     }
     pub fn is_empty(&self) -> bool {

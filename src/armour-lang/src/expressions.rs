@@ -53,8 +53,8 @@ impl From<regex::Error> for Error {
     }
 }
 
-impl<'a> From<types::Error<'a>> for Error {
-    fn from(err: types::Error<'a>) -> Error {
+impl<'a> From<types::Error<Typ>> for Error {
+    fn from(err: types::Error<Typ>) -> Error {
         Error::new(err)
     }
 }
@@ -527,7 +527,7 @@ impl Expr {
                 let mut typ = Typ::Return;
                 for e in es.iter() {
                     let (expr, call, ty) = Expr::from_loc_expr(&e, headers, ret, ctxt)?.split();
-                    Typ::type_check("list", vec![(Some(e.loc()), &ty)], vec![(None, &typ)])?;
+                    Typ::type_check("list", vec![(Some(e.loc()), ty.clone())], vec![(None, typ.clone())])?;
                     exprs.push(expr);
                     calls.push(call);
                     typ = typ.unify(&ty);
@@ -557,7 +557,7 @@ impl Expr {
             parser::Expr::PrefixExpr(p, e1) => {
                 let (expr, calls, typ) = Expr::from_loc_expr(&e1, headers, ret, ctxt)?.split();
                 let (t1, t2) = p.typ();
-                Typ::type_check("prefix", vec![(Some(e1.loc()), &typ)], vec![(None, &t1)])?;
+                Typ::type_check("prefix", vec![(Some(e1.loc()), typ.clone())], vec![(None, t1.clone())])?;
                 Ok(ExprAndMeta::new(
                     Expr::prefix_expr(p.clone(), expr),
                     t2,
@@ -572,21 +572,21 @@ impl Expr {
                     if t2 == Typ::Return {
                         Typ::type_check(
                             "equality/inequality/concat",
-                            vec![(Some(e1.loc()), &typ1)],
-                            vec![(Some(e2.loc()), &typ2)],
+                            vec![(Some(e1.loc()), typ1.clone())],
+                            vec![(Some(e2.loc()), typ2.clone())],
                         )?
                     } else {
                         Typ::type_check(
                             "in",
-                            vec![(Some(e1.loc()), &Typ::List(Box::new(typ1)))],
-                            vec![(Some(e2.loc()), &typ2)],
+                            vec![(Some(e1.loc()), Typ::List(Box::new(typ1)))],
+                            vec![(Some(e2.loc()), typ2.clone())],
                         )?
                     }
                 } else {
                     Typ::type_check(
                         "infix",
-                        vec![(Some(e1.loc()), &typ1), (Some(e2.loc()), &typ2)],
-                        vec![(None, &t1), (None, &t2)],
+                        vec![(Some(e1.loc()), typ1.clone()), (Some(e2.loc()), typ2.clone())],
+                        vec![(None, t1.clone()), (None, t2.clone())],
                     )?
                 };
                 Ok(ExprAndMeta::new(
@@ -606,10 +606,10 @@ impl Expr {
                 Typ::type_check(
                     "if-expression",
                     vec![
-                        (Some(cond.loc()), &typ1),
-                        (Some(consequence.loc(e.loc())), &typ2),
+                        (Some(cond.loc()), typ1.clone()),
+                        (Some(consequence.loc(e.loc())), typ2.clone()),
                     ],
-                    vec![(None, &Typ::Bool), (None, &Typ::Unit)],
+                    vec![(None, Typ::Bool), (None, Typ::Unit)],
                 )?;
                 Ok(ExprAndMeta::new(
                     Expr::if_expr(expr1, expr2),
@@ -630,10 +630,10 @@ impl Expr {
                 Typ::type_check(
                     "if-else-expression",
                     vec![
-                        (Some(cond.loc()), &typ1),
-                        (Some(consequence.loc(e.loc())), &typ2),
+                        (Some(cond.loc()), typ1.clone()),
+                        (Some(consequence.loc(e.loc())), typ2.clone()),
                     ],
-                    vec![(None, &Typ::Bool), (Some(alt.loc(e.loc())), &typ3)],
+                    vec![(None, Typ::Bool), (Some(alt.loc(e.loc())), typ3.clone())],
                 )?;
                 Ok(ExprAndMeta::new(
                     Expr::if_else_expr(expr1, expr2, expr3),
@@ -661,8 +661,8 @@ impl Expr {
                 .split();
                 Typ::type_check(
                     "if-let-expression",
-                    vec![(Some(consequence.loc(e.loc())), &typ2)],
-                    vec![(None, &Typ::Unit)],
+                    vec![(Some(consequence.loc(e.loc())), typ2.clone())],
+                    vec![(None, Typ::Unit)],
                 )?;
                 Ok(ExprAndMeta::new(
                     Expr::IfSomeMatchExpr {
@@ -696,8 +696,8 @@ impl Expr {
                     Expr::from_block_stmt(alt.as_ref(), headers, ret, ctxt)?.split();
                 Typ::type_check(
                     "if-let-else-expression",
-                    vec![(Some(consequence.loc(e.loc())), &typ2)],
-                    vec![(Some(alt.loc(e.loc())), &typ3)],
+                    vec![(Some(consequence.loc(e.loc())), typ2.clone())],
+                    vec![(Some(alt.loc(e.loc())), typ3.clone())],
                 )?;
                 Ok(ExprAndMeta::new(
                     Expr::IfSomeMatchExpr {
@@ -723,9 +723,10 @@ impl Expr {
                     .iter()
                     .map(|(e, _)| Some(e.loc()))
                     .zip(types.iter())
+                    .map(|(loc, p)| (loc, p.clone()))
                     .collect();
-                let expected: Vec<(_, &Typ)> =
-                    matches.iter().map(|(_, p)| (None, p.typ())).collect();
+                let expected: Vec<(_, Typ)> =
+                    matches.iter().map(|(_, p)| (None, p.typ().clone())).collect();
                 Typ::type_check("if-match-expression", types, expected)?;
                 let mut map = HashMap::new();
                 let matches: Result<Vec<Pattern>, self::Error> = matches
@@ -787,8 +788,8 @@ impl Expr {
                     None => {
                         Typ::type_check(
                             "if-match-expression",
-                            vec![(Some(consequence.loc(e.loc())), &typ1)],
-                            vec![(None, &Typ::Unit)],
+                            vec![(Some(consequence.loc(e.loc())), typ1.clone())],
+                            vec![(None, Typ::Unit)],
                         )?;
                         ExprAndMeta::new(
                             Expr::IfMatchExpr {
@@ -806,8 +807,8 @@ impl Expr {
                             Expr::from_block_stmt(a.as_ref(), headers, ret, ctxt)?.split();
                         Typ::type_check(
                             "if-match-else-expression",
-                            vec![(Some(consequence.loc(e.loc())), &typ1)],
-                            vec![(Some(a.loc(e.loc())), &typ2)],
+                            vec![(Some(consequence.loc(e.loc())), typ1.clone())],
+                            vec![(Some(a.loc(e.loc())), typ2.clone())],
                         )?;
                         calls.push(calls2);
                         ExprAndMeta::new(
@@ -872,14 +873,14 @@ impl Expr {
                 if *op == parser::Iter::FilterMap {
                     Typ::type_check(
                         "filter_map-expression",
-                        vec![(Some(body.loc(e.loc())), &typ2)],
-                        vec![(None, &Typ::any_option())],
+                        vec![(Some(body.loc(e.loc())), typ2.clone())],
+                        vec![(None, Typ::any_option())],
                     )?
                 } else if *op != parser::Iter::Map && *op != parser::Iter::ForEach {
                     Typ::type_check(
                         "all/any/filter-expression",
-                        vec![(Some(body.loc(e.loc())), &typ2)],
-                        vec![(None, &Typ::Bool)],
+                        vec![(Some(body.loc(e.loc())), typ2.clone())],
+                        vec![(None, Typ::Bool)],
                     )?
                 }
                 Ok(ExprAndMeta::new(
@@ -923,11 +924,12 @@ impl Expr {
                     // external functions *can* be declared so that they accept any argument,
                     // so only check the arguments when their types are declared
                     if let Some(ref args) = args {
-                        let args = args.iter().map(|t| (None, t)).collect();
+                        let args = args.iter().map(|t| (None, t.clone())).collect();
                         let types = arguments
                             .iter()
                             .map(|e| Some(e.loc()))
                             .zip(types.iter())
+                            .map(|(loc, t)| (loc, t.clone()))
                             .collect();
                         Typ::type_check(function, types, args)?
                     };
@@ -1014,8 +1016,8 @@ impl Expr {
                         match ret.get() {
                             Some(rtype) => Typ::type_check(
                                 "return",
-                                vec![(Some(re.loc()), &typ)],
-                                vec![(None, &rtype)],
+                                vec![(Some(re.loc()), typ.clone())],
+                                vec![(None, rtype.clone())],
                             )?,
                             None => ret.set(typ),
                         };
@@ -1138,7 +1140,7 @@ impl Expr {
         let mut ret = ReturnType::default();
         let em = Expr::from_loc_expr(e, headers, &mut ret, ctxt)?;
         if let Some(rtype) = ret.get() {
-            Typ::type_check("REPL", vec![(None, &em.typ)], vec![(None, &rtype)])?
+            Typ::type_check("REPL", vec![(None, em.typ.clone())], vec![(None, rtype.clone())])?
         }
         Ok(em)
     }
@@ -1154,16 +1156,16 @@ impl Expr {
         if let Some(rtype) = ret.get() {
             Typ::type_check(
                 name.unwrap_or("REPL"),
-                vec![(None, &em.typ)],
-                vec![(None, &rtype)],
+                vec![(None, em.typ.clone())],
+                vec![(None, rtype.clone())],
             )?
         }
         // check if declared return type of function is type of statement
         if let Some(name) = name {
             Typ::type_check(
                 name,
-                vec![(None, &em.typ)],
-                vec![(None, &headers.return_typ(name)?)],
+                vec![(None, em.typ.clone())],
+                vec![(None, headers.return_typ(name)?)],
             )?
         }
         Ok(em)

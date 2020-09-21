@@ -5,6 +5,9 @@ use parser::{Infix, Prefix};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+pub trait TTyp : fmt::Display {
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Typ {
     Bool,
@@ -60,18 +63,20 @@ impl fmt::Display for Typ {
     }
 }
 
-type LocType<'a> = (Option<Loc>, &'a Typ);
-type LocTypes<'a> = Vec<LocType<'a>>;
+impl TTyp for Typ{}
+
+type LocType<Typ> = (Option<Loc>, Typ);//FIXME: i use value not ref because i can not create a fct &Typ -> &CPTyp due to lifetime (fct=fromres)
+pub type LocTypes<Typ> = Vec<LocType<Typ>>;
 
 #[derive(Clone, Debug)]
-pub enum Error<'a> {
-    Mismatch(String, LocType<'a>, LocType<'a>),
+pub enum Error<Typ:(fmt::Display)> {
+    Mismatch(String, LocType<Typ>, LocType<Typ>),
     Args(String, usize, usize),
     Parse(String),
     Dest,
 }
 
-impl<'a> fmt::Display for Error<'a> {
+impl<'a, Typ:TTyp> fmt::Display for Error<Typ> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::Parse(s) => writeln!(f, "expecting type, got {}", s),
@@ -119,7 +124,7 @@ impl Typ {
             _ => Some(self.to_string()),
         }
     }
-    fn can_unify(&self, other: &Typ) -> bool {
+    pub fn can_unify(&self, other: &Typ) -> bool {
         match (self, other) {
             (Typ::Return, _) | (_, Typ::Return) => true,
             (Typ::List(l1), Typ::List(l2)) => l1.can_unify(l2),
@@ -151,7 +156,7 @@ impl Typ {
             _ => self.clone(),
         }
     }
-    pub fn type_check<'a>(s: &str, v1: LocTypes<'a>, v2: LocTypes<'a>) -> Result<(), Error<'a>> {
+    pub fn type_check(s: &str, v1: LocTypes<Typ>, v2: LocTypes<Typ>) -> Result<(), Error<Typ>> {
         let len1 = v1.len();
         let len2 = v2.len();
         if len1 == len2 {
@@ -165,7 +170,7 @@ impl Typ {
             Err(Error::Args(s.to_string(), len1, len2))
         }
     }
-    fn try_from_str(s: &str) -> Result<Self, self::Error> {
+    pub fn try_from_str(s: &str) -> Result<Self, self::Error<Typ> > {
         match s {
             "bool" => Ok(Typ::Bool),
             "Connection" => Ok(Typ::Connection),
@@ -183,7 +188,7 @@ impl Typ {
             s => Err(Error::Parse(s.to_string())),
         }
     }
-    fn from_parse(ty: &parser::Typ) -> Result<Self, self::Error> {
+    pub fn from_parse(ty: &parser::Typ) -> Result<Self, self::Error<Typ> > {
         match ty {
             parser::Typ::Atom(a) => Typ::try_from_str(a.id()),
             parser::Typ::Cons(c, b) => {
@@ -199,7 +204,7 @@ impl Typ {
                 0 => Ok(Typ::Unit),
                 1 => Typ::from_parse(l.get(0).unwrap()),
                 _ => {
-                    let tys: Result<Vec<Self>, self::Error> =
+                    let tys: Result<Vec<Self>, self::Error<Typ>> =
                         l.iter().map(|x| Typ::from_parse(x)).collect();
                     Ok(Typ::Tuple(tys?))
                 }
@@ -207,9 +212,9 @@ impl Typ {
         }
     }
     pub fn is_unit(&self) -> bool {
-        Typ::type_check("", vec![(None, self)], vec![(None, &Typ::Unit)]).is_ok()
+        Typ::type_check("", vec![(None, self.clone())], vec![(None, Typ::Unit)]).is_ok()
     }
-    pub fn dest_option(&self) -> Result<Typ, Error> {
+    pub fn dest_option(&self) -> Result<Typ, Error<Typ>> {
         match self {
             Typ::Tuple(ts) => match ts.as_slice() {
                 [] => Ok(Typ::Return),
@@ -261,7 +266,7 @@ impl Infix {
 }
 
 impl parser::Param {
-    pub fn typ(&self) -> Result<Typ, Error> {
+    pub fn typ(&self) -> Result<Typ, Error<Typ>> {
         Typ::from_parse(&self.typ)
     }
 }
@@ -276,17 +281,20 @@ impl parser::Pattern {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Signature(Option<Vec<Typ>>, Typ);
+pub struct Signature<Typ:TTyp>(Option<Vec<Typ>>, Typ);
 
-impl Default for Signature {
+impl Default for Signature<Typ> {
     fn default() -> Self {
         Signature(None, Typ::Unit)
     }
 }
 
-impl Signature {
+impl<Typ:TTyp> Signature<Typ> {
     pub fn new(args: Vec<Typ>, typ: Typ) -> Self {
         Signature(Some(args), typ)
+    }
+    pub fn new_noargs(typ:Typ) -> Self {
+        Signature(None, typ)
     }
     pub fn any(typ: Typ) -> Self {
         Signature(None, typ)
@@ -305,7 +313,7 @@ impl Signature {
     }
 }
 
-impl fmt::Display for Signature {
+impl<Typ:TTyp> fmt::Display for Signature<Typ> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(")?;
         match self.0 {
@@ -325,25 +333,25 @@ impl fmt::Display for Signature {
 
 impl parser::FnDecl {
     // TODO: report location of errors
-    pub fn typ(&self) -> Result<Signature, Error> {
+    pub fn typ(&self) -> Result<Signature<Typ>, Error<Typ>> {
         let ty = match self.typ_id() {
             Some(id) => Typ::from_parse(id)?,
             None => Typ::Unit,
         };
-        let args: Result<Vec<Typ>, Error> = self.args().iter().map(|a| a.typ()).collect();
+        let args: Result<Vec<Typ>, Error<Typ>> = self.args().iter().map(|a| a.typ()).collect();
         Ok(Signature::new(args?, ty))
     }
 }
 
 impl parser::Head {
     // TODO: report location of errors
-    pub fn typ(&self) -> Result<Signature, Error> {
+    pub fn typ(&self) -> Result<Signature<Typ>, Error<Typ>> {
         let ty = match self.typ_id() {
             Some(id) => Typ::from_parse(id)?,
             None => Typ::Unit,
         };
         if let Some(args) = self.args() {
-            let args: Result<Vec<Typ>, Error> = args.iter().map(|a| Typ::from_parse(a)).collect();
+            let args: Result<Vec<Typ>, Error<Typ>> = args.iter().map(|a| Typ::from_parse(a)).collect();
             Ok(Signature::new(args?, ty))
         } else {
             Ok(Signature::any(ty))

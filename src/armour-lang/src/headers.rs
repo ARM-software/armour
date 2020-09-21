@@ -18,10 +18,10 @@ impl std::fmt::Display for Error {
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
-pub struct Headers(BTreeMap<String, Signature>);
+pub struct Headers(BTreeMap<String, Signature<Typ>>);
 
 impl Headers {
-    pub fn add_function(&mut self, name: &str, sig: Signature) -> Result<(), Error> {
+    pub fn add_function(&mut self, name: &str, sig: Signature<Typ>) -> Result<(), Error> {
         if self.0.insert(name.to_string(), sig).is_some() {
             Err(Error::new(format!("duplicate function \"{}\"", name)))
         } else {
@@ -33,7 +33,7 @@ impl Headers {
             self.0.remove(s);
         }
     }
-    fn builtins(f: &str) -> Option<Signature> {
+    fn builtins(f: &str) -> Option<Signature<Typ>> {
         let sig = |args, ty| Some(Signature::new(args, ty));
         match f {
             "option::Some" => sig(vec![Typ::Return], Typ::Return),
@@ -206,7 +206,7 @@ impl Headers {
             _ => None,
         }
     }
-    fn internal_service(f: &str) -> Option<Signature> {
+    fn internal_service(f: &str) -> Option<Signature<Typ>> {
         let sig = |args, ty| Some(Signature::new(args, ty));
         match f {
             "Ingress::id" => sig(vec![], Typ::Label.option()),
@@ -230,7 +230,7 @@ impl Headers {
     pub fn is_internal(name: &str) -> bool {
         Headers::internal_service(name).is_some() || Headers::is_builtin(name)
     }
-    pub fn typ(&self, name: &str) -> Option<Signature> {
+    pub fn typ(&self, name: &str) -> Option<Signature<Typ>> {
         Headers::builtins(name)
             .or_else(|| Headers::internal_service(name).or_else(|| self.0.get(name).cloned()))
     }
