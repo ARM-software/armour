@@ -4,7 +4,10 @@ use super::http_policy::{EvalHttpFn, GetHttpPolicy, HttpFn, HttpPolicyResponse, 
 use super::policy::{PolicyActor, ID};
 use super::ToArmourExpression;
 use actix_web::{
-    client::{Client, ClientRequest, ClientResponse, Connector, PayloadError, SendRequestError},
+    client::{
+        Client, ClientBuilder, ClientRequest, ClientResponse, Connector, PayloadError,
+        SendRequestError,
+    },
     http::header::{ContentEncoding, HeaderMap, HeaderName, HeaderValue},
     http::uri,
     middleware, web, App, HttpRequest, HttpResponse, HttpServer, ResponseError,
@@ -24,15 +27,17 @@ pub async fn start_proxy(
 ) -> std::io::Result<actix_web::dev::Server> {
     let socket =
         std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(0, 0, 0, 0), http_config.port());
+    let config = actix_connect::resolver::ResolverConfig::default();
+    let mut opts = actix_connect::resolver::ResolverOpts::default();
+    opts.use_hosts_file = true;
+    let resolver = actix_connect::start_resolver(config, opts)
+        .await
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "failed to start resolver"))?;
     let server = HttpServer::new(move || {
-        let config = actix_connect::resolver::ResolverConfig::default();
-        let mut opts = actix_connect::resolver::ResolverOpts::default();
-        opts.use_hosts_file = true;
-        let resolver = actix_connect::start_resolver(config, opts);
         let connector = Connector::new()
-            .connector(actix_connect::new_connector(resolver))
+            .connector(actix_connect::new_connector(resolver.clone()))
             .finish();
-        let client = Client::build().connector(connector).finish();
+        let client = ClientBuilder::default().connector(connector).finish();
         App::new()
             .data(policy.clone())
             .data(client)

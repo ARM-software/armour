@@ -11,7 +11,7 @@ armour-utils = { path = "../armour-utils" }
 docker-api = { path = "../docker-api" }
 
 actix-rt = "1.1"
-awc = "1.0"
+awc = "2.0"
 bytes = "0.5"
 clap = "2.33"
 env_logger = "0.7"

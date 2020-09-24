@@ -74,7 +74,8 @@ pub struct PolicyActor {
     // ID information
     identity: Identity,
     // connection to host
-    uds_framed: actix::io::FramedWrite<WriteHalf<tokio::net::UnixStream>, PolicyCodec>,
+    uds_framed:
+        actix::io::FramedWrite<PolicyResponse, WriteHalf<tokio::net::UnixStream>, PolicyCodec>,
 }
 
 // implement Actor trait for PolicyActor

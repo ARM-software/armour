@@ -109,7 +109,8 @@ pub struct ArmourDataInstance {
     pub id: usize,
     /// address of data plane host actor
     pub host: Addr<ArmourDataHost>,
-    pub uds_framed: actix::io::FramedWrite<WriteHalf<tokio::net::UnixStream>, HostCodec>,
+    pub uds_framed:
+        actix::io::FramedWrite<PolicyRequest, WriteHalf<tokio::net::UnixStream>, HostCodec>,
 }
 
 impl Actor for ArmourDataInstance {

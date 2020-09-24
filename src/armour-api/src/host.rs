@@ -175,10 +175,13 @@ impl Decoder for HostCodec {
     }
 }
 
-impl Encoder for HostCodec {
-    type Item = super::proxy::PolicyRequest;
+impl Encoder<super::proxy::PolicyRequest> for HostCodec {
     type Error = std::io::Error;
-    fn encode(&mut self, msg: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(
+        &mut self,
+        msg: super::proxy::PolicyRequest,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
         self.serialize_encode(msg, dst)
     }
 }

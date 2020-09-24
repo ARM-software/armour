@@ -8,7 +8,27 @@ pub mod service {
 	use armour_api::proxy::{HttpConfig, LabelOp, PolicyRequest};
 	use armour_lang::labels::Labels;
 
-	async fn launch_proxy(host: &super::Host, proxy: &Proxy) -> Result<(), actix_web::Error> {
+	#[derive(Debug)]
+	struct MailboxError;
+
+	impl std::fmt::Display for MailboxError {
+		fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+			write!(f, "mailbox error")
+		}
+	}
+	impl From<actix::MailboxError> for MailboxError {
+		fn from(_: actix::MailboxError) -> Self {
+			MailboxError
+		}
+	}
+	impl actix_web::ResponseError for MailboxError {
+		fn error_response(&self) -> HttpResponse {
+			log::warn!("mailbox error");
+			HttpResponse::BadRequest().finish()
+		}
+	}
+
+	async fn launch_proxy(host: &super::Host, proxy: &Proxy) -> Result<(), MailboxError> {
 		// start a proxy (without forcing/duplication)
 		host.send(Launch::new(
 			proxy.label.clone(),
@@ -28,7 +48,7 @@ pub mod service {
 		host: &super::Host,
 		instance: &InstanceSelector,
 		ip_labels: &[(std::net::Ipv4Addr, Labels)],
-	) -> Result<(), actix_web::Error> {
+	) -> Result<(), MailboxError> {
 		host.send(PolicyCommand::new_with_retry(
 			// retry needed in case proxy process is slow to start up
 			instance.clone(),
@@ -42,7 +62,7 @@ pub mod service {
 		host: &super::Host,
 		instance: InstanceSelector,
 		config: HttpConfig,
-	) -> Result<(), actix_web::Error> {
+	) -> Result<(), MailboxError> {
 		host.send(PolicyCommand::new_with_retry(
 			// retry needed in case proxy process is slow to start up
 			instance,
@@ -81,7 +101,8 @@ pub mod service {
 			let instance = InstanceSelector::Label(proxy.label);
 			// shut down proxy
 			host.send(PolicyCommand::new(instance, PolicyRequest::Shutdown))
-				.await?;
+				.await
+				.map_err(|_| MailboxError)?;
 		}
 		Ok(HttpResponse::Ok().finish())
 	}

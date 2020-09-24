@@ -64,10 +64,9 @@ impl Decoder for PolicyCodec {
     }
 }
 
-impl Encoder for PolicyCodec {
-    type Item = host::PolicyResponse;
+impl Encoder<host::PolicyResponse> for PolicyCodec {
     type Error = std::io::Error;
-    fn encode(&mut self, msg: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, msg: host::PolicyResponse, dst: &mut BytesMut) -> Result<(), Self::Error> {
         self.serialize_encode(msg, dst)
     }
 }

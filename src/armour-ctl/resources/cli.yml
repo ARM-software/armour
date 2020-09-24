@@ -31,6 +31,7 @@ subcommands:
       args:
         - ENTITY:
             index: 1
+            required: true
             possible_values: 
                 - hosts
                 - services

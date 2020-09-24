@@ -128,7 +128,7 @@ pub fn client<P: AsRef<std::path::Path>>(
     ca: P,
     certificate_password: &str,
     certificate: P,
-) -> Result<awc::Client, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<actix_web::client::Client, Box<dyn std::error::Error + Send + Sync>> {
     use std::io::Read;
     let mut certificate_file = std::fs::File::open(certificate.as_ref()).map_err(|err| {
         log::warn!(
@@ -145,7 +145,11 @@ pub fn client<P: AsRef<std::path::Path>>(
     ssl_builder.set_private_key(&p12.pkey)?;
     ssl_builder.set_certificate(&p12.cert)?;
     ssl_builder.set_ca_file(ca)?;
-    Ok(awc::Client::build()
-        .connector(awc::Connector::new().ssl(ssl_builder.build()).finish())
+    Ok(actix_web::client::ClientBuilder::default()
+        .connector(
+            actix_web::client::Connector::new()
+                .ssl(ssl_builder.build())
+                .finish(),
+        )
         .finish())
 }

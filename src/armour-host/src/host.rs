@@ -345,6 +345,9 @@ pub struct Quit;
 impl Handler<Quit> for ArmourDataHost {
     type Result = ();
     fn handle(&mut self, _msg: Quit, _ctx: &mut Context<Self>) -> Self::Result {
+        info!("removing socket: {}", self.socket.display());
+        std::fs::remove_file(self.socket.clone())
+            .unwrap_or_else(|e| warn!("failed to remove socket: {}", e));
         System::current().stop()
     }
 }

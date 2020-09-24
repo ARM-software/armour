@@ -102,7 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "RUST_LOG",
         "armour_host=debug,armour_lang=debug,armour_utils=info,actix=info",
     );
-    env::set_var("RUST_BACKTRACE", "1");
+    env::set_var("RUST_BACKTRACE", "0");
     pretty_env_logger::init();
 
     // start Actix system

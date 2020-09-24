@@ -9,15 +9,15 @@ armour-api = { path = "../armour-api" }
 armour-lang = { path = "../armour-lang" }
 armour-utils = { path = "../armour-utils" }
 
-actix = "0.9"
-actix-connect = "1.0"
+actix = "0.10"
+actix-connect = "2.0"
 actix-rt = "1.1"
-actix-web = "2.0"
+actix-web = "3.0"
 aead = "0.3"
 #aes-gcm = "0.6"
 #aes-soft = "0.4"
-chacha20 = "0.4"
-chacha20poly1305 = "0.5"
+chacha20 = "0.5"
+chacha20poly1305 = "0.6"
 argon2rs = "0.2"
 base64 = "0.12"
 bytes = "0.5"
@@ -34,5 +34,5 @@ pretty_env_logger = "0.4"
 serde_json = "1.0"
 tokio = { version = "0.2", features = ["uds", "tcp"] }
 tokio-timer = "0.2"
-tokio-util = { version = "0.2", features = ["codec"] }
+tokio-util = { version = "0.3", features = ["codec"] }
 url = "2.1"

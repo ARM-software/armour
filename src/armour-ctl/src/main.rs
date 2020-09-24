@@ -22,7 +22,7 @@ async fn main() -> Result<(), Error> {
     let url = |s: &str| format!("https://{}:{}/{}", host, port, s);
 
     // enable logging
-    std::env::set_var("RUST_LOG", "armour_utils=info");
+    std::env::set_var("RUST_LOG", "armour_utils=info,armour_ctl=info");
     std::env::set_var("RUST_BACKTRACE", "0");
     env_logger::init();
 
