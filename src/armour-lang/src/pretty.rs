@@ -1,5 +1,6 @@
 use super::expressions::{Block, Expr, Pattern};
-use super::headers::Headers;
+use super::headers::{THeaders};
+use super::{headers, parser, types};
 use super::lang::Program;
 use super::literals::Literal;
 use super::parser::{As, Assoc, Infix, Pat, PolicyRegex, Precedence};
@@ -7,6 +8,9 @@ use super::types::Typ;
 use pretty::termcolor::{Color, ColorChoice, ColorSpec, StandardStream};
 use pretty::RcDoc;
 use std::fmt;
+
+//FIXME duplicated with interpreter
+type Headers = headers::Headers<parser::Typ, types::Typ>;
 
 fn bracket(doc: RcDoc<'_, ColorSpec>) -> RcDoc<'_, ColorSpec> {
     RcDoc::text("(").append(doc.nest(1)).append(")")

@@ -1,8 +1,9 @@
 /// policy language interpreter
 // NOTE: no optimization
+use super::{parser, headers, types};
 use super::expressions::{Block, Error, Expr, Pattern};
 use super::externals::{Call, ExternalActor};
-use super::headers::Headers;
+use super::headers::{THeaders};
 use super::labels::Label;
 use super::lang::{Code, Program};
 use super::literals::{Connection, HttpRequest, HttpResponse, Literal, Method, VecSet};
@@ -12,6 +13,8 @@ use actix::prelude::*;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
 use std::sync::Arc;
+
+type Headers = headers::Headers<parser::Typ, types::Typ>;
 
 #[derive(Clone)]
 pub struct Env {

@@ -1,7 +1,9 @@
 /// policies
 use super::{
     expressions, lang,
-    types::{Signature, Typ},
+    types::{Signature, Typ, TTyp},
+    headers::THeaders,
+    parser
 };
 use lazy_static::lazy_static;
 use serde::{
@@ -58,13 +60,13 @@ impl FnPolicies {
 
 // map from function name to list of permitted types
 #[derive(Default)]
-struct ProtocolPolicy(BTreeMap<String, Vec<Signature<Typ>>>);
+struct ProtocolPolicy(BTreeMap<String, Vec<Signature<parser::Typ, Typ>>>);
 
 impl ProtocolPolicy {
     fn functions(&self) -> Vec<String> {
         self.0.keys().cloned().collect()
     }
-    fn insert(&mut self, name: &str, fn_policy: Vec<Signature<Typ>>) {
+    fn insert(&mut self, name: &str, fn_policy: Vec<Signature<parser::Typ, Typ>>) {
         self.0.insert(name.to_string(), fn_policy);
     }
     fn insert_bool(&mut self, name: &str, args: Vec<Vec<Typ>>) {
@@ -215,7 +217,7 @@ impl Policy {
     pub fn from_bincode<R: std::io::Read>(r: R) -> Result<Self, std::io::Error> {
         armour_utils::bincode_gz_base64_dec(r)
     }
-    fn type_check(function: &str, sig1: &Signature<Typ>, sig2: &Signature<Typ>) -> bool {
+    fn type_check(function: &str, sig1: &Signature<parser::Typ, Typ>, sig2: &Signature<parser::Typ, Typ>) -> bool {
         let (args1, ty1) = sig1.split_as_ref();
         let (args2, ty2) = sig2.split_as_ref();
         Typ::type_check(function, vec![(None, ty1.clone())], vec![(None, ty2.clone())]).is_ok()

@@ -1,10 +1,14 @@
 /// policy language
-use super::expressions::{Error, Expr};
+use super::types::{Typ, TTyp};
+use super::expressions::{Error, Expr, TExpr};
 use super::{externals, headers, lexer, parser, types};
-use headers::Headers;
+use headers::{THeaders};
 use petgraph::graph;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
+
+//FIXME duplicated with interpreter
+type Headers = headers::Headers<parser::Typ, types::Typ>;
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Code(pub BTreeMap<String, Expr>);
@@ -79,7 +83,7 @@ impl Program {
         self.headers.cut(set);
         self.code.cut(set);
     }
-    pub fn typ(&self, name: &str) -> Option<types::Signature<types::Typ>> {
+    pub fn typ(&self, name: &str) -> Option<types::Signature<parser::Typ, types::Typ>> {
         self.headers.typ(name)
     }
     pub fn is_empty(&self) -> bool {
@@ -97,7 +101,7 @@ pub struct PreProgram {
 }
 
 impl PreProgram {
-    fn add_decl(&mut self, decl: &parser::FnDecl) -> Result<(), Error> {
+    fn add_decl(&mut self, decl: &parser::FnDecl<parser::Typ, parser::Expr>) -> Result<(), Error> {
         // println!("{:#?}", decl);
         let (name, e, calls) = Expr::from_decl(decl, &self.program.headers)?;
         // println!(r#""{}": {:#?}"#, name, e);

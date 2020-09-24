@@ -1,12 +1,10 @@
 /// really basic type system
 use super::lexer::Loc;
 use super::parser;
-use parser::{Infix, Prefix};
+use parser::{Infix, Prefix, TPTyp};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-
-pub trait TTyp : fmt::Display {
-}
+use std::marker::PhantomData;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Typ {
@@ -63,20 +61,43 @@ impl fmt::Display for Typ {
     }
 }
 
-impl TTyp for Typ{}
-
 type LocType<Typ> = (Option<Loc>, Typ);//FIXME: i use value not ref because i can not create a fct &Typ -> &CPTyp due to lifetime (fct=fromres)
 pub type LocTypes<Typ> = Vec<LocType<Typ>>;
 
+pub trait TTyp<PTyp: TPTyp> : fmt::Display + Sized + Clone {
+    //fn type_check(s: &str, v1: LocTypes<Self>, v2: LocTypes<Self>) -> Result<(), Error<Self>>; 
+    fn intrinsic(&self) -> Option<String>;
+    fn can_unify(&self, other: &Self) -> bool;
+
+    fn try_from_str(s: &str) -> Result<Self, Error<PTyp, Self> >; 
+    fn from_parse(ty: &PTyp) -> Result<Self, Error<PTyp, Self> >; 
+
+    fn type_check(s: &str, v1: LocTypes<Self>, v2: LocTypes<Self>) -> Result<(), Error<PTyp, Self>> {
+        let len1 = v1.len();
+        let len2 = v2.len();
+        if len1 == len2 {
+            for (t1, t2) in v1.into_iter().zip(v2.into_iter()) {
+                if !t1.1.can_unify(&t2.1) {
+                    return Err(Error::Mismatch(s.to_string(), t1, t2));
+                }
+            }
+            Ok(())
+        } else {
+            Err(Error::Args(s.to_string(), len1, len2))
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
-pub enum Error<Typ:(fmt::Display)> {
+pub enum Error<PTyp:TPTyp, Typ:TTyp<PTyp>> {
     Mismatch(String, LocType<Typ>, LocType<Typ>),
     Args(String, usize, usize),
     Parse(String),
     Dest,
+    Phantom(PhantomData<PTyp>), //FIXME maybe not the cleaner way for enum
 }
 
-impl<'a, Typ:TTyp> fmt::Display for Error<Typ> {
+impl<'a, PTyp:TPTyp, Typ: TTyp<PTyp>> fmt::Display for Error<PTyp, Typ> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::Parse(s) => writeln!(f, "expecting type, got {}", s),
@@ -99,9 +120,12 @@ impl<'a, Typ:TTyp> fmt::Display for Error<Typ> {
                 }
             }
             Error::Dest => write!(f, "expecting Option<..> type"),
+            _ => panic!("For phantom data")
         }
     }
 }
+
+pub type DPError = Error<parser::Typ, Typ>;
 
 impl Typ {
     pub fn any_option() -> Typ {
@@ -109,34 +133,6 @@ impl Typ {
     }
     pub fn option(&self) -> Typ {
         Typ::Tuple(vec![self.clone()])
-    }
-    pub fn intrinsic(&self) -> Option<String> {
-        match self {
-            Typ::Return => None,
-            Typ::List(_) => Some("list".to_string()),
-            Typ::Tuple(t) => {
-                if t.len() < 2 {
-                    Some("option".to_string())
-                } else {
-                    None
-                }
-            }
-            _ => Some(self.to_string()),
-        }
-    }
-    pub fn can_unify(&self, other: &Typ) -> bool {
-        match (self, other) {
-            (Typ::Return, _) | (_, Typ::Return) => true,
-            (Typ::List(l1), Typ::List(l2)) => l1.can_unify(l2),
-            (Typ::Tuple(l1), Typ::Tuple(l2)) => {
-                let n1 = l1.len();
-                let n2 = l2.len();
-                (n1 == n2 && l1.iter().zip(l2).all(|(t1, t2)| t1.can_unify(t2)))
-                    || n1 == 0 && n2 == 1
-                    || n1 == 1 && n2 == 0
-            }
-            _ => self == other,
-        }
     }
     pub fn unify(&self, other: &Typ) -> Typ {
         match (self, other) {
@@ -156,21 +152,43 @@ impl Typ {
             _ => self.clone(),
         }
     }
-    pub fn type_check(s: &str, v1: LocTypes<Typ>, v2: LocTypes<Typ>) -> Result<(), Error<Typ>> {
-        let len1 = v1.len();
-        let len2 = v2.len();
-        if len1 == len2 {
-            for (t1, t2) in v1.into_iter().zip(v2.into_iter()) {
-                if !t1.1.can_unify(&t2.1) {
-                    return Err(Error::Mismatch(s.to_string(), t1, t2));
-                }
-            }
-            Ok(())
-        } else {
-            Err(Error::Args(s.to_string(), len1, len2))
+    pub fn is_unit(&self) -> bool {
+        Typ::type_check("", vec![(None, self.clone())], vec![(None, Typ::Unit)]).is_ok()
+    }
+    pub fn dest_option(&self) -> Result<Typ, DPError> {
+        match self {
+            Typ::Tuple(ts) => match ts.as_slice() {
+                [] => Ok(Typ::Return),
+                [t] => Ok(t.clone()),
+                _ => Err(Error::Dest),
+            },
+            _ => Err(Error::Dest),
         }
     }
-    pub fn try_from_str(s: &str) -> Result<Self, self::Error<Typ> > {
+    pub fn dest_list(&self) -> Option<Typ> {
+        match self {
+            Typ::List(ty) => Some(*ty.clone()),
+            _ => None,
+        }
+    }
+}
+impl TTyp<parser::Typ> for Typ { 
+    fn intrinsic(&self) -> Option<String> {
+        match self {
+            Typ::Return => None,
+            Typ::List(_) => Some("list".to_string()),
+            Typ::Tuple(t) => {
+                if t.len() < 2 {
+                    Some("option".to_string())
+                } else {
+                    None
+                }
+            }
+            _ => Some(self.to_string()),
+        }
+    }
+
+    fn try_from_str(s: &str) -> Result<Self, self::DPError > {
         match s {
             "bool" => Ok(Typ::Bool),
             "Connection" => Ok(Typ::Connection),
@@ -188,7 +206,7 @@ impl Typ {
             s => Err(Error::Parse(s.to_string())),
         }
     }
-    pub fn from_parse(ty: &parser::Typ) -> Result<Self, self::Error<Typ> > {
+    fn from_parse(ty: &parser::Typ) -> Result<Self, self::DPError > {
         match ty {
             parser::Typ::Atom(a) => Typ::try_from_str(a.id()),
             parser::Typ::Cons(c, b) => {
@@ -204,34 +222,28 @@ impl Typ {
                 0 => Ok(Typ::Unit),
                 1 => Typ::from_parse(l.get(0).unwrap()),
                 _ => {
-                    let tys: Result<Vec<Self>, self::Error<Typ>> =
+                    let tys: Result<Vec<Self>, self::DPError> =
                         l.iter().map(|x| Typ::from_parse(x)).collect();
                     Ok(Typ::Tuple(tys?))
                 }
             },
         }
     }
-    pub fn is_unit(&self) -> bool {
-        Typ::type_check("", vec![(None, self.clone())], vec![(None, Typ::Unit)]).is_ok()
-    }
-    pub fn dest_option(&self) -> Result<Typ, Error<Typ>> {
-        match self {
-            Typ::Tuple(ts) => match ts.as_slice() {
-                [] => Ok(Typ::Return),
-                [t] => Ok(t.clone()),
-                _ => Err(Error::Dest),
-            },
-            _ => Err(Error::Dest),
-        }
-    }
-    pub fn dest_list(&self) -> Option<Typ> {
-        match self {
-            Typ::List(ty) => Some(*ty.clone()),
-            _ => None,
+    fn can_unify(&self, other: &Typ) -> bool {
+        match (self, other) {
+            (Typ::Return, _) | (_, Typ::Return) => true,
+            (Typ::List(l1), Typ::List(l2)) => l1.can_unify(l2),
+            (Typ::Tuple(l1), Typ::Tuple(l2)) => {
+                let n1 = l1.len();
+                let n2 = l2.len();
+                (n1 == n2 && l1.iter().zip(l2).all(|(t1, t2)| t1.can_unify(t2)))
+                    || n1 == 0 && n2 == 1
+                    || n1 == 1 && n2 == 0
+            }
+            _ => self == other,
         }
     }
 }
-
 impl Prefix {
     pub fn typ(&self) -> (Typ, Typ) {
         match self {
@@ -265,8 +277,8 @@ impl Infix {
     }
 }
 
-impl parser::Param {
-    pub fn typ(&self) -> Result<Typ, Error<Typ>> {
+impl parser::Param<parser::Typ> {
+    pub fn typ(&self) -> Result<Typ, DPError> {
         Typ::from_parse(&self.typ)
     }
 }
@@ -281,23 +293,23 @@ impl parser::Pattern {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Signature<Typ:TTyp>(Option<Vec<Typ>>, Typ);
+pub struct Signature<PTyp: TPTyp, Typ: TTyp<PTyp> >(Option<Vec<Typ>>, Typ, PhantomData<PTyp>);
 
-impl Default for Signature<Typ> {
+impl Default for Signature<parser::Typ, Typ> {
     fn default() -> Self {
-        Signature(None, Typ::Unit)
+        Signature(None, Typ::Unit, PhantomData)
     }
 }
 
-impl<Typ:TTyp> Signature<Typ> {
+impl<PTyp: TPTyp, Typ: TTyp<PTyp>> Signature<PTyp, Typ> {
     pub fn new(args: Vec<Typ>, typ: Typ) -> Self {
-        Signature(Some(args), typ)
+        Signature(Some(args), typ, PhantomData)
     }
     pub fn new_noargs(typ:Typ) -> Self {
-        Signature(None, typ)
+        Signature(None, typ, PhantomData)
     }
     pub fn any(typ: Typ) -> Self {
-        Signature(None, typ)
+        Signature(None, typ, PhantomData)
     }
     pub fn split(self) -> (Option<Vec<Typ>>, Typ) {
         (self.0, self.1)
@@ -313,7 +325,7 @@ impl<Typ:TTyp> Signature<Typ> {
     }
 }
 
-impl<Typ:TTyp> fmt::Display for Signature<Typ> {
+impl<PTyp: TPTyp, Typ: TTyp<PTyp>> fmt::Display for Signature<PTyp, Typ> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(")?;
         match self.0 {
@@ -331,27 +343,27 @@ impl<Typ:TTyp> fmt::Display for Signature<Typ> {
     }
 }
 
-impl parser::FnDecl {
+impl parser::FnDecl<parser::Typ, parser::Expr> {
     // TODO: report location of errors
-    pub fn typ(&self) -> Result<Signature<Typ>, Error<Typ>> {
+    pub fn typ(&self) -> Result<Signature<parser::Typ, Typ>, DPError> {
         let ty = match self.typ_id() {
             Some(id) => Typ::from_parse(id)?,
             None => Typ::Unit,
         };
-        let args: Result<Vec<Typ>, Error<Typ>> = self.args().iter().map(|a| a.typ()).collect();
+        let args: Result<Vec<Typ>, DPError> = self.args().iter().map(|a| a.typ()).collect();
         Ok(Signature::new(args?, ty))
     }
 }
 
-impl parser::Head {
+impl parser::Head<parser::Typ> {
     // TODO: report location of errors
-    pub fn typ(&self) -> Result<Signature<Typ>, Error<Typ>> {
+    pub fn typ(&self) -> Result<Signature<parser::Typ, Typ>, DPError> {
         let ty = match self.typ_id() {
             Some(id) => Typ::from_parse(id)?,
             None => Typ::Unit,
         };
         if let Some(args) = self.args() {
-            let args: Result<Vec<Typ>, Error<Typ>> = args.iter().map(|a| Typ::from_parse(a)).collect();
+            let args: Result<Vec<Typ>, DPError> = args.iter().map(|a| Typ::from_parse(a)).collect();
             Ok(Signature::new(args?, ty))
         } else {
             Ok(Signature::any(ty))

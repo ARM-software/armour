@@ -8,6 +8,9 @@ use petgraph::graph;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
+//FIXME dubplicated with interpret.rs
+type Headers = headers::Headers<parser::Typ, types::Typ>;
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Code(pub BTreeMap<String, Expr>);
 

@@ -7,20 +7,21 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-pub type Program = Vec<Decl>;
+pub type Program = Vec<Decl<Typ, Expr>>;
+pub type CPProgram = Vec<Decl<CPTyp, CPExpr>>;
 
-pub enum Decl {
-    External(External),
-    FnDecl(FnDecl),
+pub enum Decl<Typ:TPTyp, Expr:TPExpr> {
+    External(External<Typ>),
+    FnDecl(FnDecl<Typ, Expr>),
 }
 
-pub struct External {
+pub struct External<Typ:TPTyp> {
     name: LocIdent,
     url: LocIdent,
-    pub headers: Vec<Head>,
+    pub headers: Vec<Head<Typ>>,
 }
 
-impl External {
+impl<Typ:TPTyp> External<Typ> {
     pub fn name(&self) -> &str {
         self.name.id()
     }
@@ -29,26 +30,31 @@ impl External {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Typ {
     Atom(LocIdent),
     Cons(LocIdent, Box<Typ>),
     Tuple(Vec<Typ>),
 }
 
-#[derive(Debug, Clone)]
+pub trait TPTyp : Clone {}
+
+impl TPTyp for Typ {}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CPTyp {
-    Atom(LocIdent),
     DPTyp(Typ),
 }
 
-pub struct Head {
+impl TPTyp for CPTyp {}
+
+pub struct Head<Typ> {
     id: LocIdent,
     typs: Option<Vec<Typ>>,
     typ: Option<Typ>,
 }
 
-impl Head {
+impl<Typ> Head<Typ> {
     pub fn name(&self) -> &str {
         self.id.id()
     }
@@ -64,44 +70,44 @@ impl Head {
 }
 
 #[derive(Debug, Clone)]
-pub struct Param {
+pub struct Param<Typ> {
     name: LocIdent,
     pub typ: Typ,
 }
 
-impl Param {
+impl<Typ> Param<Typ> {
     pub fn name(&self) -> &str {
         self.name.id()
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct FnHead {
+pub struct FnHead<Typ> {
     id: LocIdent,
-    params: Vec<Param>,
+    params: Vec<Param<Typ>>,
     typ: Option<Typ>,
 }
 
-impl FnHead {
+impl<Typ> FnHead<Typ> {
     pub fn name(&self) -> &str {
         self.id.id()
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct FnDecl {
-    head: FnHead,
-    body: BlockStmt,
+pub struct FnDecl<Typ:TPTyp, Expr:TPExpr> {
+    head: FnHead<Typ>,
+    body: BlockStmt<Expr>,
 }
 
-impl FnDecl {
+impl<Typ:TPTyp, Expr:TPExpr> FnDecl<Typ, Expr> {
     pub fn name(&self) -> &str {
         self.head.id.id()
     }
-    pub fn args(&self) -> &Vec<Param> {
+    pub fn args(&self) -> &Vec<Param<Typ>> {
         &self.head.params
     }
-    pub fn body(&self) -> &BlockStmt {
+    pub fn body(&self) -> &BlockStmt<Expr> {
         &self.body
     }
     pub fn typ_id(&self) -> &Option<Typ> {
@@ -113,9 +119,9 @@ impl FnDecl {
 }
 
 #[derive(Debug, Clone)]
-pub enum Stmt {
-    LetStmt(Vec<LocIdent>, LocExpr),
-    ReturnStmt(LocExpr),
+pub enum Stmt<Expr> {
+    LetStmt(Vec<LocIdent>, LocExpr<Expr>),
+    ReturnStmt(LocExpr<Expr>),
     ExprStmt {
         exp: Expr,
         async_tag: bool,
@@ -123,17 +129,18 @@ pub enum Stmt {
     },
 }
 
-#[derive(Debug, Clone)]
-pub struct LocStmt(Loc, Stmt);
 
-impl LocStmt {
-    fn let_stmt(l: Loc, i: Vec<LocIdent>, e: LocExpr) -> LocStmt {
+#[derive(Debug, Clone)]
+pub struct LocStmt<Expr:TPExpr>(Loc, Stmt<Expr>);
+
+impl<Expr:TPExpr> LocStmt<Expr> {
+    fn let_stmt(l: Loc, i: Vec<LocIdent>, e: LocExpr<Expr>) -> LocStmt<Expr> {
         LocStmt(l, Stmt::LetStmt(i, e))
     }
-    fn return_stmt(l: Loc, e: LocExpr) -> LocStmt {
+    fn return_stmt(l: Loc, e: LocExpr<Expr>) -> LocStmt<Expr> {
         LocStmt(l, Stmt::ReturnStmt(e))
     }
-    fn expr_stmt(e: LocExpr, async_tag: bool, semi: bool) -> LocStmt {
+    fn expr_stmt(e: LocExpr<Expr>, async_tag: bool, semi: bool) -> LocStmt<Expr> {
         LocStmt(
             e.loc(),
             Stmt::ExprStmt {
@@ -146,21 +153,54 @@ impl LocStmt {
     pub fn loc(&self) -> Loc {
         self.0.clone()
     }
-    pub fn stmt(&self) -> &Stmt {
+    pub fn stmt(&self) -> &Stmt<Expr> {
         &self.1
     }
 }
 
+impl From<&Expr> for CPExpr{
+    fn from(e : &Expr) -> Self {
+        CPExpr::DPExpr(e.clone()) 
+    }
+}
+
+impl From<CPExpr> for Expr{
+    fn from(e : CPExpr) -> Self {
+        match e {
+            CPExpr::DPExpr(e) => e
+        }
+    }
+}
+
+impl<'a> From<Stmt<CPExpr>> for Stmt<Expr>{
+    fn from(stmt : Stmt<CPExpr>) -> Self {
+        match stmt {
+            Stmt::LetStmt(v, le) => Stmt::LetStmt(v, LocExpr::from(le)),
+            Stmt::ReturnStmt(le) => Stmt::ReturnStmt(LocExpr::from(le)),
+            Stmt::ExprStmt{exp, async_tag, semi} => Stmt::ExprStmt{
+                exp: Expr::from(exp),
+                async_tag: async_tag,
+                semi: semi}
+        }
+    }
+}
+
+impl<'a> From<LocStmt<CPExpr>> for LocStmt<Expr>{
+    fn from(stmt : LocStmt<CPExpr>) -> Self {
+        LocStmt(stmt.loc(), Stmt::from(stmt.stmt().clone()) )
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct BlockStmt {
-    pub statements: Vec<LocStmt>,
+pub struct BlockStmt<Expr:TPExpr> {
+    pub statements: Vec<LocStmt<Expr>>,
     async_tag: bool,
 }
 
-impl BlockStmt {
-    pub fn as_ref(&self) -> BlockStmtRef {
+impl<Expr:TPExpr> BlockStmt<Expr> {
+    pub fn as_ref(&self) -> BlockStmtRef<Expr> {
         BlockStmtRef {
-            statements: self.statements.as_ref(),
+            statements: self.statements.clone(),//.as_ref(),
             async_tag: self.async_tag,
         }
     }
@@ -169,8 +209,8 @@ impl BlockStmt {
     }
 }
 
-impl From<LocExpr> for BlockStmt {
-    fn from(e: LocExpr) -> Self {
+impl From<LocExpr<Expr>> for BlockStmt<Expr> {
+    fn from(e: LocExpr<Expr>) -> BlockStmt<Expr> {
         BlockStmt {
             statements: vec![LocStmt::expr_stmt(e, false, false)],
             async_tag: false,
@@ -179,18 +219,19 @@ impl From<LocExpr> for BlockStmt {
 }
 
 #[derive(Debug)]
-pub struct BlockStmtRef<'a> {
-    pub statements: &'a [LocStmt],
+pub struct BlockStmtRef<Expr:TPExpr> {
+    pub statements: Vec<LocStmt<Expr>>, //because i need to take convert statement, maybe can fn {new obj; &new_obj} but i don't think so
+    //pub statements: &'a [LocStmt<Expr>],
     async_tag: bool,
 }
 
-impl<'a> BlockStmtRef<'a> {
-    pub fn split_first(&self) -> Option<(&LocStmt, BlockStmtRef)> {
+impl<'a, Expr:TPExpr>  BlockStmtRef<Expr> {
+    pub fn split_first(&self) -> Option<(&LocStmt<Expr>, BlockStmtRef<Expr>)> {
         if let Some((first, statements)) = self.statements.split_first() {
             Some((
                 first,
                 BlockStmtRef {
-                    statements,
+                    statements: statements.to_vec(),
                     async_tag: self.async_tag,
                 },
             ))
@@ -205,6 +246,18 @@ impl<'a> BlockStmtRef<'a> {
         self.async_tag
     }
 }
+
+impl<'a> From<BlockStmtRef<CPExpr>> for BlockStmtRef<Expr>{
+    fn from(block : BlockStmtRef<CPExpr>) -> Self {
+        BlockStmtRef{
+            statements: if block.is_empty() {Vec::new()} 
+                        else {(&block.statements).into_iter().map(|ls| LocStmt::from(ls.clone())).collect()},
+            async_tag: block.async_tag()
+        }
+    }
+}
+            
+            
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Iter {
@@ -233,40 +286,44 @@ impl std::fmt::Display for Iter {
 pub enum Expr {
     IdentExpr(Ident),
     LitExpr(Literal),
-    ListExpr(Vec<LocExpr>),
-    TupleExpr(Vec<LocExpr>),
-    PrefixExpr(Prefix, Box<LocExpr>),
-    InfixExpr(Infix, Box<LocExpr>, Box<LocExpr>),
+    ListExpr(Vec<LocExpr<Self>>),
+    TupleExpr(Vec<LocExpr<Self>>),
+    PrefixExpr(Prefix, Box<LocExpr<Self>>),
+    InfixExpr(Infix, Box<LocExpr<Self>>, Box<LocExpr<Self>>),
     IterExpr {
         op: Iter,
         idents: Vec<LocIdent>,
-        expr: Box<LocExpr>,
-        body: BlockStmt,
+        expr: Box<LocExpr<Self>>,
+        body: BlockStmt<Expr>,
     },
     IfExpr {
-        cond: Box<LocExpr>,
-        consequence: BlockStmt,
-        alternative: Option<BlockStmt>,
+        cond: Box<LocExpr<Self>>,
+        consequence: BlockStmt<Expr>,
+        alternative: Option<BlockStmt<Expr>>,
     },
     IfMatchExpr {
-        matches: Vec<(LocExpr, Pattern)>,
-        consequence: BlockStmt,
-        alternative: Option<BlockStmt>,
+        matches: Vec<(LocExpr<Self>, Pattern)>,
+        consequence: BlockStmt<Expr>,
+        alternative: Option<BlockStmt<Expr>>,
     },
     IfSomeMatchExpr {
         var: LocIdent,
-        expr: Box<LocExpr>,
-        consequence: BlockStmt,
-        alternative: Option<BlockStmt>,
+        expr: Box<LocExpr<Self>>,
+        consequence: BlockStmt<Expr>,
+        alternative: Option<BlockStmt<Expr>>,
     },
     CallExpr {
         loc: Loc,
         function: String,
-        arguments: Vec<LocExpr>,
+        arguments: Vec<LocExpr<Self>>,
     },
 }
 
-impl Expr {
+pub trait TPExpr : Clone{
+    fn eval_call_function(&self) -> Option<String>;
+}
+
+impl TPExpr for Expr {
     fn eval_call_function(&self) -> Option<String> {
         match self {
             Expr::IdentExpr(id) => Some(id.0.to_string()),
@@ -285,10 +342,24 @@ impl Expr {
 }
 
 #[derive(Debug, Clone)]
-pub struct LocExpr(Loc, Expr);
+pub enum CPExpr {
+    DPExpr(Expr),
+}
 
-impl LocExpr {
-    pub fn new(l: &Loc, e: &Expr) -> LocExpr {
+impl TPExpr for CPExpr {
+    fn eval_call_function(&self) -> Option<String> {
+        match self {
+            CPExpr::DPExpr(e) => Expr::eval_call_function(&e),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LocExpr<Expr>(Loc, Expr);
+
+impl<Expr:Clone> LocExpr<Expr> {
+    pub fn new(l: &Loc, e: &Expr) -> LocExpr<Expr> {
         LocExpr(l.clone(), e.clone())
     }
     pub fn loc(&self) -> Loc {
@@ -298,6 +369,18 @@ impl LocExpr {
         &self.1
     }
 }
+
+impl From<LocExpr<CPExpr>> for LocExpr<Expr> {
+    fn from(le:LocExpr<CPExpr>) -> Self {
+        LocExpr::new(&le.loc(), &Expr::from(le.expr().clone()))
+    }
+}
+impl From<LocExpr<&CPExpr>> for LocExpr<Expr> {
+    fn from(le:LocExpr<&CPExpr>) -> Self {
+        LocExpr::from(le.clone())
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum As {
@@ -417,10 +500,10 @@ impl PolicyRegex {
     }
 }
 
-enum LocExprOrMatches {
-    Expr(LocExpr),
-    Matches(Vec<(LocExpr, Pattern)>),
-    SomeMatch(LocIdent, LocExpr),
+enum LocExprOrMatches<Expr> {
+    Expr(LocExpr<Expr>),
+    Matches(Vec<(LocExpr<Expr>, Pattern)>),
+    SomeMatch(LocIdent, LocExpr<Expr>),
 }
 
 #[derive(Debug, Clone)]
@@ -441,7 +524,8 @@ impl From<&str> for Ident {
     }
 }
 
-#[derive(Debug, Clone)]
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocIdent(Loc, Ident);
 
 impl LocIdent {
@@ -581,7 +665,7 @@ named!(pub parse_program<Tokens, Program>,
     )
 );
 
-named!(pub parse_fn_head<Tokens, FnHead>,
+named!(pub parse_fn_head<Tokens, FnHead<Typ>>,
     do_parse!(
         tag_token!(Token::Function) >>
         id: parse_ident!() >>
@@ -593,7 +677,7 @@ named!(pub parse_fn_head<Tokens, FnHead>,
     )
 );
 
-named!(parse_fn_expr<Tokens, FnDecl>,
+named!(parse_fn_expr<Tokens, FnDecl<Typ, Expr>>,
     do_parse!(
         head: parse_fn_head >>
         body: parse_block_stmt >>
@@ -601,7 +685,7 @@ named!(parse_fn_expr<Tokens, FnDecl>,
     )
 );
 
-named!(parse_param<Tokens, Param>,
+named!(parse_param<Tokens, Param<Typ>>,
     do_parse!(
         name: parse_ident!() >>
         tag_token!(Token::Colon) >>
@@ -610,11 +694,11 @@ named!(parse_param<Tokens, Param>,
     )
 );
 
-named!(parse_comma_param<Tokens, Param>,
+named!(parse_comma_param<Tokens, Param<Typ>>,
     preceded!(tag_token!(Token::Comma), parse_param)
 );
 
-named!(parse_params<Tokens, Vec<Param>>,
+named!(parse_params<Tokens, Vec<Param<Typ>>>,
     do_parse!(
         p: parse_param >>
         ps: many0!(parse_comma_param) >>
@@ -766,19 +850,19 @@ fn infix_op(t: &Token) -> (Precedence, Option<(Assoc, Infix)>) {
     }
 }
 
-named!(pub parse_expr_eof<Tokens, LocExpr>,
+named!(pub parse_expr_eof<Tokens, LocExpr<Expr>>,
     terminated!(parse_expr, tag_token!(Token::EOF))
 );
 
-named!(parse_expr<Tokens, LocExpr>,
+named!(parse_expr<Tokens, LocExpr<Expr>>,
     call!(parse_pratt_expr, Precedence::PLowest)
 );
 
-named!(pub parse_block_stmt_eof<Tokens, BlockStmt>,
+named!(pub parse_block_stmt_eof<Tokens, BlockStmt<Expr>>,
     terminated!(parse_block_stmt, tag_token!(Token::EOF))
 );
 
-named!(pub parse_block_stmt<Tokens, BlockStmt>,
+named!(pub parse_block_stmt<Tokens, BlockStmt<Expr>>,
     do_parse!(
         async_tag: opt!(tag_token!(Token::Async)) >>
         statements: delimited!(tag_token!(Token::LBrace), many0!(parse_stmt), tag_token!(Token::RBrace)) >>
@@ -786,13 +870,13 @@ named!(pub parse_block_stmt<Tokens, BlockStmt>,
     )
 );
 
-named!(parse_stmt<Tokens, LocStmt>, alt!(
+named!(parse_stmt<Tokens, LocStmt<Expr>>, alt!(
     complete!(parse_let_stmt) |
     complete!(parse_return_stmt) |
     complete!(parse_expr_stmt)
 ));
 
-named!(parse_let_stmt<Tokens, LocStmt>,
+named!(parse_let_stmt<Tokens, LocStmt<Expr>>,
     do_parse!(
         t: tag_token!(Token::Let) >>
         idents: parse_idents >>
@@ -803,7 +887,7 @@ named!(parse_let_stmt<Tokens, LocStmt>,
     )
 );
 
-named!(parse_return_stmt<Tokens, LocStmt>,
+named!(parse_return_stmt<Tokens, LocStmt<Expr>>,
     do_parse!(
         t: tag_token!(Token::Return) >>
         expr: parse_expr >>
@@ -811,7 +895,7 @@ named!(parse_return_stmt<Tokens, LocStmt>,
     )
 );
 
-named!(parse_expr_stmt<Tokens, LocStmt>,
+named!(parse_expr_stmt<Tokens, LocStmt<Expr>>,
     do_parse!(
         async_tag: opt!(tag_token!(Token::Async)) >>
         expr: parse_expr >>
@@ -820,7 +904,7 @@ named!(parse_expr_stmt<Tokens, LocStmt>,
     )
 );
 
-named!(parse_atom_expr<Tokens, LocExpr>, alt!(
+named!(parse_atom_expr<Tokens, LocExpr<Expr>>, alt!(
     complete!(parse_lit_expr) |
     complete!(parse_ident_expr) |
     complete!(parse_prefix_expr) |
@@ -831,7 +915,7 @@ named!(parse_atom_expr<Tokens, LocExpr>, alt!(
     complete!(parse_all_any_expr)
 ));
 
-named!(parse_iter_expr<Tokens, LocExpr>,
+named!(parse_iter_expr<Tokens, LocExpr<Expr>>,
     do_parse!(
         t: alt!(
             tag_token!(Token::All) |
@@ -865,7 +949,7 @@ named!(parse_iter_expr<Tokens, LocExpr>,
     )
 );
 
-named!(parse_all_any_expr<Tokens, LocExpr>,
+named!(parse_all_any_expr<Tokens, LocExpr<Expr>>,
     do_parse!(
         t: alt!(
             tag_token!(Token::All) |
@@ -888,7 +972,7 @@ named!(parse_all_any_expr<Tokens, LocExpr>,
     )
 );
 
-named!(parse_paren_expr<Tokens, LocExpr>,
+named!(parse_paren_expr<Tokens, LocExpr<Expr>>,
     do_parse!(
         t: tag_token!(Token::LParen) >>
         es: opt!(parse_exprs) >>
@@ -910,7 +994,7 @@ named!(parse_paren_expr<Tokens, LocExpr>,
     )
 );
 
-named!(parse_lit_expr<Tokens, LocExpr>, alt!(
+named!(parse_lit_expr<Tokens, LocExpr<Expr>>, alt!(
     complete!(do_parse!(
         tag_token!(Token::Dot) >>
         i: parse_int_literal!() >>
@@ -929,7 +1013,7 @@ named!(parse_lit_expr<Tokens, LocExpr>, alt!(
     ))
 ));
 
-named!(parse_ident_expr<Tokens, LocExpr>,
+named!(parse_ident_expr<Tokens, LocExpr<Expr>>,
     alt!(
         complete!(do_parse!(
             ident: parse_ident!() >>
@@ -942,11 +1026,11 @@ named!(parse_ident_expr<Tokens, LocExpr>,
     )
 );
 
-named!(parse_comma_exprs<Tokens, LocExpr>,
+named!(parse_comma_exprs<Tokens, LocExpr<Expr>>,
     preceded!(tag_token!(Token::Comma), parse_expr)
 );
 
-named!(parse_exprs<Tokens, Vec<LocExpr>>,
+named!(parse_exprs<Tokens, Vec<LocExpr<Expr>>>,
     do_parse!(
         e: parse_expr >>
         es: many0!(parse_comma_exprs) >>
@@ -954,7 +1038,7 @@ named!(parse_exprs<Tokens, Vec<LocExpr>>,
     )
 );
 
-fn parse_prefix_expr(input: Tokens) -> IResult<Tokens, LocExpr> {
+fn parse_prefix_expr(input: Tokens) -> IResult<Tokens, LocExpr<Expr>> {
     let (i1, t1) = try_parse!(
         input,
         alt!(complete!(tag_token!(Token::Minus)) | complete!(tag_token!(Token::Not)))
@@ -979,7 +1063,7 @@ fn parse_prefix_expr(input: Tokens) -> IResult<Tokens, LocExpr> {
     }
 }
 
-fn parse_pratt_expr(input: Tokens, precedence: Precedence) -> IResult<Tokens, LocExpr> {
+fn parse_pratt_expr(input: Tokens, precedence: Precedence) -> IResult<Tokens, LocExpr<Expr>> {
     do_parse!(
         input,
         left: parse_atom_expr >> i: call!(go_parse_pratt_expr, precedence, left) >> (i)
@@ -989,8 +1073,8 @@ fn parse_pratt_expr(input: Tokens, precedence: Precedence) -> IResult<Tokens, Lo
 fn go_parse_pratt_expr(
     input: Tokens,
     precedence: Precedence,
-    left: LocExpr,
-) -> IResult<Tokens, LocExpr> {
+    left: LocExpr<Expr>,
+) -> IResult<Tokens, LocExpr<Expr>> {
     let (i1, t1) = try_parse!(input, take!(1));
     if t1.tok.is_empty() {
         Ok((i1, left))
@@ -1018,7 +1102,7 @@ fn go_parse_pratt_expr(
     }
 }
 
-fn parse_infix_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr> {
+fn parse_infix_expr(input: Tokens, left: LocExpr<Expr>) -> IResult<Tokens, LocExpr<Expr>> {
     let (i1, t1) = try_parse!(input, take!(1));
     if t1.tok.is_empty() {
         Err(Err::Error(error_position!(input, ErrorKind::Tag)))
@@ -1042,7 +1126,7 @@ fn parse_infix_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr> {
 }
 
 // fn parse_dot_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr> {
-fn parse_dot_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr> {
+fn parse_dot_expr(input: Tokens, left: LocExpr<Expr>) -> IResult<Tokens, LocExpr<Expr>> {
     let left_clone = left.clone();
     alt!(
         input,
@@ -1081,7 +1165,7 @@ fn parse_dot_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr> {
     )
 }
 
-fn parse_call_expr(input: Tokens, fn_handle: LocExpr) -> IResult<Tokens, LocExpr> {
+fn parse_call_expr(input: Tokens, fn_handle: LocExpr<Expr>) -> IResult<Tokens, LocExpr<Expr>> {
     do_parse!(
         input,
         tag_token!(Token::LParen)
@@ -1103,7 +1187,7 @@ fn parse_call_expr(input: Tokens, fn_handle: LocExpr) -> IResult<Tokens, LocExpr
     )
 }
 
-named!(parse_list_expr<Tokens, LocExpr>,
+named!(parse_list_expr<Tokens, LocExpr<Expr>>,
     do_parse!(
         t: tag_token!(Token::LBracket) >>
         items: opt!(parse_exprs) >>
@@ -1112,7 +1196,7 @@ named!(parse_list_expr<Tokens, LocExpr>,
     )
 );
 
-named!(parse_if_expr<Tokens, LocExpr>,
+named!(parse_if_expr<Tokens, LocExpr<Expr>>,
     do_parse!(
         t: tag_token!(Token::If) >>
         b: alt!(
@@ -1133,7 +1217,7 @@ named!(parse_if_expr<Tokens, LocExpr>,
     )
 );
 
-named!(parse_else_expr<Tokens, BlockStmt>,
+named!(parse_else_expr<Tokens, BlockStmt<Expr>>,
     preceded!(
         tag_token!(Token::Else),
         alt!(
@@ -1143,7 +1227,7 @@ named!(parse_else_expr<Tokens, BlockStmt>,
     )
 );
 
-named!(parse_some_match<Tokens, (LocIdent, LocExpr)>,
+named!(parse_some_match<Tokens, (LocIdent, LocExpr<Expr>)>,
     do_parse!(
         tag_token!(Token::Let) >>
         tag_token!(Token::Some) >>
@@ -1154,7 +1238,7 @@ named!(parse_some_match<Tokens, (LocIdent, LocExpr)>,
     )
 );
 
-named!(parse_match_expr<Tokens, (LocExpr, Pattern)>,
+named!(parse_match_expr<Tokens, (LocExpr<Expr>, Pattern)>,
     do_parse!(
         e: parse_expr >>
         tag_token!(Token::Matches) >>
@@ -1163,11 +1247,11 @@ named!(parse_match_expr<Tokens, (LocExpr, Pattern)>,
     )
 );
 
-named!(parse_and_match_exprs<Tokens, (LocExpr, Pattern)>,
+named!(parse_and_match_exprs<Tokens, (LocExpr<Expr>, Pattern)>,
     preceded!(tag_token!(Token::And), parse_match_expr)
 );
 
-named!(parse_match_exprs<Tokens, Vec<(LocExpr, Pattern)>>,
+named!(parse_match_exprs<Tokens, Vec<(LocExpr<Expr>, Pattern)>>,
     do_parse!(
         e: parse_match_expr >>
         es: many0!(parse_and_match_exprs) >>
@@ -1305,7 +1389,7 @@ fn parse_pat_no_bind(input: Tokens) -> IResult<Tokens, PolicyRegex> {
     }
 }
 
-named!(parse_external<Tokens, External>,
+named!(parse_external<Tokens, External<Typ>>,
     do_parse!(
         tag_token!(Token::External) >>
         name: parse_ident!() >>
@@ -1316,7 +1400,7 @@ named!(parse_external<Tokens, External>,
     )
 );
 
-named!(parse_head<Tokens, Head>,
+named!(parse_head<Tokens, Head<Typ>>,
     do_parse!(
         tag_token!(Token::Function) >>
         id: parse_ident!() >>

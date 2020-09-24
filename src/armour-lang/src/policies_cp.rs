@@ -3,6 +3,7 @@ use super::{
     lang::{Program},
     types_cp::{CPTyp},
     types::{Signature, Typ},
+    parser
 };
 
 use lazy_static::lazy_static;
@@ -20,7 +21,7 @@ pub const ONBOARDING_SERVICES: &str = "onboardingPolicy";
 pub struct OnboardingPolicy {
     //From ProtocolPolicy struct
     name : String,//FIXME usefull ???
-    sig : Signature<CPTyp>,//FIXME only one ??
+    sig : Signature<parser::CPTyp, CPTyp>,//FIXME only one ??
 
     //From Policy struct
     pub program: Program,//TODO should i define a CPProgram
