@@ -7,6 +7,9 @@ The following examples are available:
 - [control-plane/](control-plane/README.md) : an example of Armour running with a control plane.
 - [multi-host/](multi-host/README.md) : an example of Armour running with a distributed setup (two VMs).
 - [arm-qemu/](arm-qemu/README.md) : an example of Armour running on *Raspbian Pi OS* using the QEMU Arm emulator.
+- [k3s/](k3s/README.md) : an example of Armour running on k3s.
+- [bookinfo/](bookinfo/README.md) : a Full application running with Armour on k3s.
+- [minikube/](minikube/README.md) : an example of Armour running on k8s using minikube.
 
 Each of these examples has been tested on a Mac (though this is not essential) that is setup as follows.
 
