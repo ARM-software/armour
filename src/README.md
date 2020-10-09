@@ -1,6 +1,6 @@
 ## Armour Sources
 
-Armour has been built using [Rust](https://www.rust-lang.org) version 1.45.2, which can be installed as follows:
+Armour has been built using [Rust](https://www.rust-lang.org) version 1.47, which can be installed as follows:
 
 ```sh
 $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
