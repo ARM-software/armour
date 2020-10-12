@@ -1,22 +1,66 @@
-use super::expressions::{Block, Expr, Pattern};
+use super::expressions::{Block, DPExpr, Expr, Pattern};
 use super::headers::{THeaders};
-use super::{headers, parser, types};
+use super::{headers, types, literals};
 use super::lang::Program;
-use super::literals::Literal;
+use super::literals::{Literal, CPFlatLiteral, DPFlatLiteral, TFlatLiteral};
 use super::parser::{As, Assoc, Infix, Pat, PolicyRegex, Precedence};
-use super::types::Typ;
+use super::types::{Typ, TFlatTyp, TTyp};
 use pretty::termcolor::{Color, ColorChoice, ColorSpec, StandardStream};
 use pretty::RcDoc;
 use std::fmt;
 
 //FIXME duplicated with interpreter
-type Headers = headers::Headers<parser::Typ, types::Typ>;
+type Headers = headers::Headers<types::FlatTyp>;
 
 fn bracket(doc: RcDoc<'_, ColorSpec>) -> RcDoc<'_, ColorSpec> {
     RcDoc::text("(").append(doc.nest(1)).append(")")
 }
 
-impl Expr {
+
+pub trait TPrettyLit : std::fmt::Display {
+    fn literal<'a, 'b>(&'a self) -> RcDoc<'b, ColorSpec> {
+        RcDoc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Green)).clone())
+    }
+
+    fn non_parse_literal<'a, 'b>(&'a self) -> RcDoc<'b, ColorSpec> {
+        RcDoc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Blue)).clone())
+    }
+
+    fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec>;
+}
+
+//not in Expr otherwith we have to alwayse specify type parameter for FlatTyp and FlatLiteral : ...
+fn key<'a, 'b>(data: &'a str) -> RcDoc<'b, ColorSpec> {
+    enum Class {
+        Keyword,
+        Control,
+        Other,
+    }
+    let class = match data {
+        "as" => Class::Keyword,
+        "async" => Class::Control,
+        "else" => Class::Control,
+        "false" => Class::Keyword,
+        "fn" => Class::Keyword,
+        "if" => Class::Control,
+        "in" => Class::Keyword,
+        "let" => Class::Keyword,
+        "matches" => Class::Control,
+        "return" => Class::Control,
+        "true" => Class::Keyword,
+        _ => Class::Other,
+    };
+    match class {
+        Class::Keyword => {
+            RcDoc::as_string(data).annotate(ColorSpec::new().set_fg(Some(Color::Cyan)).clone())
+        }
+        Class::Control => RcDoc::as_string(data)
+            .annotate(ColorSpec::new().set_fg(Some(Color::Magenta)).clone()),
+        Class::Other => RcDoc::as_string(data),
+    }
+}
+
+impl<FlatTyp:types::TFlatTyp, FlatLiteral:literals::TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> {
     fn vec_str_to_doc<'a, 'b>(l: &'b [String]) -> RcDoc<'a, ColorSpec> {
         if l.len() == 1 {
             RcDoc::as_string(l.get(0).unwrap())
@@ -43,7 +87,7 @@ impl Expr {
             Expr::closure_vars(e, res)
         }
     }
-    fn closure_body(&self) -> &Expr {
+    fn closure_body(&self) -> &Self {
         if let Expr::Closure(_, e) = self {
             e.closure_body()
         } else {
@@ -54,35 +98,6 @@ impl Expr {
         match self {
             Expr::IfExpr { .. } | Expr::IfMatchExpr { .. } | Expr::IfSomeMatchExpr { .. } => true,
             _ => false,
-        }
-    }
-    fn key<'a, 'b>(data: &'a str) -> RcDoc<'b, ColorSpec> {
-        enum Class {
-            Keyword,
-            Control,
-            Other,
-        }
-        let class = match data {
-            "as" => Class::Keyword,
-            "async" => Class::Control,
-            "else" => Class::Control,
-            "false" => Class::Keyword,
-            "fn" => Class::Keyword,
-            "if" => Class::Control,
-            "in" => Class::Keyword,
-            "let" => Class::Keyword,
-            "matches" => Class::Control,
-            "return" => Class::Control,
-            "true" => Class::Keyword,
-            _ => Class::Other,
-        };
-        match class {
-            Class::Keyword => {
-                RcDoc::as_string(data).annotate(ColorSpec::new().set_fg(Some(Color::Cyan)).clone())
-            }
-            Class::Control => RcDoc::as_string(data)
-                .annotate(ColorSpec::new().set_fg(Some(Color::Magenta)).clone()),
-            Class::Other => RcDoc::as_string(data),
         }
     }
     fn method<'a, 'b>(name: &'a str) -> RcDoc<'b, ColorSpec> {
@@ -100,10 +115,10 @@ impl Expr {
             Expr::Var(id) => RcDoc::as_string(id.0.clone()),
             Expr::BVar(id, _) => RcDoc::as_string(id.0.clone()),
             Expr::LitExpr(lit) => lit.to_doc(),
-            Expr::Let(vs, e, b) => Expr::key("let")
+            Expr::Let(vs, e, b) => key("let")
                 .append(
                     RcDoc::space()
-                        .append(Expr::vec_str_to_doc(&vs))
+                        .append(Self::vec_str_to_doc(&vs))
                         .append(" =")
                         .nest(2),
                 )
@@ -117,7 +132,7 @@ impl Expr {
                 .append(RcDoc::text("."))
                 .append(RcDoc::space().append(e.to_doc()).nest(2))
                 .group(),
-            Expr::ReturnExpr(e) => Expr::key("return")
+            Expr::ReturnExpr(e) => key("return")
                 .append(RcDoc::space())
                 .append(e.to_doc())
                 .group(),
@@ -146,9 +161,9 @@ impl Expr {
                 .annotate(ColorSpec::new().set_fg(Some(Color::Cyan)).clone())
                 .append(
                     RcDoc::space()
-                        .append(Expr::vec_str_to_doc(&vs))
+                        .append(Self::vec_str_to_doc(&vs))
                         .append(RcDoc::space())
-                        .append(Expr::key("in"))
+                        .append(key("in"))
                         .nest(2),
                 )
                 .append(RcDoc::space().append(e.to_doc()).nest(4))
@@ -184,7 +199,7 @@ impl Expr {
                 consequence,
                 alternative,
             } => {
-                let doc = Expr::key("if")
+                let doc = key("if")
                     .append(RcDoc::space())
                     .append(cond.to_doc())
                     .append(RcDoc::space())
@@ -195,7 +210,7 @@ impl Expr {
                 if let Some(alt) = alternative {
                     let doc = doc
                         .append(RcDoc::space())
-                        .append(Expr::key("else"))
+                        .append(key("else"))
                         .append(" ");
                     if alt.is_if() {
                         doc.append(alt.to_doc()).group()
@@ -215,9 +230,9 @@ impl Expr {
                 consequence,
                 alternative,
             } => {
-                let doc = Expr::key("if")
+                let doc = key("if")
                     .append(" ")
-                    .append(Expr::key("let"))
+                    .append(key("let"))
                     .append(" Some(")
                     .append(RcDoc::as_string(consequence.closure_var().unwrap()))
                     .append(RcDoc::text(") ="))
@@ -235,7 +250,7 @@ impl Expr {
                 if let Some(alt) = alternative {
                     let doc = doc
                         .append(RcDoc::space())
-                        .append(Expr::key("else"))
+                        .append(key("else"))
                         .append(" ");
                     if alt.is_if() {
                         doc.append(alt.to_doc()).group()
@@ -256,14 +271,14 @@ impl Expr {
                 alternative,
                 ..
             } => {
-                let doc = Expr::key("if")
+                let doc = key("if")
                     .append(
                         RcDoc::space()
                             .append(RcDoc::intersperse(
                                 matches.iter().map(|(e, re)| {
                                     e.to_doc()
                                         .append(RcDoc::space())
-                                        .append(Expr::key("matches"))
+                                        .append(key("matches"))
                                         .append(RcDoc::space())
                                         .append(re.to_doc())
                                 }),
@@ -283,7 +298,7 @@ impl Expr {
                 if let Some(alt) = alternative {
                     let doc = doc
                         .append(RcDoc::space())
-                        .append(Expr::key("else"))
+                        .append(key("else"))
                         .append(" ");
                     if alt.is_if() {
                         doc.append(alt.to_doc()).group()
@@ -304,7 +319,7 @@ impl Expr {
                 is_async,
             } => {
                 let doc = if *is_async {
-                    Expr::key("async").append(RcDoc::space())
+                    key("async").append(RcDoc::space())
                 } else {
                     RcDoc::nil()
                 };
@@ -312,7 +327,7 @@ impl Expr {
                     let mut args = arguments.iter();
                     doc.append(args.next().unwrap().to_doc())
                         .append(".")
-                        .append(Expr::method(method))
+                        .append(Self::method(method))
                         .append(bracket(
                             RcDoc::intersperse(
                                 args.map(|e| e.to_doc()),
@@ -326,9 +341,9 @@ impl Expr {
                     } else if let Some((module, name)) = Headers::split(&function) {
                         RcDoc::as_string(module)
                             .append("::")
-                            .append(Expr::method(name))
+                            .append(Self::method(name))
                     } else {
-                        Expr::method(&function)
+                        Self::method(&function)
                     };
                     doc.append(f).append(bracket(
                         RcDoc::intersperse(
@@ -338,7 +353,8 @@ impl Expr {
                         .group(),
                     ))
                 }
-            }
+            },
+            Expr::Phantom(_) => unimplemented!()
         }
     }
     pub fn to_pretty(&self, width: usize) -> String {
@@ -353,13 +369,13 @@ impl Expr {
     }
 }
 
-impl fmt::Display for Expr {
+impl<FlatTyp:types::TFlatTyp, FlatLiteral:literals::TFlatLiteral<FlatTyp>> fmt::Display for Expr<FlatTyp, FlatLiteral> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_pretty(80))
     }
 }
 
-impl Infix {
+impl<FlatTyp:TFlatTyp> Infix<FlatTyp> {
     fn precedence(&self) -> (Precedence, Assoc) {
         match self {
             Infix::Equal => (Precedence::PEquals, Assoc::Right),
@@ -380,6 +396,7 @@ impl Infix {
             Infix::Module => (Precedence::PModule, Assoc::Right),
             Infix::In => (Precedence::PIn, Assoc::Left),
             Infix::Dot => (Precedence::PDot, Assoc::Left),
+            Infix::Phantom(_) => unimplemented!()
         }
     }
 }
@@ -439,12 +456,12 @@ impl Pat {
             Pat::As(id, As::I64) => RcDoc::text("[")
                 .append(RcDoc::as_string(id.0.clone()))
                 .append(" ")
-                .append(Expr::key("as"))
+                .append(key("as"))
                 .append(" i64]"),
             Pat::As(id, As::Base64) => RcDoc::text("[")
                 .append(RcDoc::as_string(id.0.clone()))
                 .append(" ")
-                .append(Expr::key("as"))
+                .append(key("as"))
                 .append(" base64]"),
             Pat::Opt(p) => p.postfix("?"),
             Pat::Star(p) => p.postfix("*"),
@@ -481,25 +498,17 @@ impl Pattern {
     }
 }
 
-impl Literal {
+impl<FlatTyp: types::TFlatTyp, FlatLiteral: literals::TFlatLiteral<FlatTyp>> Literal<FlatTyp, FlatLiteral> {
     fn literal<'a, 'b>(&'a self) -> RcDoc<'b, ColorSpec> {
         RcDoc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Green)).clone())
     }
     fn non_parse_literal<'a, 'b>(&'a self) -> RcDoc<'b, ColorSpec> {
         RcDoc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Blue)).clone())
     }
+
     fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         match self {
-            Literal::Bool(b) => Expr::key(&b.to_string()),
-            Literal::Data(d) => {
-                if std::str::from_utf8(d).is_ok() {
-                    self.literal()
-                } else {
-                    self.non_parse_literal()
-                }
-            }
-            Literal::Regex(r) => RcDoc::text("Regex(").append(r.to_doc()).append(")"),
-            Literal::Unit => RcDoc::text("()"),
+            Literal::FlatLiteral(fl) => fl.to_doc(),
             Literal::List(lits) => RcDoc::text("[")
                 .append(
                     RcDoc::intersperse(
@@ -521,28 +530,79 @@ impl Literal {
                     .group(),
                 ),
             },
-            Literal::HttpRequest(_)
-            | Literal::ID(_)
-            | Literal::Connection(_)
-            | Literal::IpAddr(_) => self.non_parse_literal(),
+            Literal::Phantom(_) => unimplemented!()
+        }
+    }
+}
+
+
+
+macro_rules! dpflatlit (
+    ($i: ident ($($args:tt)*) ) => (
+        DPFlatLiteral::$i($($args)*)
+    );
+);
+macro_rules! cpflatlit (
+    ($i: ident ($($args:tt)*) ) => (
+        CPFlatLiteral::$i($($args)*)
+    );
+);
+impl TPrettyLit for DPFlatLiteral{
+    fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
+        match self {
+            dpflatlit!(Bool(b)) => key(&b.to_string()),
+            dpflatlit!(Data(d)) => {
+                if std::str::from_utf8(d).is_ok() {
+                    self.literal()
+                } else {
+                    self.non_parse_literal()
+                }
+            }
+            dpflatlit!(Regex(r)) => RcDoc::text("Regex(").append(r.to_doc()).append(")"),
+            DPFlatLiteral::Unit => RcDoc::text("()"),
+            dpflatlit!(HttpRequest(_))
+            | dpflatlit!(ID(_))
+            | dpflatlit!(Connection(_))
+            | dpflatlit!(IpAddr(_)) => self.non_parse_literal(),
+            _ => self.literal(),
+        }
+    }
+}
+impl TPrettyLit for CPFlatLiteral{
+    fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
+        match self {
+            cpflatlit!(Bool(b)) => key(&b.to_string()),
+            cpflatlit!(Data(d)) => {
+                if std::str::from_utf8(d).is_ok() {
+                    self.literal()
+                } else {
+                    self.non_parse_literal()
+                }
+            }
+            cpflatlit!(Regex(r)) => RcDoc::text("Regex(").append(r.to_doc()).append(")"),
+            CPFlatLiteral::Unit => RcDoc::text("()"),
+            cpflatlit!(HttpRequest(_))
+            | cpflatlit!(ID(_))
+            | cpflatlit!(Connection(_))
+            | cpflatlit!(IpAddr(_)) => self.non_parse_literal(),
             _ => self.literal(),
         }
     }
 }
 
-impl Typ {
+impl<FlatTyp:TFlatTyp> Typ<FlatTyp> {
     fn internal(doc: RcDoc<'_, ColorSpec>) -> RcDoc<'_, ColorSpec> {
         doc.annotate(ColorSpec::new().set_fg(Some(Color::Cyan)).clone())
     }
     fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         match self {
-            Typ::List(t) => Typ::internal(RcDoc::text("List"))
+            Typ::List(t) => <Typ<FlatTyp>>::internal(RcDoc::text("List"))
                 .append("<")
                 .append(t.to_doc())
                 .append(">"),
             Typ::Tuple(ts) => match ts.len() {
-                0 => Typ::internal(RcDoc::text("Option")).append("<?>"),
-                1 => Typ::internal(RcDoc::text("Option"))
+                0 => <Typ<FlatTyp>>::internal(RcDoc::text("Option")).append("<?>"),
+                1 => <Typ<FlatTyp>>::internal(RcDoc::text("Option"))
                     .append("<")
                     .append(ts[0].to_doc())
                     .append(">"),
@@ -554,27 +614,27 @@ impl Typ {
                     .group(),
                 ),
             },
-            _ => Typ::internal(RcDoc::as_string(self)),
+            _ => <Typ<FlatTyp>>::internal(RcDoc::as_string(self)),
         }
     }
 }
 
-impl Program {
-    fn decl_to_doc<'a>(&self, name: &'a str, e: &'a Expr) -> RcDoc<'a, ColorSpec> {
+impl<FlatTyp:types::TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Program<FlatTyp, FlatLiteral> {
+    fn decl_to_doc<'a>(&self, name: &'a str, e: &'a Expr<FlatTyp, FlatLiteral>) -> RcDoc<'a, ColorSpec> {
         let mut args = Vec::new();
         e.closure_vars(&mut args);
         let (tys, ty) = self.typ(name).unwrap_or_default().split();
         let tys = tys.unwrap_or_default();
-        let ret = if ty == Typ::Unit {
+        let ret = if ty == Typ::unit() {
             RcDoc::nil()
         } else {
             RcDoc::space()
                 .append(RcDoc::text("->"))
                 .append(RcDoc::space().append(ty.to_doc()).nest(2))
         };
-        Expr::key("fn")
+        key("fn")
             .append(RcDoc::space())
-            .append(Expr::method(name))
+            .append(<Expr<FlatTyp, FlatLiteral>>::method(name))
             .append(RcDoc::text("("))
             .append(RcDoc::intersperse(
                 args.into_iter().zip(tys).map(|(arg, ty)| {
@@ -595,7 +655,7 @@ impl Program {
             .append(RcDoc::text("}"))
             .group()
     }
-    pub fn pretty<'a>(&self, name: &'a str, e: &'a Expr, width: usize) -> String {
+    pub fn pretty<'a>(&self, name: &'a str, e: &'a Expr<FlatTyp, FlatLiteral>, width: usize) -> String {
         let mut w = Vec::new();
         self.decl_to_doc(name, e).render(width, &mut w).unwrap();
         String::from_utf8(w).unwrap()
@@ -611,7 +671,7 @@ impl Program {
     }
 }
 
-impl fmt::Display for Program {
+impl<FlatTyp:TFlatTyp , FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Program<FlatTyp, FlatLiteral> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         for (name, e) in self.code.0.iter() {
             writeln!(f, "{}", self.pretty(name, e, 80))?;

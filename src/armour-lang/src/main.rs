@@ -1,34 +1,46 @@
 /// Armour policy language
 use actix::prelude::*;
-use armour_lang::{expressions, interpret::Env, lang, policies, expressions::TExpr};
+use armour_lang::{
+    expressions, 
+    interpret::{Env, TInterpret}, 
+    lang, 
+    literals::{self, TFlatLiteral}, 
+    policies, 
+    types_cp, 
+    types::{self, TFlatTyp}
+};
 use clap::{crate_version, App, Arg, SubCommand, ArgMatches};
 use rustyline::{error::ReadlineError, Editor};
 use std::io;
 use std::time::Duration;
 
-struct Eval {
-    env: Env,
+struct Eval<FlatTyp: TFlatTyp+'static, FlatLiteral: TFlatLiteral<FlatTyp>+'static> {
+    env: Env<FlatTyp, FlatLiteral>,
 }
 
-impl Eval {
-    fn new(prog: &lang::Program) -> Self {
+impl<FlatTyp: TFlatTyp+'static, FlatLiteral: TFlatLiteral<FlatTyp>+'static> Eval<FlatTyp, FlatLiteral> {
+    fn new(prog: &lang::Program<FlatTyp, FlatLiteral>) -> Self {
         Eval {
             env: Env::new(prog),
         }
     }
 }
 
-impl Actor for Eval {
+impl<FlatTyp: TFlatTyp+'static, FlatLiteral: TFlatLiteral<FlatTyp>+'static> Actor for Eval<FlatTyp, FlatLiteral> {
     type Context = Context<Self>;
 }
 
-#[derive(Message)]
-#[rtype(result = "Result<expressions::Expr, expressions::Error>")]
-struct Evaluate(expressions::Expr);
+//#[derive(Message)]
+//#[rtype(result = "Result<expressions::Expr<FlatTyp, FlatLiteral>, expressions::Error<FlatTyp, FlatLiteral>>")]
+struct Evaluate<FlatTyp: TFlatTyp+'static, FlatLiteral: TFlatLiteral<FlatTyp>+'static>(expressions::Expr<FlatTyp, FlatLiteral>);
 
-impl Handler<Evaluate> for Eval {
-    type Result = ResponseFuture<Result<expressions::Expr, expressions::Error>>;
-    fn handle(&mut self, msg: Evaluate, _ctx: &mut Context<Self>) -> Self::Result {
+impl<FlatTyp: TFlatTyp+'static, FlatLiteral: TFlatLiteral<FlatTyp>+'static> Message for Evaluate<FlatTyp, FlatLiteral>{
+    type Result = Result<expressions::Expr<FlatTyp, FlatLiteral>, expressions::Error>;
+}
+
+impl<FlatTyp: TFlatTyp+'static, FlatLiteral: TFlatLiteral<FlatTyp>+'static> Handler<Evaluate<FlatTyp, FlatLiteral>> for Eval<FlatTyp, FlatLiteral> {
+    type Result = ResponseFuture<Result<expressions::Expr<FlatTyp, FlatLiteral>, expressions::Error>>;
+    fn handle(&mut self, msg: Evaluate<FlatTyp, FlatLiteral>, _ctx: &mut Context<Self>) -> Self::Result {
         Box::pin(msg.0.evaluate(self.env.clone()))
     }
 }
@@ -39,7 +51,7 @@ impl Message for Stop {
     type Result = ();
 }
 
-impl Handler<Stop> for Eval {
+impl<FlatTyp: TFlatTyp+'static, FlatLiteral: TFlatLiteral<FlatTyp>+'static> Handler<Stop> for Eval<FlatTyp, FlatLiteral> {
     type Result = ();
     fn handle(&mut self, _msg: Stop, _ctx: &mut Context<Self>) {
         System::current().stop()
@@ -47,7 +59,7 @@ impl Handler<Stop> for Eval {
 }
 
 
-fn load_from_file(matches :ArgMatches) -> std::io::Result<lang::Program> {
+fn load_from_file<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>>(matches :ArgMatches) -> std::io::Result<lang::Program<FlatTyp, FlatLiteral>> {
     // try to load code from an input file
     let file = matches.value_of("input file");
     let mut prog = match file {
@@ -154,7 +166,7 @@ async fn main() -> std::io::Result<()> {
             };
             print!("{}", s)
         } else {
-            let prog = load_from_file(matches)?; 
+            let prog = load_from_file::<types::FlatTyp, literals::DPFlatLiteral>(matches)?; 
 
             // start eval actor
             let headers = prog.headers.clone();
@@ -204,9 +216,10 @@ async fn main() -> std::io::Result<()> {
             }
         }
     } else if let Some(dataplane_matches) = matches.subcommand_matches("controlplane") {
-        let prog = load_from_file(matches)?; 
+        let prog = load_from_file::<types_cp::CPFlatTyp, literals::CPFlatLiteral>(matches)?; 
 
         //TODO compile/specialization
+        unimplemented!()
     }
     Ok(())
 }

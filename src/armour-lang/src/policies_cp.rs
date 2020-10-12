@@ -1,7 +1,8 @@
 use super::{
     policies::{FnPolicy, FnPolicies},//TODO should i reuse policies::FnPolicies
     lang::{Program},
-    types_cp::{CPTyp},
+    literals::CPFlatLiteral,
+    types_cp::{CPFlatTyp, CPTyp, CPSignature},
     types::{Signature, Typ},
     parser
 };
@@ -21,10 +22,10 @@ pub const ONBOARDING_SERVICES: &str = "onboardingPolicy";
 pub struct OnboardingPolicy {
     //From ProtocolPolicy struct
     name : String,//FIXME usefull ???
-    sig : Signature<parser::CPTyp, CPTyp>,//FIXME only one ??
+    sig : CPSignature,//FIXME only one ??
 
     //From Policy struct
-    pub program: Program,//TODO should i define a CPProgram
+    pub program: Program<CPFlatTyp, CPFlatLiteral>,//TODO should i define a CPProgram
     fn_policies: FnPolicies,
 }
 
@@ -34,7 +35,7 @@ pub struct OnboardingPolicy {
 lazy_static! {
     static ref ONBOARDING_SERVICES_POLICY: OnboardingPolicy = OnboardingPolicy {
         name: ONBOARDING_SERVICES.to_string(),
-        sig: Signature::new(vec![CPTyp::OnboardingData], CPTyp::OnboardingResult),
+        sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
 
         program: Program::default(),
         fn_policies: FnPolicies::default()

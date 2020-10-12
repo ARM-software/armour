@@ -1,14 +1,14 @@
 /// policy language
-use super::{headers, labels, lexer, literals, parser, types};
-use headers::{Headers, THeaders, TBuiltin};
-use literals::Literal;
-use parser::{Infix, Prefix, TPTyp};
-use serde::{Deserialize, Serialize};
+use super::{headers, labels, lexer, literals, parser, types, types_cp};
+use headers::{Headers, THeaders};
+use literals::{Literal, TFlatLiteral, DPFlatLiteral, CPFlatLiteral};
+use parser::{Infix, Prefix, TParser};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::marker::PhantomData;
-use types::{Typ, TTyp};
+use types::{Typ, TTyp, TFlatTyp};
 
 #[derive(Debug, Clone)]
 pub struct Error(String);
@@ -54,8 +54,8 @@ impl From<regex::Error> for Error {
     }
 }
 
-impl<'a, PTyp:TPTyp, Typ:TTyp<PTyp>> From<types::Error<PTyp, Typ>> for Error {
-    fn from(err: types::Error<PTyp, Typ>) -> Error {
+impl<'a, FlatTyp:TFlatTyp> From<types::Error<FlatTyp>> for Error {
+    fn from(err: types::Error<FlatTyp>) -> Error {
         Error::new(err)
     }
 }
@@ -86,25 +86,26 @@ pub struct Call {
 
 type Calls = HashSet<Call>;
 
-pub struct ExprAndMeta<PTyp:TPTyp, Typ:TTyp<PTyp>, Expr> {
-    pub expr: Expr,
+pub struct ExprAndMeta<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+    pub expr: Expr<FlatTyp, FlatLiteral>,
     pub calls: Calls,
-    pub typ: Typ,
-    pub phantom: PhantomData<PTyp>,
+    pub typ: Typ<FlatTyp>,
+    phantom_typ : PhantomData<FlatTyp>,
+    phantom_lit : PhantomData<FlatLiteral>,
 }
 
-impl<PTyp:TPTyp, Typ:TTyp<PTyp>, Expr> ExprAndMeta<PTyp, Typ, Expr> {
-    fn new(expr: Expr, typ: Typ, v: Vec<Calls>) -> ExprAndMeta<PTyp, Typ, Expr> {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> ExprAndMeta<FlatTyp, FlatLiteral> {
+    fn new(expr: Expr<FlatTyp, FlatLiteral>, typ: Typ<FlatTyp>, v: Vec<Calls>) -> ExprAndMeta<FlatTyp, FlatLiteral> {
         let mut calls = Calls::new();
         for c in v {
             calls.extend(c)
         }
-        ExprAndMeta { expr, typ, calls, phantom:PhantomData }
+        ExprAndMeta { expr, typ, calls, phantom_typ: PhantomData, phantom_lit: PhantomData}
     }
-    fn split(self) -> (Expr, Calls, Typ) {
+    fn split(self) -> (Expr<FlatTyp, FlatLiteral>, Calls, Typ<FlatTyp>) {
         (self.expr, self.calls, self.typ)
     }
-    fn split_vec(v: Vec<ExprAndMeta<PTyp, Typ, Expr>>) -> (Vec<Expr>, Vec<Calls>, Vec<Typ>) {
+    fn split_vec(v: Vec<ExprAndMeta<FlatTyp, FlatLiteral>>) -> (Vec<Expr<FlatTyp, FlatLiteral>>, Vec<Calls>, Vec<Typ<FlatTyp>>) {
         let mut exprs = Vec::new();
         let mut calls = Vec::new();
         let mut typs = Vec::new();
@@ -119,37 +120,35 @@ impl<PTyp:TPTyp, Typ:TTyp<PTyp>, Expr> ExprAndMeta<PTyp, Typ, Expr> {
 
 //#[derive(Default)]
 #[derive(Clone)]
-pub struct ReturnType<PTyp:TPTyp, Typ:TTyp<PTyp>> (pub Option<Typ>, pub PhantomData<PTyp>);
+pub struct ReturnType<FlatTyp:TFlatTyp> (pub Option<Typ<FlatTyp>>);
 
-impl<PTyp:TPTyp, Typ:TTyp<PTyp>> Default for ReturnType<PTyp, Typ> {
-    fn default() -> Self { ReturnType(None, PhantomData) }
+impl<FlatTyp:TFlatTyp> Default for ReturnType<FlatTyp> {
+    fn default() -> Self { ReturnType(None) }
 }
 
-impl<PTyp:TPTyp, Typ:TTyp<PTyp>> ReturnType<PTyp, Typ> {
-    pub fn get(&self) -> Option<Typ> {
+impl<FlatTyp:TFlatTyp> ReturnType<FlatTyp> {
+    pub fn get(&self) -> Option<Typ<FlatTyp>> {
         self.0.clone()
     }
-    pub fn set(&mut self, typ: Typ) {
+    pub fn set(&mut self, typ: Typ<FlatTyp>) {
         self.0 = Some(typ)
     }
 }
 
 #[derive(Clone)]
-pub struct Context<PTyp:TPTyp, Typ:TTyp<PTyp>> {
-    pub variables: HashMap<String, Typ>,
+pub struct Context<FlatTyp:TFlatTyp> {
+    pub variables: HashMap<String, Typ<FlatTyp>>,
     pub async_tag: bool,
-    pub phantom: PhantomData<PTyp>
 }
 
-impl<PTyp:TPTyp, Typ:TTyp<PTyp>> Context<PTyp, Typ> {
-    pub fn new() -> Context<PTyp, Typ> {
+impl<FlatTyp:TFlatTyp> Context<FlatTyp> {
+    pub fn new() -> Context<FlatTyp> {
         Context {
             variables: HashMap::new(),
             async_tag: false,
-            phantom: PhantomData
         }
     }
-    fn add_var(&self, name: &str, typ: &Typ) -> Self {
+    pub fn add_var(&self, name: &str, typ: &Typ<FlatTyp>) -> Self {
         let mut ctxt = self.clone();
         ctxt.variables.insert(name.to_string(), typ.to_owned());
         ctxt
@@ -159,7 +158,7 @@ impl<PTyp:TPTyp, Typ:TTyp<PTyp>> Context<PTyp, Typ> {
         ctxt.async_tag = self.async_tag || b;
         ctxt
     }
-    fn var(&self, name: &str) -> Option<Typ> {
+    fn var(&self, name: &str) -> Option<Typ<FlatTyp>> {
         self.variables.get(name).cloned()
     }
     fn async_tag(&self) -> bool {
@@ -180,244 +179,200 @@ pub enum Pattern {
     Label(labels::Label),
 }
 
-pub trait TExpr<PTyp: (parser::TPTyp), PExpr: (parser::TPExpr), Typ:TTyp<PTyp>+TBuiltin<PTyp>> : PartialEq + Clone {
-    fn abs(self, i: usize, v: &str) -> Self;
-    fn closure_expr(self, v: &str) -> Self; 
-    fn from_loc_expr(
-        e: &parser::LocExpr<PExpr>,
-        headers: &Headers<PTyp, Typ>,
-        ret: &mut ReturnType<PTyp, Typ>,
-        ctxt: &Context<PTyp, Typ>,
-    ) -> Result<ExprAndMeta<PTyp, Typ, Self>, Error>;
-
-    fn check_from_loc_expr(
-        e: &parser::LocExpr<PExpr>,
-        headers: &Headers<PTyp, Typ>,
-        ctxt: &Context<PTyp, Typ>,
-    ) -> Result<ExprAndMeta<PTyp, Typ, Self>, Error> {
-        let mut ret = ReturnType::default();
-        let em = Self::from_loc_expr(e, headers, &mut ret, ctxt)?;
-        if let Some(rtype) = ret.get() {
-            Typ::type_check("REPL", vec![(None, em.typ.clone())], vec![(None, rtype.clone())])?
-        }
-        Ok(em)
-    }
-
-    fn from_block_stmt(
-        block: parser::BlockStmtRef<PExpr>,
-        headers: &Headers<PTyp, Typ>,
-        ret: &mut ReturnType<PTyp, Typ>,
-        ctxt: &Context<PTyp, Typ>,
-    ) -> Result<ExprAndMeta<PTyp, Typ, Self>, self::Error>;
-
-    fn check_from_block_stmt(
-        block: parser::BlockStmtRef<PExpr>,
-        headers: &Headers<PTyp, Typ>,
-        ctxt: &Context<PTyp, Typ>,
-        name: Option<&str>,
-    ) -> Result<ExprAndMeta<PTyp, Typ, Self>, self::Error> {
-        let mut ret : ReturnType<PTyp, Typ> = ReturnType::default();
-        let em = Self::from_block_stmt(block, headers, &mut ret, ctxt)?;
-        // check if type of "return" calls is type of statement
-        if let Some(rtype) = ret.get() {
-            Typ::type_check(
-                name.unwrap_or("REPL"),
-                vec![(None, em.typ.clone())],
-                vec![(None, rtype.clone())],
-            )?
-        }
-        // check if declared return type of function is type of statement
-        if let Some(name) = name {
-            Typ::type_check(
-                name,
-                vec![(None, em.typ.clone())],
-                vec![(None, headers.return_typ(name)?)],
-            )?
-        }
-        Ok(em)
-    }
-
-    fn from_decl<'a>(
-        decl: &'a parser::FnDecl<PTyp, PExpr>,
-        headers: &'a Headers<PTyp, Typ>,
-    ) -> Result<(&'a str, Self, Calls), Error> {
-        let mut ctxt = Context::new();
-        for a in decl.args().iter().rev() {
-            ctxt = ctxt.add_var(a.name(), &Typ::from_parse(&a.typ)?)
-        }
-        let name = decl.name();
-        let em = Self::check_from_block_stmt(decl.body().as_ref(), headers, &ctxt, Some(name))?;
-        let mut e = em.expr;
-        for a in decl.args().iter().rev() {
-            e = e.closure_expr(a.name())
-        }
-        Ok((name, e, em.calls))
-    }
-    fn from_string(buf: &str, headers: &Headers<PTyp, Typ>) -> Result<Self, self::Error>; 
-}
-
+//#[derive(PartialEq, Debug, Clone, Serialize)]
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
-pub enum Expr {
+pub enum Expr<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     Var(parser::Ident),
     BVar(parser::Ident, usize),
-    LitExpr(Literal),
-    ReturnExpr(Box<Expr>),
-    PrefixExpr(Prefix, Box<Expr>),
-    InfixExpr(Infix, Box<Expr>, Box<Expr>),
-    BlockExpr(Block, Vec<Expr>),
-    Let(Vec<String>, Box<Expr>, Box<Expr>),
-    Iter(parser::Iter, Vec<String>, Box<Expr>, Box<Expr>),
-    Closure(parser::Ident, Box<Expr>),
+    LitExpr(Literal<FlatTyp, FlatLiteral>),
+    ReturnExpr(Box<Expr<FlatTyp, FlatLiteral>>),
+    PrefixExpr(Prefix<FlatTyp>, Box<Expr<FlatTyp, FlatLiteral>>),
+    InfixExpr(Infix<FlatTyp>, Box<Expr<FlatTyp, FlatLiteral>>, Box<Expr<FlatTyp, FlatLiteral>>),
+    BlockExpr(Block, Vec<Expr<FlatTyp, FlatLiteral>>),
+    Let(Vec<String>, Box<Expr<FlatTyp, FlatLiteral>>, Box<Expr<FlatTyp, FlatLiteral>>),
+    Iter(parser::Iter, Vec<String>, Box<Expr<FlatTyp, FlatLiteral>>, Box<Expr<FlatTyp, FlatLiteral>>),
+    Closure(parser::Ident, Box<Expr<FlatTyp, FlatLiteral>>),
     IfExpr {
-        cond: Box<Expr>,
-        consequence: Box<Expr>,
-        alternative: Option<Box<Expr>>,
+        cond: Box<Expr<FlatTyp, FlatLiteral>>,
+        consequence: Box<Expr<FlatTyp, FlatLiteral>>,
+        alternative: Option<Box<Expr<FlatTyp, FlatLiteral>>>,
     },
     IfMatchExpr {
         variables: Vec<String>,
-        matches: Vec<(Expr, Pattern)>,
-        consequence: Box<Expr>,
-        alternative: Option<Box<Expr>>,
+        matches: Vec<(Expr<FlatTyp, FlatLiteral>, Pattern)>,
+        consequence: Box<Expr<FlatTyp, FlatLiteral>>,
+        alternative: Option<Box<Expr<FlatTyp, FlatLiteral>>>,
     },
     IfSomeMatchExpr {
-        expr: Box<Expr>,
-        consequence: Box<Expr>,
-        alternative: Option<Box<Expr>>,
+        expr: Box<Expr<FlatTyp, FlatLiteral>>,
+        consequence: Box<Expr<FlatTyp, FlatLiteral>>,
+        alternative: Option<Box<Expr<FlatTyp, FlatLiteral>>>,
     },
     CallExpr {
         function: String,
-        arguments: Vec<Expr>,
+        arguments: Vec<Expr<FlatTyp, FlatLiteral>>,
         is_async: bool,
     },
+    Phantom(PhantomData<(FlatTyp, FlatLiteral)>),
 }
+//impl<'de, FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Deserialize<'de> for Box<Expr<FlatTyp, FlatLiteral>> {
+//
+//    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//    where
+//        D: Deserializer<'de>,
+//    {
+//        /* your implementation here */
+//        match Expr::deserialize(deserializer) {
+//            Ok(e) => Ok(Box::new(e)),
+//            err => err
+//        }
+//    }
+//}
 
-impl Default for Expr {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Default for Expr<FlatTyp, FlatLiteral> {
     fn default() -> Self {
-        Expr::LitExpr(Literal::Unit)
+        Expr::LitExpr(Literal::unit())
     }
 }
 
-impl<T: Into<Literal>> From<T> for Expr {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>, T: Into<Literal<FlatTyp, FlatLiteral>>> From<T> for Expr<FlatTyp, FlatLiteral> {
     fn from(t: T) -> Self {
         Expr::LitExpr(t.into())
     }
 }
 
-impl Expr {
-    pub fn var(v: &str) -> Expr {
-        Expr::Var(parser::Ident(v.to_string()))
-    }
-    pub fn host(&self) -> Option<String> {
+pub trait TExpr<FlatTyp:TFlatTyp> {
+    fn host(&self) -> Option<String> { None }
+}
+
+pub type DPExpr = Expr<types::FlatTyp, DPFlatLiteral>;
+pub type CPExpr = Expr<types_cp::CPFlatTyp, CPFlatLiteral>;
+
+impl TExpr<types_cp::CPFlatTyp> for CPExpr {
+    fn host(&self) -> Option<String> {
         match self {
-            Expr::LitExpr(Literal::ID(id)) => id.host(),
+            Self::LitExpr(Literal::FlatLiteral(CPFlatLiteral::ID(id))) => id.host(),
             _ => None,
         }
     }
-    pub fn none() -> Expr {
-        Expr::LitExpr(Literal::none())
+}
+impl TExpr<types::FlatTyp> for DPExpr {
+    fn host(&self) -> Option<String> {
+        match self {
+            Self::LitExpr(Literal::FlatLiteral(DPFlatLiteral::ID(id))) => id.host(),
+            _ => None,
+        }
     }
-    pub fn some(l: Literal) -> Expr {
-        Expr::LitExpr(Literal::some(&l))
+}
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> {
+    pub fn var(v: &str) -> Self {
+        Self::Var(parser::Ident(v.to_string()))
     }
-    pub fn call(f: &str, arguments: Vec<Expr>) -> Expr {
-        Expr::CallExpr {
+    pub fn none() -> Self {
+        Self::LitExpr(Literal::none())
+    }
+    pub fn some(l: Literal<FlatTyp, FlatLiteral>) -> Self {
+        Self::LitExpr(Literal::some(&l))
+    }
+    pub fn call(f: &str, arguments: Vec<Self>) -> Self {
+        Self::CallExpr {
             function: f.to_string(),
             arguments,
             is_async: false,
         }
     }
-    pub fn return_expr(e: Expr) -> Expr {
-        Expr::ReturnExpr(Box::new(e))
+    pub fn return_expr(e: Self) -> Self {
+        Self::ReturnExpr(Box::new(e))
     }
-    fn prefix_expr(p: Prefix, e: Expr) -> Expr {
-        Expr::PrefixExpr(p, Box::new(e))
+    fn prefix_expr(p: Prefix<FlatTyp>, e: Self) -> Self {
+        Self::PrefixExpr(p, Box::new(e))
     }
-    fn infix_expr(op: Infix, e1: Expr, e2: Expr) -> Expr {
-        Expr::InfixExpr(op, Box::new(e1), Box::new(e2))
+    fn infix_expr(op: Infix<FlatTyp>, e1: Self, e2: Self) -> Self {
+        Self::InfixExpr(op, Box::new(e1), Box::new(e2))
     }
-    fn if_else_expr(b: Expr, e1: Expr, e2: Expr) -> Expr {
-        Expr::IfExpr {
+    fn if_else_expr(b: Self, e1: Self, e2: Self) -> Self {
+        Self::IfExpr {
             cond: Box::new(b),
             consequence: Box::new(e1),
             alternative: Some(Box::new(e2)),
         }
     }
-    fn if_expr(b: Expr, e: Expr) -> Expr {
-        Expr::IfExpr {
+    fn if_expr(b: Self, e: Self) -> Self {
+        Self::IfExpr {
             cond: Box::new(b),
             consequence: Box::new(e),
             alternative: None,
         }
     }
-    fn let_expr(self, v: Vec<&str>, e: Expr) -> Expr {
+    fn let_expr(self, v: Vec<&str>, e: Self) -> Self {
         if v.as_slice() == ["_"] {
-            Expr::BlockExpr(Block::Block, vec![e, self])
+            Self::BlockExpr(Block::Block, vec![e, self])
         } else {
             let mut c = self;
             for s in v.iter().rev() {
                 c = c.closure_expr(s)
             }
-            Expr::Let(
+            Self::Let(
                 v.iter().map(|s| (*s).to_string()).collect(),
                 Box::new(e),
                 Box::new(c),
             )
         }
     }
-    fn iter_expr(self, op: &parser::Iter, v: Vec<&str>, e: Expr) -> Expr {
+    fn iter_expr(self, op: &parser::Iter, v: Vec<&str>, e: Self) -> Self {
         let mut c = self;
         for s in v.iter().rev() {
             c = c.closure_expr(s)
         }
-        Expr::Iter(
+        Self::Iter(
             op.clone(),
             v.iter().map(|s| (*s).to_string()).collect(),
             Box::new(e),
             Box::new(c),
         )
     }
-    fn shift(self, i: usize, d: usize) -> Expr {
+    fn shift(self, i: usize, d: usize) -> Self {
         if i == 0 {
             self
         } else {
             match self {
-                Expr::Var(_) | Expr::LitExpr(_) => self,
-                Expr::BVar(ref id, j) => {
+                Self::Var(_) | Self::LitExpr(_) => self,
+                Self::BVar(ref id, j) => {
                     if j >= d {
-                        Expr::BVar(id.to_owned(), j + 1)
+                        Self::BVar(id.to_owned(), j + 1)
                     } else {
                         self
                     }
                 }
-                Expr::Let(l, e1, e2) => {
-                    Expr::Let(l, Box::new(e1.shift(i, d)), Box::new(e2.shift(i, d)))
+                Self::Let(l, e1, e2) => {
+                    Self::Let(l, Box::new(e1.shift(i, d)), Box::new(e2.shift(i, d)))
                 }
-                Expr::Iter(op, l, e1, e2) => {
-                    Expr::Iter(op, l, Box::new(e1.shift(i, d)), Box::new(e2.shift(i, d)))
+                Self::Iter(op, l, e1, e2) => {
+                    Self::Iter(op, l, Box::new(e1.shift(i, d)), Box::new(e2.shift(i, d)))
                 }
-                Expr::Closure(v, e) => Expr::Closure(v, Box::new(e.shift(i, d + 1))),
-                Expr::ReturnExpr(e) => Expr::return_expr(e.shift(i, d)),
-                Expr::PrefixExpr(p, e) => Expr::prefix_expr(p, e.shift(i, d)),
-                Expr::InfixExpr(op, e1, e2) => Expr::infix_expr(op, e1.shift(i, d), e2.shift(i, d)),
-                Expr::BlockExpr(b, es) => {
-                    Expr::BlockExpr(b, es.into_iter().map(|e| e.shift(i, d)).collect())
+                Self::Closure(v, e) => Self::Closure(v, Box::new(e.shift(i, d + 1))),
+                Self::ReturnExpr(e) => Self::return_expr(e.shift(i, d)),
+                Self::PrefixExpr(p, e) => Self::prefix_expr(p, e.shift(i, d)),
+                Self::InfixExpr(op, e1, e2) => Self::infix_expr(op, e1.shift(i, d), e2.shift(i, d)),
+                Self::BlockExpr(b, es) => {
+                    Self::BlockExpr(b, es.into_iter().map(|e| e.shift(i, d)).collect())
                 }
-                Expr::IfExpr {
+                Self::IfExpr {
                     cond,
                     consequence,
                     alternative: None,
-                } => Expr::if_expr(cond.shift(i, d), consequence.shift(i, d)),
-                Expr::IfExpr {
+                } => Self::if_expr(cond.shift(i, d), consequence.shift(i, d)),
+                Self::IfExpr {
                     cond,
                     consequence,
                     alternative: Some(a),
-                } => Expr::if_else_expr(cond.shift(i, d), consequence.shift(i, d), a.shift(i, d)),
-                Expr::IfMatchExpr {
+                } => Self::if_else_expr(cond.shift(i, d), consequence.shift(i, d), a.shift(i, d)),
+                Self::IfMatchExpr {
                     variables,
                     matches,
                     consequence,
                     alternative,
-                } => Expr::IfMatchExpr {
+                } => Self::IfMatchExpr {
                     variables,
                     matches: matches
                         .into_iter()
@@ -426,64 +381,65 @@ impl Expr {
                     consequence: Box::new(consequence.shift(i, d)),
                     alternative: alternative.map(|a| Box::new(a.shift(i, d))),
                 },
-                Expr::IfSomeMatchExpr {
+                Self::IfSomeMatchExpr {
                     expr,
                     consequence,
                     alternative,
-                } => Expr::IfSomeMatchExpr {
+                } => Self::IfSomeMatchExpr {
                     expr: Box::new(expr.shift(i, d)),
                     consequence: Box::new(consequence.shift(i, d)),
                     alternative: alternative.map(|e| Box::new(e.shift(i, d))),
                 },
-                Expr::CallExpr {
+                Self::CallExpr {
                     function,
                     arguments,
                     is_async,
-                } => Expr::CallExpr {
+                } => Self::CallExpr {
                     function,
                     arguments: arguments.into_iter().map(|a| a.shift(i, d)).collect(),
                     is_async,
                 },
+                Self::Phantom(_) => unimplemented!()
             }
         }
     }
-    fn subst(self, i: usize, u: &Expr) -> Expr {
+    fn subst(self, i: usize, u: &Self) -> Self {
         match self {
-            Expr::Var(_) | Expr::LitExpr(_) => self,
-            Expr::BVar(ref id, j) => match j.cmp(&i) {
+            Self::Var(_) | Self::LitExpr(_) => self,
+            Self::BVar(ref id, j) => match j.cmp(&i) {
                 Ordering::Less => self,
                 Ordering::Equal => u.clone().shift(i, 0),
-                _ => Expr::BVar(id.to_owned(), j - 1),
+                _ => Self::BVar(id.to_owned(), j - 1),
             },
-            Expr::Let(l, e1, e2) => {
-                Expr::Let(l, Box::new(e1.subst(i, u)), Box::new(e2.subst(i, u)))
+            Self::Let(l, e1, e2) => {
+                Self::Let(l, Box::new(e1.subst(i, u)), Box::new(e2.subst(i, u)))
             }
-            Expr::Iter(op, l, e1, e2) => {
-                Expr::Iter(op, l, Box::new(e1.subst(i, u)), Box::new(e2.subst(i, u)))
+            Self::Iter(op, l, e1, e2) => {
+                Self::Iter(op, l, Box::new(e1.subst(i, u)), Box::new(e2.subst(i, u)))
             }
-            Expr::Closure(v, e) => Expr::Closure(v, Box::new(e.subst(i + 1, u))),
-            Expr::ReturnExpr(e) => Expr::return_expr(e.subst(i, u)),
-            Expr::PrefixExpr(p, e) => Expr::prefix_expr(p, e.subst(i, u)),
-            Expr::InfixExpr(op, e1, e2) => Expr::infix_expr(op, e1.subst(i, u), e2.subst(i, u)),
-            Expr::BlockExpr(b, es) => {
-                Expr::BlockExpr(b, es.into_iter().map(|e| e.subst(i, u)).collect())
+            Self::Closure(v, e) => Self::Closure(v, Box::new(e.subst(i + 1, u))),
+            Self::ReturnExpr(e) => Self::return_expr(e.subst(i, u)),
+            Self::PrefixExpr(p, e) => Self::prefix_expr(p, e.subst(i, u)),
+            Self::InfixExpr(op, e1, e2) => Self::infix_expr(op, e1.subst(i, u), e2.subst(i, u)),
+            Self::BlockExpr(b, es) => {
+                Self::BlockExpr(b, es.into_iter().map(|e| e.subst(i, u)).collect())
             }
-            Expr::IfExpr {
+            Self::IfExpr {
                 cond,
                 consequence,
                 alternative: None,
-            } => Expr::if_expr(cond.subst(i, u), consequence.subst(i, u)),
-            Expr::IfExpr {
+            } => Self::if_expr(cond.subst(i, u), consequence.subst(i, u)),
+            Self::IfExpr {
                 cond,
                 consequence,
                 alternative: Some(a),
-            } => Expr::if_else_expr(cond.subst(i, u), consequence.subst(i, u), a.subst(i, u)),
-            Expr::IfMatchExpr {
+            } => Self::if_else_expr(cond.subst(i, u), consequence.subst(i, u), a.subst(i, u)),
+            Self::IfMatchExpr {
                 variables,
                 matches,
                 consequence,
                 alternative,
-            } => Expr::IfMatchExpr {
+            } => Self::IfMatchExpr {
                 variables,
                 matches: matches
                     .into_iter()
@@ -492,114 +448,127 @@ impl Expr {
                 consequence: Box::new(consequence.subst(i, u)),
                 alternative: alternative.map(|a| Box::new(a.subst(i, u))),
             },
-            Expr::IfSomeMatchExpr {
+            Self::IfSomeMatchExpr {
                 expr,
                 consequence,
                 alternative,
-            } => Expr::IfSomeMatchExpr {
+            } => Self::IfSomeMatchExpr {
                 expr: Box::new(expr.subst(i, u)),
                 consequence: Box::new(consequence.subst(i, u)),
                 alternative: alternative.map(|e| Box::new(e.subst(i, u))),
             },
-            Expr::CallExpr {
+            Self::CallExpr {
                 function,
                 arguments,
                 is_async,
-            } => Expr::CallExpr {
+            } => Self::CallExpr {
                 function,
                 arguments: arguments.into_iter().map(|a| a.subst(i, u)).collect(),
                 is_async,
             },
+            Self::Phantom(_) => unimplemented!()
         }
     }
-    pub fn apply(self, u: &Expr) -> Result<Expr, self::Error> {
+    pub fn apply(self, u: &Self) -> Result<Self, self::Error> {
         match self {
-            Expr::Closure(_, e) => Ok(e.subst(0, u)),
+            Self::Closure(_, e) => Ok(e.subst(0, u)),
             _ => Err(Error::new("apply: expression is not a closure")),
         }
     }
-}
 
-impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
-    fn abs(self, i: usize, v: &str) -> Expr {
+    fn check_from_loc_expr(
+        e: &parser::LocExpr<FlatTyp, FlatLiteral>,
+        headers: &Headers<FlatTyp>,
+        ctxt: &Context<FlatTyp>,
+    ) -> Result<ExprAndMeta<FlatTyp, FlatLiteral>, Error> {
+        let mut ret = ReturnType::default();
+        let em = Self::from_loc_expr(e, headers, &mut ret, ctxt)?;
+        if let Some(rtype) = ret.get() {
+            Typ::type_check("REPL", vec![(None, em.typ.clone())], vec![(None, rtype.clone())])?
+        }
+        Ok(em)
+    }
+
+    fn abs(self, i: usize, v: &str) -> Self {
         match self {
-            Expr::BVar(_, _) | Expr::LitExpr(_) => self,
-            Expr::Var(ref id) => {
+            Self::BVar(_, _) | Self::LitExpr(_) => self,
+            Self::Var(ref id) => {
                 if id.0 == v {
-                    Expr::BVar(id.to_owned(), i)
+                    Self::BVar(id.to_owned(), i)
                 } else {
                     self
                 }
             }
-            Expr::Let(l, e1, e2) => Expr::Let(l, Box::new(e1.abs(i, v)), Box::new(e2.abs(i, v))),
-            Expr::Iter(op, l, e1, e2) => {
-                Expr::Iter(op, l, Box::new(e1.abs(i, v)), Box::new(e2.abs(i, v)))
+            Self::Let(l, e1, e2) => Self::Let(l, Box::new(e1.abs(i, v)), Box::new(e2.abs(i, v))),
+            Self::Iter(op, l, e1, e2) => {
+                Self::Iter(op, l, Box::new(e1.abs(i, v)), Box::new(e2.abs(i, v)))
             }
-            Expr::Closure(v2, e) => Expr::Closure(v2, Box::new(e.abs(i + 1, v))),
-            Expr::ReturnExpr(e) => Expr::return_expr(e.abs(i, v)),
-            Expr::PrefixExpr(p, e) => Expr::prefix_expr(p, e.abs(i, v)),
-            Expr::InfixExpr(op, e1, e2) => Expr::infix_expr(op, e1.abs(i, v), e2.abs(i, v)),
-            Expr::BlockExpr(b, es) => {
-                Expr::BlockExpr(b, es.into_iter().map(|e| e.abs(i, v)).collect())
+            Self::Closure(v2, e) => Self::Closure(v2, Box::new(e.abs(i + 1, v))),
+            Self::ReturnExpr(e) => Self::return_expr(e.abs(i, v)),
+            Self::PrefixExpr(p, e) => Self::prefix_expr(p, e.abs(i, v)),
+            Self::InfixExpr(op, e1, e2) => Self::infix_expr(op, e1.abs(i, v), e2.abs(i, v)),
+            Self::BlockExpr(b, es) => {
+                Self::BlockExpr(b, es.into_iter().map(|e| e.abs(i, v)).collect())
             }
-            Expr::IfExpr {
+            Self::IfExpr {
                 cond,
                 consequence,
                 alternative: None,
-            } => Expr::if_expr(cond.abs(i, v), consequence.abs(i, v)),
-            Expr::IfExpr {
+            } => Self::if_expr(cond.abs(i, v), consequence.abs(i, v)),
+            Self::IfExpr {
                 cond,
                 consequence,
                 alternative: Some(a),
-            } => Expr::if_else_expr(cond.abs(i, v), consequence.abs(i, v), a.abs(i, v)),
-            Expr::IfMatchExpr {
+            } => Self::if_else_expr(cond.abs(i, v), consequence.abs(i, v), a.abs(i, v)),
+            Self::IfMatchExpr {
                 variables,
                 matches,
                 consequence,
                 alternative,
-            } => Expr::IfMatchExpr {
+            } => Self::IfMatchExpr {
                 variables,
                 matches: matches.into_iter().map(|(e, p)| (e.abs(i, v), p)).collect(),
                 consequence: Box::new(consequence.abs(i, v)),
                 alternative: alternative.map(|e| Box::new(e.abs(i, v))),
             },
-            Expr::IfSomeMatchExpr {
+            Self::IfSomeMatchExpr {
                 expr,
                 consequence,
                 alternative,
-            } => Expr::IfSomeMatchExpr {
+            } => Self::IfSomeMatchExpr {
                 expr: Box::new(expr.abs(i, v)),
                 consequence: Box::new(consequence.abs(i, v)),
                 alternative: alternative.map(|e| Box::new(e.abs(i, v))),
             },
-            Expr::CallExpr {
+            Self::CallExpr {
                 function,
                 arguments,
                 is_async,
-            } => Expr::CallExpr {
+            } => Self::CallExpr {
                 function,
                 arguments: arguments.into_iter().map(|a| a.abs(i, v)).collect(),
                 is_async,
             },
+            Self::Phantom(_) => unimplemented!()
         }
     }
-    fn closure_expr(self, v: &str) -> Expr {
+    fn closure_expr(self, v: &str) -> Self {
         if v == "_" {
             self
         } else {
-            Expr::Closure(parser::Ident::from(v), Box::new(self.abs(0, v)))
+            Self::Closure(parser::Ident::from(v), Box::new(self.abs(0, v)))
         }
     }
     #[allow(clippy::cognitive_complexity)]
     fn from_loc_expr(
-        e: &parser::LocExpr<parser::Expr>,
-        headers: &Headers<parser::Typ, Typ>,
-        ret: &mut ReturnType<parser::Typ, Typ>,
-        ctxt: &Context<parser::Typ, Typ>,
-    ) -> Result<ExprAndMeta<parser::Typ, Typ, Expr>, Error> {
+        e: &parser::LocExpr<FlatTyp, FlatLiteral>,
+        headers: &Headers<FlatTyp>,
+        ret: &mut ReturnType<FlatTyp>,
+        ctxt: &Context<FlatTyp>,
+    ) -> Result<ExprAndMeta<FlatTyp, FlatLiteral>, Error> {
         match e.expr() {
             parser::Expr::IdentExpr(id) => match ctxt.var(&id.0) {
-                Some(typ) => Ok(ExprAndMeta::new(Expr::var(&id.0), typ, vec![])),
+                Some(typ) => Ok(ExprAndMeta::new(Self::var(&id.0), typ, vec![])),
                 None => Err(Error::from(format!(
                     "undeclared variable \"{}\" at {}",
                     id.0,
@@ -607,21 +576,21 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 ))),
             },
             parser::Expr::LitExpr(l) => {
-                Ok(ExprAndMeta::new(Expr::LitExpr(l.clone()), l.typ(), vec![]))
+                Ok(ExprAndMeta::new(Self::LitExpr(l.clone()), l.typ(), vec![]))
             }
             parser::Expr::ListExpr(es) => {
                 let mut exprs = Vec::new();
                 let mut calls = Vec::new();
-                let mut typ = Typ::Return;
+                let mut typ = Typ::rreturn();
                 for e in es.iter() {
-                    let (expr, call, ty) = Expr::from_loc_expr(&e, headers, ret, ctxt)?.split();
+                    let (expr, call, ty) = Self::from_loc_expr(&e, headers, ret, ctxt)?.split();
                     Typ::type_check("list", vec![(Some(e.loc()), ty.clone())], vec![(None, typ.clone())])?;
                     exprs.push(expr);
                     calls.push(call);
                     typ = typ.unify(&ty);
                 }
                 Ok(ExprAndMeta::new(
-                    Expr::BlockExpr(Block::List, exprs),
+                    Self::BlockExpr(Block::List, exprs),
                     Typ::List(Box::new(typ)),
                     calls,
                 ))
@@ -631,33 +600,33 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 let mut calls = Vec::new();
                 let mut typs = Vec::new();
                 for e in es.iter() {
-                    let (expr, call, ty) = Expr::from_loc_expr(&e, headers, ret, ctxt)?.split();
+                    let (expr, call, ty) = Self::from_loc_expr(&e, headers, ret, ctxt)?.split();
                     exprs.push(expr);
                     calls.push(call);
                     typs.push(ty);
                 }
                 Ok(ExprAndMeta::new(
-                    Expr::BlockExpr(Block::Tuple, exprs),
+                    Self::BlockExpr(Block::Tuple, exprs),
                     Typ::Tuple(typs),
                     calls,
                 ))
             }
             parser::Expr::PrefixExpr(p, e1) => {
-                let (expr, calls, typ) = Expr::from_loc_expr(&e1, headers, ret, ctxt)?.split();
+                let (expr, calls, typ) = Self::from_loc_expr(&e1, headers, ret, ctxt)?.split();
                 let (t1, t2) = p.typ();
                 Typ::type_check("prefix", vec![(Some(e1.loc()), typ.clone())], vec![(None, t1.clone())])?;
                 Ok(ExprAndMeta::new(
-                    Expr::prefix_expr(p.clone(), expr),
+                    Self::prefix_expr(p.clone(), expr),
                     t2,
                     vec![calls],
                 ))
             }
             parser::Expr::InfixExpr(op, e1, e2) => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&e1, headers, ret, ctxt)?.split();
-                let (expr2, calls2, typ2) = Expr::from_loc_expr(&e2, headers, ret, ctxt)?.split();
+                let (expr1, calls1, typ1) = Self::from_loc_expr(&e1, headers, ret, ctxt)?.split();
+                let (expr2, calls2, typ2) = Self::from_loc_expr(&e2, headers, ret, ctxt)?.split();
                 let (t1, t2, typ) = op.typ();
-                if t1 == Typ::Return {
-                    if t2 == Typ::Return {
+                if t1 == Typ::rreturn() {
+                    if t2 == Typ::rreturn() {
                         Typ::type_check(
                             "equality/inequality/concat",
                             vec![(Some(e1.loc()), typ1.clone())],
@@ -678,7 +647,7 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                     )?
                 };
                 Ok(ExprAndMeta::new(
-                    Expr::infix_expr(op.clone(), expr1, expr2),
+                    Self::infix_expr(op.clone(), expr1, expr2),
                     typ,
                     vec![calls1, calls2],
                 ))
@@ -688,20 +657,20 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 consequence,
                 alternative: None,
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&cond, headers, ret, ctxt)?.split();
+                let (expr1, calls1, typ1) = Self::from_loc_expr(&cond, headers, ret, ctxt)?.split();
                 let (expr2, calls2, typ2) =
-                    Expr::from_block_stmt(consequence.as_ref(), headers, ret, ctxt)?.split();
+                    Self::from_block_stmt(consequence.as_ref(), headers, ret, ctxt)?.split();
                 Typ::type_check(
                     "if-expression",
                     vec![
                         (Some(cond.loc()), typ1.clone()),
                         (Some(consequence.loc(e.loc())), typ2.clone()),
                     ],
-                    vec![(None, Typ::Bool), (None, Typ::Unit)],
+                    vec![(None, Typ::bool()), (None, Typ::unit())],
                 )?;
                 Ok(ExprAndMeta::new(
-                    Expr::if_expr(expr1, expr2),
-                    Typ::Unit,
+                    Self::if_expr(expr1, expr2),
+                    Typ::unit(),
                     vec![calls1, calls2],
                 ))
             }
@@ -710,21 +679,21 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 consequence,
                 alternative: Some(alt),
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&cond, headers, ret, ctxt)?.split();
+                let (expr1, calls1, typ1) = Self::from_loc_expr(&cond, headers, ret, ctxt)?.split();
                 let (expr2, calls2, typ2) =
-                    Expr::from_block_stmt(consequence.as_ref(), headers, ret, ctxt)?.split();
+                    Self::from_block_stmt(consequence.as_ref(), headers, ret, ctxt)?.split();
                 let (expr3, calls3, typ3) =
-                    Expr::from_block_stmt(alt.as_ref(), headers, ret, ctxt)?.split();
+                    Self::from_block_stmt(alt.as_ref(), headers, ret, ctxt)?.split();
                 Typ::type_check(
                     "if-else-expression",
                     vec![
                         (Some(cond.loc()), typ1.clone()),
                         (Some(consequence.loc(e.loc())), typ2.clone()),
                     ],
-                    vec![(None, Typ::Bool), (Some(alt.loc(e.loc())), typ3.clone())],
+                    vec![(None, Typ::bool()), (Some(alt.loc(e.loc())), typ3.clone())],
                 )?;
                 Ok(ExprAndMeta::new(
-                    Expr::if_else_expr(expr1, expr2, expr3),
+                    Self::if_else_expr(expr1, expr2, expr3),
                     typ2.unify(&typ3),
                     vec![calls1, calls2, calls3],
                 ))
@@ -735,12 +704,12 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 consequence,
                 alternative: None,
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, ctxt)?.split();
+                let (expr1, calls1, typ1) = Self::from_loc_expr(&expr, headers, ret, ctxt)?.split();
                 let typ1 = typ1.dest_option().map_err(|_| {
                     Error::from(format!("expecting option type in if-let at {}", e.loc()))
                 })?;
                 let id = var.id();
-                let (expr2, calls2, typ2) = Expr::from_block_stmt(
+                let (expr2, calls2, typ2) = Self::from_block_stmt(
                     consequence.as_ref(),
                     headers,
                     ret,
@@ -750,15 +719,15 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 Typ::type_check(
                     "if-let-expression",
                     vec![(Some(consequence.loc(e.loc())), typ2.clone())],
-                    vec![(None, Typ::Unit)],
+                    vec![(None, Typ::unit())],
                 )?;
                 Ok(ExprAndMeta::new(
-                    Expr::IfSomeMatchExpr {
+                    Self::IfSomeMatchExpr {
                         expr: Box::new(expr1),
                         consequence: { Box::new(expr2.closure_expr(id)) },
                         alternative: None,
                     },
-                    Typ::Unit,
+                    Typ::unit(),
                     vec![calls1, calls2],
                 ))
             }
@@ -768,12 +737,12 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 consequence,
                 alternative: Some(alt),
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(&expr, headers, ret, ctxt)?.split();
+                let (expr1, calls1, typ1) = Self::from_loc_expr(&expr, headers, ret, ctxt)?.split();
                 let typ1 = typ1.dest_option().map_err(|_| {
                     Error::from(format!("expecting option type in if-let at {}", e.loc()))
                 })?;
                 let id = var.id();
-                let (expr2, calls2, typ2) = Expr::from_block_stmt(
+                let (expr2, calls2, typ2) = Self::from_block_stmt(
                     consequence.as_ref(),
                     headers,
                     ret,
@@ -781,14 +750,14 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 )?
                 .split();
                 let (expr3, calls3, typ3) =
-                    Expr::from_block_stmt(alt.as_ref(), headers, ret, ctxt)?.split();
+                    Self::from_block_stmt(alt.as_ref(), headers, ret, ctxt)?.split();
                 Typ::type_check(
                     "if-let-else-expression",
                     vec![(Some(consequence.loc(e.loc())), typ2.clone())],
                     vec![(Some(alt.loc(e.loc())), typ3.clone())],
                 )?;
                 Ok(ExprAndMeta::new(
-                    Expr::IfSomeMatchExpr {
+                    Self::IfSomeMatchExpr {
                         expr: Box::new(expr1),
                         consequence: Box::new(expr2.closure_expr(id)),
                         alternative: Some(Box::new(expr3)),
@@ -802,9 +771,9 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 consequence,
                 alternative,
             } => {
-                let expressions: Result<Vec<ExprAndMeta<parser::Typ, Typ, Expr>>, self::Error> = matches
+                let expressions: Result<Vec<ExprAndMeta<FlatTyp, FlatLiteral>>, self::Error> = matches
                     .iter()
-                    .map(|(e, _)| Expr::from_loc_expr(e, headers, ret, ctxt))
+                    .map(|(e, _)| Self::from_loc_expr(e, headers, ret, ctxt))
                     .collect();
                 let (expressions, mut calls, types) = ExprAndMeta::split_vec(expressions?);
                 let types = matches
@@ -813,8 +782,9 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                     .zip(types.iter())
                     .map(|(loc, p)| (loc, p.clone()))
                     .collect();
-                let expected: Vec<(_, Typ)> =
-                    matches.iter().map(|(_, p)| (None, p.typ().clone())).collect();
+                let expected: Vec<(_, Typ<FlatTyp>)> =
+                    //matches.iter().map(|(_, p)| (None, p.typ())).collect();
+                     matches.iter().map(|(_, p)| (None, p.typ().clone())).collect();
                 Typ::type_check("if-match-expression", types, expected)?;
                 let mut map = HashMap::new();
                 let matches: Result<Vec<Pattern>, self::Error> = matches
@@ -847,7 +817,8 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                                 }
                             }
                             Ok(Pattern::Label(l.clone()))
-                        }
+                        },
+                        parser::Pattern::Phantom(_) => unimplemented!()
                     })
                     .collect();
                 let matches = matches?;
@@ -856,16 +827,16 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                     extend_vars = extend_vars.add_var(
                         &v,
                         &(if *a == parser::As::I64 {
-                            Typ::I64
+                            Typ::i64()
                         } else if *a == parser::As::Base64 {
-                            Typ::Data
+                            Typ::data()
                         } else {
-                            Typ::Str
+                            Typ::str()
                         }),
                     )
                 }
                 let (mut expr1, calls1, typ1) =
-                    Expr::from_block_stmt(consequence.as_ref(), headers, ret, &extend_vars)?
+                    Self::from_block_stmt(consequence.as_ref(), headers, ret, &extend_vars)?
                         .split();
                 let variables: Vec<String> = map.into_iter().map(|x| x.0).collect();
                 for v in variables.iter().rev() {
@@ -877,22 +848,22 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                         Typ::type_check(
                             "if-match-expression",
                             vec![(Some(consequence.loc(e.loc())), typ1.clone())],
-                            vec![(None, Typ::Unit)],
+                            vec![(None, Typ::unit())],
                         )?;
                         ExprAndMeta::new(
-                            Expr::IfMatchExpr {
+                            Self::IfMatchExpr {
                                 variables,
                                 matches: expressions.into_iter().zip(matches).collect(),
                                 consequence: { Box::new(expr1) },
                                 alternative: None,
                             },
-                            Typ::Unit,
+                            Typ::unit(),
                             calls,
                         )
                     }
                     Some(a) => {
                         let (expr2, calls2, typ2) =
-                            Expr::from_block_stmt(a.as_ref(), headers, ret, ctxt)?.split();
+                            Self::from_block_stmt(a.as_ref(), headers, ret, ctxt)?.split();
                         Typ::type_check(
                             "if-match-else-expression",
                             vec![(Some(consequence.loc(e.loc())), typ1.clone())],
@@ -900,7 +871,7 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                         )?;
                         calls.push(calls2);
                         ExprAndMeta::new(
-                            Expr::IfMatchExpr {
+                            Self::IfMatchExpr {
                                 variables,
                                 matches: expressions.into_iter().zip(matches).collect(),
                                 consequence: { Box::new(expr1) },
@@ -918,7 +889,7 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 expr,
                 body,
             } => {
-                let (expr1, calls1, typ1) = Expr::from_loc_expr(expr, headers, ret, ctxt)?.split();
+                let (expr1, calls1, typ1) = Self::from_loc_expr(expr, headers, ret, ctxt)?.split();
                 let (vs, iter_vars) = match typ1 {
                     Typ::List(ref lty) => {
                         if idents.len() == 1 {
@@ -957,7 +928,7 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                     }
                 };
                 let (expr2, calls2, typ2) =
-                    Expr::from_block_stmt(body.as_ref(), headers, ret, &iter_vars)?.split();
+                    Self::from_block_stmt(body.as_ref(), headers, ret, &iter_vars)?.split();
                 if *op == parser::Iter::FilterMap {
                     Typ::type_check(
                         "filter_map-expression",
@@ -968,17 +939,17 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                     Typ::type_check(
                         "all/any/filter-expression",
                         vec![(Some(body.loc(e.loc())), typ2.clone())],
-                        vec![(None, Typ::Bool)],
+                        vec![(None, Typ::bool())],
                     )?
                 }
                 Ok(ExprAndMeta::new(
                     expr2.iter_expr(op, vs, expr1),
                     match op {
-                        parser::Iter::All | parser::Iter::Any => Typ::Bool,
+                        parser::Iter::All | parser::Iter::Any => Typ::bool(),
                         parser::Iter::Filter => typ1,
                         // type check above will ensure unwrap is successful
                         parser::Iter::FilterMap => Typ::List(Box::new(typ2.dest_option().unwrap())),
-                        parser::Iter::ForEach => Typ::Unit,
+                        parser::Iter::ForEach => Typ::unit(),
                         parser::Iter::Map => Typ::List(Box::new(typ2)),
                     },
                     vec![calls1, calls2],
@@ -990,9 +961,9 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 ..
             } if function == "option::Some" && arguments.len() == 1 => {
                 let (expression, calls, typ) =
-                    Expr::from_loc_expr(arguments.get(0).unwrap(), headers, ret, ctxt)?.split();
+                    Self::from_loc_expr(arguments.get(0).unwrap(), headers, ret, ctxt)?.split();
                 Ok(ExprAndMeta::new(
-                    Expr::call(function, vec![expression]),
+                    Self::call(function, vec![expression]),
                     Typ::Tuple(vec![typ]),
                     vec![calls],
                 ))
@@ -1002,9 +973,9 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 function,
                 arguments,
             } => {
-                let expressions: Result<Vec<ExprAndMeta<parser::Typ, Typ, Expr>>, self::Error> = arguments
+                let expressions: Result<Vec<ExprAndMeta<FlatTyp, FlatLiteral>>, self::Error> = arguments
                     .iter()
-                    .map(|e| Expr::from_loc_expr(e, headers, ret, ctxt))
+                    .map(|e| Self::from_loc_expr(e, headers, ret, ctxt))
                     .collect();
                 let (expressions, mut calls, types) = ExprAndMeta::split_vec(expressions?);
                 let function = &Headers::resolve(function, &types);
@@ -1039,10 +1010,10 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                         .collect(),
                     );
                     Ok(ExprAndMeta::new(
-                        Expr::CallExpr {
+                        Self::CallExpr {
                             function: function.to_string(),
                             arguments: expressions,
-                            is_async: typ == Typ::Unit && ctxt.async_tag(),
+                            is_async: typ == Typ::unit() && ctxt.async_tag(),
                         },
                         typ,
                         calls,
@@ -1052,7 +1023,7 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                         [Typ::Tuple(ref l)] => {
                             if i < l.len() {
                                 Ok(ExprAndMeta::new(
-                                    Expr::call(function, expressions),
+                                    Self::call(function, expressions),
                                     l.get(i).unwrap().clone(),
                                     calls,
                                 ))
@@ -1088,11 +1059,11 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
     }
 
     fn from_block_stmt(
-        block: parser::BlockStmtRef<parser::Expr>,
-        headers: &Headers<parser::Typ, Typ>,
-        ret: &mut ReturnType<parser::Typ, Typ>,
-        ctxt: &Context<parser::Typ, Typ>,
-    ) -> Result<ExprAndMeta<parser::Typ, Typ, Self>, self::Error> {
+        block: parser::BlockStmtRef<FlatTyp, FlatLiteral>,
+        headers: &Headers<FlatTyp>,
+        ret: &mut ReturnType<FlatTyp>,
+        ctxt: &Context<FlatTyp>,
+    ) -> Result<ExprAndMeta<FlatTyp, FlatLiteral>, self::Error> {
         let ctxt = &ctxt.update_async_tag(block.async_tag());
         // println!("block: {:#?}\nasync is: {}", block, ctxt.async_tag());
         match block.split_first() {
@@ -1100,7 +1071,7 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 parser::Stmt::ReturnStmt(re) => {
                     if rest.is_empty() {
                         let (expr, calls, typ) =
-                            Expr::from_loc_expr(re, headers, ret, ctxt)?.split();
+                            Self::from_loc_expr(re, headers, ret, ctxt)?.split();
                         // need to type check typ against function return type
                         match ret.get() {
                             Some(rtype) => Typ::type_check(
@@ -1111,8 +1082,8 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                             None => ret.set(typ),
                         };
                         Ok(ExprAndMeta::new(
-                            Expr::BlockExpr(Block::Block, vec![Expr::return_expr(expr)]),
-                            Typ::Return,
+                            Self::BlockExpr(Block::Block, vec![Self::return_expr(expr)]),
+                            Typ::rreturn(),
                             vec![calls],
                         ))
                     } else {
@@ -1127,7 +1098,7 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                     async_tag,
                     semi,
                 } => {
-                    let (expr1, calls1, typ1) = Expr::from_loc_expr(
+                    let (expr1, calls1, typ1) = Self::from_loc_expr(
                         &parser::LocExpr::new(&stmt.loc(), exp),
                         headers,
                         ret,
@@ -1143,7 +1114,7 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                     if rest.is_empty() {
                         Ok(ExprAndMeta::new(
                             expr1,
-                            if *semi { Typ::Unit } else { typ1 },
+                            if *semi { Typ::unit() } else { typ1 },
                             vec![calls1],
                         ))
                     } else {
@@ -1154,19 +1125,19 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                             )));
                         };
                         let (expr2, calls2, typ2) =
-                            Expr::from_block_stmt(rest, headers, ret, ctxt)?.split();
+                            Self::from_block_stmt(rest, headers, ret, ctxt)?.split();
                         match expr2 {
-                            Expr::BlockExpr(Block::Block, mut b) => {
+                            Self::BlockExpr(Block::Block, mut b) => {
                                 let mut new_block = vec![expr1];
                                 new_block.append(&mut b);
                                 Ok(ExprAndMeta::new(
-                                    Expr::BlockExpr(Block::Block, new_block),
+                                    Self::BlockExpr(Block::Block, new_block),
                                     typ2,
                                     vec![calls1, calls2],
                                 ))
                             }
                             _ => Ok(ExprAndMeta::new(
-                                Expr::BlockExpr(Block::Block, vec![expr1, expr2]),
+                                Self::BlockExpr(Block::Block, vec![expr1, expr2]),
                                 typ2,
                                 vec![calls1, calls2],
                             )),
@@ -1175,11 +1146,11 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 }
                 parser::Stmt::LetStmt(ids, le) => {
                     let (expr1, calls1, typ1) =
-                        Expr::from_loc_expr(&le, headers, ret, ctxt)?.split();
+                        Self::from_loc_expr(&le, headers, ret, ctxt)?.split();
                     if ids.len() == 1 {
                         let id = ids[0].id();
                         let (expr2, calls2, typ2) =
-                            Expr::from_block_stmt(rest, headers, ret, &ctxt.add_var(id, &typ1))?
+                            Self::from_block_stmt(rest, headers, ret, &ctxt.add_var(id, &typ1))?
                                 .split();
                         Ok(ExprAndMeta::new(
                             expr2.let_expr(vec![id], expr1),
@@ -1197,7 +1168,7 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                                     vs.push(v)
                                 }
                                 let (expr2, calls2, typ2) =
-                                    Expr::from_block_stmt(rest, headers, ret, &let_vars)?.split();
+                                    Self::from_block_stmt(rest, headers, ret, &let_vars)?.split();
                                 Ok(ExprAndMeta::new(
                                     expr2.let_expr(vs, expr1),
                                     typ2,
@@ -1215,18 +1186,18 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                 }
             },
             None => Ok(ExprAndMeta::new(
-                Expr::BlockExpr(Block::Block, Vec::new()),
-                Typ::Unit,
+                Self::BlockExpr(Block::Block, Vec::new()),
+                Typ::unit(),
                 vec![],
             )),
         }
     }
 
-    fn from_string(buf: &str, headers: &Headers<parser::Typ, Typ>) -> Result<Self, self::Error> {
+    pub fn from_string(buf: &str, headers: &Headers<FlatTyp>) -> Result<Self, self::Error> {
         let lex = lexer::lex(buf);
         let toks = lexer::Tokens::new(&lex);
         // println!("{}", toks);
-        match parser::parse_block_stmt_eof(toks) {
+        match parser::Parser::parse_block_stmt_eof(toks) {
             Ok((_rest, block)) => {
                 // println!("{:#?}", block);
                 Ok(
@@ -1234,7 +1205,7 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
                         .expr,
                 )
             }
-            Err(_) => match parser::parse_expr_eof(toks) {
+            Err(_) => match parser::Parser::parse_expr_eof(toks) {
                 Ok((_rest, e)) => {
                     // println!("{:#?}", e);
                     Ok(Self::check_from_loc_expr(&e, headers, &Context::new())?.expr)
@@ -1246,9 +1217,53 @@ impl TExpr<parser::Typ, parser::Expr, types::Typ> for Expr{
             },
         }
     }
+
+    fn check_from_block_stmt(
+        block: parser::BlockStmtRef<FlatTyp, FlatLiteral>,
+        headers: &Headers<FlatTyp>,
+        ctxt: &Context<FlatTyp>,
+        name: Option<&str>,
+    ) -> Result<ExprAndMeta<FlatTyp, FlatLiteral>, self::Error> {
+        let mut ret : ReturnType<FlatTyp> = ReturnType::default();
+        let em = Self::from_block_stmt(block, headers, &mut ret, ctxt)?;
+        // check if type of "return" calls is type of statement
+        if let Some(rtype) = ret.get() {
+            Typ::type_check(
+                name.unwrap_or("REPL"),
+                vec![(None, em.typ.clone())],
+                vec![(None, rtype.clone())],
+            )?
+        }
+        // check if declared return type of function is type of statement
+        if let Some(name) = name {
+            Typ::type_check(
+                name,
+                vec![(None, em.typ.clone())],
+                vec![(None, headers.return_typ(name)?)],
+            )?
+        }
+        Ok(em)
+    }
+
+    pub fn from_decl<'a>(
+        decl: &'a parser::FnDecl<FlatTyp, FlatLiteral>,
+        headers: &'a Headers<FlatTyp>,
+    ) -> Result<(&'a str, Self, Calls), Error> {
+        let mut ctxt = Context::new();
+        for a in decl.args().iter().rev() {
+            ctxt = ctxt.add_var(a.name(), &Typ::from_parse(&a.typ)?)
+        }
+        let name = decl.name();
+        let em = Self::check_from_block_stmt(decl.body().as_ref(), headers, &ctxt, Some(name))?;
+        let mut e = em.expr;
+        for a in decl.args().iter().rev() {
+            e = e.closure_expr(a.name())
+        }
+        Ok((name, e, em.calls))
+    }
 }
 
-impl std::str::FromStr for Expr {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> std::str::FromStr for Expr<FlatTyp, FlatLiteral> {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {

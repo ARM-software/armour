@@ -1,19 +1,26 @@
 /// policy language
-use super::types::{Typ, TTyp};
-use super::expressions::{Error, Expr, TExpr};
-use super::{externals, headers, lexer, parser, types};
-use headers::{THeaders};
+use super::{
+    externals,
+    expressions::{self, DPExpr, Error, Expr},
+    headers::{Headers, THeaders},
+    lexer,
+    literals::{self, TFlatLiteral},
+    parser::{self, TParser },
+    types::{self, TFlatTyp}
+};
 use petgraph::graph;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
+use std::marker::PhantomData;
 
 //FIXME duplicated with interpreter
-type Headers = headers::Headers<parser::Typ, types::Typ>;
+//type Headers = headers::Headers<parser::Typ, types::Typ>;
+//type DPExpr = expressions::Expr<types::FlatTyp, literals::DPFlatLiteral>;
 
 #[derive(Serialize, Deserialize, Clone, Default)]
-pub struct Code(pub BTreeMap<String, Expr>);
+pub struct Code<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(pub BTreeMap<String, Expr<FlatTyp, FlatLiteral>>);
 
-impl Code {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Code<FlatTyp, FlatLiteral> {
     fn cut(&mut self, set: &[String]) {
         for s in set.iter() {
             self.0.remove(s);
@@ -63,13 +70,16 @@ impl CallGraph {
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
-pub struct Program {
-    pub code: Code,
-    pub externals: externals::Externals,
-    pub headers: Headers,
+pub struct Program<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+    pub code: Code<FlatTyp, FlatLiteral>,
+    pub externals: externals::Externals,//FIXME not yet generic -> having generic actor is pain full....
+    pub headers: Headers<FlatTyp>,
+    phantom: PhantomData<FlatLiteral>
 }
 
-impl Program {
+pub type DPProgram = Program<types::FlatTyp, literals::FlatLiteral>;
+
+impl< FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Program<FlatTyp, FlatLiteral> {
     pub fn set_timeout(&mut self, t: std::time::Duration) {
         self.externals.set_timeout(t)
     }
@@ -83,7 +93,7 @@ impl Program {
         self.headers.cut(set);
         self.code.cut(set);
     }
-    pub fn typ(&self, name: &str) -> Option<types::Signature<parser::Typ, types::Typ>> {
+    pub fn typ(&self, name: &str) -> Option<types::Signature<FlatTyp>> {
         self.headers.typ(name)
     }
     pub fn is_empty(&self) -> bool {
@@ -95,13 +105,13 @@ impl Program {
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
-pub struct PreProgram {
+pub struct PreProgram<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     call_graph: CallGraph,
-    pub program: Program,
+    pub program: Program<FlatTyp, FlatLiteral>,
 }
 
-impl PreProgram {
-    fn add_decl(&mut self, decl: &parser::FnDecl<parser::Typ, parser::Expr>) -> Result<(), Error> {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> PreProgram<FlatTyp, FlatLiteral> {
+    fn add_decl(&mut self, decl: &parser::FnDecl<FlatTyp, FlatLiteral>) -> Result<(), Error> {
         // println!("{:#?}", decl);
         let (name, e, calls) = Expr::from_decl(decl, &self.program.headers)?;
         // println!(r#""{}": {:#?}"#, name, e);
@@ -110,7 +120,7 @@ impl PreProgram {
             .nodes
             .get(name)
             .ok_or_else(|| Error::new(&format!("cannot find \"{}\" node", name)))?;
-        for c in calls.into_iter().filter(|c| !Headers::is_internal(&c.name)) {
+        for c in calls.into_iter().filter(|c| !<Headers<FlatTyp>>::is_internal(&c.name)) {
             let call_idx = self
                 .call_graph
                 .nodes
@@ -121,7 +131,7 @@ impl PreProgram {
         self.program.code.0.insert(name.to_string(), e);
         Ok(())
     }
-    pub fn program(&self, functions: &[String]) -> Program {
+    pub fn program(&self, functions: &[String]) -> Program<FlatTyp, FlatLiteral> {
         let mut prog = self.program.clone();
         if !functions.is_empty() {
             prog.cut(self.call_graph.unreachable(functions).as_slice())
@@ -129,7 +139,7 @@ impl PreProgram {
         prog
     }
     pub fn from_buf(buf: &str) -> Result<Self, Error> {
-        let pre_prog: PreProgram = buf.parse()?;
+        let pre_prog: PreProgram<FlatTyp, FlatLiteral> = buf.parse()?;
         pre_prog.call_graph.check_for_cycles()?;
         Ok(pre_prog)
     }
@@ -142,16 +152,16 @@ impl PreProgram {
     }
 }
 
-impl std::str::FromStr for PreProgram {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  std::str::FromStr for PreProgram<FlatTyp, FlatLiteral> {
     type Err = Error;
 
     fn from_str(buf: &str) -> Result<Self, Self::Err> {
         let toks = lexer::lex(buf);
         let tokens = lexer::Tokens::new(&toks);
         // println!("{}", tokens);
-        match parser::parse_program(tokens) {
+        match parser::Parser::parse_program(tokens) {
             Ok((_rest, prog_parse)) => {
-                let mut module = PreProgram::default();
+                let mut module : PreProgram<FlatTyp, FlatLiteral> = PreProgram::default();
                 // process headers (for type information)
                 for decl in prog_parse.iter() {
                     match decl {
@@ -186,7 +196,8 @@ impl std::str::FromStr for PreProgram {
                             if module.program.externals.add_external(ename, e.url()) {
                                 println!("WARNING: external \"{}\" already existed", ename)
                             }
-                        }
+                        },
+                        parser::Decl::Phantom(_) => unimplemented!()
                     }
                 }
                 // process declarations
@@ -197,14 +208,14 @@ impl std::str::FromStr for PreProgram {
                 }
                 Ok(module)
             }
-            Err(nom::Err::Error((toks, _))) => match parser::parse_fn_head(toks) {
+            Err(nom::Err::Error((toks, _))) => match <parser::Parser<FlatTyp, FlatLiteral>>::parse_fn_head(toks) {
                 Ok((rest, head)) => {
                     let s = format!(
                         r#"syntax error in body of function "{}" starting at line {:?}"#,
                         head.name(),
                         toks.tok[0].loc.line
                     );
-                    match parser::parse_block_stmt(rest) {
+                    match <parser::Parser<FlatTyp, FlatLiteral>>::parse_block_stmt(rest) {
                         Ok(_) => unreachable!(),
                         Err(nom::Err::Error((toks, _))) => {
                             Err(Error::from(format!("{}\nsee: {}", s, toks.tok[0])))

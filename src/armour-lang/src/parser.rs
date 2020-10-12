@@ -1,27 +1,37 @@
 /// parser
 use super::lexer::{Loc, Token, Tokens};
-use super::literals::Literal;
+use super::literals::{Literal, DPFlatLiteral, CPFlatLiteral, TFlatLiteral};
+use super::{parser, types};
+use super::types::{TFlatTyp};
+use super::types_cp;
 use nom::error::ErrorKind;
-use nom::*;
+use nom::{self,*};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::marker::PhantomData;
 
-pub type Program = Vec<Decl<Typ, Expr>>;
-pub type CPProgram = Vec<Decl<CPTyp, CPExpr>>;
+pub type DPExpr = Expr<types::FlatTyp, DPFlatLiteral>;
+pub type CPExpr = Expr<types_cp::CPTyp, CPFlatLiteral>;
 
-pub enum Decl<Typ:TPTyp, Expr:TPExpr> {
-    External(External<Typ>),
-    FnDecl(FnDecl<Typ, Expr>),
+pub type Program<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> =
+    Vec<Decl<FlatTyp, FlatLiteral>>;
+pub type DPProgram = Program<types::FlatTyp, DPFlatLiteral>;
+pub type CPProgram = Program<types_cp::CPTyp, CPFlatLiteral>;
+
+pub enum Decl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+    External(External),
+    FnDecl(FnDecl<FlatTyp, FlatLiteral>),
+    Phantom(PhantomData<Typ>)
 }
 
-pub struct External<Typ:TPTyp> {
+pub struct External {
     name: LocIdent,
     url: LocIdent,
-    pub headers: Vec<Head<Typ>>,
+    pub headers: Vec<Head>,
 }
 
-impl<Typ:TPTyp> External<Typ> {
+impl External {
     pub fn name(&self) -> &str {
         self.name.id()
     }
@@ -30,31 +40,35 @@ impl<Typ:TPTyp> External<Typ> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Typ {
     Atom(LocIdent),
     Cons(LocIdent, Box<Typ>),
     Tuple(Vec<Typ>),
 }
 
-pub trait TPTyp : Clone {}
+type DPTyp = Typ;
+
+pub trait TPTyp : Clone + PartialEq {}
 
 impl TPTyp for Typ {}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum CPTyp {
-    DPTyp(Typ),
-}
 
-impl TPTyp for CPTyp {}
+//#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+//pub enum CPTyp {
+//    DPTyp(Typ),
+//}
+pub type CPTyp = DPTyp;
 
-pub struct Head<Typ> {
+//impl TPTyp for CPTyp {}
+
+pub struct Head {
     id: LocIdent,
     typs: Option<Vec<Typ>>,
     typ: Option<Typ>,
 }
 
-impl<Typ> Head<Typ> {
+impl Head {
     pub fn name(&self) -> &str {
         self.id.id()
     }
@@ -70,44 +84,44 @@ impl<Typ> Head<Typ> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Param<Typ> {
+pub struct Param {
     name: LocIdent,
     pub typ: Typ,
 }
 
-impl<Typ> Param<Typ> {
+impl Param {
     pub fn name(&self) -> &str {
         self.name.id()
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct FnHead<Typ> {
+pub struct FnHead {
     id: LocIdent,
-    params: Vec<Param<Typ>>,
+    params: Vec<Param>,
     typ: Option<Typ>,
 }
 
-impl<Typ> FnHead<Typ> {
+impl FnHead {
     pub fn name(&self) -> &str {
         self.id.id()
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct FnDecl<Typ:TPTyp, Expr:TPExpr> {
-    head: FnHead<Typ>,
-    body: BlockStmt<Expr>,
+pub struct FnDecl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+    head: FnHead,
+    body: BlockStmt<FlatTyp, FlatLiteral>,
 }
 
-impl<Typ:TPTyp, Expr:TPExpr> FnDecl<Typ, Expr> {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> FnDecl<FlatTyp, FlatLiteral> {
     pub fn name(&self) -> &str {
         self.head.id.id()
     }
-    pub fn args(&self) -> &Vec<Param<Typ>> {
+    pub fn args(&self) -> &Vec<Param> {
         &self.head.params
     }
-    pub fn body(&self) -> &BlockStmt<Expr> {
+    pub fn body(&self) -> &BlockStmt<FlatTyp, FlatLiteral> {
         &self.body
     }
     pub fn typ_id(&self) -> &Option<Typ> {
@@ -119,11 +133,11 @@ impl<Typ:TPTyp, Expr:TPExpr> FnDecl<Typ, Expr> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Stmt<Expr> {
-    LetStmt(Vec<LocIdent>, LocExpr<Expr>),
-    ReturnStmt(LocExpr<Expr>),
+pub enum Stmt<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+    LetStmt(Vec<LocIdent>, LocExpr<FlatTyp, FlatLiteral>),
+    ReturnStmt(LocExpr<FlatTyp, FlatLiteral>),
     ExprStmt {
-        exp: Expr,
+        exp: Expr<FlatTyp, FlatLiteral>,
         async_tag: bool,
         semi: bool,
     },
@@ -131,16 +145,16 @@ pub enum Stmt<Expr> {
 
 
 #[derive(Debug, Clone)]
-pub struct LocStmt<Expr:TPExpr>(Loc, Stmt<Expr>);
+pub struct LocStmt<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(Loc, Stmt<FlatTyp, FlatLiteral>);
 
-impl<Expr:TPExpr> LocStmt<Expr> {
-    fn let_stmt(l: Loc, i: Vec<LocIdent>, e: LocExpr<Expr>) -> LocStmt<Expr> {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> LocStmt<FlatTyp, FlatLiteral> {
+    fn let_stmt(l: Loc, i: Vec<LocIdent>, e: LocExpr<FlatTyp, FlatLiteral>) -> LocStmt<FlatTyp, FlatLiteral> {
         LocStmt(l, Stmt::LetStmt(i, e))
     }
-    fn return_stmt(l: Loc, e: LocExpr<Expr>) -> LocStmt<Expr> {
+    fn return_stmt(l: Loc, e: LocExpr<FlatTyp, FlatLiteral>) -> LocStmt<FlatTyp, FlatLiteral> {
         LocStmt(l, Stmt::ReturnStmt(e))
     }
-    fn expr_stmt(e: LocExpr<Expr>, async_tag: bool, semi: bool) -> LocStmt<Expr> {
+    fn expr_stmt(e: LocExpr<FlatTyp, FlatLiteral>, async_tag: bool, semi: bool) -> LocStmt<FlatTyp, FlatLiteral> {
         LocStmt(
             e.loc(),
             Stmt::ExprStmt {
@@ -153,54 +167,54 @@ impl<Expr:TPExpr> LocStmt<Expr> {
     pub fn loc(&self) -> Loc {
         self.0.clone()
     }
-    pub fn stmt(&self) -> &Stmt<Expr> {
+    pub fn stmt(&self) -> &Stmt<FlatTyp, FlatLiteral> {
         &self.1
     }
 }
 
-impl From<&Expr> for CPExpr{
-    fn from(e : &Expr) -> Self {
-        CPExpr::DPExpr(e.clone()) 
-    }
-}
-
-impl From<CPExpr> for Expr{
-    fn from(e : CPExpr) -> Self {
-        match e {
-            CPExpr::DPExpr(e) => e
-        }
-    }
-}
-
-impl<'a> From<Stmt<CPExpr>> for Stmt<Expr>{
-    fn from(stmt : Stmt<CPExpr>) -> Self {
-        match stmt {
-            Stmt::LetStmt(v, le) => Stmt::LetStmt(v, LocExpr::from(le)),
-            Stmt::ReturnStmt(le) => Stmt::ReturnStmt(LocExpr::from(le)),
-            Stmt::ExprStmt{exp, async_tag, semi} => Stmt::ExprStmt{
-                exp: Expr::from(exp),
-                async_tag: async_tag,
-                semi: semi}
-        }
-    }
-}
-
-impl<'a> From<LocStmt<CPExpr>> for LocStmt<Expr>{
-    fn from(stmt : LocStmt<CPExpr>) -> Self {
-        LocStmt(stmt.loc(), Stmt::from(stmt.stmt().clone()) )
-    }
-}
+//impl From<&Expr> for CPExpr{
+//    fn from(e : &Expr) -> Self {
+//        CPExpr::DPExpr(e.clone()) 
+//    }
+//}
+//
+//impl From<CPExpr> for Expr{
+//    fn from(e : CPExpr) -> Self {
+//        match e {
+//            CPExpr::DPExpr(e) => e
+//        }
+//    }
+//}
+//
+//impl<'a> From<Stmt<CPExpr>> for Stmt{
+//    fn from(stmt : Stmt<CPExpr>) -> Self {
+//        match stmt {
+//            Stmt::LetStmt(v, le) => Stmt::LetStmt(v, LocExpr::from(le)),
+//            Stmt::ReturnStmt(le) => Stmt::ReturnStmt(LocExpr::from(le)),
+//            Stmt::ExprStmt{exp, async_tag, semi} => Stmt::ExprStmt{
+//                exp: Expr::from(exp),
+//                async_tag: async_tag,
+//                semi: semi}
+//        }
+//    }
+//}
+//
+//impl<'a> From<LocStmt<CPExpr>> for LocStmt{
+//    fn from(stmt : LocStmt<CPExpr>) -> Self {
+//        LocStmt(stmt.loc(), Stmt::from(stmt.stmt().clone()) )
+//    }
+//}
 
 #[derive(Debug, Clone)]
-pub struct BlockStmt<Expr:TPExpr> {
-    pub statements: Vec<LocStmt<Expr>>,
+pub struct BlockStmt<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+    pub statements: Vec<LocStmt<FlatTyp, FlatLiteral>>,
     async_tag: bool,
 }
 
-impl<Expr:TPExpr> BlockStmt<Expr> {
-    pub fn as_ref(&self) -> BlockStmtRef<Expr> {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> BlockStmt<FlatTyp, FlatLiteral> {
+    pub fn as_ref(&self) -> BlockStmtRef<FlatTyp, FlatLiteral> {
         BlockStmtRef {
-            statements: self.statements.clone(),//.as_ref(),
+            statements: self.statements.as_ref(),
             async_tag: self.async_tag,
         }
     }
@@ -209,8 +223,8 @@ impl<Expr:TPExpr> BlockStmt<Expr> {
     }
 }
 
-impl From<LocExpr<Expr>> for BlockStmt<Expr> {
-    fn from(e: LocExpr<Expr>) -> BlockStmt<Expr> {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<LocExpr<FlatTyp, FlatLiteral>> for BlockStmt<FlatTyp, FlatLiteral> {
+    fn from(e: LocExpr<FlatTyp, FlatLiteral>) -> BlockStmt<FlatTyp, FlatLiteral> {
         BlockStmt {
             statements: vec![LocStmt::expr_stmt(e, false, false)],
             async_tag: false,
@@ -219,19 +233,18 @@ impl From<LocExpr<Expr>> for BlockStmt<Expr> {
 }
 
 #[derive(Debug)]
-pub struct BlockStmtRef<Expr:TPExpr> {
-    pub statements: Vec<LocStmt<Expr>>, //because i need to take convert statement, maybe can fn {new obj; &new_obj} but i don't think so
-    //pub statements: &'a [LocStmt<Expr>],
+pub struct BlockStmtRef<'a, FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+    pub statements: &'a [LocStmt<FlatTyp, FlatLiteral>],
     async_tag: bool,
 }
 
-impl<'a, Expr:TPExpr>  BlockStmtRef<Expr> {
-    pub fn split_first(&self) -> Option<(&LocStmt<Expr>, BlockStmtRef<Expr>)> {
+impl<'a, FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  BlockStmtRef<'a, FlatTyp, FlatLiteral> {
+    pub fn split_first(&self) -> Option<(&LocStmt<FlatTyp, FlatLiteral>, BlockStmtRef<FlatTyp, FlatLiteral>)> {
         if let Some((first, statements)) = self.statements.split_first() {
             Some((
                 first,
                 BlockStmtRef {
-                    statements: statements.to_vec(),
+                    statements: statements,
                     async_tag: self.async_tag,
                 },
             ))
@@ -247,15 +260,15 @@ impl<'a, Expr:TPExpr>  BlockStmtRef<Expr> {
     }
 }
 
-impl<'a> From<BlockStmtRef<CPExpr>> for BlockStmtRef<Expr>{
-    fn from(block : BlockStmtRef<CPExpr>) -> Self {
-        BlockStmtRef{
-            statements: if block.is_empty() {Vec::new()} 
-                        else {(&block.statements).into_iter().map(|ls| LocStmt::from(ls.clone())).collect()},
-            async_tag: block.async_tag()
-        }
-    }
-}
+//impl<'a> From<BlockStmtRef<'a>> for BlockStmtRef<'a>{
+//    fn from(block : BlockStmtRef) -> Self {
+//        BlockStmtRef{
+//            statements: if block.is_empty() {Vec::new()} 
+//                        else {(&block.statements).into_iter().map(|ls| LocStmt::from(ls.clone())).collect()},
+//            async_tag: block.async_tag()
+//        }
+//    }
+//}
             
             
 
@@ -283,47 +296,44 @@ impl std::fmt::Display for Iter {
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr {
+pub enum Expr<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     IdentExpr(Ident),
-    LitExpr(Literal),
-    ListExpr(Vec<LocExpr<Self>>),
-    TupleExpr(Vec<LocExpr<Self>>),
-    PrefixExpr(Prefix, Box<LocExpr<Self>>),
-    InfixExpr(Infix, Box<LocExpr<Self>>, Box<LocExpr<Self>>),
+    LitExpr(Literal<FlatTyp, FlatLiteral>),
+    ListExpr(Vec<LocExpr<FlatTyp, FlatLiteral>>),
+    TupleExpr(Vec<LocExpr<FlatTyp, FlatLiteral>>),
+    PrefixExpr(Prefix<FlatTyp>, Box<LocExpr<FlatTyp, FlatLiteral>>),
+    InfixExpr(Infix<FlatTyp>, Box<LocExpr<FlatTyp, FlatLiteral>>, Box<LocExpr<FlatTyp, FlatLiteral>>),
     IterExpr {
         op: Iter,
         idents: Vec<LocIdent>,
-        expr: Box<LocExpr<Self>>,
-        body: BlockStmt<Expr>,
+        expr: Box<LocExpr<FlatTyp, FlatLiteral>>,
+        body: BlockStmt<FlatTyp, FlatLiteral>,
     },
     IfExpr {
-        cond: Box<LocExpr<Self>>,
-        consequence: BlockStmt<Expr>,
-        alternative: Option<BlockStmt<Expr>>,
+        cond: Box<LocExpr<FlatTyp, FlatLiteral>>,
+        consequence: BlockStmt<FlatTyp, FlatLiteral>,
+        alternative: Option<BlockStmt<FlatTyp, FlatLiteral>>,
     },
     IfMatchExpr {
-        matches: Vec<(LocExpr<Self>, Pattern)>,
-        consequence: BlockStmt<Expr>,
-        alternative: Option<BlockStmt<Expr>>,
+        matches: Vec<(LocExpr<FlatTyp, FlatLiteral>, Pattern<FlatTyp>)>,
+        consequence: BlockStmt<FlatTyp, FlatLiteral>,
+        alternative: Option<BlockStmt<FlatTyp, FlatLiteral>>,
     },
     IfSomeMatchExpr {
         var: LocIdent,
-        expr: Box<LocExpr<Self>>,
-        consequence: BlockStmt<Expr>,
-        alternative: Option<BlockStmt<Expr>>,
+        expr: Box<LocExpr<FlatTyp, FlatLiteral>>,
+        consequence: BlockStmt<FlatTyp, FlatLiteral>,
+        alternative: Option<BlockStmt<FlatTyp, FlatLiteral>>,
     },
     CallExpr {
         loc: Loc,
         function: String,
-        arguments: Vec<LocExpr<Self>>,
+        arguments: Vec<LocExpr<FlatTyp, FlatLiteral>>,
     },
 }
 
-pub trait TPExpr : Clone{
-    fn eval_call_function(&self) -> Option<String>;
-}
 
-impl TPExpr for Expr {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> {
     fn eval_call_function(&self) -> Option<String> {
         match self {
             Expr::IdentExpr(id) => Some(id.0.to_string()),
@@ -341,46 +351,21 @@ impl TPExpr for Expr {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum CPExpr {
-    DPExpr(Expr),
-}
-
-impl TPExpr for CPExpr {
-    fn eval_call_function(&self) -> Option<String> {
-        match self {
-            CPExpr::DPExpr(e) => Expr::eval_call_function(&e),
-            _ => None,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
-pub struct LocExpr<Expr>(Loc, Expr);
+pub struct LocExpr<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(Loc, Expr<FlatTyp, FlatLiteral>);
 
-impl<Expr:Clone> LocExpr<Expr> {
-    pub fn new(l: &Loc, e: &Expr) -> LocExpr<Expr> {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> LocExpr<FlatTyp, FlatLiteral> {
+    pub fn new(l: &Loc, e: &Expr<FlatTyp, FlatLiteral>) -> Self {
         LocExpr(l.clone(), e.clone())
     }
     pub fn loc(&self) -> Loc {
         self.0.clone()
     }
-    pub fn expr(&self) -> &Expr {
+    pub fn expr(&self) -> &Expr<FlatTyp, FlatLiteral> {
         &self.1
     }
 }
-
-impl From<LocExpr<CPExpr>> for LocExpr<Expr> {
-    fn from(le:LocExpr<CPExpr>) -> Self {
-        LocExpr::new(&le.loc(), &Expr::from(le.expr().clone()))
-    }
-}
-impl From<LocExpr<&CPExpr>> for LocExpr<Expr> {
-    fn from(le:LocExpr<&CPExpr>) -> Self {
-        LocExpr::from(le.clone())
-    }
-}
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum As {
@@ -405,9 +390,10 @@ pub enum Pat {
 }
 
 #[derive(Debug, Clone)]
-pub enum Pattern {
+pub enum Pattern<FlatTyp:TFlatTyp> {
     Regex(Pat),
     Label(super::labels::Label),
+    Phantom(PhantomData<FlatTyp>)
 }
 
 impl Pat {
@@ -500,16 +486,23 @@ impl PolicyRegex {
     }
 }
 
-enum LocExprOrMatches<Expr> {
-    Expr(LocExpr<Expr>),
-    Matches(Vec<(LocExpr<Expr>, Pattern)>),
-    SomeMatch(LocIdent, LocExpr<Expr>),
+enum LocExprOrMatches<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+    Expr(LocExpr<FlatTyp, FlatLiteral>),
+    Matches(Vec<(LocExpr<FlatTyp, FlatLiteral>, Pattern<FlatTyp>)>),
+    SomeMatch(LocIdent, LocExpr<FlatTyp, FlatLiteral>),
+    Phantom(PhantomData<(FlatTyp, FlatLiteral)>),
 }
 
 #[derive(Debug, Clone)]
-pub struct LocLiteral(Loc, Literal);
-
-impl LocLiteral {
+pub struct LocLiteral<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(
+    Loc,
+    Literal<FlatTyp, FlatLiteral>,
+    PhantomData<(FlatTyp, FlatLiteral)>
+);
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> LocLiteral<FlatTyp, FlatLiteral> {
+    fn new(l: Loc, ll: Literal<FlatTyp, FlatLiteral>) -> Self {
+        LocLiteral(l, ll, PhantomData)
+    }
     fn loc(&self) -> Loc {
         self.0.clone()
     }
@@ -525,7 +518,7 @@ impl From<&str> for Ident {
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LocIdent(Loc, Ident);
 
 impl LocIdent {
@@ -538,22 +531,24 @@ impl LocIdent {
 }
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
-pub enum Prefix {
+pub enum Prefix<FlatTyp:TFlatTyp> {
     Minus,
     Not,
+    Phantom(PhantomData<FlatTyp>)
 }
 
-impl std::fmt::Display for Prefix {
+impl<FlatTyp:TFlatTyp> std::fmt::Display for Prefix<FlatTyp>{
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Prefix::Minus => write!(f, "-"),
             Prefix::Not => write!(f, "!"),
+            Prefix::Phantom(_) => unimplemented!()
         }
     }
 }
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
-pub enum Infix {
+pub enum Infix<FlatTyp:TFlatTyp> {
     Equal,
     NotEqual,
     Plus,
@@ -572,9 +567,10 @@ pub enum Infix {
     Module,
     In,
     Dot,
+    Phantom(PhantomData<FlatTyp>)
 }
 
-impl std::fmt::Display for Infix {
+impl<FlatTyp:TFlatTyp> std::fmt::Display for Infix<FlatTyp> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Infix::Equal => write!(f, "=="),
@@ -595,6 +591,7 @@ impl std::fmt::Display for Infix {
             Infix::Module => write!(f, "::"),
             Infix::In => write!(f, "in"),
             Infix::Dot => write!(f, "."),
+            Infix::Phantom(_) => unimplemented!()
         }
     }
 }
@@ -619,7 +616,6 @@ pub enum Precedence {
     PCall,
     PModule,
 }
-
 macro_rules! tag_token (
   ($i: expr, $tag: expr) => (
     {
@@ -653,39 +649,44 @@ macro_rules! parse_ident (
   );
 );
 
-named!(pub parse_program<Tokens, Program>,
-    terminated!(
-        many0!(
-            alt!(
-                complete!(do_parse!(f: parse_fn_expr >> (Decl::FnDecl(f)))) |
-                complete!(do_parse!(e: parse_external >> (Decl::External(e))))
-            )
-        ),
-        tag_token!(Token::EOF)
-    )
+//FIXME i don't know why but using the method! from nom-methods failed, this one is a merge from nom named! and nom-methods method!
+macro_rules! methodd (
+    ($vis:vis $name:ident<$i:ty,$o:ty>, &$self_:ident, $submac:ident!( $($args:tt)* )) => (
+        #[allow(unused_variables)]
+
+        $vis fn $name( &$self_,  i: $i ) -> nom::IResult<$i, $o, ($i, ::nom::error::ErrorKind)> {
+            let result = $submac!(i, $($args)*);
+            result
+        }
+    );
 );
 
-named!(pub parse_fn_head<Tokens, FnHead<Typ>>,
-    do_parse!(
-        tag_token!(Token::Function) >>
-        id: parse_ident!() >>
-        tag_token!(Token::LParen) >>
-        params: opt!(parse_params) >>
-        tag_token!(Token::RParen) >>
-        typ: opt!(preceded!(tag_token!(Token::Arrow), parse_type)) >>
-        (FnHead {id, params: params.unwrap_or_default(), typ})
-    )
+/// Used to called methods then move self back into self
+#[macro_export(local_inner_macros)]
+macro_rules! call_mm (
+  ($i:expr, $method:path) => (
+    {
+      $method($i)
+    }
+  );
+  ($i:expr, $self_:ident.$method:ident) => (
+    {
+      $self_.$method($i)
+    }
+  );
+  ($i:expr, $self_:ident.$method:ident, $($args:expr),* ) => (
+    {
+      $self_.$method($i, $($args),*)
+    }
+  );
+  ($i:expr, $method:path, $($args:expr),* ) => (
+    {
+      $method($i, $($args),*)
+    }
+  );
 );
 
-named!(parse_fn_expr<Tokens, FnDecl<Typ, Expr>>,
-    do_parse!(
-        head: parse_fn_head >>
-        body: parse_block_stmt >>
-        (FnDecl {head, body })
-    )
-);
-
-named!(parse_param<Tokens, Param<Typ>>,
+named!(parse_param<Tokens, Param>,
     do_parse!(
         name: parse_ident!() >>
         tag_token!(Token::Colon) >>
@@ -694,11 +695,11 @@ named!(parse_param<Tokens, Param<Typ>>,
     )
 );
 
-named!(parse_comma_param<Tokens, Param<Typ>>,
+named!(parse_comma_param<Tokens, Param>,
     preceded!(tag_token!(Token::Comma), parse_param)
 );
 
-named!(parse_params<Tokens, Vec<Param<Typ>>>,
+named!(parse_params<Tokens, Vec<Param>>,
     do_parse!(
         p: parse_param >>
         ps: many0!(parse_comma_param) >>
@@ -783,13 +784,13 @@ macro_rules! parse_literal (
             Err(nom::Err::Error(error_position!($i, ErrorKind::Tag)))
         } else {
             match t1.tok0().clone() {
-                Token::BoolLiteral(b) => Ok((i1, LocLiteral(t1.loc(), Literal::Bool(b)))),
-                Token::DataLiteral(d) => Ok((i1, LocLiteral(t1.loc(), Literal::Data(d)))),
-                Token::FloatLiteral(f) => Ok((i1, LocLiteral(t1.loc(), Literal::Float(f)))),
-                Token::Ident(ref s) if s == "None" => Ok((i1, LocLiteral(t1.loc(), Literal::none()))),
-                Token::IntLiteral(i) => Ok((i1, LocLiteral(t1.loc(), Literal::Int(i)))),
-                Token::LabelLiteral(l) => Ok((i1, LocLiteral(t1.loc(), Literal::Label(l)))),
-                Token::StringLiteral(s) => Ok((i1, LocLiteral(t1.loc(), Literal::Str(s)))),
+                Token::BoolLiteral(b) => Ok((i1, LocLiteral::new(t1.loc(), Literal::bool(b)))),
+                Token::DataLiteral(d) => Ok((i1, LocLiteral::new(t1.loc(), Literal::data(d)))),
+                Token::FloatLiteral(f) => Ok((i1, LocLiteral::new(t1.loc(), Literal::float(f)))),
+                Token::Ident(ref s) if s == "None" => Ok((i1, LocLiteral::new(t1.loc(), Literal::none()))),
+                Token::IntLiteral(i) => Ok((i1, LocLiteral::new(t1.loc(), Literal::int(i)))),
+                Token::LabelLiteral(l) => Ok((i1, LocLiteral::new(t1.loc(), Literal::label(l)))),
+                Token::StringLiteral(s) => Ok((i1, LocLiteral::new(t1.loc(), Literal::str(s)))),
                 _ => Err(nom::Err::Error(error_position!($i, ErrorKind::Tag))),
             }
         }
@@ -813,451 +814,6 @@ macro_rules! parse_pat_literal (
   );
 );
 
-fn infix_op(t: &Token) -> (Precedence, Option<(Assoc, Infix)>) {
-    match *t {
-        Token::Equal => (Precedence::PEquals, Some((Assoc::Right, Infix::Equal))),
-        Token::NotEqual => (Precedence::PEquals, Some((Assoc::Right, Infix::NotEqual))),
-        Token::LessThanEqual => (
-            Precedence::PLessGreater,
-            Some((Assoc::Right, Infix::LessThanEqual)),
-        ),
-        Token::GreaterThanEqual => (
-            Precedence::PLessGreater,
-            Some((Assoc::Right, Infix::GreaterThanEqual)),
-        ),
-        Token::LessThan => (
-            Precedence::PLessGreater,
-            Some((Assoc::Right, Infix::LessThan)),
-        ),
-        Token::GreaterThan => (
-            Precedence::PLessGreater,
-            Some((Assoc::Right, Infix::GreaterThan)),
-        ),
-        Token::Or => (Precedence::POr, Some((Assoc::Right, Infix::Or))),
-        Token::And => (Precedence::PAnd, Some((Assoc::Right, Infix::And))),
-        Token::Plus => (Precedence::PSum, Some((Assoc::Left, Infix::Plus))),
-        Token::Minus => (Precedence::PSum, Some((Assoc::Left, Infix::Minus))),
-        Token::At => (Precedence::PSum, Some((Assoc::Right, Infix::Concat))),
-        Token::PlusPlus => (Precedence::PSum, Some((Assoc::Right, Infix::ConcatStr))),
-        Token::Multiply => (Precedence::PProduct, Some((Assoc::Left, Infix::Multiply))),
-        Token::Divide => (Precedence::PProduct, Some((Assoc::Left, Infix::Divide))),
-        Token::Percent => (Precedence::PProduct, Some((Assoc::Left, Infix::Remainder))),
-        Token::In => (Precedence::PIn, Some((Assoc::Left, Infix::In))),
-        Token::Dot => (Precedence::PDot, None),
-        Token::LParen => (Precedence::PCall, None),
-        Token::ColonColon => (Precedence::PModule, Some((Assoc::Right, Infix::Module))),
-        _ => (Precedence::PLowest, None),
-    }
-}
-
-named!(pub parse_expr_eof<Tokens, LocExpr<Expr>>,
-    terminated!(parse_expr, tag_token!(Token::EOF))
-);
-
-named!(parse_expr<Tokens, LocExpr<Expr>>,
-    call!(parse_pratt_expr, Precedence::PLowest)
-);
-
-named!(pub parse_block_stmt_eof<Tokens, BlockStmt<Expr>>,
-    terminated!(parse_block_stmt, tag_token!(Token::EOF))
-);
-
-named!(pub parse_block_stmt<Tokens, BlockStmt<Expr>>,
-    do_parse!(
-        async_tag: opt!(tag_token!(Token::Async)) >>
-        statements: delimited!(tag_token!(Token::LBrace), many0!(parse_stmt), tag_token!(Token::RBrace)) >>
-        (BlockStmt {statements, async_tag: async_tag.is_some()})
-    )
-);
-
-named!(parse_stmt<Tokens, LocStmt<Expr>>, alt!(
-    complete!(parse_let_stmt) |
-    complete!(parse_return_stmt) |
-    complete!(parse_expr_stmt)
-));
-
-named!(parse_let_stmt<Tokens, LocStmt<Expr>>,
-    do_parse!(
-        t: tag_token!(Token::Let) >>
-        idents: parse_idents >>
-        tag_token!(Token::Assign) >>
-        expr: parse_expr >>
-        tag_token!(Token::SemiColon) >>
-        (LocStmt::let_stmt(t.loc(), idents, expr))
-    )
-);
-
-named!(parse_return_stmt<Tokens, LocStmt<Expr>>,
-    do_parse!(
-        t: tag_token!(Token::Return) >>
-        expr: parse_expr >>
-        (LocStmt::return_stmt(t.loc(), expr))
-    )
-);
-
-named!(parse_expr_stmt<Tokens, LocStmt<Expr>>,
-    do_parse!(
-        async_tag: opt!(tag_token!(Token::Async)) >>
-        expr: parse_expr >>
-        semi: opt!(tag_token!(Token::SemiColon)) >>
-        (LocStmt::expr_stmt(expr, async_tag.is_some(), semi.is_some()))
-    )
-);
-
-named!(parse_atom_expr<Tokens, LocExpr<Expr>>, alt!(
-    complete!(parse_lit_expr) |
-    complete!(parse_ident_expr) |
-    complete!(parse_prefix_expr) |
-    complete!(parse_paren_expr) |
-    complete!(parse_list_expr) |
-    complete!(parse_if_expr) |
-    complete!(parse_iter_expr) |
-    complete!(parse_all_any_expr)
-));
-
-named!(parse_iter_expr<Tokens, LocExpr<Expr>>,
-    do_parse!(
-        t: alt!(
-            tag_token!(Token::All) |
-            tag_token!(Token::Any) |
-            tag_token!(Token::Filter) |
-            tag_token!(Token::FilterMap) |
-            tag_token!(Token::ForEach) |
-            tag_token!(Token::Map)
-        ) >>
-        idents: parse_idents >>
-        tag_token!(Token::In) >>
-        expr: parse_expr >>
-        body: parse_block_stmt >>
-        (LocExpr(
-            t.loc(),
-            Expr::IterExpr {
-                op: match t.tok0() {
-                    Token::All => Iter::All,
-                    Token::Any => Iter::Any,
-                    Token::Filter => Iter::Filter,
-                    Token::FilterMap => Iter::FilterMap,
-                    Token::ForEach => Iter::ForEach,
-                    Token::Map => Iter::Map,
-                    _ => unreachable!(),
-                },
-                idents,
-                expr: Box::new(expr),
-                body
-            }
-        ))
-    )
-);
-
-named!(parse_all_any_expr<Tokens, LocExpr<Expr>>,
-    do_parse!(
-        t: alt!(
-            tag_token!(Token::All) |
-            tag_token!(Token::Any)
-        ) >>
-        expr: parse_list_expr >>
-        (LocExpr(
-            t.loc(),
-            Expr::IterExpr {
-                op: match t.tok0() {
-                    Token::All => Iter::All,
-                    Token::Any => Iter::Any,
-                    _ => unreachable!(),
-                },
-                idents: vec![LocIdent(Loc::default(), Ident::from("x"))],
-                expr: Box::new(expr),
-                body: BlockStmt::from(LocExpr(Loc::default(), Expr::IdentExpr(Ident::from("x")))),
-            }
-        ))
-    )
-);
-
-named!(parse_paren_expr<Tokens, LocExpr<Expr>>,
-    do_parse!(
-        t: tag_token!(Token::LParen) >>
-        es: opt!(parse_exprs) >>
-        tag_token!(Token::RParen) >>
-        (LocExpr(
-            t.loc(),
-            {
-                let es = es.unwrap_or_default();
-                let n = es.len();
-                if n == 0 {
-                    Expr::LitExpr(Literal::Unit)
-                } else if n == 1 {
-                    es[0].expr().clone()
-                } else {
-                    Expr::TupleExpr(es)
-                }
-            }
-        ))
-    )
-);
-
-named!(parse_lit_expr<Tokens, LocExpr<Expr>>, alt!(
-    complete!(do_parse!(
-        tag_token!(Token::Dot) >>
-        i: parse_int_literal!() >>
-        (LocExpr(i.0, Expr::LitExpr(Literal::Float(format!(".{}", i.1).parse().unwrap()))))
-    )) |
-    complete!(do_parse!(
-        lit: parse_literal!() >>
-        (LocExpr(lit.loc(), Expr::LitExpr(lit.1)))
-    )) |
-    complete!(do_parse!(
-        t: tag_token!(Token::Regex) >>
-        tag_token!(Token::LParen) >>
-        regex: parse_pat_no_bind >>
-        tag_token!(Token::RParen) >>
-        (LocExpr(t.loc(), Expr::LitExpr(Literal::Regex(regex))))
-    ))
-));
-
-named!(parse_ident_expr<Tokens, LocExpr<Expr>>,
-    alt!(
-        complete!(do_parse!(
-            ident: parse_ident!() >>
-            (LocExpr(ident.loc(), Expr::IdentExpr(ident.1)))
-        )) |
-        complete!(do_parse!(
-            t: tag_token!(Token::Some) >>
-            (LocExpr(t.loc(), Expr::IdentExpr(Ident("option::Some".to_string()))))
-        ))
-    )
-);
-
-named!(parse_comma_exprs<Tokens, LocExpr<Expr>>,
-    preceded!(tag_token!(Token::Comma), parse_expr)
-);
-
-named!(parse_exprs<Tokens, Vec<LocExpr<Expr>>>,
-    do_parse!(
-        e: parse_expr >>
-        es: many0!(parse_comma_exprs) >>
-        ([&vec!(e)[..], &es[..]].concat())
-    )
-);
-
-fn parse_prefix_expr(input: Tokens) -> IResult<Tokens, LocExpr<Expr>> {
-    let (i1, t1) = try_parse!(
-        input,
-        alt!(complete!(tag_token!(Token::Minus)) | complete!(tag_token!(Token::Not)))
-    );
-
-    if t1.tok.is_empty() {
-        Err(Err::Error(error_position!(input, ErrorKind::Tag)))
-    } else {
-        let (i2, e) = try_parse!(i1, parse_expr);
-
-        match t1.tok0().clone() {
-            Token::Minus => Ok((
-                i2,
-                LocExpr(t1.loc(), Expr::PrefixExpr(Prefix::Minus, Box::new(e))),
-            )),
-            Token::Not => Ok((
-                i2,
-                LocExpr(t1.loc(), Expr::PrefixExpr(Prefix::Not, Box::new(e))),
-            )),
-            _ => Err(Err::Error(error_position!(input, ErrorKind::Tag))),
-        }
-    }
-}
-
-fn parse_pratt_expr(input: Tokens, precedence: Precedence) -> IResult<Tokens, LocExpr<Expr>> {
-    do_parse!(
-        input,
-        left: parse_atom_expr >> i: call!(go_parse_pratt_expr, precedence, left) >> (i)
-    )
-}
-
-fn go_parse_pratt_expr(
-    input: Tokens,
-    precedence: Precedence,
-    left: LocExpr<Expr>,
-) -> IResult<Tokens, LocExpr<Expr>> {
-    let (i1, t1) = try_parse!(input, take!(1));
-    if t1.tok.is_empty() {
-        Ok((i1, left))
-    } else {
-        let preview = t1.tok0().clone();
-        match infix_op(&preview) {
-            (Precedence::PDot, _) if precedence < Precedence::PDot => {
-                let (i2, left2) = try_parse!(input, call!(parse_dot_expr, left));
-                go_parse_pratt_expr(i2, precedence, left2)
-            }
-            (Precedence::PCall, _) if precedence < Precedence::PCall => {
-                let (i2, left2) = try_parse!(input, call!(parse_call_expr, left));
-                go_parse_pratt_expr(i2, precedence, left2)
-            }
-            (ref peek_precedence, Some((Assoc::Right, _))) if precedence <= *peek_precedence => {
-                let (i2, left2) = try_parse!(input, call!(parse_infix_expr, left));
-                go_parse_pratt_expr(i2, precedence, left2)
-            }
-            (ref peek_precedence, _) if precedence < *peek_precedence => {
-                let (i2, left2) = try_parse!(input, call!(parse_infix_expr, left));
-                go_parse_pratt_expr(i2, precedence, left2)
-            }
-            _ => Ok((input, left)),
-        }
-    }
-}
-
-fn parse_infix_expr(input: Tokens, left: LocExpr<Expr>) -> IResult<Tokens, LocExpr<Expr>> {
-    let (i1, t1) = try_parse!(input, take!(1));
-    if t1.tok.is_empty() {
-        Err(Err::Error(error_position!(input, ErrorKind::Tag)))
-    } else {
-        let next = t1.tok0().clone();
-        let (precedence, maybe_op) = infix_op(&next);
-        match maybe_op {
-            None => Err(Err::Error(error_position!(input, ErrorKind::Tag))),
-            Some((_, op)) => {
-                let (i2, right) = try_parse!(i1, call!(parse_pratt_expr, precedence));
-                Ok((
-                    i2,
-                    LocExpr(
-                        t1.loc(),
-                        Expr::InfixExpr(op, Box::new(left), Box::new(right)),
-                    ),
-                ))
-            }
-        }
-    }
-}
-
-// fn parse_dot_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr> {
-fn parse_dot_expr(input: Tokens, left: LocExpr<Expr>) -> IResult<Tokens, LocExpr<Expr>> {
-    let left_clone = left.clone();
-    alt!(
-        input,
-        complete!(do_parse!(
-            tag_token!(Token::Dot)
-                >> i: parse_int_literal!()
-                >> (LocExpr(
-                    left_clone.loc(),
-                    Expr::CallExpr {
-                        loc: i.0,
-                        function: i.1.to_string(),
-                        arguments: vec![left_clone.clone()],
-                    }
-                ))
-        )) | complete!(do_parse!(
-            tag_token!(Token::Dot)
-                >> id: parse_ident_expr
-                >> call: call!(parse_call_expr, id)
-                >> (match call.expr() {
-                    Expr::CallExpr {
-                        loc,
-                        function,
-                        arguments,
-                    } => LocExpr(
-                        left.loc(),
-                        Expr::CallExpr {
-                            loc: loc.clone(),
-                            function: format!(".::{}", function),
-                            // arguments: vec![],
-                            arguments: [&vec!(left.clone())[..], &arguments[..]].concat(),
-                        }
-                    ),
-                    _ => unreachable!(),
-                })
-        ))
-    )
-}
-
-fn parse_call_expr(input: Tokens, fn_handle: LocExpr<Expr>) -> IResult<Tokens, LocExpr<Expr>> {
-    do_parse!(
-        input,
-        tag_token!(Token::LParen)
-            >> arguments: opt!(parse_exprs)
-            >> tag_token!(Token::RParen)
-            >> (LocExpr(
-                fn_handle.loc(),
-                Expr::CallExpr {
-                    loc: fn_handle.loc(),
-                    function: match fn_handle.expr().eval_call_function() {
-                        Some(s) => s,
-                        None => {
-                            return Err(nom::Err::Error(error_position!(input, ErrorKind::Tag)));
-                        }
-                    },
-                    arguments: arguments.unwrap_or_default()
-                }
-            ))
-    )
-}
-
-named!(parse_list_expr<Tokens, LocExpr<Expr>>,
-    do_parse!(
-        t: tag_token!(Token::LBracket) >>
-        items: opt!(parse_exprs) >>
-        tag_token!(Token::RBracket) >>
-        (LocExpr(t.loc(), Expr::ListExpr(items.unwrap_or_default())))
-    )
-);
-
-named!(parse_if_expr<Tokens, LocExpr<Expr>>,
-    do_parse!(
-        t: tag_token!(Token::If) >>
-        b: alt!(
-                complete!(do_parse!(m: parse_match_exprs >> (LocExprOrMatches::Matches(m)))) |
-                complete!(do_parse!(s: parse_some_match >> (LocExprOrMatches::SomeMatch(s.0, s.1)))) |
-                complete!(do_parse!(e: parse_expr >> (LocExprOrMatches::Expr(e))))
-            ) >>
-        consequence: parse_block_stmt >>
-        alternative: opt!(parse_else_expr) >>
-        (LocExpr(
-            t.loc(),
-            match b {
-                LocExprOrMatches::Expr(expr) => Expr::IfExpr { cond: Box::new(expr), consequence, alternative },
-                LocExprOrMatches::Matches(matches) => Expr::IfMatchExpr { matches, consequence, alternative },
-                LocExprOrMatches::SomeMatch(var, expr) => Expr::IfSomeMatchExpr { var, expr: Box::new(expr), consequence, alternative },
-            }
-        ))
-    )
-);
-
-named!(parse_else_expr<Tokens, BlockStmt<Expr>>,
-    preceded!(
-        tag_token!(Token::Else),
-        alt!(
-            complete!(parse_block_stmt) |
-            complete!(do_parse!(e: parse_if_expr >> (BlockStmt::from(e))))
-        )
-    )
-);
-
-named!(parse_some_match<Tokens, (LocIdent, LocExpr<Expr>)>,
-    do_parse!(
-        tag_token!(Token::Let) >>
-        tag_token!(Token::Some) >>
-        id: delimited!(tag_token!(Token::LParen), parse_ident!(), tag_token!(Token::RParen)) >>
-        tag_token!(Token::Assign) >>
-        e: parse_expr >>
-        ((id, e))
-    )
-);
-
-named!(parse_match_expr<Tokens, (LocExpr<Expr>, Pattern)>,
-    do_parse!(
-        e: parse_expr >>
-        tag_token!(Token::Matches) >>
-        pat: parse_pattern >>
-        ((e, pat))
-    )
-);
-
-named!(parse_and_match_exprs<Tokens, (LocExpr<Expr>, Pattern)>,
-    preceded!(tag_token!(Token::And), parse_match_expr)
-);
-
-named!(parse_match_exprs<Tokens, Vec<(LocExpr<Expr>, Pattern)>>,
-    do_parse!(
-        e: parse_match_expr >>
-        es: many0!(parse_and_match_exprs) >>
-        ([&vec!(e)[..], &es[..]].concat())
-    )
-);
 
 lazy_static::lazy_static! {
     static ref CLASSES: HashSet<&'static str> =
@@ -1368,11 +924,6 @@ named!(parse_pat<Tokens, Pat>,
     )
 );
 
-named!(parse_pattern<Tokens, Pattern>, alt!(
-        complete!(do_parse!(p: parse_pat >> (Pattern::Regex(p)))) |
-        complete!(do_parse!(p: parse_label_literal!() >> (Pattern::Label(p.1))))
-    )
-);
 
 fn parse_pat_no_bind(input: Tokens) -> IResult<Tokens, PolicyRegex> {
     match parse_pat(input) {
@@ -1389,7 +940,7 @@ fn parse_pat_no_bind(input: Tokens) -> IResult<Tokens, PolicyRegex> {
     }
 }
 
-named!(parse_external<Tokens, External<Typ>>,
+named!(parse_external<Tokens, External>,
     do_parse!(
         tag_token!(Token::External) >>
         name: parse_ident!() >>
@@ -1400,7 +951,7 @@ named!(parse_external<Tokens, External<Typ>>,
     )
 );
 
-named!(parse_head<Tokens, Head<Typ>>,
+named!(parse_head<Tokens, Head>,
     do_parse!(
         tag_token!(Token::Function) >>
         id: parse_ident!() >>
@@ -1448,3 +999,506 @@ named!(parse_types<Tokens, Vec<Typ>>,
         ([&vec!(ty)[..], &tys[..]].concat())
     )
 );
+pub trait TParser<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+    //fn parse_program(&self, t:Tokens) -> Program<FlatTyp, FlatLiteral>;
+    named!(parse_program<Tokens, Program<FlatTyp, FlatLiteral>>, 
+        terminated!(
+            many0!(
+                alt!(
+                    complete!(do_parse!(f: call_mm!(Self::parse_fn_expr) >> (Decl::FnDecl(f)))) |
+                    complete!(do_parse!(e: parse_external >> (Decl::External(e))))
+                )
+            ),
+            tag_token!(Token::EOF)
+        )
+    );
+
+    named!(parse_fn_expr<Tokens, FnDecl<FlatTyp, FlatLiteral>>,
+        do_parse!(
+            head: call_mm!(Self::parse_fn_head) >>
+            body: call_mm!(Self::parse_block_stmt) >>
+            (FnDecl {head, body })
+        )
+    );
+    named!(parse_fn_head<Tokens, FnHead>,
+        do_parse!(
+            tag_token!(Token::Function) >>
+            id: parse_ident!() >>
+            tag_token!(Token::LParen) >>
+            params: opt!(parse_params) >>
+            tag_token!(Token::RParen) >>
+            typ: opt!(preceded!(tag_token!(Token::Arrow), parse_type)) >>
+            (FnHead {id, params: params.unwrap_or_default(), typ})
+        )
+    );
+
+    fn infix_op(t: &Token) -> (Precedence, Option<(Assoc, Infix<FlatTyp>)>) {
+        match *t {
+            Token::Equal => (Precedence::PEquals, Some((Assoc::Right, Infix::Equal))),
+            Token::NotEqual => (Precedence::PEquals, Some((Assoc::Right, Infix::NotEqual))),
+            Token::LessThanEqual => (
+                Precedence::PLessGreater,
+                Some((Assoc::Right, Infix::LessThanEqual)),
+            ),
+            Token::GreaterThanEqual => (
+                Precedence::PLessGreater,
+                Some((Assoc::Right, Infix::GreaterThanEqual)),
+            ),
+            Token::LessThan => (
+                Precedence::PLessGreater,
+                Some((Assoc::Right, Infix::LessThan)),
+            ),
+            Token::GreaterThan => (
+                Precedence::PLessGreater,
+                Some((Assoc::Right, Infix::GreaterThan)),
+            ),
+            Token::Or => (Precedence::POr, Some((Assoc::Right, Infix::Or))),
+            Token::And => (Precedence::PAnd, Some((Assoc::Right, Infix::And))),
+            Token::Plus => (Precedence::PSum, Some((Assoc::Left, Infix::Plus))),
+            Token::Minus => (Precedence::PSum, Some((Assoc::Left, Infix::Minus))),
+            Token::At => (Precedence::PSum, Some((Assoc::Right, Infix::Concat))),
+            Token::PlusPlus => (Precedence::PSum, Some((Assoc::Right, Infix::ConcatStr))),
+            Token::Multiply => (Precedence::PProduct, Some((Assoc::Left, Infix::Multiply))),
+            Token::Divide => (Precedence::PProduct, Some((Assoc::Left, Infix::Divide))),
+            Token::Percent => (Precedence::PProduct, Some((Assoc::Left, Infix::Remainder))),
+            Token::In => (Precedence::PIn, Some((Assoc::Left, Infix::In))),
+            Token::Dot => (Precedence::PDot, None),
+            Token::LParen => (Precedence::PCall, None),
+            Token::ColonColon => (Precedence::PModule, Some((Assoc::Right, Infix::Module))),
+            _ => (Precedence::PLowest, None),
+        }
+    }
+
+    named!(parse_expr_eof<Tokens, LocExpr<FlatTyp, FlatLiteral>>,
+        terminated!(call_mm!(Self::parse_expr), tag_token!(Token::EOF))
+    );
+
+    named!(parse_expr<Tokens, LocExpr<FlatTyp, FlatLiteral>>, 
+        call_mm!(Self::parse_pratt_expr, Precedence::PLowest)
+    );
+    named!(parse_block_stmt_eof<Tokens, BlockStmt<FlatTyp, FlatLiteral>>,
+        terminated!(call_mm!(Self::parse_block_stmt), tag_token!(Token::EOF))
+    );
+
+    named!(parse_block_stmt<Tokens, BlockStmt<FlatTyp, FlatLiteral>>,
+        do_parse!(
+            async_tag: opt!(tag_token!(Token::Async)) >>
+            statements: delimited!(tag_token!(Token::LBrace), many0!(call_mm!(Self::parse_stmt)), tag_token!(Token::RBrace)) >>
+            (BlockStmt {statements, async_tag: async_tag.is_some()})
+        )
+    );
+
+    named!(parse_stmt<Tokens, LocStmt<FlatTyp, FlatLiteral>>, alt!(
+        complete!(call_mm!(Self::parse_let_stmt)) |
+        complete!(call_mm!(Self::parse_return_stmt)) |
+        complete!(call_mm!(Self::parse_expr_stmt))
+    ));
+
+    named!(parse_let_stmt<Tokens, LocStmt<FlatTyp, FlatLiteral>>,
+        do_parse!(
+            t: tag_token!(Token::Let) >>
+            idents: parse_idents >>
+            tag_token!(Token::Assign) >>
+            expr: call_mm!(Self::parse_expr) >>
+            tag_token!(Token::SemiColon) >>
+            (LocStmt::let_stmt(t.loc(), idents, expr))
+        )
+    );
+
+    named!(parse_return_stmt<Tokens, LocStmt<FlatTyp, FlatLiteral>>,
+        do_parse!(
+            t: tag_token!(Token::Return) >>
+            expr: call_mm!(Self::parse_expr) >>
+            (LocStmt::return_stmt(t.loc(), expr))
+        )
+    );
+
+    named!(parse_expr_stmt<Tokens, LocStmt<FlatTyp, FlatLiteral>>,
+        do_parse!(
+            async_tag: opt!(tag_token!(Token::Async)) >>
+            expr: call_mm!(Self::parse_expr) >>
+            semi: opt!(tag_token!(Token::SemiColon)) >>
+            (LocStmt::expr_stmt(expr, async_tag.is_some(), semi.is_some()))
+        )
+    );
+
+    named!(parse_atom_expr<Tokens, LocExpr<FlatTyp, FlatLiteral>>, alt!(
+        complete!(call_mm!(Self::parse_lit_expr)) |
+        complete!(call_mm!(Self::parse_ident_expr)) |
+        complete!(call_mm!(Self::parse_prefix_expr)) |
+        complete!(call_mm!(Self::parse_paren_expr)) |
+        complete!(call_mm!(Self::parse_list_expr)) |
+        complete!(call_mm!(Self::parse_if_expr)) |
+        complete!(call_mm!(Self::parse_iter_expr)) |
+        complete!(call_mm!(Self::parse_all_any_expr))
+    ));
+
+    named!(parse_iter_expr<Tokens, LocExpr<FlatTyp, FlatLiteral>>,
+        do_parse!(
+            t: alt!(
+                tag_token!(Token::All) |
+                tag_token!(Token::Any) |
+                tag_token!(Token::Filter) |
+                tag_token!(Token::FilterMap) |
+                tag_token!(Token::ForEach) |
+                tag_token!(Token::Map)
+            ) >>
+            idents: parse_idents >>
+            tag_token!(Token::In) >>
+            expr: call_mm!(Self::parse_expr) >>
+            body: call_mm!(Self::parse_block_stmt) >>
+            (LocExpr(
+                t.loc(),
+                Expr::IterExpr {
+                    op: match t.tok0() {
+                        Token::All => Iter::All,
+                        Token::Any => Iter::Any,
+                        Token::Filter => Iter::Filter,
+                        Token::FilterMap => Iter::FilterMap,
+                        Token::ForEach => Iter::ForEach,
+                        Token::Map => Iter::Map,
+                        _ => unreachable!(),
+                    },
+                    idents,
+                    expr: Box::new(expr),
+                    body
+                }
+            ))
+        )
+    );
+
+    named!(parse_all_any_expr<Tokens, LocExpr<FlatTyp, FlatLiteral>>,
+        do_parse!(
+            t: alt!(
+                tag_token!(Token::All) |
+                tag_token!(Token::Any)
+            ) >>
+            expr: call_mm!(Self::parse_list_expr) >>
+            (LocExpr(
+                t.loc(),
+                Expr::IterExpr {
+                    op: match t.tok0() {
+                        Token::All => Iter::All,
+                        Token::Any => Iter::Any,
+                        _ => unreachable!(),
+                    },
+                    idents: vec![LocIdent(Loc::default(), Ident::from("x"))],
+                    expr: Box::new(expr),
+                    body: BlockStmt::from(LocExpr(Loc::default(), Expr::IdentExpr(Ident::from("x")))),
+                }
+            ))
+        )
+    );
+
+    named!(parse_paren_expr<Tokens, LocExpr<FlatTyp, FlatLiteral>>,
+        do_parse!(
+            t: tag_token!(Token::LParen) >>
+            es: opt!(call_mm!(Self::parse_exprs)) >>
+            tag_token!(Token::RParen) >>
+            (LocExpr(
+                t.loc(),
+                {
+                    let es = es.unwrap_or_default();
+                    let n = es.len();
+                    if n == 0 {
+                        Expr::LitExpr(Literal::unit())
+                    } else if n == 1 {
+                        es[0].expr().clone()
+                    } else {
+                        Expr::TupleExpr(es)
+                    }
+                }
+            ))
+        )
+    );
+
+    named!(parse_lit_expr<Tokens, LocExpr<FlatTyp, FlatLiteral>>, alt!(
+        complete!(do_parse!(
+            tag_token!(Token::Dot) >>
+            i: parse_int_literal!() >>
+            (LocExpr(i.0, Expr::LitExpr(Literal::float(format!(".{}", i.1).parse().unwrap()))))
+        )) |
+        complete!(do_parse!(
+            lit: parse_literal!() >>
+            (LocExpr(lit.loc(), Expr::LitExpr(lit.1)))
+        )) |
+        complete!(do_parse!(
+            t: tag_token!(Token::Regex) >>
+            tag_token!(Token::LParen) >>
+            regex: parse_pat_no_bind >>
+            tag_token!(Token::RParen) >>
+            (LocExpr(t.loc(), Expr::LitExpr(Literal::regex(regex))))
+        ))
+    ));
+
+    named!(parse_ident_expr<Tokens, LocExpr<FlatTyp, FlatLiteral>>,
+        alt!(
+            complete!(do_parse!(
+                ident: parse_ident!() >>
+                (LocExpr(ident.loc(), Expr::IdentExpr(ident.1)))
+            )) |
+            complete!(do_parse!(
+                t: tag_token!(Token::Some) >>
+                (LocExpr(t.loc(), Expr::IdentExpr(Ident("option::Some".to_string()))))
+            ))
+        )
+    );
+
+    named!(parse_comma_exprs<Tokens, LocExpr<FlatTyp, FlatLiteral>>,
+        preceded!(tag_token!(Token::Comma), call_mm!(Self::parse_expr))
+    );
+
+    named!(parse_exprs<Tokens, Vec<LocExpr<FlatTyp, FlatLiteral>>>,
+        do_parse!(
+            e: call_mm!(Self::parse_expr) >>
+            es: many0!(call_mm!(Self::parse_comma_exprs)) >>
+            ([&vec!(e)[..], &es[..]].concat())
+        )
+    );
+    fn parse_prefix_expr(input: Tokens) -> IResult<Tokens, LocExpr<FlatTyp, FlatLiteral>> {
+        let (i1, t1) = try_parse!(
+            input,
+            alt!(complete!(tag_token!(Token::Minus)) | complete!(tag_token!(Token::Not)))
+        );
+
+        if t1.tok.is_empty() {
+            Err(Err::Error(error_position!(input, ErrorKind::Tag)))
+        } else {
+            let (i2, e) = try_parse!(i1, call_mm!(Self::parse_expr));
+
+            match t1.tok0().clone() {
+                Token::Minus => Ok((
+                    i2,
+                    LocExpr(t1.loc(), Expr::PrefixExpr(Prefix::Minus, Box::new(e))),
+                )),
+                Token::Not => Ok((
+                    i2,
+                    LocExpr(t1.loc(), Expr::PrefixExpr(Prefix::Not, Box::new(e))),
+                )),
+                _ => Err(Err::Error(error_position!(input, ErrorKind::Tag))),
+            }
+        }
+    }
+
+    fn parse_pratt_expr(input: Tokens, precedence: Precedence) -> IResult<Tokens, LocExpr<FlatTyp, FlatLiteral>> {
+        do_parse!(
+            input,
+            left: call_mm!(Self::parse_atom_expr) >> i: call_mm!(Self::go_parse_pratt_expr, precedence, left) >> (i)
+        )
+    }
+
+    fn go_parse_pratt_expr(
+        input: Tokens,
+        precedence: Precedence,
+        left: LocExpr<FlatTyp, FlatLiteral>,
+    ) -> IResult<Tokens, LocExpr<FlatTyp, FlatLiteral>> {
+        let (i1, t1) = try_parse!(input, take!(1));
+        if t1.tok.is_empty() {
+            Ok((i1, left))
+        } else {
+            let preview = t1.tok0().clone();
+            match Self::infix_op(&preview) {
+                (Precedence::PDot, _) if precedence < Precedence::PDot => {
+                    let (i2, left2) = try_parse!(input, call_mm!(Self::parse_dot_expr, left));
+                    Self::go_parse_pratt_expr(i2, precedence, left2)
+                }
+                (Precedence::PCall, _) if precedence < Precedence::PCall => {
+                    let (i2, left2) = try_parse!(input, call_mm!(Self::parse_call_expr, left));
+                    Self::go_parse_pratt_expr(i2, precedence, left2)
+                }
+                (ref peek_precedence, Some((Assoc::Right, _))) if precedence <= *peek_precedence => {
+                    let (i2, left2) = try_parse!(input, call_mm!(Self::parse_infix_expr, left));
+                    Self::go_parse_pratt_expr(i2, precedence, left2)
+                }
+                (ref peek_precedence, _) if precedence < *peek_precedence => {
+                    let (i2, left2) = try_parse!(input, call_mm!(Self::parse_infix_expr, left));
+                    Self::go_parse_pratt_expr(i2, precedence, left2)
+                }
+                _ => Ok((input, left)),
+            }
+        }
+    }
+
+    fn parse_infix_expr(input: Tokens, left: LocExpr<FlatTyp, FlatLiteral>) -> IResult<Tokens, LocExpr<FlatTyp, FlatLiteral>> {
+        let (i1, t1) = try_parse!(input, take!(1));
+        if t1.tok.is_empty() {
+            Err(Err::Error(error_position!(input, ErrorKind::Tag)))
+        } else {
+            let next = t1.tok0().clone();
+            let (precedence, maybe_op) = Self::infix_op(&next);
+            match maybe_op {
+                None => Err(Err::Error(error_position!(input, ErrorKind::Tag))),
+                Some((_, op)) => {
+                    let (i2, right) = try_parse!(i1, call_mm!(Self::parse_pratt_expr, precedence));
+                    Ok((
+                        i2,
+                        LocExpr(
+                            t1.loc(),
+                            Expr::InfixExpr(op, Box::new(left), Box::new(right)),
+                        ),
+                    ))
+                }
+            }
+        }
+    }
+
+    // fn parse_dot_expr(input: Tokens, left: LocExpr) -> IResult<Tokens, LocExpr<Typ, FlatLiteral>> {
+    fn parse_dot_expr(input: Tokens, left: LocExpr<FlatTyp, FlatLiteral>) -> IResult<Tokens, LocExpr<FlatTyp, FlatLiteral>> {
+        let left_clone = left.clone();
+        alt!(
+            input,
+            complete!(do_parse!(
+                tag_token!(Token::Dot)
+                    >> i: parse_int_literal!()
+                    >> (LocExpr(
+                        left_clone.loc(),
+                        Expr::CallExpr {
+                            loc: i.0,
+                            function: i.1.to_string(),
+                            arguments: vec![left_clone.clone()],
+                        }
+                    ))
+            )) | complete!(do_parse!(
+                tag_token!(Token::Dot)
+                    >> id: call_mm!(Self::parse_ident_expr)
+                    >> call: call_mm!(Self::parse_call_expr, id)
+                    >> (match call.expr() {
+                        Expr::CallExpr {
+                            loc,
+                            function,
+                            arguments,
+                        } => LocExpr(
+                            left.loc(),
+                            Expr::CallExpr {
+                                loc: loc.clone(),
+                                function: format!(".::{}", function),
+                                // arguments: vec![],
+                                arguments: [&vec!(left.clone())[..], &arguments[..]].concat(),
+                            }
+                        ),
+                        _ => unreachable!(),
+                    })
+            ))
+        )
+    }
+
+    fn parse_call_expr(input: Tokens, fn_handle: LocExpr<FlatTyp, FlatLiteral>) -> IResult<Tokens, LocExpr<FlatTyp, FlatLiteral>> {
+        do_parse!(
+            input,
+            tag_token!(Token::LParen)
+                >> arguments: opt!(call_mm!(Self::parse_exprs))
+                >> tag_token!(Token::RParen)
+                >> (LocExpr(
+                    fn_handle.loc(),
+                    Expr::CallExpr {
+                        loc: fn_handle.loc(),
+                        function: match fn_handle.expr().eval_call_function() {
+                            Some(s) => s,
+                            None => {
+                                return Err(nom::Err::Error(error_position!(input, ErrorKind::Tag)));
+                            }
+                        },
+                        arguments: arguments.unwrap_or_default()
+                    }
+                ))
+        )
+    }
+
+    named!(parse_list_expr<Tokens, LocExpr<FlatTyp, FlatLiteral>>,
+        do_parse!(
+            t: tag_token!(Token::LBracket) >>
+            items: opt!(call_mm!(Self::parse_exprs)) >>
+            tag_token!(Token::RBracket) >>
+            (LocExpr(t.loc(), Expr::ListExpr(items.unwrap_or_default())))
+        )
+    );
+
+    named!(parse_if_expr<Tokens, LocExpr<FlatTyp, FlatLiteral>>,
+        do_parse!(
+            t: tag_token!(Token::If) >>
+            b: alt!(
+                    complete!(do_parse!(m: call_mm!(Self::parse_match_exprs) >> (LocExprOrMatches::Matches(m)))) |
+                    complete!(do_parse!(s: call_mm!(Self::parse_some_match) >> (LocExprOrMatches::SomeMatch(s.0, s.1)))) |
+                    complete!(do_parse!(e: call_mm!(Self::parse_expr) >> (LocExprOrMatches::Expr(e))))
+                ) >>
+            consequence: call_mm!(Self::parse_block_stmt) >>
+            alternative: opt!(call_mm!(Self::parse_else_expr)) >>
+            (LocExpr(
+                t.loc(),
+                match b {
+                    LocExprOrMatches::Expr(expr) => Expr::IfExpr { cond: Box::new(expr), consequence, alternative },
+                    LocExprOrMatches::Matches(matches) => Expr::IfMatchExpr { matches, consequence, alternative },
+                    LocExprOrMatches::SomeMatch(var, expr) => Expr::IfSomeMatchExpr { var, expr: Box::new(expr), consequence, alternative },
+                    LocExprOrMatches::Phantom(_) => unimplemented!()
+                }
+            ))
+        )
+    );
+
+    named!(parse_else_expr<Tokens, BlockStmt<FlatTyp, FlatLiteral>>,
+        preceded!(
+            tag_token!(Token::Else),
+            alt!(
+                complete!(call_mm!(Self::parse_block_stmt)) |
+                complete!(do_parse!(e: call_mm!(Self::parse_if_expr) >> (BlockStmt::from(e))))
+            )
+        )
+    );
+
+    named!(parse_some_match<Tokens, (LocIdent, LocExpr<FlatTyp, FlatLiteral>)>,
+        do_parse!(
+            tag_token!(Token::Let) >>
+            tag_token!(Token::Some) >>
+            id: delimited!(tag_token!(Token::LParen), parse_ident!(), tag_token!(Token::RParen)) >>
+            tag_token!(Token::Assign) >>
+            e: call_mm!(Self::parse_expr) >>
+            ((id, e))
+        )
+    );
+
+    named!(parse_match_expr<Tokens, (LocExpr<FlatTyp, FlatLiteral>, Pattern<FlatTyp>)>,
+        do_parse!(
+            e: call_mm!(Self::parse_expr) >>
+            tag_token!(Token::Matches) >>
+            pat: call_mm!(Self::parse_pattern) >>
+            ((e, pat))
+        )
+    );
+
+    named!(parse_and_match_exprs<Tokens, (LocExpr<FlatTyp, FlatLiteral>, Pattern<FlatTyp>)>,
+        preceded!(tag_token!(Token::And), call_mm!(Self::parse_match_expr))
+    );
+
+    named!(parse_match_exprs<Tokens, Vec<(LocExpr<FlatTyp, FlatLiteral>, Pattern<FlatTyp>)>>,
+        do_parse!(
+            e: call_mm!(Self::parse_match_expr) >>
+            es: many0!(call_mm!(Self::parse_and_match_exprs)) >>
+            ([&vec!(e)[..], &es[..]].concat())
+        )
+    );
+
+    named!(parse_pattern<Tokens, Pattern<FlatTyp>>, alt!(
+            complete!(do_parse!(p: parse_pat >> (Pattern::Regex(p)))) |
+            complete!(do_parse!(p: parse_label_literal!() >> (Pattern::Label(p.1))))
+        )
+    );
+}
+
+
+pub struct Parser<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> (PhantomData<FlatTyp>, PhantomData<FlatLiteral>); 
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Parser<FlatTyp, FlatLiteral> {
+    pub fn new() -> Self { Parser(PhantomData, PhantomData) }
+}  
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> TParser<FlatTyp, FlatLiteral>  for Parser<FlatTyp, FlatLiteral>  {
+}
+
+//If need wue the following stuff + pass parser object as argument:TParser in expression and lang
+//pub type DPParser = Parser<types::FlatTyp, DPFlatLiteral>; 
+//impl TParser<types::FlatTyp, DPFlatLiteral> for DPParser {
+//}
+//
+//pub type CPParser = Parser<types_cp::CPFlatTyp, CPFlatLiteral>; 
+//impl TParser<types_cp::CPFlatTyp, CPFlatLiteral> for CPParser {
+//}
+
+

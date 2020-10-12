@@ -1,9 +1,10 @@
 /// policies
 use super::{
-    expressions, lang,
-    types::{Signature, Typ, TTyp},
+    expressions,
+    lang,
+    literals,
+    types::{self, Signature, FlatTyp, DPTyp, Typ, TFlatTyp, TTyp},
     headers::THeaders,
-    parser
 };
 use lazy_static::lazy_static;
 use serde::{
@@ -60,26 +61,26 @@ impl FnPolicies {
 
 // map from function name to list of permitted types
 #[derive(Default)]
-struct ProtocolPolicy(BTreeMap<String, Vec<Signature<parser::Typ, Typ>>>);
+struct ProtocolPolicy(BTreeMap<String, Vec<Signature<types::FlatTyp>>>);
 
 impl ProtocolPolicy {
     fn functions(&self) -> Vec<String> {
         self.0.keys().cloned().collect()
     }
-    fn insert(&mut self, name: &str, fn_policy: Vec<Signature<parser::Typ, Typ>>) {
+    fn insert(&mut self, name: &str, fn_policy: Vec<Signature<FlatTyp>>) {
         self.0.insert(name.to_string(), fn_policy);
     }
-    fn insert_bool(&mut self, name: &str, args: Vec<Vec<Typ>>) {
+    fn insert_bool(&mut self, name: &str, args: Vec<Vec<DPTyp>>) {
         let sigs = args
             .into_iter()
-            .map(|v| Signature::new(v, Typ::Bool))
+            .map(|v| Signature::new(v, Typ::bool()))
             .collect();
         self.insert(name, sigs)
     }
-    fn insert_unit(&mut self, name: &str, args: Vec<Vec<Typ>>) {
+    fn insert_unit(&mut self, name: &str, args: Vec<Vec<DPTyp>>) {
         let sigs = args
             .into_iter()
-            .map(|v| Signature::new(v, Typ::Unit))
+            .map(|v| Signature::new(v, Typ::unit()))
             .collect();
         self.insert(name, sigs)
     }
@@ -96,16 +97,16 @@ lazy_static! {
         policy.insert_bool(
             ALLOW_REST_REQUEST,
             vec![
-                vec![Typ::HttpRequest, Typ::Data],
-                vec![Typ::HttpRequest],
+                vec![Typ::FlatTyp(FlatTyp::HttpRequest), Typ::FlatTyp(FlatTyp::Data)],
+                vec![Typ::FlatTyp(FlatTyp::HttpRequest)],
                 Vec::new(),
             ],
         );
         policy.insert_bool(
             ALLOW_REST_RESPONSE,
             vec![
-                vec![Typ::HttpResponse, Typ::Data],
-                vec![Typ::HttpResponse],
+                vec![Typ::FlatTyp(FlatTyp::HttpResponse), Typ::FlatTyp(FlatTyp::Data)],
+                vec![Typ::FlatTyp(FlatTyp::HttpResponse)],
                 Vec::new(),
             ],
         );
@@ -115,13 +116,13 @@ lazy_static! {
         let mut policy = ProtocolPolicy::default();
         policy.insert_bool(
             ALLOW_TCP_CONNECTION,
-            vec![vec![Typ::Connection], Vec::new()],
+            vec![vec![Typ::FlatTyp(FlatTyp::Connection)], Vec::new()],
         );
         policy.insert_unit(
             ON_TCP_DISCONNECT,
             vec![
-                vec![Typ::Connection, Typ::I64, Typ::I64],
-                vec![Typ::Connection],
+                vec![Typ::FlatTyp(FlatTyp::Connection), Typ::FlatTyp(FlatTyp::I64), Typ::FlatTyp(FlatTyp::I64)],
+                vec![Typ::FlatTyp(FlatTyp::Connection)],
                 Vec::new(),
             ],
         );
@@ -169,7 +170,7 @@ impl FromStr for Protocol {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Policy {
-    pub program: lang::Program,
+    pub program: lang::Program<types::FlatTyp, literals::DPFlatLiteral>,
     fn_policies: FnPolicies,
 }
 
@@ -217,7 +218,7 @@ impl Policy {
     pub fn from_bincode<R: std::io::Read>(r: R) -> Result<Self, std::io::Error> {
         armour_utils::bincode_gz_base64_dec(r)
     }
-    fn type_check(function: &str, sig1: &Signature<parser::Typ, Typ>, sig2: &Signature<parser::Typ, Typ>) -> bool {
+    fn type_check(function: &str, sig1: &Signature<FlatTyp>, sig2: &Signature<FlatTyp>) -> bool {
         let (args1, ty1) = sig1.split_as_ref();
         let (args2, ty2) = sig2.split_as_ref();
         Typ::type_check(function, vec![(None, ty1.clone())], vec![(None, ty2.clone())]).is_ok()
@@ -232,7 +233,7 @@ impl Policy {
             }
     }
     fn from_program(
-        program: lang::Program,
+        program: lang::Program<FlatTyp, literals::DPFlatLiteral>,
         proto_policy: &ProtocolPolicy,
     ) -> Result<Self, expressions::Error> {
         use std::convert::TryFrom;

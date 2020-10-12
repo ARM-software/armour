@@ -1,37 +1,45 @@
 /// policy language interpreter
 // NOTE: no optimization
-use super::{parser, headers, types};
-use super::expressions::{Block, Error, Expr, Pattern};
+use super::expressions::{Block, DPExpr, Error, Expr, self, Pattern};
 use super::externals::{Call, ExternalActor};
-use super::headers::{THeaders};
+use super::headers::{self, THeaders};
 use super::labels::Label;
 use super::lang::{Code, Program};
-use super::literals::{Connection, HttpRequest, HttpResponse, Literal, Method, VecSet};
+use super::literals::{self, Connection, HttpRequest, HttpResponse, Literal, DPLiteral, DPFlatLiteral, CPFlatLiteral, Method, TFlatLiteral, VecSet};
 use super::meta::{Egress, IngressEgress, Meta};
 use super::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
+use super::types::{self, TFlatTyp};
+use super::types_cp::{CPFlatTyp};
 use actix::prelude::*;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-type Headers = headers::Headers<parser::Typ, types::Typ>;
+//FIXME duplicated with lang and ? 
+//type Expr = expressions::Expr<types::FlatTyp, literals::DPFlatLiteral>;
+type Headers = headers::Headers<types::FlatTyp>;
 
 #[derive(Clone)]
-pub struct Env {
-    internal: Arc<Code>,
-    external: Addr<ExternalActor>,
+pub struct Env<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>
+where FlatTyp: 'static + std::marker::Send, FlatLiteral: 'static + std::marker::Send { //it means the type does not contain any non-static references
+    internal: Arc<Code<FlatTyp, FlatLiteral>>,
+    external: Addr<ExternalActor>,//FIXME not yet generic -> having generic actor is pain full....
     meta: Addr<IngressEgress>,
 }
 
-impl Env {
-    pub fn new(prog: &Program) -> Self {
+pub type DPEnv = Env<types::FlatTyp, literals::DPFlatLiteral>;
+pub type CPEnv = Env<CPFlatTyp, literals::CPFlatLiteral>;
+
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Env<FlatTyp, FlatLiteral>
+where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send { //it means the type does not contain any non-static references
+    pub fn new(prog: &Program<FlatTyp, FlatLiteral>) -> Self {
         Env {
             internal: Arc::new(prog.code.clone()),
-            external: ExternalActor::new(prog).start(),
+            external: ExternalActor::new(prog).start(), //TODO
             meta: IngressEgress::start_default(),
         }
     }
-    fn get(&self, name: &str) -> Option<Expr> {
+    fn get(&self, name: &str) -> Option<Expr<FlatTyp, FlatLiteral>> {
         self.internal.0.get(name).cloned()
     }
     pub fn set_meta(&mut self, meta: IngressEgress) {
@@ -42,46 +50,167 @@ impl Env {
     }
 }
 
-impl Literal {
-    fn eval_prefix(&self, p: &Prefix) -> Option<Self> {
-        match (p, self) {
-            (Prefix::Not, Literal::Bool(b)) => Some(Literal::Bool(!b)),
-            (Prefix::Minus, Literal::Int(i)) => Some(Literal::Int(-i)),
+pub trait TInterpret<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  {
+    fn eval_prefix(&self, p: &Prefix<FlatTyp>) -> Option<Literal<FlatTyp, FlatLiteral>>;
+    fn eval_infix(&self, op: &Infix<FlatTyp>, other: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
+    fn eval_call0(f: &str) -> Option<Literal<FlatTyp, FlatLiteral>>;
+    fn eval_call1(&self, f: &str) -> Option<Literal<FlatTyp, FlatLiteral>>;
+    fn eval_call2(&self, f: &str, other: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
+    fn eval_call3(&self, f: &str, l1: &Self, l2: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
+    fn eval_call4(&self, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
+    fn helper_evalexpr(e : &Expr<FlatTyp, FlatLiteral>, env: Env<FlatTyp, FlatLiteral>) -> BoxFuture<'static, Result<Expr<FlatTyp, FlatLiteral>, self::Error>>;
+}
+
+macro_rules! dpflatlit (
+  ($i: ident ($($args:tt)*) ) => (
+        DPFlatLiteral::$i($($args)*)
+  );
+);
+macro_rules! cpflatlit (
+  ($i: ident ($($args:tt)*) ) => (
+        CPFlatLiteral::$i($($args)*)
+  );
+);
+macro_rules! dplit (
+  ($i: ident ($($args:tt)*) ) => (
+      Literal::FlatLiteral(DPFlatLiteral::$i($($args)*))
+  );
+);
+macro_rules! cplit (
+  ($i: ident ($($args:tt)*) ) => (
+      Literal::FlatLiteral(CPFlatLiteral::$i($($args)*))
+  );
+);
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>+TInterpret<FlatTyp, FlatLiteral>> TInterpret<FlatTyp, FlatLiteral> for Literal<FlatTyp, FlatLiteral> {
+    fn eval_prefix(&self, p: &Prefix<FlatTyp>) -> Option<Literal<FlatTyp, FlatLiteral>> {
+        match self {
+            Literal::FlatLiteral(fl) => fl.eval_prefix(p),
             _ => None,
         }
     }
-    fn eval_infix(&self, op: &Infix, other: &Literal) -> Option<Self> {
-        match (op, self, other) {
-            (Infix::Equal, _, _) => Some(Literal::Bool(self == other)),
-            (Infix::NotEqual, _, _) => Some(Literal::Bool(self != other)),
-            (Infix::Plus, Literal::Int(i), Literal::Int(j)) => Some(Literal::Int(i + j)),
-            (Infix::Minus, Literal::Int(i), Literal::Int(j)) => Some(Literal::Int(i - j)),
-            (Infix::Divide, Literal::Int(_), Literal::Int(0)) => None,
-            (Infix::Divide, Literal::Int(i), Literal::Int(j)) => Some(Literal::Int(i / j)),
-            (Infix::Multiply, Literal::Int(i), Literal::Int(j)) => Some(Literal::Int(i * j)),
-            (Infix::Remainder, Literal::Int(_), Literal::Int(0)) => None,
-            (Infix::Remainder, Literal::Int(i), Literal::Int(j)) => Some(Literal::Int(i % j)),
-            (Infix::LessThan, Literal::Int(i), Literal::Int(j)) => Some(Literal::Bool(i < j)),
-            (Infix::LessThanEqual, Literal::Int(i), Literal::Int(j)) => Some(Literal::Bool(i <= j)),
-            (Infix::GreaterThan, Literal::Int(i), Literal::Int(j)) => Some(Literal::Bool(i > j)),
-            (Infix::GreaterThanEqual, Literal::Int(i), Literal::Int(j)) => {
-                Some(Literal::Bool(i >= j))
+    fn eval_infix(&self, op: &Infix<FlatTyp>, other: &Self) -> Option<Literal<FlatTyp, FlatLiteral>> {
+        match (self, other) {
+            (Literal::FlatLiteral(fl), Literal::FlatLiteral(other))  => fl.eval_infix(op, other),
+            _ => match (op, self, other) {
+                (Infix::Concat, Literal::List(i), Literal::List(j)) => {
+                    let mut k = i.clone();
+                    k.append(&mut j.clone());
+                    Some(Literal::List(k))
+                },
+                (Infix::In, _, Literal::List(l)) => Some(VecSet::contains(l, self)),
+                _ => None,
             }
-            (Infix::And, Literal::Bool(i), Literal::Bool(j)) => Some(Literal::Bool(*i && *j)),
-            (Infix::Or, Literal::Bool(i), Literal::Bool(j)) => Some(Literal::Bool(*i || *j)),
-            (Infix::Concat, Literal::List(i), Literal::List(j)) => {
-                let mut k = i.clone();
-                k.append(&mut j.clone());
-                Some(Literal::List(k))
-            }
-            (Infix::ConcatStr, Literal::Str(i), Literal::Str(j)) => {
-                Some(Literal::Str(format!("{}{}", i, j)))
-            }
-            (Infix::In, _, Literal::List(l)) => Some(VecSet::contains(l, self)),
-            _ => None,
         }
     }
+
     fn eval_call0(f: &str) -> Option<Self> {
+        FlatLiteral::eval_call0(f) 
+    }
+
+    fn eval_call1(&self, f: &str) -> Option<Self> {
+        match self {
+            Literal::FlatLiteral(fl) => fl.eval_call1(f),
+            _ => match (f, self) {
+                ("option::is_none", Literal::Tuple(t)) => Some(Literal::bool(t.is_empty())),
+                ("option::is_some", Literal::Tuple(t)) => Some(Literal::bool(t.len() == 1)),
+                ("list::len", Literal::List(l)) => Some(Literal::int(l.len() as i64)),
+                ("list::reduce", Literal::List(l)) => {
+                    if let Some(v) = l.get(0) {
+                        if l.iter().all(|w| v == w) {
+                            Some(v.some())
+                        } else {
+                            Some(Literal::none())
+                        }
+                    } else {
+                        Some(Literal::none())
+                    }
+                }
+                (_, Literal::Tuple(l)) => {
+                    if let Ok(i) = f.parse::<usize>() {
+                        l.get(i).cloned()
+                    } else {
+                        None
+                    }
+                }
+                _ => None
+            }
+        }
+    }
+    fn eval_call2(&self, f: &str, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (Literal::FlatLiteral(fl), Literal::FlatLiteral(other)) => fl.eval_call2(f, other),
+            _ => match (f, self, other) {
+                ("list::is_subset", Literal::List(i), Literal::List(j)) => {
+
+                    Some(VecSet::is_subset(i, j))
+                }
+                ("list::is_disjoint", Literal::List(i), Literal::List(j)) => {
+                    Some(VecSet::is_disjoint(i, j))
+                }
+                ("list::difference", Literal::List(i), Literal::List(j)) => {
+                    Some(VecSet::difference(i, j))
+                }
+                ("list::intersection", Literal::List(i), Literal::List(j)) => {
+                    Some(VecSet::intersection(i, j))
+                }
+                _ =>  None
+            }
+        }
+    }
+    fn eval_call3(&self, f: &str, l1: &Self, l2: &Self) -> Option<Self> {
+        match (self, l1, l2) {
+            (Literal::FlatLiteral(fl), Literal::FlatLiteral(l1), Literal::FlatLiteral(l2)) => fl.eval_call3(f, l1, l2),
+            _ => None
+        }
+    }
+    #[allow(clippy::many_single_char_names)]
+    fn eval_call4(&self, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Option<Self> {
+        match (self, l1, l2, l3) {
+            (Literal::FlatLiteral(fl), Literal::FlatLiteral(l1), Literal::FlatLiteral(l2), Literal::FlatLiteral(l3)) => fl.eval_call4(f, l1, l2, l3),
+            _ => None
+        }
+    }
+
+    fn helper_evalexpr(e : &Expr<FlatTyp, FlatLiteral>, env: Env<FlatTyp, FlatLiteral>) -> BoxFuture<'static, Result<Expr<FlatTyp, FlatLiteral>, self::Error>>{
+        unimplemented!()
+    }
+}
+
+//TODO factorize using same structure as in types.rs
+impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
+    fn eval_prefix(&self, p: &Prefix<types::FlatTyp>) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
+        match (p, self) {
+            (Prefix::Not, dpflatlit!(Bool(b))) => Some(dplit!(Bool(b.clone()))),
+            (Prefix::Minus, dpflatlit!(Int(i))) => Some(dplit!(Int(-i))),
+            _ => None,
+        }
+    }
+    fn eval_infix(&self, op: &Infix<types::FlatTyp>, other: &Self) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
+        match (op, self, other) {
+            (Infix::Equal, _, _) => Some(dplit!(Bool(self == other))),
+            (Infix::NotEqual, _, _) => Some(dplit!(Bool(self != other))),
+            (Infix::Plus, dpflatlit!(Int(i)), dpflatlit!(Int(j))) => Some(dplit!(Int(i + j))),
+            (Infix::Minus, dpflatlit!(Int(i)), dpflatlit!(Int(j))) => Some(dplit!(Int(i - j))),
+            (Infix::Divide, dpflatlit!(Int(_)), dpflatlit!(Int(0))) => None,
+            (Infix::Divide, dpflatlit!(Int(i)), dpflatlit!(Int(j))) => Some(dplit!(Int(i / j))),
+            (Infix::Multiply, dpflatlit!(Int(i)), dpflatlit!(Int(j))) => Some(dplit!(Int(i * j))),
+            (Infix::Remainder, dpflatlit!(Int(_)), dpflatlit!(Int(0))) => None,
+            (Infix::Remainder, dpflatlit!(Int(i)), dpflatlit!(Int(j))) => Some(dplit!(Int(i % j))),
+            (Infix::LessThan, dpflatlit!(Int(i)), dpflatlit!(Int(j))) => Some(dplit!(Bool(i < j))),
+            (Infix::LessThanEqual, dpflatlit!(Int(i)), dpflatlit!(Int(j))) => Some(dplit!(Bool(i <= j))),
+            (Infix::GreaterThan, dpflatlit!(Int(i)), dpflatlit!(Int(j))) => Some(dplit!(Bool(i > j))),
+            (Infix::GreaterThanEqual, dpflatlit!(Int(i)), dpflatlit!(Int(j))) => {
+                Some(dplit!(Bool(i >= j)))
+            }
+            (Infix::And, dpflatlit!(Bool(i)), dpflatlit!(Bool(j))) => Some(dplit!(Bool(*i && *j))),
+            (Infix::Or, dpflatlit!(Bool(i)), dpflatlit!(Bool(j))) => Some(dplit!(Bool(*i || *j))),
+            (Infix::ConcatStr, dpflatlit!(Str(i)), dpflatlit!(Str(j))) => {
+                Some(dplit!(Str(format!("{}{}", i, j))))
+            }
+            _ => None,
+        }
+    }
+    fn eval_call0(f: &str) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
         match f {
             "HttpRequest::GET" => Some(HttpRequest::default().into()),
             "HttpRequest::POST" => Some(Method::POST.into()),
@@ -92,98 +221,77 @@ impl Literal {
             "HttpRequest::CONNECT" => Some(Method::CONNECT.into()),
             "HttpRequest::PATCH" => Some(Method::PATCH.into()),
             "HttpRequest::TRACE" => Some(Method::TRACE.into()),
-            "ID::default" => Some(Literal::ID(Default::default())),
-            "Connection::default" => Some(Literal::Connection(Default::default())),
-            "IpAddr::localhost" => Some(Literal::IpAddr(std::net::IpAddr::V4(
+            "ID::default" => Some(Literal::id(Default::default())),
+            "Connection::default" => Some(Literal::connection(Default::default())),
+            "IpAddr::localhost" => Some(Literal::ipAddr(std::net::IpAddr::V4(
                 std::net::Ipv4Addr::new(127, 0, 0, 1),
             ))),
             _ => None,
         }
     }
-    fn eval_call1(&self, f: &str) -> Option<Self> {
+    fn eval_call1(&self, f: &str) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
         match (f, self) {
-            ("option::Some", _) => Some(self.some()),
-            ("option::is_none", Literal::Tuple(t)) => Some(Literal::Bool(t.is_empty())),
-            ("option::is_some", Literal::Tuple(t)) => Some(Literal::Bool(t.len() == 1)),
-            ("i64::abs", Literal::Int(i)) => Some(Literal::Int(i.abs())),
-            ("i64::to_str", Literal::Int(i)) => Some(Literal::Str(i.to_string())),
-            ("str::len", Literal::Str(s)) => Some(Literal::Int(s.len() as i64)),
-            ("str::to_lowercase", Literal::Str(s)) => Some(Literal::Str(s.to_lowercase())),
-            ("str::to_uppercase", Literal::Str(s)) => Some(Literal::Str(s.to_uppercase())),
-            ("str::trim_start", Literal::Str(s)) => Some(Literal::Str(s.trim_start().to_string())),
-            ("str::trim_end", Literal::Str(s)) => Some(Literal::Str(s.trim_end().to_string())),
-            ("str::as_bytes", Literal::Str(s)) => Some(Literal::Data(s.as_bytes().to_vec())),
-            ("str::from_utf8", Literal::Data(s)) => Some(Literal::Str(
+            ("option::Some", _) => Some(Literal::some2(self)),
+            ("i64::abs", dpflatlit!(Int(i))) => Some(dplit!(Int(i.abs()))),
+            ("i64::to_str", dpflatlit!(Int(i))) => Some(dplit!(Str(i.to_string()))),
+            ("str::len", dpflatlit!(Str(s))) => Some(dplit!(Int(s.len() as i64))),
+            ("str::to_lowercase", dpflatlit!(Str(s))) => Some(dplit!(Str(s.to_lowercase()))),
+            ("str::to_uppercase", dpflatlit!(Str(s))) => Some(dplit!(Str(s.to_uppercase()))),
+            ("str::trim_start", dpflatlit!(Str(s))) => Some(dplit!(Str(s.trim_start().to_string()))),
+            ("str::trim_end", dpflatlit!(Str(s))) => Some(dplit!(Str(s.trim_end().to_string()))),
+            ("str::as_bytes", dpflatlit!(Str(s))) => Some(dplit!(Data(s.as_bytes().to_vec()))),
+            ("str::from_utf8", dpflatlit!(Data(s))) => Some(dplit!(Str(
                 std::string::String::from_utf8_lossy(s).to_string(),
-            )),
-            ("str::to_base64", Literal::Str(s)) => Some(Literal::Str(base64::encode(s))),
-            ("data::to_base64", Literal::Data(d)) => Some(Literal::Str(base64::encode(d))),
-            ("data::len", Literal::Data(d)) => Some(Literal::Int(d.len() as i64)),
-            ("HttpRequest::connection", Literal::HttpRequest(req)) => Some(req.connection()),
-            ("HttpRequest::from", Literal::HttpRequest(req)) => Some(req.from_lit()),
-            ("HttpRequest::to", Literal::HttpRequest(req)) => Some(req.to_lit()),
-            ("HttpRequest::from_to", Literal::HttpRequest(req)) => Some(req.from_to()),
-            ("HttpRequest::method", Literal::HttpRequest(req)) => Some(req.method()),
-            ("HttpRequest::version", Literal::HttpRequest(req)) => Some(req.version()),
-            ("HttpRequest::path", Literal::HttpRequest(req)) => Some(req.path()),
-            ("HttpRequest::route", Literal::HttpRequest(req)) => Some(req.route()),
-            ("HttpRequest::query", Literal::HttpRequest(req)) => Some(req.query()),
-            ("HttpRequest::query_pairs", Literal::HttpRequest(req)) => Some(req.query_pairs()),
-            ("HttpRequest::header_pairs", Literal::HttpRequest(req)) => Some(req.header_pairs()),
-            ("HttpRequest::headers", Literal::HttpRequest(req)) => Some(req.headers()),
-            ("HttpResponse::new", Literal::Int(code)) => Some(HttpResponse::literal(*code as u16)),
-            ("HttpResponse::connection", Literal::HttpResponse(res)) => Some(res.connection()),
-            ("HttpResponse::from", Literal::HttpResponse(res)) => Some(res.from_lit()),
-            ("HttpResponse::to", Literal::HttpResponse(res)) => Some(res.to_lit()),
-            ("HttpResponse::from_to", Literal::HttpResponse(res)) => Some(res.from_to()),
-            ("HttpResponse::status", Literal::HttpResponse(res)) => Some(res.status()),
-            ("HttpResponse::version", Literal::HttpResponse(res)) => Some(res.version()),
-            ("HttpResponse::reason", Literal::HttpResponse(res)) => Some(res.reason()),
-            ("HttpResponse::header_pairs", Literal::HttpResponse(req)) => Some(req.header_pairs()),
-            ("HttpResponse::headers", Literal::HttpResponse(req)) => Some(req.headers()),
-            ("list::len", Literal::List(l)) => Some(Literal::Int(l.len() as i64)),
-            ("list::reduce", Literal::List(l)) => {
-                if let Some(v) = l.get(0) {
-                    if l.iter().all(|w| v == w) {
-                        Some(v.some())
-                    } else {
-                        Some(Literal::none())
-                    }
-                } else {
-                    Some(Literal::none())
-                }
-            }
-            ("IpAddr::octets", Literal::IpAddr(ip)) => Some(Literal::from(ip)),
-            ("ID::labels", Literal::ID(id)) => Some(id.labels()),
-            ("ID::hosts", Literal::ID(id)) => Some(id.hosts()),
-            ("ID::ips", Literal::ID(id)) => Some(id.ips()),
-            ("ID::port", Literal::ID(id)) => Some(id.port()),
-            (_, Literal::Tuple(l)) => {
-                if let Ok(i) = f.parse::<usize>() {
-                    l.get(i).cloned()
-                } else {
-                    None
-                }
-            }
-            ("Connection::from_to", Literal::Connection(c)) => Some(c.from_to()),
-            ("Connection::from", Literal::Connection(c)) => Some(c.from_lit()),
-            ("Connection::to", Literal::Connection(c)) => Some(c.to_lit()),
-            ("Connection::number", Literal::Connection(c)) => Some(c.number()),
-            ("Label::parts", Literal::Label(l)) => Some(l.parts().into()),
-            ("IpAddr::reverse_lookup", Literal::IpAddr(ip)) => {
+            ))),
+            ("str::to_base64", dpflatlit!(Str(s))) => Some(dplit!(Str(base64::encode(s)))),
+            ("data::to_base64", dpflatlit!(Data(d))) => Some(dplit!(Str(base64::encode(d)))),
+            ("data::len", dpflatlit!(Data(d))) => Some(dplit!(Int(d.len() as i64))),
+            ("HttpRequest::connection", dpflatlit!(HttpRequest(req))) => Some(req.connection()),
+            ("HttpRequest::from", dpflatlit!(HttpRequest(req))) => Some(req.from_lit()),
+            ("HttpRequest::to", dpflatlit!(HttpRequest(req))) => Some(req.to_lit()),
+            ("HttpRequest::from_to", dpflatlit!(HttpRequest(req))) => Some(req.from_to()),
+            ("HttpRequest::method", dpflatlit!(HttpRequest(req))) => Some(req.method()),
+            ("HttpRequest::version", dpflatlit!(HttpRequest(req))) => Some(req.version()),
+            ("HttpRequest::path", dpflatlit!(HttpRequest(req))) => Some(req.path()),
+            ("HttpRequest::route", dpflatlit!(HttpRequest(req))) => Some(req.route()),
+            ("HttpRequest::query", dpflatlit!(HttpRequest(req))) => Some(req.query()),
+            ("HttpRequest::query_pairs", dpflatlit!(HttpRequest(req))) => Some(req.query_pairs()),
+            ("HttpRequest::header_pairs", dpflatlit!(HttpRequest(req))) => Some(req.header_pairs()),
+            ("HttpRequest::headers", dpflatlit!(HttpRequest(req))) => Some(req.headers()),
+            ("HttpResponse::new", dpflatlit!(Int(code))) => Some(HttpResponse::literal(*code as u16)),
+            ("HttpResponse::connection", dpflatlit!(HttpResponse(res))) => Some(res.connection()),
+            ("HttpResponse::from", dpflatlit!(HttpResponse(res))) => Some(res.from_lit()),
+            ("HttpResponse::to", dpflatlit!(HttpResponse(res))) => Some(res.to_lit()),
+            ("HttpResponse::from_to", dpflatlit!(HttpResponse(res))) => Some(res.from_to()),
+            ("HttpResponse::status", dpflatlit!(HttpResponse(res))) => Some(res.status()),
+            ("HttpResponse::version", dpflatlit!(HttpResponse(res))) => Some(res.version()),
+            ("HttpResponse::reason", dpflatlit!(HttpResponse(res))) => Some(res.reason()),
+            ("HttpResponse::header_pairs", dpflatlit!(HttpResponse(req))) => Some(req.header_pairs()),
+            ("HttpResponse::headers", dpflatlit!(HttpResponse(req))) => Some(req.headers()),
+            ("IpAddr::octets", dpflatlit!(IpAddr(ip))) => Some(Literal::from(ip)),
+            ("ID::labels", dpflatlit!(ID(id))) => Some(id.labels()),
+            ("ID::hosts", dpflatlit!(ID(id))) => Some(id.hosts()),
+            ("ID::ips", dpflatlit!(ID(id))) => Some(id.ips()),
+            ("ID::port", dpflatlit!(ID(id))) => Some(id.port()),
+            ("Connection::from_to", dpflatlit!(Connection(c))) => Some(c.from_to()),
+            ("Connection::from", dpflatlit!(Connection(c))) => Some(c.from_lit()),
+            ("Connection::to", dpflatlit!(Connection(c))) => Some(c.to_lit()),
+            ("Connection::number", dpflatlit!(Connection(c))) => Some(c.number()),
+            ("Label::parts", dpflatlit!(Label(l))) => Some(l.parts().into()),
+            ("IpAddr::reverse_lookup", dpflatlit!(IpAddr(ip))) => {
                 Some(if let Ok(res) = dns_lookup::lookup_addr(ip) {
-                    Literal::Str(res).some()
+                    dplit!(Str(res)).some()
                 } else {
                     Literal::none()
                 })
             }
-            ("IpAddr::lookup", Literal::Str(name)) => {
+            ("IpAddr::lookup", dpflatlit!(Str(name))) => {
                 Some(if let Ok(res) = dns_lookup::lookup_host(name) {
                     Literal::List(
                         res.iter()
                             .filter_map(|ip| {
                                 if ip.is_ipv4() {
-                                    Some(Literal::IpAddr(*ip))
+                                    Some(dplit!(IpAddr(*ip)))
                                 } else {
                                     None
                                 }
@@ -198,146 +306,461 @@ impl Literal {
             _ => None,
         }
     }
-    fn eval_call2(&self, f: &str, other: &Literal) -> Option<Self> {
+    fn eval_call2(&self, f: &str, other: &Self) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
         match (f, self, other) {
-            ("i64::pow", Literal::Int(i), Literal::Int(j)) => Some(Literal::Int(i.pow(*j as u32))),
-            ("i64::min", Literal::Int(i), Literal::Int(j)) => {
-                Some(Literal::Int(std::cmp::min(*i, *j)))
+            ("i64::pow", dpflatlit!(Int(i)), dpflatlit!(Int(j))) => Some(dplit!(Int(i.pow(*j as u32)))),
+            ("i64::min", dpflatlit!(Int(i)), dpflatlit!(Int(j))) => {
+                Some(dplit!(Int(std::cmp::min(*i, *j))))
             }
-            ("i64::max", Literal::Int(i), Literal::Int(j)) => {
-                Some(Literal::Int(std::cmp::max(*i, *j)))
+            ("i64::max", dpflatlit!(Int(i)), dpflatlit!(Int(j))) => {
+                Some(dplit!(Int(std::cmp::max(*i, *j))))
             }
-            ("str::starts_with", Literal::Str(i), Literal::Str(j)) => {
-                Some(Literal::Bool(i.starts_with(j)))
+            ("str::starts_with", dpflatlit!(Str(i)), dpflatlit!(Str(j))) => {
+                Some(dplit!(Bool(i.starts_with(j))))
             }
-            ("str::ends_with", Literal::Str(i), Literal::Str(j)) => {
-                Some(Literal::Bool(i.ends_with(j)))
+            ("str::ends_with", dpflatlit!(Str(i)), dpflatlit!(Str(j))) => {
+                Some(dplit!(Bool(i.ends_with(j))))
             }
-            ("str::is_match", Literal::Str(s), Literal::Regex(r))
-            | ("regex::is_match", Literal::Regex(r), Literal::Str(s)) => {
-                Some(Literal::Bool(r.is_match(s)))
+            ("str::is_match", dpflatlit!(Str(s)), dpflatlit!(Regex(r)))
+            | ("regex::is_match", dpflatlit!(Regex(r)), dpflatlit!(Str(s))) => {
+                Some(dplit!(Bool(r.is_match(s))))
             }
-            ("str::contains", Literal::Str(i), Literal::Str(j)) => {
-                Some(Literal::Bool(i.contains(j)))
+            ("str::contains", dpflatlit!(Str(i)), dpflatlit!(Str(j))) => {
+                Some(dplit!(Bool(i.contains(j))))
             }
-            ("HttpRequest::set_path", Literal::HttpRequest(req), Literal::Str(q)) => {
+            ("HttpRequest::set_path", dpflatlit!(HttpRequest(req)), dpflatlit!(Str(q))) => {
                 Some(req.set_path(q).into())
             }
-            ("HttpRequest::set_query", Literal::HttpRequest(req), Literal::Str(q)) => {
+            ("HttpRequest::set_query", dpflatlit!(HttpRequest(req)), dpflatlit!(Str(q))) => {
                 Some(req.set_query(q).into())
             }
-            ("HttpRequest::header", Literal::HttpRequest(req), Literal::Str(h)) => {
+            ("HttpRequest::header", dpflatlit!(HttpRequest(req)), dpflatlit!(Str(h))) => {
                 Some(req.header(&h))
             }
-            ("HttpRequest::unique_header", Literal::HttpRequest(req), Literal::Str(h)) => {
+            ("HttpRequest::unique_header", dpflatlit!(HttpRequest(req)), dpflatlit!(Str(h))) => {
                 Some(req.unique_header(&h))
             }
-            ("HttpRequest::set_connection", Literal::HttpRequest(req), Literal::Connection(c)) => {
+            ("HttpRequest::set_connection", dpflatlit!(HttpRequest(req)), dpflatlit!(Connection(c))) => {
                 Some(req.set_connection(c).into())
             }
-            ("HttpRequest::set_from", Literal::HttpRequest(req), Literal::ID(f)) => {
+            ("HttpRequest::set_from", dpflatlit!(HttpRequest(req)), dpflatlit!(ID(f))) => {
                 Some(req.set_from(f).into())
             }
-            ("HttpRequest::set_to", Literal::HttpRequest(req), Literal::ID(f)) => {
+            ("HttpRequest::set_to", dpflatlit!(HttpRequest(req)), dpflatlit!(ID(f))) => {
                 Some(req.set_to(f).into())
             }
-            ("HttpResponse::header", Literal::HttpResponse(res), Literal::Str(h)) => {
+            ("HttpResponse::header", dpflatlit!(HttpResponse(res)), dpflatlit!(Str(h))) => {
                 Some(res.header(&h))
             }
-            ("HttpResponse::unique_header", Literal::HttpResponse(res), Literal::Str(h)) => {
+            ("HttpResponse::unique_header", dpflatlit!(HttpResponse(res)), dpflatlit!(Str(h))) => {
                 Some(res.unique_header(&h))
             }
-            ("HttpResponse::set_reason", Literal::HttpResponse(res), Literal::Str(q)) => {
+            ("HttpResponse::set_reason", dpflatlit!(HttpResponse(res)), dpflatlit!(Str(q))) => {
                 Some(res.set_reason(q).into())
             }
             (
                 "HttpResponse::set_connection",
-                Literal::HttpResponse(res),
-                Literal::Connection(c),
+                dpflatlit!(HttpResponse(res)),
+                dpflatlit!(Connection(c)),
             ) => Some(res.set_connection(c).into()),
-            ("HttpResponse::set_from", Literal::HttpResponse(res), Literal::ID(f)) => {
+            ("HttpResponse::set_from", dpflatlit!(HttpResponse(res)), dpflatlit!(ID(f))) => {
                 Some(res.set_from(f).into())
             }
-            ("HttpResponse::set_to", Literal::HttpResponse(res), Literal::ID(f)) => {
+            ("HttpResponse::set_to", dpflatlit!(HttpResponse(res)), dpflatlit!(ID(f))) => {
                 Some(res.set_to(f).into())
             }
-            ("ID::has_label", Literal::ID(id), Literal::Label(l)) => Some(id.has_label(l).into()),
-            ("ID::add_label", Literal::ID(id), Literal::Label(l)) => {
-                Some(Literal::ID(id.add_label(l)))
+            ("ID::has_label", dpflatlit!(ID(id)), dpflatlit!(Label(l))) => 
+                Some(id.has_label(l).into()),
+            ("ID::add_label", dpflatlit!(ID(id)), dpflatlit!(Label(l))) => {
+                Some(dplit!(ID(id.add_label(l))))
             }
-            ("ID::has_host", Literal::ID(id), Literal::Str(h)) => Some(id.has_host(h).into()),
-            ("ID::add_host", Literal::ID(id), Literal::Str(h)) => Some(Literal::ID(id.add_host(h))),
-            ("ID::has_ip", Literal::ID(id), Literal::IpAddr(i)) => Some(id.has_ip(i).into()),
-            ("ID::add_ip", Literal::ID(id), Literal::IpAddr(i)) => Some(Literal::ID(id.add_ip(*i))),
-            ("ID::set_port", Literal::ID(id), Literal::Int(q)) => {
-                Some(Literal::ID(id.set_port(*q as u16)))
+            ("ID::has_host", dpflatlit!(ID(id)), dpflatlit!(Str(h))) => 
+                Some(id.has_host(h).into()),
+            ("ID::add_host", dpflatlit!(ID(id)), dpflatlit!(Str(h))) => 
+                Some(dplit!(ID(id.add_host(h)))),
+            ("ID::has_ip", dpflatlit!(ID(id)), dpflatlit!(IpAddr(i))) => 
+                Some(id.has_ip(i).into()),
+            ("ID::add_ip", dpflatlit!(ID(id)), dpflatlit!(IpAddr(i))) => 
+                Some(dplit!(ID(id.add_ip(*i)))),
+            ("ID::set_port", dpflatlit!(ID(id)), dpflatlit!(Int(q))) => {
+                Some(dplit!(ID(id.set_port(*q as u16))))
             }
-            ("list::is_subset", Literal::List(i), Literal::List(j)) => {
-                Some(VecSet::is_subset(i, j))
-            }
-            ("list::is_disjoint", Literal::List(i), Literal::List(j)) => {
-                Some(VecSet::is_disjoint(i, j))
-            }
-            ("list::difference", Literal::List(i), Literal::List(j)) => {
-                Some(VecSet::difference(i, j))
-            }
-            ("list::intersection", Literal::List(i), Literal::List(j)) => {
-                Some(VecSet::intersection(i, j))
-            }
-            ("Connection::set_from", Literal::Connection(c), Literal::ID(f)) => {
+            ("Connection::set_from", dpflatlit!(Connection(c)), dpflatlit!(ID(f))) => {
                 Some(c.set_from(f).into())
             }
-            ("Connection::set_to", Literal::Connection(c), Literal::ID(f)) => {
+            ("Connection::set_to", dpflatlit!(Connection(c)), dpflatlit!(ID(f))) => {
                 Some(c.set_to(f).into())
             }
-            ("Connection::set_number", Literal::Connection(c), Literal::Int(n)) => {
+            ("Connection::set_number", dpflatlit!(Connection(c)), dpflatlit!(Int(n))) => {
                 Some(c.set_number(*n).into())
             }
-            ("Label::captures", Literal::Label(i), Literal::Label(j)) => {
+            ("Label::captures", dpflatlit!(Label(i)), dpflatlit!(Label(j))) => {
                 Some(i.match_with(j).into())
             }
-            ("Label::is_match", Literal::Label(i), Literal::Label(j)) => {
+            ("Label::is_match", dpflatlit!(Label(i)), dpflatlit!(Label(j))) => {
                 Some(i.matches_with(j).into())
             }
             _ => None,
         }
     }
-    fn eval_call3(&self, f: &str, l1: &Literal, l2: &Literal) -> Option<Self> {
+    fn eval_call3(&self, f: &str, l1: &Self, l2: &Self) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
         match (f, self, l1, l2) {
             (
                 "HttpRequest::set_header",
-                Literal::HttpRequest(req),
-                Literal::Str(h),
-                Literal::Data(v),
+                dpflatlit!(HttpRequest(req)),
+                dpflatlit!(Str(h)),
+                dpflatlit!(Data(v)),
             ) => Some(req.set_header(h, v).into()),
             (
                 "HttpResponse::set_header",
-                Literal::HttpResponse(res),
-                Literal::Str(h),
-                Literal::Data(v),
+                dpflatlit!(HttpResponse(res)),
+                dpflatlit!(Str(h)),
+                dpflatlit!(Data(v)),
             ) => Some(res.set_header(h, v).into()),
-            ("Connection::new", Literal::ID(from), Literal::ID(to), Literal::Int(number)) => {
+            ("Connection::new", dpflatlit!(ID(from)), dpflatlit!(ID(to)), dpflatlit!(Int(number))) => {
                 Some(Connection::literal(from, to, *number))
             }
             _ => None,
         }
     }
     #[allow(clippy::many_single_char_names)]
-    fn eval_call4(&self, f: &str, l1: &Literal, l2: &Literal, l3: &Literal) -> Option<Self> {
+    fn eval_call4(&self, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
         match (f, self, l1, l2, l3) {
             (
                 "IpAddr::from",
-                Literal::Int(a),
-                Literal::Int(b),
-                Literal::Int(c),
-                Literal::Int(d),
-            ) => Some(Literal::IpAddr(std::net::IpAddr::V4(
+                dpflatlit!(Int(a)),
+                dpflatlit!(Int(b)),
+                dpflatlit!(Int(c)),
+                dpflatlit!(Int(d)),
+            ) => Some(dplit!(IpAddr(std::net::IpAddr::V4(
                 std::net::Ipv4Addr::new(*a as u8, *b as u8, *c as u8, *d as u8),
+            )))),
+            _ => None,
+        }
+    }
+    fn helper_evalexpr(e : &Expr<types::FlatTyp, DPFlatLiteral>, env: Env<types::FlatTyp, DPFlatLiteral>) -> BoxFuture<'static, Result<Expr<types::FlatTyp, DPFlatLiteral>, self::Error>>{
+        unimplemented!()
+        //async {
+        //    match e {
+        //        // short circuit for &&
+        //        Expr::InfixExpr(Infix::And, e1, e2) => match e1.eval(env.clone()).await? {
+        //            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dpflatlit!(Bool(false))) => Ok(r),
+        //            Expr::LitExpr(dpflatlit!(Bool(true))) => match e2.eval(env).await? {
+        //                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dpflatlit!(Bool(_))) => Ok(r),
+        //                _ => Err(Error::new("eval, infix")),
+        //            },
+        //            _ => Err(Error::new("eval, infix")),
+        //        },
+        //        // short circuit for ||
+        //        Expr::InfixExpr(Infix::Or, e1, e2) => match e1.eval(env.clone()).await? {
+        //            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dpflatlit!(Bool(true))) => Ok(r),
+        //            Expr::LitExpr(dpflatlit!(Bool(false))) => match e2.eval(env).await? {
+        //                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dpflatlit!(Bool(_))) => Ok(r),
+        //                _ => Err(Error::new("eval, infix")),
+        //            },
+        //            _ => Err(Error::new("eval, infix")),
+        //        },
+        //    }
+        //}
+    }
+}
+
+impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
+    fn eval_prefix(&self, p: &Prefix<CPFlatTyp>) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
+        match (p, self) {
+            (Prefix::Not, cpflatlit!(Bool(b))) => Some(cplit!(Bool(b.clone()))),
+            (Prefix::Minus, cpflatlit!(Int(i))) => Some(cplit!(Int(-i))),
+            _ => None,
+        }
+    }
+    fn eval_infix(&self, op: &Infix<CPFlatTyp>, other: &Self) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
+        match (op, self, other) {
+            (Infix::Equal, _, _) => Some(cplit!(Bool(self == other))),
+            (Infix::NotEqual, _, _) => Some(cplit!(Bool(self != other))),
+            (Infix::Plus, cpflatlit!(Int(i)), cpflatlit!(Int(j))) => Some(cplit!(Int(i + j))),
+            (Infix::Minus, cpflatlit!(Int(i)), cpflatlit!(Int(j))) => Some(cplit!(Int(i - j))),
+            (Infix::Divide, cpflatlit!(Int(_)), cpflatlit!(Int(0))) => None,
+            (Infix::Divide, cpflatlit!(Int(i)), cpflatlit!(Int(j))) => Some(cplit!(Int(i / j))),
+            (Infix::Multiply, cpflatlit!(Int(i)), cpflatlit!(Int(j))) => Some(cplit!(Int(i * j))),
+            (Infix::Remainder, cpflatlit!(Int(_)), cpflatlit!(Int(0))) => None,
+            (Infix::Remainder, cpflatlit!(Int(i)), cpflatlit!(Int(j))) => Some(cplit!(Int(i % j))),
+            (Infix::LessThan, cpflatlit!(Int(i)), cpflatlit!(Int(j))) => Some(cplit!(Bool(i < j))),
+            (Infix::LessThanEqual, cpflatlit!(Int(i)), cpflatlit!(Int(j))) => Some(cplit!(Bool(i <= j))),
+            (Infix::GreaterThan, cpflatlit!(Int(i)), cpflatlit!(Int(j))) => Some(cplit!(Bool(i > j))),
+            (Infix::GreaterThanEqual, cpflatlit!(Int(i)), cpflatlit!(Int(j))) => {
+                Some(cplit!(Bool(i >= j)))
+            }
+            (Infix::And, cpflatlit!(Bool(i)), cpflatlit!(Bool(j))) => Some(cplit!(Bool(*i && *j))),
+            (Infix::Or, cpflatlit!(Bool(i)), cpflatlit!(Bool(j))) => Some(cplit!(Bool(*i || *j))),
+            (Infix::ConcatStr, cpflatlit!(Str(i)), cpflatlit!(Str(j))) => {
+                Some(cplit!(Str(format!("{}{}", i, j))))
+            }
+            _ => None,
+        }
+    }
+    fn eval_call0(f: &str) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
+        match f {
+            "HttpRequest::GET" => Some(HttpRequest::default().into()),
+            "HttpRequest::POST" => Some(Method::POST.into()),
+            "HttpRequest::PUT" => Some(Method::PUT.into()),
+            "HttpRequest::DELETE" => Some(Method::DELETE.into()),
+            "HttpRequest::HEAD" => Some(Method::HEAD.into()),
+            "HttpRequest::OPTIONS" => Some(Method::OPTIONS.into()),
+            "HttpRequest::CONNECT" => Some(Method::CONNECT.into()),
+            "HttpRequest::PATCH" => Some(Method::PATCH.into()),
+            "HttpRequest::TRACE" => Some(Method::TRACE.into()),
+            "ID::default" => Some(Literal::id(Default::default())),
+            "Connection::default" => Some(Literal::connection(Default::default())),
+            "IpAddr::localhost" => Some(Literal::ipAddr(std::net::IpAddr::V4(
+                std::net::Ipv4Addr::new(127, 0, 0, 1),
             ))),
             _ => None,
         }
     }
-    pub fn literal_vector(args: Vec<Expr>) -> Result<Vec<Literal>, Error> {
+    fn eval_call1(&self, f: &str) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
+        match (f, self) {
+            ("option::Some", _) => Some(Literal::some2(self)),
+            ("i64::abs", cpflatlit!(Int(i))) => Some(cplit!(Int(i.abs()))),
+            ("i64::to_str", cpflatlit!(Int(i))) => Some(cplit!(Str(i.to_string()))),
+            ("str::len", cpflatlit!(Str(s))) => Some(cplit!(Int(s.len() as i64))),
+            ("str::to_lowercase", cpflatlit!(Str(s))) => Some(cplit!(Str(s.to_lowercase()))),
+            ("str::to_uppercase", cpflatlit!(Str(s))) => Some(cplit!(Str(s.to_uppercase()))),
+            ("str::trim_start", cpflatlit!(Str(s))) => Some(cplit!(Str(s.trim_start().to_string()))),
+            ("str::trim_end", cpflatlit!(Str(s))) => Some(cplit!(Str(s.trim_end().to_string()))),
+            ("str::as_bytes", cpflatlit!(Str(s))) => Some(cplit!(Data(s.as_bytes().to_vec()))),
+            ("str::from_utf8", cpflatlit!(Data(s))) => Some(cplit!(Str(
+                std::string::String::from_utf8_lossy(s).to_string(),
+            ))),
+            ("str::to_base64", cpflatlit!(Str(s))) => Some(cplit!(Str(base64::encode(s)))),
+            ("data::to_base64", cpflatlit!(Data(d))) => Some(cplit!(Str(base64::encode(d)))),
+            ("data::len", cpflatlit!(Data(d))) => Some(cplit!(Int(d.len() as i64))),
+            ("HttpRequest::connection", cpflatlit!(HttpRequest(req))) => Some(req.connection()),
+            ("HttpRequest::from", cpflatlit!(HttpRequest(req))) => Some(req.from_lit()),
+            ("HttpRequest::to", cpflatlit!(HttpRequest(req))) => Some(req.to_lit()),
+            ("HttpRequest::from_to", cpflatlit!(HttpRequest(req))) => Some(req.from_to()),
+            ("HttpRequest::method", cpflatlit!(HttpRequest(req))) => Some(req.method()),
+            ("HttpRequest::version", cpflatlit!(HttpRequest(req))) => Some(req.version()),
+            ("HttpRequest::path", cpflatlit!(HttpRequest(req))) => Some(req.path()),
+            ("HttpRequest::route", cpflatlit!(HttpRequest(req))) => Some(req.route()),
+            ("HttpRequest::query", cpflatlit!(HttpRequest(req))) => Some(req.query()),
+            ("HttpRequest::query_pairs", cpflatlit!(HttpRequest(req))) => Some(req.query_pairs()),
+            ("HttpRequest::header_pairs", cpflatlit!(HttpRequest(req))) => Some(req.header_pairs()),
+            ("HttpRequest::headers", cpflatlit!(HttpRequest(req))) => Some(req.headers()),
+            ("HttpResponse::new", cpflatlit!(Int(code))) => Some(HttpResponse::literal(*code as u16)),
+            ("HttpResponse::connection", cpflatlit!(HttpResponse(res))) => Some(res.connection()),
+            ("HttpResponse::from", cpflatlit!(HttpResponse(res))) => Some(res.from_lit()),
+            ("HttpResponse::to", cpflatlit!(HttpResponse(res))) => Some(res.to_lit()),
+            ("HttpResponse::from_to", cpflatlit!(HttpResponse(res))) => Some(res.from_to()),
+            ("HttpResponse::status", cpflatlit!(HttpResponse(res))) => Some(res.status()),
+            ("HttpResponse::version", cpflatlit!(HttpResponse(res))) => Some(res.version()),
+            ("HttpResponse::reason", cpflatlit!(HttpResponse(res))) => Some(res.reason()),
+            ("HttpResponse::header_pairs", cpflatlit!(HttpResponse(req))) => Some(req.header_pairs()),
+            ("HttpResponse::headers", cpflatlit!(HttpResponse(req))) => Some(req.headers()),
+            ("IpAddr::octets", cpflatlit!(IpAddr(ip))) => Some(Literal::from(ip)),
+            ("ID::labels", cpflatlit!(ID(id))) => Some(id.labels()),
+            ("ID::hosts", cpflatlit!(ID(id))) => Some(id.hosts()),
+            ("ID::ips", cpflatlit!(ID(id))) => Some(id.ips()),
+            ("ID::port", cpflatlit!(ID(id))) => Some(id.port()),
+            ("Connection::from_to", cpflatlit!(Connection(c))) => Some(c.from_to()),
+            ("Connection::from", cpflatlit!(Connection(c))) => Some(c.from_lit()),
+            ("Connection::to", cpflatlit!(Connection(c))) => Some(c.to_lit()),
+            ("Connection::number", cpflatlit!(Connection(c))) => Some(c.number()),
+            ("Label::parts", cpflatlit!(Label(l))) => Some(l.parts().into()),
+            ("IpAddr::reverse_lookup", cpflatlit!(IpAddr(ip))) => {
+                Some(if let Ok(res) = dns_lookup::lookup_addr(ip) {
+                    cplit!(Str(res)).some()
+                } else {
+                    Literal::none()
+                })
+            }
+            ("IpAddr::lookup", cpflatlit!(Str(name))) => {
+                Some(if let Ok(res) = dns_lookup::lookup_host(name) {
+                    Literal::List(
+                        res.iter()
+                            .filter_map(|ip| {
+                                if ip.is_ipv4() {
+                                    Some(cplit!(IpAddr(*ip)))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect(),
+                    )
+                    .some()
+                } else {
+                    Literal::none()
+                })
+            }
+            _ => None,
+        }
+    }
+    fn eval_call2(&self, f: &str, other: &Self) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
+        match (f, self, other) {
+            ("i64::pow", cpflatlit!(Int(i)), cpflatlit!(Int(j))) => Some(cplit!(Int(i.pow(*j as u32)))),
+            ("i64::min", cpflatlit!(Int(i)), cpflatlit!(Int(j))) => {
+                Some(cplit!(Int(std::cmp::min(*i, *j))))
+            }
+            ("i64::max", cpflatlit!(Int(i)), cpflatlit!(Int(j))) => {
+                Some(cplit!(Int(std::cmp::max(*i, *j))))
+            }
+            ("str::starts_with", cpflatlit!(Str(i)), cpflatlit!(Str(j))) => {
+                Some(cplit!(Bool(i.starts_with(j))))
+            }
+            ("str::ends_with", cpflatlit!(Str(i)), cpflatlit!(Str(j))) => {
+                Some(cplit!(Bool(i.ends_with(j))))
+            }
+            ("str::is_match", cpflatlit!(Str(s)), cpflatlit!(Regex(r)))
+            | ("regex::is_match", cpflatlit!(Regex(r)), cpflatlit!(Str(s))) => {
+                Some(cplit!(Bool(r.is_match(s))))
+            }
+            ("str::contains", cpflatlit!(Str(i)), cpflatlit!(Str(j))) => {
+                Some(cplit!(Bool(i.contains(j))))
+            }
+            ("HttpRequest::set_path", cpflatlit!(HttpRequest(req)), cpflatlit!(Str(q))) => {
+                Some(req.set_path(q).into())
+            }
+            ("HttpRequest::set_query", cpflatlit!(HttpRequest(req)), cpflatlit!(Str(q))) => {
+                Some(req.set_query(q).into())
+            }
+            ("HttpRequest::header", cpflatlit!(HttpRequest(req)), cpflatlit!(Str(h))) => {
+                Some(req.header(&h))
+            }
+            ("HttpRequest::unique_header", cpflatlit!(HttpRequest(req)), cpflatlit!(Str(h))) => {
+                Some(req.unique_header(&h))
+            }
+            ("HttpRequest::set_connection", cpflatlit!(HttpRequest(req)), cpflatlit!(Connection(c))) => {
+                Some(req.set_connection(c).into())
+            }
+            ("HttpRequest::set_from", cpflatlit!(HttpRequest(req)), cpflatlit!(ID(f))) => {
+                Some(req.set_from(f).into())
+            }
+            ("HttpRequest::set_to", cpflatlit!(HttpRequest(req)), cpflatlit!(ID(f))) => {
+                Some(req.set_to(f).into())
+            }
+            ("HttpResponse::header", cpflatlit!(HttpResponse(res)), cpflatlit!(Str(h))) => {
+                Some(res.header(&h))
+            }
+            ("HttpResponse::unique_header", cpflatlit!(HttpResponse(res)), cpflatlit!(Str(h))) => {
+                Some(res.unique_header(&h))
+            }
+            ("HttpResponse::set_reason", cpflatlit!(HttpResponse(res)), cpflatlit!(Str(q))) => {
+                Some(res.set_reason(q).into())
+            }
+            (
+                "HttpResponse::set_connection",
+                cpflatlit!(HttpResponse(res)),
+                cpflatlit!(Connection(c)),
+            ) => Some(res.set_connection(c).into()),
+            ("HttpResponse::set_from", cpflatlit!(HttpResponse(res)), cpflatlit!(ID(f))) => {
+                Some(res.set_from(f).into())
+            }
+            ("HttpResponse::set_to", cpflatlit!(HttpResponse(res)), cpflatlit!(ID(f))) => {
+                Some(res.set_to(f).into())
+            }
+            ("ID::has_label", cpflatlit!(ID(id)), cpflatlit!(Label(l))) => 
+                Some(id.has_label(l).into()),
+            ("ID::add_label", cpflatlit!(ID(id)), cpflatlit!(Label(l))) => {
+                Some(cplit!(ID(id.add_label(l))))
+            }
+            ("ID::has_host", cpflatlit!(ID(id)), cpflatlit!(Str(h))) => 
+                Some(id.has_host(h).into()),
+            ("ID::add_host", cpflatlit!(ID(id)), cpflatlit!(Str(h))) => 
+                Some(cplit!(ID(id.add_host(h)))),
+            ("ID::has_ip", cpflatlit!(ID(id)), cpflatlit!(IpAddr(i))) => 
+                Some(id.has_ip(i).into()),
+            ("ID::add_ip", cpflatlit!(ID(id)), cpflatlit!(IpAddr(i))) => 
+                Some(cplit!(ID(id.add_ip(*i)))),
+            ("ID::set_port", cpflatlit!(ID(id)), cpflatlit!(Int(q))) => {
+                Some(cplit!(ID(id.set_port(*q as u16))))
+            }
+            ("Connection::set_from", cpflatlit!(Connection(c)), cpflatlit!(ID(f))) => {
+                Some(c.set_from(f).into())
+            }
+            ("Connection::set_to", cpflatlit!(Connection(c)), cpflatlit!(ID(f))) => {
+                Some(c.set_to(f).into())
+            }
+            ("Connection::set_number", cpflatlit!(Connection(c)), cpflatlit!(Int(n))) => {
+                Some(c.set_number(*n).into())
+            }
+            ("Label::captures", cpflatlit!(Label(i)), cpflatlit!(Label(j))) => {
+                Some(i.match_with(j).into())
+            }
+            ("Label::is_match", cpflatlit!(Label(i)), cpflatlit!(Label(j))) => {
+                Some(i.matches_with(j).into())
+            }
+            _ => None,
+        }
+    }
+    fn eval_call3(&self, f: &str, l1: &Self, l2: &Self) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
+        match (f, self, l1, l2) {
+            (
+                "HttpRequest::set_header",
+                cpflatlit!(HttpRequest(req)),
+                cpflatlit!(Str(h)),
+                cpflatlit!(Data(v)),
+            ) => Some(req.set_header(h, v).into()),
+            (
+                "HttpResponse::set_header",
+                cpflatlit!(HttpResponse(res)),
+                cpflatlit!(Str(h)),
+                cpflatlit!(Data(v)),
+            ) => Some(res.set_header(h, v).into()),
+            ("Connection::new", cpflatlit!(ID(from)), cpflatlit!(ID(to)), cpflatlit!(Int(number))) => {
+                Some(Connection::literal(from, to, *number))
+            }
+            _ => None,
+        }
+    }
+    #[allow(clippy::many_single_char_names)]
+    fn eval_call4(&self, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
+        match (f, self, l1, l2, l3) {
+            (
+                "IpAddr::from",
+                cpflatlit!(Int(a)),
+                cpflatlit!(Int(b)),
+                cpflatlit!(Int(c)),
+                cpflatlit!(Int(d)),
+            ) => Some(cplit!(IpAddr(std::net::IpAddr::V4(
+                std::net::Ipv4Addr::new(*a as u8, *b as u8, *c as u8, *d as u8),
+            )))),
+            _ => None,
+        }
+    }
+    fn helper_evalexpr(e : &Expr<CPFlatTyp, CPFlatLiteral>, env: Env<CPFlatTyp, CPFlatLiteral>) -> BoxFuture<'static, Result<Expr<CPFlatTyp, CPFlatLiteral>, self::Error>>{
+        unimplemented!()
+        //async {
+        //    match e {
+        //        // short circuit for &&
+        //        Expr::InfixExpr(Infix::And, e1, e2) => match e1.eval(env.clone()).await? {
+        //            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpflatlit!(Bool(false))) => Ok(r),
+        //            Expr::LitExpr(cpflatlit!(Bool(true))) => match e2.eval(env).await? {
+        //                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpflatlit!(Bool(_))) => Ok(r),
+        //                _ => Err(Error::new("eval, infix")),
+        //            },
+        //            _ => Err(Error::new("eval, infix")),
+        //        },
+        //        // short circuit for ||
+        //        Expr::InfixExpr(Infix::Or, e1, e2) => match e1.eval(env.clone()).await? {
+        //            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpflatlit!(Bool(true))) => Ok(r),
+        //            Expr::LitExpr(cpflatlit!(Bool(false))) => match e2.eval(env).await? {
+        //                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpflatlit!(Bool(_))) => Ok(r),
+        //                _ => Err(Error::new("eval, infix")),
+        //            },
+        //            _ => Err(Error::new("eval, infix")),
+        //        },
+        //    }
+        //}
+    }
+}
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> 
+where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<FlatTyp, FlatLiteral>{ //it means the type does not contain any non-static references
+    fn is_return(&self) -> bool {
+        match self {
+            Expr::ReturnExpr(_) => true,
+            _ => false,
+        }
+    }
+    fn literal_vector(args: Vec<Self>) -> Result<Vec<Literal<FlatTyp, FlatLiteral>>, Error> {
         let mut v = Vec::new();
         for a in args {
             match a {
@@ -347,37 +770,23 @@ impl Literal {
         }
         Ok(v)
     }
-    fn is_true(&self) -> bool {
-        match self {
-            Literal::Bool(true) => true,
-            _ => false,
-        }
-    }
-}
-
-impl Expr {
-    fn is_return(&self) -> bool {
-        match self {
-            Expr::ReturnExpr(_) => true,
-            _ => false,
-        }
-    }
-    fn strip_return(self) -> Expr {
+    fn strip_return(self) -> Self {
         match self {
             Expr::ReturnExpr(r) => *r,
             _ => self,
         }
     }
-    fn perform_match(self, pat: Pattern) -> Option<(Expr, Option<BTreeMap<String, Expr>>)> {
+    fn perform_match(self, pat: Pattern) -> Option<(Self, Option<BTreeMap<String, Self>>)> {
         match pat {
             Pattern::Regex(re) => self.perform_regex_match(re),
             Pattern::Label(label) => self.perform_label_match(label),
         }
     }
-    fn perform_label_match(self, label: Label) -> Option<(Expr, Option<BTreeMap<String, Expr>>)> {
+    fn perform_label_match(self, label: Label) -> Option<(Self, Option<BTreeMap<String, Self>>)> {
         match self {
             Expr::ReturnExpr(_) => Some((self, None)),
-            Expr::LitExpr(Literal::Label(ref l)) => {
+            Expr::LitExpr(Literal::FlatLiteral(ref fl)) if fl.is_label() => {
+                let ref l = fl.get_label();
                 if let Some(m) = label.match_with(l) {
                     let v: Vec<(String, String)> = (&m).into();
                     Some((
@@ -394,10 +803,11 @@ impl Expr {
     fn perform_regex_match(
         self,
         re: PolicyRegex,
-    ) -> Option<(Expr, Option<BTreeMap<String, Expr>>)> {
+    ) -> Option<(Self, Option<BTreeMap<String, Self>>)> {
         match self {
             Expr::ReturnExpr(_) => Some((self, None)),
-            Expr::LitExpr(Literal::Str(ref s)) => {
+            Expr::LitExpr(Literal::FlatLiteral(ref fl)) if fl.is_str() => {
+                let s = fl.get_str();
                 let names: Vec<&str> = re.capture_names().filter_map(|s| s).collect();
                 // if there are no bindings then do a simple "is_match", otherwise collect
                 // variable captures
@@ -412,7 +822,7 @@ impl Expr {
                         // matches
                         Some(cap) => {
                             let mut is_match = true;
-                            let mut captures: BTreeMap<String, Expr> = BTreeMap::new();
+                            let mut captures: BTreeMap<String, Self> = BTreeMap::new();
                             for name in names {
                                 let match_str = cap.name(name).unwrap().as_str();
                                 let (s, a) = Pat::strip_as(name);
@@ -451,7 +861,7 @@ impl Expr {
             _ => None,
         }
     }
-    fn eval_call(function: &str, args: Vec<Expr>) -> Result<Expr, self::Error> {
+    fn eval_call(function: &str, args: Vec<Self>) -> Result<Self, self::Error> {
         // builtin function
         match args.as_slice() {
             [] => match Literal::eval_call0(function) {
@@ -482,7 +892,7 @@ impl Expr {
         }
     }
     #[allow(clippy::cognitive_complexity)]
-    fn eval(self, env: Env) -> BoxFuture<'static, Result<Expr, self::Error>> {
+    fn eval(self, env: Env<FlatTyp, FlatLiteral>) -> BoxFuture<'static, Result<Self, self::Error>> {
         async {
             match self {
                 Expr::Var(_) | Expr::BVar(_, _) => Err(Error::new("eval variable")),
@@ -498,23 +908,9 @@ impl Expr {
                     _ => Err(Error::new("eval, prefix")),
                 },
                 // short circuit for &&
-                Expr::InfixExpr(Infix::And, e1, e2) => match e1.eval(env.clone()).await? {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(false)) => Ok(r),
-                    Expr::LitExpr(Literal::Bool(true)) => match e2.eval(env).await? {
-                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(_)) => Ok(r),
-                        _ => Err(Error::new("eval, infix")),
-                    },
-                    _ => Err(Error::new("eval, infix")),
-                },
+                Expr::InfixExpr(Infix::And, _, _) => FlatLiteral::helper_evalexpr(&self, env).await, 
                 // short circuit for ||
-                Expr::InfixExpr(Infix::Or, e1, e2) => match e1.eval(env.clone()).await? {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(true)) => Ok(r),
-                    Expr::LitExpr(Literal::Bool(false)) => match e2.eval(env).await? {
-                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(Literal::Bool(_)) => Ok(r),
-                        _ => Err(Error::new("eval, infix")),
-                    },
-                    _ => Err(Error::new("eval, infix")),
-                },
+                Expr::InfixExpr(Infix::Or, _, _) => FlatLiteral::helper_evalexpr(&self, env).await,
                 Expr::InfixExpr(op, e1, e2) => {
                     let r1 = e1.eval(env.clone()).await?;
                     match (r1, e2.eval(env).await?) {
@@ -532,7 +928,7 @@ impl Expr {
                         Ok(Expr::LitExpr(if b == Block::List {
                             Literal::List(Vec::new())
                         } else {
-                            Literal::Unit
+                            Literal::unit()
                         }))
                     } else if b == Block::Block {
                         let e = es.remove(0);
@@ -550,7 +946,7 @@ impl Expr {
                         }
                         match rs.iter().find(|r| r.is_return()) {
                             Some(r) => Ok(r.clone()),
-                            _ => match Literal::literal_vector(rs) {
+                            _ => match Self::literal_vector(rs) {
                                 Ok(lits) => Ok((if b == Block::List {
                                     Literal::List(lits)
                                 } else {
@@ -629,7 +1025,7 @@ impl Expr {
                         }
                         match res.iter().find(|r| r.is_return()) {
                             Some(r) => Ok(r.clone()),
-                            None => match Literal::literal_vector(res) {
+                            None => match Self::literal_vector(res) {
                                 Ok(iter_lits) => match op {
                                     Iter::Map => Ok(Literal::List(iter_lits).into()),
                                     Iter::ForEach => Ok(Expr::from(())),
@@ -638,7 +1034,7 @@ impl Expr {
                                             .into_iter()
                                             .zip(iter_lits.into_iter())
                                             .filter_map(
-                                                |(l, b)| if b.is_true() { Some(l) } else { None },
+                                                |(l, b)| if b.get_bool() { Some(l) } else { None },
                                             )
                                             .collect();
                                         Ok(Literal::List(filtered_lits).into())
@@ -650,8 +1046,8 @@ impl Expr {
                                             .collect();
                                         Ok(Literal::List(filtered_lits).into())
                                     }
-                                    Iter::All => Ok(iter_lits.iter().all(|l| l.is_true()).into()),
-                                    Iter::Any => Ok(iter_lits.iter().any(|l| l.is_true()).into()),
+                                    Iter::All => Ok(iter_lits.iter().all(|l| l.get_bool()).into()),
+                                    Iter::Any => Ok(iter_lits.iter().any(|l| l.get_bool()).into()),
                                 },
                                 Err(err) => Err(err),
                             },
@@ -665,8 +1061,8 @@ impl Expr {
                     alternative,
                 } => match cond.eval(env.clone()).await? {
                     r @ Expr::ReturnExpr(_) => Ok(r),
-                    Expr::LitExpr(Literal::Bool(true)) => consequence.eval(env).await,
-                    Expr::LitExpr(Literal::Bool(false)) => match alternative {
+                    Expr::LitExpr(Literal::FlatLiteral(fl)) if fl.is_bool() && fl.get_bool() => consequence.eval(env).await,
+                    Expr::LitExpr(Literal::FlatLiteral(fl)) if fl.is_bool() && !fl.get_bool() => match alternative {
                         Some(alt) => alt.eval(env).await,
                         None => Ok(Expr::from(())),
                     },
@@ -722,7 +1118,7 @@ impl Expr {
                                 }
                             } else {
                                 // match
-                                let mut all_captures: BTreeMap<String, Expr> = BTreeMap::new();
+                                let mut all_captures: BTreeMap<String, Self> = BTreeMap::new();
                                 for (_r, captures) in rs {
                                     if let Some(caps) = captures {
                                         all_captures.extend(caps)
@@ -768,7 +1164,7 @@ impl Expr {
                                 Expr::eval_call(function.as_str(), args)
                             } else if let Some((external, method)) = Headers::split(&function) {
                                 // external function (RPC) or "Ingress/Egress" metadata
-                                let args = Literal::literal_vector(args)?;
+                                let args = Self::literal_vector(args)?;
                                 let call = Call::new(external, method, args);
                                 if external == "Ingress" || external == "Egress" {
                                     env.meta
@@ -796,12 +1192,13 @@ impl Expr {
                             }
                         }
                     }
-                }
+                },
+                Expr::Phantom(_) => unimplemented!()
             }
         }
         .boxed()
     }
-    pub async fn evaluate(self, env: Env) -> Result<Expr, self::Error> {
+    pub async fn evaluate(self, env: Env<FlatTyp, FlatLiteral>) -> Result<Self, self::Error> {
         Ok(self.eval(env).await?.strip_return())
     }
 }

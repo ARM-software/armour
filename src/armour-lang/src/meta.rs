@@ -1,8 +1,10 @@
 use super::{
-    expressions::{Error, Expr},
+    types,
+    expressions::{self, Error, Expr, DPExpr},
     externals::Call,
     labels::{Label, Labels},
-    literals::Literal,
+    literals::{self, Literal, TFlatLiteral},
+    types::{TFlatTyp},
 };
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -100,9 +102,9 @@ impl TryFrom<&str> for Meta {
     }
 }
 
-impl Handler<Call> for IngressEgress {
-    type Result = Result<Expr, Error>;
-    fn handle(&mut self, call: Call, _ctx: &mut Context<Self>) -> Self::Result {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Handler<Call<FlatTyp, FlatLiteral>> for IngressEgress {
+    type Result = Result<Expr<FlatTyp, FlatLiteral>, Error>;
+    fn handle(&mut self, call: Call<FlatTyp, FlatLiteral>, _ctx: &mut Context<Self>) -> Self::Result {
         let (module, method, args) = call.split();
         let meta = match module {
             "Ingress" => &mut self.ingress,
@@ -122,20 +124,20 @@ impl Handler<Call> for IngressEgress {
                 meta.set_id(self.egress_id.clone());
                 Ok(().into())
             }
-            ("push", [Literal::Data(d)]) => {
-                meta.push_data(d);
+            ("push", [Literal::FlatLiteral(fl)]) if fl.is_data() => {
+                meta.push_data(&fl.get_data());
                 Ok(().into())
             }
             ("pop", []) => Ok(meta.pop_data().into()),
-            ("add_label", [Literal::Label(l)]) => {
-                meta.insert_label(l.clone());
+            ("add_label", [Literal::FlatLiteral(fl)]) if fl.is_label()=> {
+                meta.insert_label(fl.get_label().clone());
                 Ok(().into())
             }
-            ("remove_label", [Literal::Label(l)]) => {
-                meta.remove_label(&l);
+            ("remove_label", [Literal::FlatLiteral(fl)]) if fl.is_label()=> {
+                meta.remove_label(&fl.get_label());
                 Ok(().into())
             }
-            ("has_label", [Literal::Label(l)]) => Ok(meta.has_label(l).into()),
+            ("has_label", [Literal::FlatLiteral(fl)]) if fl.is_label() => Ok(meta.has_label(fl.get_label()).into()),
             ("wipe", []) => {
                 meta.wipe();
                 Ok(().into())
