@@ -6,7 +6,7 @@ use armour_api::host::{PolicyResponse, Status};
 use armour_api::proxy::{LabelOp, PolicyCodec, PolicyRequest};
 use armour_lang::{
     expressions,
-    interpret::Env,
+    interpret::DPEnv,
     labels, literals,
     meta::{IngressEgress, Meta},
     policies::{self, Protocol},
@@ -26,12 +26,12 @@ pub trait Policy<P> {
     fn port(&self) -> Option<u16>;
     fn policy(&self) -> Arc<policies::Policy>;
     fn hash(&self) -> String;
-    fn env(&self) -> &Env;
+    fn env(&self) -> &DPEnv;
     fn status(&self) -> Box<Status>;
-    fn evaluate<T: std::convert::TryFrom<literals::Literal> + Send + 'static>(
+    fn evaluate<T: std::convert::TryFrom<literals::DPLiteral> + Send + 'static>(
         &self,
         function: &'static str,
-        args: Vec<expressions::Expr>,
+        args: Vec<expressions::DPExpr>,
         meta: IngressEgress,
     ) -> BoxFuture<'static, Result<(T, Option<Meta>), expressions::Error>> {
         log::debug!(r#"evaluting "{}""#, function);
@@ -186,9 +186,9 @@ impl PolicyActor {
     fn get_port(u: &http::uri::Uri) -> Option<u16> {
         u.port_u16().or_else(|| scheme_port(&u))
     }
-    fn id(&mut self, id: ID) -> literals::ID {
+    fn id(&mut self, id: ID) -> literals::DPID {
         match id {
-            ID::Anonymous => literals::ID::default(),
+            ID::Anonymous => literals::DPID::default(),
             ID::Uri(u) => {
                 if let Some(host) = u.host() {
                     if let Some(id) = self.identity.host_cache.get(host) {
@@ -210,7 +210,7 @@ impl PolicyActor {
                             }
                         }
                         log::debug!("creating ID for {} with labels {:?}", u, labels);
-                        let id = literals::ID::new(hosts, ips, PolicyActor::get_port(&u), labels);
+                        let id = literals::DPID::new(hosts, ips, PolicyActor::get_port(&u), labels);
                         self.identity
                             .host_cache
                             .insert(host.to_string(), id.clone());
@@ -218,7 +218,7 @@ impl PolicyActor {
                     }
                 } else {
                     // failed to get host name, so ID can at best consist of port number
-                    literals::ID::new(
+                    literals::DPID::new(
                         BTreeSet::new(),
                         BTreeSet::new(),
                         PolicyActor::get_port(&u),
@@ -249,7 +249,7 @@ impl PolicyActor {
                         ips.insert(ip);
                     }
                     log::debug!("creating ID for {} with labels {:?}", s, labels);
-                    let id = literals::ID::new(hosts, ips, Some(port), labels);
+                    let id = literals::DPID::new(hosts, ips, Some(port), labels);
                     self.identity.ip_cache.insert(ip, id.clone());
                     id
                 }
@@ -257,12 +257,12 @@ impl PolicyActor {
         }
     }
     // performance critical (computes IDs, which could involve DNS lookup)
-    pub fn connection(&mut self, from: ID, to: ID) -> literals::Connection {
+    pub fn connection(&mut self, from: ID, to: ID) -> literals::DPConnection {
         let number = self.connection_number;
         self.connection_number += 1;
         // let now = std::time::Instant::now();
         // log::info!("now: {:?}", now.elapsed());
-        literals::Connection::from((&self.id(from), &self.id(to), number))
+        literals::DPConnection::from((&self.id(from), &self.id(to), number))
     }
 }
 
@@ -271,8 +271,8 @@ struct Identity {
     /// map from IDs to Armour label set expressions
     host_labels: HashMap<String, labels::Labels>,
     ip_labels: HashMap<std::net::IpAddr, labels::Labels>,
-    host_cache: HashMap<String, literals::ID>,
-    ip_cache: HashMap<std::net::IpAddr, literals::ID>,
+    host_cache: HashMap<String, literals::DPID>,
+    ip_cache: HashMap<std::net::IpAddr, literals::DPID>,
 }
 
 impl Identity {

@@ -15,12 +15,12 @@ pub mod tcp_proxy;
 
 /// Trait for converting rust types into Armour expressions
 pub trait ToArmourExpression {
-    fn to_expression(&self) -> expressions::Expr;
+    fn to_expression(&self) -> expressions::DPExpr;
 }
 
 /// Convert an actix-web HttpRequest into an equivalent Armour language literal
-impl ToArmourExpression for (&web::HttpRequest, &literals::Connection) {
-    fn to_expression(&self) -> expressions::Expr {
+impl ToArmourExpression for (&web::HttpRequest, &literals::DPConnection) {
+    fn to_expression(&self) -> expressions::DPExpr {
         let (req, connection) = *self;
         literals::HttpRequest::new(
             req.method().as_str(),
@@ -38,8 +38,8 @@ impl ToArmourExpression for (&web::HttpRequest, &literals::Connection) {
 }
 
 /// Convert an actix-web HttpResponse into an equivalent Armour language literal
-impl ToArmourExpression for (&web::HttpResponse, &literals::Connection) {
-    fn to_expression(&self) -> expressions::Expr {
+impl ToArmourExpression for (&web::HttpResponse, &literals::DPConnection) {
+    fn to_expression(&self) -> expressions::DPExpr {
         let res = self.0;
         let head = res.head();
         literals::HttpResponse::new(

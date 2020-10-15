@@ -5,8 +5,8 @@ use super::Stop;
 use actix::prelude::*;
 use armour_api::host::Status;
 use armour_lang::{
-    expressions::{Error, Expr},
-    interpret::Env,
+    expressions::{Error, DPExpr},
+    interpret::DPEnv,
     meta::IngressEgress,
     policies::{self, FnPolicy, Protocol},
 };
@@ -17,7 +17,7 @@ pub struct TcpPolicy {
     connect: FnPolicy,
     disconnect: FnPolicy,
     policy: Arc<policies::Policy>,
-    env: Env,
+    env: DPEnv,
     proxy: Option<(Addr<tcp_proxy::TcpDataServer>, u16)>,
 }
 
@@ -42,7 +42,7 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
             .cloned()
             .unwrap_or_default();
         self.policy = Arc::new(p);
-        self.env = Env::new(&self.policy.program)
+        self.env = DPEnv::new(&self.policy.program)
     }
     fn port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|p| p.1)
@@ -53,7 +53,7 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
     fn hash(&self) -> String {
         self.policy.blake3()
     }
-    fn env(&self) -> &Env {
+    fn env(&self) -> &DPEnv {
         &self.env
     }
     fn status(&self) -> Box<Status> {
@@ -68,7 +68,7 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
 impl Default for TcpPolicy {
     fn default() -> Self {
         let policy = Arc::new(policies::Policy::deny_all(Protocol::TCP));
-        let env = Env::new(&policy.program);
+        let env = DPEnv::new(&policy.program);
         TcpPolicy {
             connect: FnPolicy::default(),
             disconnect: FnPolicy::default(),
@@ -134,11 +134,11 @@ impl Handler<GetTcpPolicy> for PolicyActor {
 pub struct ConnectionStats {
     pub sent: usize,
     pub received: usize,
-    pub connection: Expr,
+    pub connection: DPExpr,
 }
 
 impl ConnectionStats {
-    pub fn new(connection: &Expr) -> ConnectionStats {
+    pub fn new(connection: &DPExpr) -> ConnectionStats {
         ConnectionStats {
             sent: 0,
             received: 0,
@@ -156,8 +156,8 @@ impl Handler<ConnectionStats> for PolicyActor {
             let args = match arg_count {
                 3 => vec![
                     msg.connection,
-                    Expr::from(msg.sent),
-                    Expr::from(msg.received),
+                    DPExpr::from(msg.sent),
+                    DPExpr::from(msg.received),
                 ],
                 _ => unreachable!(), // policy is checked beforehand
             };

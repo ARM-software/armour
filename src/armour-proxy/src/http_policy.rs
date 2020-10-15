@@ -4,7 +4,7 @@ use actix::prelude::*;
 use armour_api::host::Status;
 use armour_lang::{
     expressions,
-    interpret::Env,
+    interpret::DPEnv,
     literals,
     meta::IngressEgress,
     policies::{self, FnPolicy, Protocol},
@@ -69,7 +69,7 @@ impl HttpProxy {
 
 pub struct HttpPolicy {
     policy: Arc<policies::Policy>,
-    env: Env,
+    env: DPEnv,
     proxy: Option<HttpProxy>,
     status: PolicyStatus,
 }
@@ -93,7 +93,7 @@ impl Policy<(actix_web::dev::Server, Option<std::net::SocketAddrV4>)> for HttpPo
     fn set_policy(&mut self, p: policies::Policy) {
         self.status.update_for_policy(&p);
         self.policy = Arc::new(p);
-        self.env = Env::new(&self.policy.program)
+        self.env = DPEnv::new(&self.policy.program)
     }
     fn port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|p| p.port)
@@ -104,7 +104,7 @@ impl Policy<(actix_web::dev::Server, Option<std::net::SocketAddrV4>)> for HttpPo
     fn hash(&self) -> String {
         self.policy.blake3()
     }
-    fn env(&self) -> &Env {
+    fn env(&self) -> &DPEnv {
         &self.env
     }
     fn status(&self) -> Box<Status> {
@@ -119,7 +119,7 @@ impl Policy<(actix_web::dev::Server, Option<std::net::SocketAddrV4>)> for HttpPo
 impl Default for HttpPolicy {
     fn default() -> Self {
         let policy = Arc::new(policies::Policy::deny_all(Protocol::HTTP));
-        let env = Env::new(&policy.program);
+        let env = DPEnv::new(&policy.program);
         HttpPolicy {
             policy,
             env,
@@ -142,7 +142,7 @@ impl HttpPolicy {
 #[derive(Clone, MessageResponse)]
 pub struct HttpPolicyResponse {
     pub status: PolicyStatus,
-    pub connection: literals::Connection,
+    pub connection: literals::DPConnection,
 }
 
 /// Request REST policy information
@@ -182,7 +182,7 @@ pub enum HttpFn {
 /// Request evaluation of a (HTTP) policy function
 #[derive(Message)]
 #[rtype(result = "Result<(bool, Option<String>), expressions::Error>")]
-pub struct EvalHttpFn(pub HttpFn, pub Vec<expressions::Expr>, pub Option<String>);
+pub struct EvalHttpFn(pub HttpFn, pub Vec<expressions::DPExpr>, pub Option<String>);
 
 // handle requests to evaluate the Armour policy
 impl Handler<EvalHttpFn> for PolicyActor {
