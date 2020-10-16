@@ -23,7 +23,7 @@ pub struct PolicyStatus {
 }
 
 impl PolicyStatus {
-    fn update_for_policy(&mut self, policy: &policies::Policy) {
+    fn update_for_policy(&mut self, policy: &policies::DPPolicy) {
         self.request = policy
             .get(policies::ALLOW_REST_REQUEST)
             .cloned()
@@ -68,7 +68,7 @@ impl HttpProxy {
 }
 
 pub struct HttpPolicy {
-    policy: Arc<policies::Policy>,
+    policy: Arc<policies::DPPolicy>,
     env: DPEnv,
     proxy: Option<HttpProxy>,
     status: PolicyStatus,
@@ -90,7 +90,7 @@ impl Policy<(actix_web::dev::Server, Option<std::net::SocketAddrV4>)> for HttpPo
         };
         self.proxy = None
     }
-    fn set_policy(&mut self, p: policies::Policy) {
+    fn set_policy(&mut self, p: policies::DPPolicy) {
         self.status.update_for_policy(&p);
         self.policy = Arc::new(p);
         self.env = DPEnv::new(&self.policy.program)
@@ -98,7 +98,7 @@ impl Policy<(actix_web::dev::Server, Option<std::net::SocketAddrV4>)> for HttpPo
     fn port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|p| p.port)
     }
-    fn policy(&self) -> Arc<policies::Policy> {
+    fn policy(&self) -> Arc<policies::DPPolicy> {
         self.policy.clone()
     }
     fn hash(&self) -> String {
@@ -118,7 +118,7 @@ impl Policy<(actix_web::dev::Server, Option<std::net::SocketAddrV4>)> for HttpPo
 
 impl Default for HttpPolicy {
     fn default() -> Self {
-        let policy = Arc::new(policies::Policy::deny_all(Protocol::HTTP));
+        let policy = Arc::new(policies::DPPolicy::deny_all(Protocol::HTTP));
         let env = DPEnv::new(&policy.program);
         HttpPolicy {
             policy,

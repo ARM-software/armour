@@ -1,6 +1,6 @@
 use super::{
     policies::{FnPolicy, FnPolicies},//TODO should i reuse policies::FnPolicies
-    lang::{Program},
+    lang::{self, CPProgram},
     literals::CPFlatLiteral,
     types_cp::{CPFlatTyp, CPTyp, CPSignature},
     types::{Signature, Typ},
@@ -15,8 +15,8 @@ use serde::{
 };
 
 
-pub const ONBOARDING_SERVICES: &str = "onboardingPolicy";
-//N.B: pub const ONBOARDING_HOSTS: &str = "onboardingHostPolicy";
+pub const ONBOARDING_SERVICES: &str = "onboarding_policy";
+
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct OnboardingPolicy {
@@ -25,9 +25,27 @@ pub struct OnboardingPolicy {
     sig : CPSignature,//FIXME only one ??
 
     //From Policy struct
-    pub program: Program<CPFlatTyp, CPFlatLiteral>,//TODO should i define a CPProgram
-    fn_policies: FnPolicies,
+    pub program: CPProgram,
+    //fn_policies: FnPolicies,
 }
+#[derive(Serialize, Deserialize, Clone)]
+pub enum ObPolicy {
+    None, //Onboard no services
+    Custom(OnboardingPolicy) //Use cuserd defined policy
+}
+impl ObPolicy {
+    pub fn onboard_none() -> Self {
+        Self::None
+    }
+    pub fn onboard_from(p: CPProgram) -> Self {
+        Self::Custom(OnboardingPolicy {
+            name: ONBOARDING_SERVICES.to_string(),
+            sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
+            program: CPProgram::default(),
+        })
+    }
+}
+
 
 //TODO create types : OnboardingData +  OnboardingResult
 //FIXME : for now use protocoloPolicy instead of a dedicated OnboardingPolicy
@@ -37,8 +55,7 @@ lazy_static! {
         name: ONBOARDING_SERVICES.to_string(),
         sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
 
-        program: Program::default(),
-        fn_policies: FnPolicies::default()
+        program: CPProgram::default(),
     };
 }
 

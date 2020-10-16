@@ -8,7 +8,7 @@ use actix::Addr;
 use armour_api::proxy::{HttpConfig, LabelOp, PolicyRequest};
 use armour_lang::{
     labels,
-    policies::{Policies, Protocol},
+    policies::{DPPolicies, Protocol},
 };
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -206,13 +206,13 @@ fn host_command(host: &Addr<ArmourDataHost>, caps: regex::Captures) -> bool {
         }
         (_, Some("policy"), Some(file)) => {
             let path = pathbuf(file);
-            match Policies::from_file(&path) {
+            match DPPolicies::from_file(&path) {
                 Ok(policies) => set_policy(host, instance, policies),
                 Err(err) => log::warn!(r#"{:?}: {}"#, path, err),
             }
         }
-        (_, Some("allow all"), None) => set_policy(host, instance, Policies::allow_all()),
-        (_, Some("deny all"), None) => set_policy(host, instance, Policies::deny_all()),
+        (_, Some("allow all"), None) => set_policy(host, instance, DPPolicies::allow_all()),
+        (_, Some("deny all"), None) => set_policy(host, instance, DPPolicies::deny_all()),
         (_, Some(s @ "label add"), Some(arg)) | (_, Some(s @ "label rm"), Some(arg)) => {
             if let [key, value] = arg.split(' ').collect::<Vec<&str>>().as_slice() {
                 if let Ok(label) = value.parse::<labels::Label>() {
@@ -300,7 +300,7 @@ pub fn run_script(host: &Addr<ArmourDataHost>, script: &str) {
     }
 }
 
-fn set_policy(host: &Addr<ArmourDataHost>, instance: InstanceSelector, policies: Policies) {
+fn set_policy(host: &Addr<ArmourDataHost>, instance: InstanceSelector, policies: DPPolicies) {
     log::info!("sending policy: {}", policies);
     host.do_send(PolicyCommand::new(
         instance,

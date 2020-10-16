@@ -5,9 +5,15 @@ use super::externals::{Call, ExternalActor};
 use super::headers::{self, THeaders};
 use super::labels::Label;
 use super::lang::{Code, Program};
-use super::literals::{self, Connection, HttpRequest, HttpResponse, Literal, DPLiteral, DPFlatLiteral, CPFlatLiteral, Method, TFlatLiteral, VecSet};
+use super::literals::{
+    self, Connection, HttpRequest, HttpResponse, Literal,
+    DPFlatLiteral, CPFlatLiteral, Method, OnboardingData,
+    OnboardingResult, TFlatLiteral, VecSet
+};
 use super::meta::{Egress, IngressEgress, Meta};
 use super::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
+use super::policies;
+use super::specialize;
 use super::types::{self, TFlatTyp};
 use super::types_cp::{CPFlatTyp};
 use actix::prelude::*;
@@ -382,6 +388,7 @@ impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
                 Some(id.has_ip(i).into()),
             ("ID::add_ip", dpflatlit!(ID(id)), dpflatlit!(IpAddr(i))) => 
                 Some(dplit!(ID(id.add_ip(*i)))),
+ 
             ("ID::set_port", dpflatlit!(ID(id)), dpflatlit!(Int(q))) => {
                 Some(dplit!(ID(id.set_port(*q as u16))))
             }
@@ -514,6 +521,7 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             "IpAddr::localhost" => Some(Literal::ipAddr(std::net::IpAddr::V4(
                 std::net::Ipv4Addr::new(127, 0, 0, 1),
             ))),
+            "OnboardingData::declaredDomain" => unimplemented!(),
             _ => None,
         }
     }
@@ -534,6 +542,9 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             ("str::to_base64", cpflatlit!(Str(s))) => Some(cplit!(Str(base64::encode(s)))),
             ("data::to_base64", cpflatlit!(Data(d))) => Some(cplit!(Str(base64::encode(d)))),
             ("data::len", cpflatlit!(Data(d))) => Some(cplit!(Int(d.len() as i64))),
+            ("ControlPlane::onboard", cpflatlit!(ID(id))) => Some(cplit!(Bool(unimplemented!()))), //TODO Rest request to control plan because control plan not accessible otherwise ?
+            ("ControlPlane::onboarded", cpflatlit!(Label(l))) => Some(cplit!(ID(unimplemented!()))), //TODO Rest request to control plan because control plan not accessible otherwise ?
+            ("ControlPlane::newID", cpflatlit!(Label(l))) => Some(cplit!(ID(unimplemented!()))), //TODO Rest request to control plan because control plan not accessible otherwise ?
             ("HttpRequest::connection", cpflatlit!(HttpRequest(req))) => Some(req.connection()),
             ("HttpRequest::from", cpflatlit!(HttpRequest(req))) => Some(req.from_lit()),
             ("HttpRequest::to", cpflatlit!(HttpRequest(req))) => Some(req.to_lit()),
@@ -590,12 +601,22 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
                 } else {
                     Literal::none()
                 })
-            }
+            },
+            ("OnboardingData::host", cpflatlit!(OnboardingData(obd))) => Some(obd.host()),
+            ("OnboardingData::service", cpflatlit!(OnboardingData(obd))) => Some(obd.service()),
             _ => None,
         }
     }
     fn eval_call2(&self, f: &str, other: &Self) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
         match (f, self, other) {
+            ("compile_ingress", cpflatlit!(Str(function)), cpflatlit!(ID(id))) => {
+                let global_pol : policies::GlobalPolicies = unimplemented!(); //TODO need to get it from the state of control plane
+                Some(specialize::compile_ingress(global_pol, function, id)) 
+            },
+            ("compile_egress", cpflatlit!(Str(function)), cpflatlit!(ID(id))) =>  {
+                let global_pol : policies::GlobalPolicies = unimplemented!(); //TODO need to get it from the state of control plane
+                Some(specialize::compile_ingress(global_pol, function, id)) 
+            },
             ("i64::pow", cpflatlit!(Int(i)), cpflatlit!(Int(j))) => Some(cplit!(Int(i.pow(*j as u32)))),
             ("i64::min", cpflatlit!(Int(i)), cpflatlit!(Int(j))) => {
                 Some(cplit!(Int(std::cmp::min(*i, *j))))
@@ -688,6 +709,8 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             ("Label::is_match", cpflatlit!(Label(i)), cpflatlit!(Label(j))) => {
                 Some(i.matches_with(j).into())
             }
+            ("OnboardingResult::Ok",  cpflatlit!(ID(id)), cpflatlit!(Str(p))) => Some(OnboardingResult::new_ok(id.clone(), p.clone())),
+            ("OnboardingResult::Err",  cpflatlit!(Str(err)), cpflatlit!(Str(p))) =>  Some(OnboardingResult::new_err(err.clone(), p.clone())),
             _ => None,
         }
     }

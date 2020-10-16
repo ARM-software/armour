@@ -1,7 +1,7 @@
 use actix_web::{client, delete, get, post, web, web::Json, HttpResponse};
 use armour_api::control;
 use armour_api::host::PolicyUpdate;
-use armour_lang::{labels::Label, policies::Policies};
+use armour_lang::{labels::Label, policies::DPPolicies};
 use bson::doc;
 
 const ARMOUR_DB: &str = "armour";
@@ -87,6 +87,109 @@ pub mod host {
     }
 }
 
+/// BEGIN
+
+use armour_lang::{
+    expressions,
+    interpret::CPEnv,
+    literals::{self, CPFlatLiteral, CPLiteral},
+    policies_cp::{self, ObPolicy, ONBOARDING_SERVICES},
+};
+use futures::future::{BoxFuture, FutureExt};
+use std::convert::TryInto;
+
+
+pub struct OnboardingPolicy{
+    policy: ObPolicy,
+    env: Option<CPEnv>,
+    //status: PolicyStatus, FIXME maybe needed to add a timeout
+}
+
+impl OnboardingPolicy{
+    fn new(ob : ObPolicy) -> Self {
+        let env = match ob {
+            ObPolicy::Custom(ref pol) => Some(CPEnv::new(&pol.program)),
+            _ => None
+        };
+        OnboardingPolicy {
+            policy: ob,
+            env,
+        }
+    }
+
+    fn set_policy(&mut self, p: ObPolicy) {
+        //self.status.update_for_policy(&p);
+        self.policy = p;
+        self.env = match self.policy() {
+            ObPolicy::Custom(ref pol) => Some(CPEnv::new(&pol.program)),
+            _ => None
+        };
+    }
+    fn policy(&self) -> ObPolicy {
+        self.policy.clone()
+    }
+    fn env(&self) -> &Option<CPEnv> {
+        &self.env
+    }
+    fn evaluate_custom(//<T: std::convert::TryFrom<literals::CPLiteral> + Send + 'static>(
+        &self,
+        onboarding_data: expressions::CPExpr,//onboardingData
+    ) -> BoxFuture<'static, Result<Box<literals::OnboardingResult>, expressions::Error>> {
+        log::debug!("evaluting onboarding service policy");
+        let now = std::time::Instant::now();
+        let env = match self.env { Some(ref env) => env.clone(), _ => panic!("should never happen")}; //FIXME find a better structure than the panic 
+        async move {
+            let result = expressions::Expr::call(ONBOARDING_SERVICES, vec!(onboarding_data))
+                .evaluate(env.clone())
+                .await?;
+            //let meta = env.egress().await;
+            log::debug!("result ({:?}): {}", now.elapsed(), result);
+            if let expressions::Expr::LitExpr(lit) = result {
+                match lit {
+                    CPLiteral::FlatLiteral(CPFlatLiteral::OnboardingResult(r)) => {
+                        Ok(r)
+                    }, 
+                    _ => Err(expressions::Error::new("literal has wrong type"))
+                }
+            } else {
+                Err(expressions::Error::new("did not evaluate to a literal"))
+            }
+        }
+        .boxed()
+    }
+    fn evaluate(//<T: std::convert::TryFrom<literals::CPLiteral> + Send + 'static>(
+        &self,
+        onboarding_data: expressions::CPExpr,//onboardingData
+    ) -> BoxFuture<'static, Result<Box<literals::OnboardingResult>, expressions::Error>> {
+        log::debug!("evaluting onboarding service policy");
+        match self.policy() {
+            ObPolicy::Custom(pol) => self.evaluate_custom(onboarding_data),
+            ObPolicy::None => {
+                async move {
+                    Err(expressions::Error::new("onboarding is disallowed, onboarding policy needed")) 
+                }.boxed()
+            }
+        }
+    }
+}
+
+impl Default for OnboardingPolicy {
+    fn default() -> Self {
+        let policy = ObPolicy::onboard_none();
+        let env = match policy {
+            ObPolicy::Custom(ref pol) => Some(CPEnv::new(&pol.program)),
+            _ => None
+        };
+        OnboardingPolicy {
+            policy,
+            env,
+        }
+    }
+}
+
+pub const ONBOARDING_POLICY_KEY : &str = "onboarding_policy";
+/// END
+
 pub mod service {
     use super::*;
 
@@ -110,6 +213,7 @@ pub mod service {
         Ok(HttpResponse::Ok().body(s))
     }
 
+
     #[post("/on-board")]
     pub async fn on_board(
         state: State,
@@ -117,19 +221,56 @@ pub mod service {
     ) -> Result<HttpResponse, actix_web::Error> {
         let service = &request.service;
         log::info!("onboarding service: {}", service);
-        let col = collection(&state, SERVICES_COL);
 
-        // Check if the service is already there
-        if present(&col, doc! { "service" : to_bson(service)? }).await? {
-            Ok(internal(format!("service label in use {}", service)))
-        } else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
-            col.insert_one(document, None) // Insert into a MongoDB collection
+        //Getting current onboarding policy from db
+        let ob_policy: OnboardingPolicy = {             
+            let col = collection(&state, POLICIES_COL);
+
+            if let Ok(Some(doc)) = col
+                .find_one(Some(doc! { "label" : ONBOARDING_POLICY_KEY }), None)
                 .await
-                .on_err("error inserting in MongoDB")?;
-            Ok(HttpResponse::Ok().body("success"))
-        } else {
-            Ok(internal("error extracting document"))
+            {
+                OnboardingPolicy::new(
+                    bson::from_bson::<ObPolicy>(bson::Bson::Document(doc))
+                        .on_err("Bson conversion error")?
+                )
+            } else {
+                OnboardingPolicy::default() 
+            }
+        };
+
+        //Converting OnboardServiceRequest to OnboardingData
+        let onboarding_data : expressions::CPExpr = expressions::Expr::LitExpr(
+            literals::CPLiteral::FlatLiteral(literals::CPFlatLiteral::OnboardingData(
+                Box::new(literals::OnboardingData::new(
+                    request.host.clone(),
+                    request.service.clone()
+            ))))
+        );            
+        
+        //Eval policy
+        match ob_policy.evaluate(onboarding_data).await {
+            Ok(_) => {
+                //TODO do something with the local policy
+                Ok(HttpResponse::Ok().body("success"))
+            },
+            Err(e) => { Ok(internal(e.to_string())) }             
         }
+
+        ////tODO should use as builtin armour type/function
+        //let col = collection(&state, SERVICES_COL);
+
+        //// Check if the service is already there
+        //if present(&col, doc! { "service" : to_bson(service)? }).await? {
+        //    Ok(internal(format!("service label in use {}", service)))
+        //} else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
+        //    col.insert_one(document, None) // Insert into a MongoDB collection
+        //        .await
+        //        .on_err("error inserting in MongoDB")?;
+        //    Ok(HttpResponse::Ok().body("success"))
+        //} else {
+        //    Ok(internal("error extracting document"))
+        //}
     }
 
     #[delete("/drop")]
@@ -210,7 +351,7 @@ pub mod policy {
         client: &client::Client,
         state: &State,
         label: &Label,
-        policy: &Policies,
+        policy: &DPPolicies,
     ) -> Result<(), actix_web::Error> {
         let hosts = hosts(state, label).await?;
         log::debug!("hosts: {:?}", hosts);
@@ -332,7 +473,7 @@ pub mod policy {
             .delete_one(doc! { "label" : label.to_string() }, None)
             .await
             .on_err("failed to drop policy")?;
-        update_hosts(&client.into_inner(), &state, label, &Policies::deny_all()).await?;
+        update_hosts(&client.into_inner(), &state, label, &DPPolicies::deny_all()).await?;
         Ok(HttpResponse::Ok().body(format!("dropped {}", res.deleted_count)))
     }
 
@@ -346,7 +487,7 @@ pub mod policy {
         let client = client.into_inner();
         if collection(&state, POLICIES_COL).drop(None).await.is_ok() {
             for label in services {
-                update_hosts(&client, &state, &label, &Policies::deny_all()).await?;
+                update_hosts(&client, &state, &label, &DPPolicies::deny_all()).await?;
             }
         }
         Ok(HttpResponse::Ok().body("dropped all policies"))

@@ -199,6 +199,7 @@ impl TExternals<types_cp::CPFlatTyp, literals::CPFlatLiteral> for literals::CPFl
             cpflatlit!(Label(label)) => v.set_text(&label.to_string()),
             cpflatlit!(OnboardingData(_)) => unimplemented!(),
             cpflatlit!(OnboardingResult(_)) => unimplemented!(),
+            cpflatlit!(Policy()) => unimplemented!(),
             cpflatlit!(Regex(r)) => v.set_text(&r.to_string()),
             cpflatlit!(Str(s)) => v.set_text(s),
             cpflatlit!(Unit) => v.set_unit(()),

@@ -148,7 +148,7 @@ async fn main() -> std::io::Result<()> {
 
     if let Some(dataplane_matches) = matches.subcommand_matches("dataplane") {
         if let Some(export_matches) = matches.subcommand_matches("export") {
-            let policy = match matches.value_of("input file") {
+            let policy: policies::DPPolicies = match matches.value_of("input file") {
                 Some(file) => policies::Policies::from_file(file)?,
                 _ => match export_matches.value_of("policy").unwrap_or("deny") {
                     "allow" => policies::Policies::allow_all(),

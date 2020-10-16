@@ -34,6 +34,8 @@ pub mod policies;
 pub mod policies_cp;
 /// Pretty-printer
 pub mod pretty;
+/// Specialize global policy -> local policy
+pub mod specialize;
 /// Type system
 pub mod types;
 pub mod types_cp;

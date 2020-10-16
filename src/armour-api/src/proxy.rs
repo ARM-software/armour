@@ -41,12 +41,12 @@ impl HttpConfig {
 #[rtype("()")]
 pub enum PolicyRequest {
     Label(LabelOp),
-    SetPolicy(policies::Policies),
+    SetPolicy(policies::DPPolicies),
     Shutdown,
     StartHttp(HttpConfig),
     StartTcp(u16),
     Status,
-    Stop(policies::Protocol),
+    Stop(policies::DPProtocol),
     Timeout(u8),
 }
 

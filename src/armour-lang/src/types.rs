@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::marker::PhantomData;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug,  PartialEq, Serialize, Deserialize)]
 pub enum FlatTyp {
     Bool,
     Connection,
@@ -51,7 +51,7 @@ impl fmt::Display for FlatTyp {
 }
 
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug,   PartialEq, Serialize, Deserialize)]
 pub enum Typ<FlatTyp:TFlatTyp>{
     FlatTyp(FlatTyp),
     List(Box<Typ<FlatTyp>>),
@@ -89,7 +89,7 @@ pub trait TBuiltin<FlatTyp:TFlatTyp>{
     fn internal_service(f: &str) -> Option<Signature<FlatTyp>> {None}
 }
 
-pub trait TFlatTyp : fmt::Display + std::fmt::Debug + Sized + Clone + PartialEq + TBuiltin<Self> + Unpin + std::marker::Send + Default + std::marker::Sync {
+pub trait TFlatTyp : fmt::Display + std::fmt::Debug + Sized + Serialize + Clone + PartialEq + TBuiltin<Self> + Unpin + std::marker::Send + Default + std::marker::Sync {
     //fn type_check(s: &str, v1: LocTypes<Self>, v2: LocTypes<Self>) -> Result<(), Error<Self>>; 
     
     fn rreturn() -> Self; 

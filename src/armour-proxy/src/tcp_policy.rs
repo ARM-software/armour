@@ -16,7 +16,7 @@ use std::sync::Arc;
 pub struct TcpPolicy {
     connect: FnPolicy,
     disconnect: FnPolicy,
-    policy: Arc<policies::Policy>,
+    policy: Arc<policies::DPPolicy>,
     env: DPEnv,
     proxy: Option<(Addr<tcp_proxy::TcpDataServer>, u16)>,
 }
@@ -32,7 +32,7 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
         }
         self.proxy = None
     }
-    fn set_policy(&mut self, p: policies::Policy) {
+    fn set_policy(&mut self, p: policies::DPPolicy) {
         self.connect = p
             .get(policies::ALLOW_TCP_CONNECTION)
             .cloned()
@@ -47,7 +47,7 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
     fn port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|p| p.1)
     }
-    fn policy(&self) -> Arc<policies::Policy> {
+    fn policy(&self) -> Arc<policies::DPPolicy> {
         self.policy.clone()
     }
     fn hash(&self) -> String {
@@ -67,7 +67,7 @@ impl Policy<Addr<tcp_proxy::TcpDataServer>> for TcpPolicy {
 
 impl Default for TcpPolicy {
     fn default() -> Self {
-        let policy = Arc::new(policies::Policy::deny_all(Protocol::TCP));
+        let policy = Arc::new(policies::DPPolicy::deny_all(Protocol::TCP));
         let env = DPEnv::new(&policy.program);
         TcpPolicy {
             connect: FnPolicy::default(),

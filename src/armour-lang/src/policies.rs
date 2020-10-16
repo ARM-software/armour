@@ -1,10 +1,11 @@
 /// policies
 use super::{
     expressions,
-    lang,
-    literals,
-    types::{self, Signature, FlatTyp, DPTyp, Typ, TFlatTyp, TTyp},
     headers::THeaders,
+    lang,
+    literals::{self, TFlatLiteral},
+    types_cp,
+    types::{self, Signature, FlatTyp, Typ, TFlatTyp, TTyp},
 };
 use lazy_static::lazy_static;
 use serde::{
@@ -15,6 +16,8 @@ use serde::{
 use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
+use std::marker::PhantomData;
+use std::cmp::{Ord, Ordering, PartialOrd};
 
 // policy for a function
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -61,23 +64,25 @@ impl FnPolicies {
 
 // map from function name to list of permitted types
 #[derive(Default)]
-struct ProtocolPolicy(BTreeMap<String, Vec<Signature<types::FlatTyp>>>);
+pub struct ProtocolPolicy<FlatTyp:TFlatTyp>(BTreeMap<String, Vec<Signature<FlatTyp>>>);
+type DPProtocolPolicy = ProtocolPolicy<types::FlatTyp>;
+type CPProtocolPolicy = ProtocolPolicy<types_cp::CPFlatTyp>;
 
-impl ProtocolPolicy {
+impl<FlatTyp:TFlatTyp> ProtocolPolicy<FlatTyp> {
     fn functions(&self) -> Vec<String> {
         self.0.keys().cloned().collect()
     }
     fn insert(&mut self, name: &str, fn_policy: Vec<Signature<FlatTyp>>) {
         self.0.insert(name.to_string(), fn_policy);
     }
-    fn insert_bool(&mut self, name: &str, args: Vec<Vec<DPTyp>>) {
+    fn insert_bool(&mut self, name: &str, args: Vec<Vec<Typ<FlatTyp>>>) {
         let sigs = args
             .into_iter()
             .map(|v| Signature::new(v, Typ::bool()))
             .collect();
         self.insert(name, sigs)
     }
-    fn insert_unit(&mut self, name: &str, args: Vec<Vec<DPTyp>>) {
+    fn insert_unit(&mut self, name: &str, args: Vec<Vec<Typ<FlatTyp>>>) {
         let sigs = args
             .into_iter()
             .map(|v| Signature::new(v, Typ::unit()))
@@ -91,73 +96,128 @@ pub const ALLOW_REST_RESPONSE: &str = "allow_rest_response";
 pub const ALLOW_TCP_CONNECTION: &str = "allow_tcp_connection";
 pub const ON_TCP_DISCONNECT: &str = "on_tcp_disconnect";
 
-lazy_static! {
-    static ref HTTP_POLICY: ProtocolPolicy = {
-        let mut policy = ProtocolPolicy::default();
-        policy.insert_bool(
-            ALLOW_REST_REQUEST,
-            vec![
-                vec![Typ::FlatTyp(FlatTyp::HttpRequest), Typ::FlatTyp(FlatTyp::Data)],
-                vec![Typ::FlatTyp(FlatTyp::HttpRequest)],
-                Vec::new(),
-            ],
-        );
-        policy.insert_bool(
-            ALLOW_REST_RESPONSE,
-            vec![
-                vec![Typ::FlatTyp(FlatTyp::HttpResponse), Typ::FlatTyp(FlatTyp::Data)],
-                vec![Typ::FlatTyp(FlatTyp::HttpResponse)],
-                Vec::new(),
-            ],
-        );
-        policy
-    };
-    static ref TCP_POLICY: ProtocolPolicy = {
-        let mut policy = ProtocolPolicy::default();
-        policy.insert_bool(
-            ALLOW_TCP_CONNECTION,
-            vec![vec![Typ::FlatTyp(FlatTyp::Connection)], Vec::new()],
-        );
-        policy.insert_unit(
-            ON_TCP_DISCONNECT,
-            vec![
-                vec![Typ::FlatTyp(FlatTyp::Connection), Typ::FlatTyp(FlatTyp::I64), Typ::FlatTyp(FlatTyp::I64)],
-                vec![Typ::FlatTyp(FlatTyp::Connection)],
-                Vec::new(),
-            ],
-        );
-        policy
-    };
+
+fn http_policy<FlatTyp:TFlatTyp>() -> ProtocolPolicy<FlatTyp> {      
+    let mut policy = ProtocolPolicy::default();
+    policy.insert_bool(
+        ALLOW_REST_REQUEST,
+        vec![
+            vec![Typ::FlatTyp(FlatTyp::http_request()), Typ::FlatTyp(FlatTyp::data())],
+            vec![Typ::FlatTyp(FlatTyp::http_request())],
+            Vec::new(),
+        ],
+    );
+    policy.insert_bool(
+        ALLOW_REST_RESPONSE,
+        vec![
+            vec![Typ::FlatTyp(FlatTyp::httpResponse()), Typ::FlatTyp(FlatTyp::data())],
+            vec![Typ::FlatTyp(FlatTyp::httpResponse())],
+            Vec::new(),
+        ],
+    );
+    policy
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Protocol {
+fn tcp_policy<FlatTyp:TFlatTyp>() -> ProtocolPolicy<FlatTyp> {
+    let mut policy = ProtocolPolicy::default();
+    policy.insert_bool(
+        ALLOW_TCP_CONNECTION,
+        vec![vec![Typ::FlatTyp(FlatTyp::connection())], Vec::new()],
+    );
+    policy.insert_unit(
+        ON_TCP_DISCONNECT,
+        vec![
+            vec![Typ::FlatTyp(FlatTyp::connection()), Typ::FlatTyp(FlatTyp::i64()), Typ::FlatTyp(FlatTyp::i64())],
+            vec![Typ::FlatTyp(FlatTyp::connection())],
+            Vec::new(),
+        ],
+    );
+    policy
+}
+
+lazy_static! {
+    static ref CP_HTTP_POLICY: CPProtocolPolicy = http_policy();
+    static ref HTTP_POLICY: DPProtocolPolicy = http_policy();
+    static ref CP_TCP_POLICY: CPProtocolPolicy = tcp_policy();
+    static ref TCP_POLICY: DPProtocolPolicy = tcp_policy();
+}
+
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum Protocol<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     HTTP,
     TCP,
+    Phantom(PhantomData<(FlatTyp, FlatLiteral)>)
 }
 
-impl Protocol {
-    fn policy(&self) -> &ProtocolPolicy {
-        match self {
-            Protocol::HTTP => &*HTTP_POLICY,
-            Protocol::TCP => &*TCP_POLICY,
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> PartialOrd for Protocol<FlatTyp, FlatLiteral> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (HTTP, TCP) => Some(Ordering::Less),
+            (x1, x2) if x1 == x2 => Some(Ordering::Equal),
+            (TCP, HTTP) => Some(Ordering::Greater),
+            _ => None,
+
         }
     }
+}
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Eq for Protocol<FlatTyp, FlatLiteral> {
+}
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Ord for Protocol<FlatTyp, FlatLiteral> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.partial_cmp(other) {
+            Some(x) => x,
+            _ => unimplemented!(), //Should never happen, PhantomData
+
+        }
+    }
+}
+
+// Manual overloading since it is not stable yet
+pub trait TProtocol<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+    fn policy(p: &Protocol<FlatTyp, FlatLiteral>) -> &ProtocolPolicy<FlatTyp>;
+}
+pub type DPProtocol = Protocol<FlatTyp, literals::FlatLiteral>;
+pub type CPProtocol = Protocol<types_cp::CPFlatTyp, literals::CPFlatLiteral>;
+
+impl TProtocol<FlatTyp, Self> for literals::FlatLiteral {
+    fn policy(p: &DPProtocol) -> &DPProtocolPolicy {
+        match p {
+            Protocol::HTTP => &*HTTP_POLICY,
+            Protocol::TCP => &*TCP_POLICY,
+            Protocol::Phantom(_) => unimplemented!(), 
+        }
+    }
+}
+impl TProtocol<types_cp::CPFlatTyp, Self> for literals::CPFlatLiteral {
+    fn policy(p: &CPProtocol) -> &CPProtocolPolicy {
+        match p {
+            Protocol::HTTP => &*CP_HTTP_POLICY,
+            Protocol::TCP => &*CP_TCP_POLICY,
+            Protocol::Phantom(_) => unimplemented!(), 
+        }
+    }
+}
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Protocol<FlatTyp, FlatLiteral> {
     fn functions(&self) -> Vec<String> {
         self.policy().0.keys().cloned().collect()
     }
+    fn policy(&self) -> &ProtocolPolicy<FlatTyp> {
+        FlatLiteral::policy(self)
+    }
 }
 
-impl fmt::Display for Protocol {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Protocol<FlatTyp, FlatLiteral> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Protocol::HTTP => write!(f, "http"),
             Protocol::TCP => write!(f, "tcp"),
+            Protocol::Phantom(_) => unimplemented!()
         }
     }
 }
 
-impl FromStr for Protocol {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> FromStr for Protocol<FlatTyp, FlatLiteral> {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
@@ -169,28 +229,30 @@ impl FromStr for Protocol {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Policy {
-    pub program: lang::Program<types::FlatTyp, literals::DPFlatLiteral>,
+pub struct Policy<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+    pub program: lang::Program<FlatTyp, FlatLiteral>,
     fn_policies: FnPolicies,
 }
+pub type DPPolicy = Policy<types::FlatTyp, literals::DPFlatLiteral>;
+pub type GlobalPolicy = Policy<types_cp::CPFlatTyp, literals::CPFlatLiteral>;
 
-impl Policy {
-    pub fn get(&self, name: &str) -> Option<&FnPolicy> {
-        self.fn_policies.0.get(name)
-    }
-    pub fn allow_all(p: Protocol) -> Self {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policy<FlatTyp, FlatLiteral> {
+    pub fn allow_all(p: Protocol<FlatTyp, FlatLiteral>) -> Self {
         let fn_policies = FnPolicies::allow_all(p.policy().functions().as_ref());
         Policy {
             program: lang::Program::default(),
             fn_policies,
         }
     }
-    pub fn deny_all(p: Protocol) -> Self {
+    pub fn deny_all(p: Protocol<FlatTyp, FlatLiteral>) -> Self {
         let fn_policies = FnPolicies::deny_all(p.policy().functions().as_ref());
         Policy {
             program: lang::Program::default(),
             fn_policies,
         }
+    }
+    pub fn get(&self, name: &str) -> Option<&FnPolicy> {
+        self.fn_policies.0.get(name)
     }
     pub fn is_allow_all(&self) -> bool {
         self.fn_policies.is_allow_all()
@@ -215,9 +277,6 @@ impl Policy {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
             .to_string())
     }
-    pub fn from_bincode<R: std::io::Read>(r: R) -> Result<Self, std::io::Error> {
-        armour_utils::bincode_gz_base64_dec(r)
-    }
     fn type_check(function: &str, sig1: &Signature<FlatTyp>, sig2: &Signature<FlatTyp>) -> bool {
         let (args1, ty1) = sig1.split_as_ref();
         let (args2, ty2) = sig2.split_as_ref();
@@ -233,8 +292,8 @@ impl Policy {
             }
     }
     fn from_program(
-        program: lang::Program<FlatTyp, literals::DPFlatLiteral>,
-        proto_policy: &ProtocolPolicy,
+        program: lang::Program<FlatTyp, FlatLiteral>,
+        proto_policy: &ProtocolPolicy<FlatTyp>,
     ) -> Result<Self, expressions::Error> {
         use std::convert::TryFrom;
         let mut fn_policies = FnPolicies::default();
@@ -242,7 +301,7 @@ impl Policy {
             if let Some(sig) = program.headers.typ(function) {
                 if !signatures
                     .iter()
-                    .any(|sig_typ| Policy::type_check(function, &sig, sig_typ))
+                    .any(|sig_typ| Self::type_check(function, &sig, sig_typ))
                 {
                     let possible = signatures
                         .iter()
@@ -273,7 +332,13 @@ impl Policy {
     }
 }
 
-impl fmt::Display for Policy {
+impl DPPolicy {
+    pub fn from_bincode<R: std::io::Read>(r: R) -> Result<Self, std::io::Error> {
+        armour_utils::bincode_gz_base64_dec(r)
+    }
+}
+
+impl<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> fmt::Display for Policy<FlatTyp, FlatLiteral> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.is_allow_all() {
             write!(f, "allow all")
@@ -287,20 +352,24 @@ impl fmt::Display for Policy {
 }
 
 #[derive(Clone, Default)]
-pub struct Policies(BTreeMap<Protocol, Policy>);
+pub struct Policies<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(BTreeMap<Protocol<FlatTyp, FlatLiteral>, Policy<FlatTyp, FlatLiteral>>);
+pub type DPPolicies = Policies<FlatTyp, literals::FlatLiteral>;
+pub type GlobalPolicies = Policies<types_cp::CPFlatTyp, literals::CPFlatLiteral>;
 
-impl Policies {
-    fn insert(&mut self, p: Protocol, policy: Policy) {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, FlatLiteral> {
+    fn insert(&mut self, p: Protocol<FlatTyp, FlatLiteral>, policy: Policy<FlatTyp, FlatLiteral>) {
         self.0.insert(p, policy);
     }
     pub fn allow_all() -> Self {
         let mut policies = Policies::default();
+        let tcp: Protocol<FlatTyp, FlatLiteral> = Protocol::TCP;
+        let http: Protocol<FlatTyp, FlatLiteral> = Protocol::HTTP;
         policies
             .0
-            .insert(Protocol::TCP, Policy::allow_all(Protocol::TCP));
+            .insert(Protocol::TCP, Policy::allow_all(tcp));
         policies
             .0
-            .insert(Protocol::HTTP, Policy::allow_all(Protocol::HTTP));
+            .insert(Protocol::HTTP, Policy::allow_all(http));
         policies
     }
     pub fn deny_all() -> Self {
@@ -319,31 +388,33 @@ impl Policies {
     pub fn is_deny_all(&self) -> bool {
         self.0.values().all(|p| p.is_deny_all())
     }
-    pub fn policy(&self, p: Protocol) -> Option<&Policy> {
+    pub fn policy(&self, p: Protocol<FlatTyp, FlatLiteral>) -> Option<&Policy<FlatTyp, FlatLiteral>> {
         self.0.get(&p)
     }
     pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, expressions::Error> {
         let pre_prog = lang::PreProgram::from_file(path)?;
         let mut policies = Policies::default();
-        let http_prog = pre_prog.program(&Protocol::HTTP.functions());
+        let http : Protocol<FlatTyp, FlatLiteral> = Protocol::HTTP;
+        let tcp : Protocol<FlatTyp, FlatLiteral> = Protocol::HTTP;
+        let http_prog = pre_prog.program(&http.functions());
         if !http_prog.is_empty() {
             policies.0.insert(
                 Protocol::HTTP,
-                Policy::from_program(http_prog, Protocol::HTTP.policy())?,
+                Policy::from_program(http_prog, http.policy())?,
             );
         }
-        let tcp_prog = pre_prog.program(&Protocol::TCP.functions());
+        let tcp_prog = pre_prog.program(&tcp.functions());
         if !tcp_prog.is_empty() {
             policies.0.insert(
                 Protocol::TCP,
-                Policy::from_program(tcp_prog, Protocol::TCP.policy())?,
+                Policy::from_program(tcp_prog, tcp.policy())?,
             );
         }
         Ok(policies)
     }
 }
 
-impl fmt::Display for Policies {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Policies<FlatTyp, FlatLiteral> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "TCP: ")?;
         if let Some(policy) = self.policy(Protocol::TCP) {
@@ -361,7 +432,7 @@ impl fmt::Display for Policies {
     }
 }
 
-impl Serialize for Policies {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Serialize for Policies<FlatTyp, FlatLiteral> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -380,7 +451,7 @@ impl Serialize for Policies {
 struct PoliciesVisitor;
 
 impl<'de> Visitor<'de> for PoliciesVisitor {
-    type Value = Policies;
+    type Value = DPPolicies;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Policies")
@@ -390,9 +461,9 @@ impl<'de> Visitor<'de> for PoliciesVisitor {
     where
         M: MapAccess<'de>,
     {
-        let mut map = Policies::default();
+        let mut map : DPPolicies = Policies::default();
 
-        while let Some((proto, bincode_policy)) = access.next_entry::<Protocol, String>()? {
+        while let Some((proto, bincode_policy)) = access.next_entry::<DPProtocol, String>()? {
             let policy = Policy::from_bincode(bincode_policy.as_bytes())
                 .map_err(|_| serde::de::Error::custom("failed to read policy from bincode"))?;
             map.insert(proto, policy);
@@ -402,7 +473,7 @@ impl<'de> Visitor<'de> for PoliciesVisitor {
     }
 }
 
-impl<'de> Deserialize<'de> for Policies {
+impl<'de> Deserialize<'de> for DPPolicies {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,

@@ -1,19 +1,20 @@
-//Specialize control plan program to data plane one
+//Specialize control plane global policy to data plane local one 
 
 use super::expressions::{Block, Error, Expr, Pattern};
 use super::externals::{Call, ExternalActor};
 use super::headers::Headers;
 use super::labels::Label;
 use super::lang::{Code, Program};
-use super::literals::{Connection, HttpRequest, HttpResponse, Literal, Method, VecSet};
+use super::literals::{self, Connection, HttpRequest, HttpResponse, CPID, CPLiteral, Method, VecSet};
 use super::meta::{Egress, IngressEgress, Meta};
-use super::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};s
+use super::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
+use super::policies::{GlobalPolicies};
 
 
-impl CPExpr {
+pub fn compile_ingress(global_pol: GlobalPolicies, function: &String, to: &CPID) -> CPLiteral {
+    unimplemented!()
+}
 
-    //TODO do we need to write async code here -> not sure yet
-    pub fn evaluate(self, env: Env) -> Result<Expr, self::Error> {
-        Ok()     
-    }
+pub fn compile_egress(global_pol: GlobalPolicies, function: &String, to: &CPID) -> CPLiteral {
+    unimplemented!()
 }

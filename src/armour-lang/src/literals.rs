@@ -1,5 +1,6 @@
 use super::pretty::TPrettyLit;
 use super::{interpret::TInterpret, labels, parser, types::{Typ, FlatTyp, TFlatTyp, TTyp}, types_cp::{CPFlatTyp, CPTyp}};
+use super::policies::TProtocol;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Display};
@@ -7,7 +8,7 @@ use std::str::FromStr;
 use std::marker::PhantomData;
 
 
-#[derive(PartialEq, Debug, Display, Clone, Serialize, Deserialize)]
+#[derive( PartialEq, Debug, Display, Clone, Serialize, Deserialize)]
 pub enum Method {
     GET,
     POST,
@@ -44,7 +45,7 @@ impl Default for Method {
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[derive( PartialEq, Debug, Clone, Serialize, Deserialize)]
 #[allow(non_camel_case_types)]
 enum Version {
     HTTP_09,
@@ -84,7 +85,7 @@ impl Default for Version {
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
+#[derive( PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
 struct Headers<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     headers: BTreeMap<String, Vec<Vec<u8>>>,
     phantom: PhantomData<(FlatTyp, FlatLiteral)>,
@@ -150,7 +151,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Vec<(&str, &[u8])
     }
 }
 
-#[derive(PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
+#[derive( PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ID<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     hosts: BTreeSet<String>,
     ips: BTreeSet<std::net::IpAddr>,
@@ -158,6 +159,8 @@ pub struct ID<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     labels: BTreeSet<labels::Label>,
     phantom : PhantomData<(FlatTyp, FlatLiteral)>,
 }
+pub type DPID = ID<FlatTyp, FlatLiteral>;
+pub type CPID = ID<CPFlatTyp, CPFlatLiteral>;
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> ID<FlatTyp, FlatLiteral> {
     pub fn new(
@@ -241,13 +244,14 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> ID<FlatTyp, FlatLitera
     }
 }
 
-#[derive(PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
+#[derive( PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Connection<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     from: ID<FlatTyp, FlatLiteral>,
     to: ID<FlatTyp, FlatLiteral>,
     number: i64,
     phantom : PhantomData<(FlatTyp, FlatLiteral)>,
 }
+pub type DPConnection = Connection<FlatTyp, FlatLiteral>;
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Connection<FlatTyp, FlatLiteral> {
     pub fn literal(from: &ID<FlatTyp, FlatLiteral>, to: &ID<FlatTyp, FlatLiteral>, number: i64) -> Literal<FlatTyp, FlatLiteral> {
@@ -295,7 +299,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<(&ID<FlatTyp, Fla
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
+#[derive( PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HttpRequest<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     method: Method,
     version: Version,
@@ -430,7 +434,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Method> for Liter
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
+#[derive( PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HttpResponse<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  {
     version: Version,
     status: u16,
@@ -556,31 +560,55 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> VecSet<FlatTyp, FlatLi
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
-pub struct OnboardingResult {
+//TODO find a better structure 
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub enum OnboardingResult {
+    Ok(ID<CPFlatTyp, CPFlatLiteral>, String), //TODO second member should a policy ?? is it still a literal ?
+    Err(String, String)    //TODO second member should a policy ?? is it still a literal ?
 }
-
 impl OnboardingResult {
-    pub fn new() -> Self {
-        unimplemented!()
+    pub fn new_ok(id: ID<CPFlatTyp, CPFlatLiteral>, p: String ) -> CPLiteral {
+        Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
+            Self::Ok(id, p)
+        )))
+    }
+    pub fn new_err(err: String, p : String ) -> CPLiteral {
+        Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
+            Self::Err(err, p)
+        )))
     }
 }
-
-#[derive(PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct OnboardingData {
-    pub service_name : String,
+    //host description                
+    host : labels::Label, 
+
+    //service description
+    service : labels::Label,                  
+    //TODO
+
+    //authentification description
+    //TODO
+
+    //exported labels
+    //TODO
 }
 
 impl OnboardingData {
     pub fn new(
-        service_name : String,
+        host: labels::Label,
+        service: labels::Label,
     ) -> Self {
         OnboardingData {
-            service_name: service_name,
+            host: host,
+            service: service,
         }
     }
-    pub fn service_name(&self) -> CPLiteral {
-        CPLiteral::FlatLiteral(CPFlatLiteral::str(self.service_name.clone()))
+    pub fn service(&self) -> CPLiteral {
+        CPLiteral::FlatLiteral(CPFlatLiteral::Label(self.service.clone()))
+    }
+    pub fn host(&self) -> CPLiteral {
+        CPLiteral::FlatLiteral(CPFlatLiteral::Label(self.host.clone()))
     }
 }
 
@@ -588,7 +616,7 @@ use super::externals;
 
 pub trait TFlatLiteral<FlatTyp:TFlatTyp> : std::fmt::Debug + PartialEq + Clone + fmt::Display +
  Unpin + std::marker::Send + Default + externals::TExternals<FlatTyp, Self> + std::marker::Sync 
- + TPrettyLit + TInterpret<FlatTyp, Self>
+ + TPrettyLit + TInterpret<FlatTyp, Self> + Serialize + TProtocol<FlatTyp, Self>
 //+ From<bool> + From<Connection> +  From<Vec<u8>>  
 //+ From<f64> + From<labels::Label> +  From<HttpRequest>
 //+ From<HttpResponse> + From<ID<FlatTyp, FlatLiteral>  
@@ -627,9 +655,11 @@ pub trait TFlatLiteral<FlatTyp:TFlatTyp> : std::fmt::Debug + PartialEq + Clone +
     fn unit() -> Self;
     fn is_unit(&self) -> bool;
 
+
+
 }
 
-#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[derive( PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum FlatLiteral {
     Bool(bool),
     Connection(Connection<FlatTyp, FlatLiteral>),
@@ -766,7 +796,7 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
 }
 
 
-#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[derive( PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Literal<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     FlatLiteral(FlatLiteral),
     List(Vec<Literal<FlatTyp, FlatLiteral>>),
@@ -956,6 +986,8 @@ pub enum CPFlatLiteral {
 
     OnboardingData(Box<OnboardingData>),
     OnboardingResult(Box<OnboardingResult>),
+    Policy(),//TODO
+
 }
 
 
@@ -965,6 +997,7 @@ impl CPFlatLiteral {
             //CPFlatLiteral(dpft) => CPTyp::from(dpft.typ())
             CPFlatLiteral::OnboardingData(_) => CPTyp::onboardingData(),
             CPFlatLiteral::OnboardingResult(_) => CPTyp::onboardingResult(),
+            CPFlatLiteral::Policy() => CPTyp::policy(),
             _=> unimplemented!()
         }
     }
@@ -1002,6 +1035,7 @@ impl fmt::Display for CPFlatLiteral {
             CPFlatLiteral::Unit => write!(f, "()"),
             CPFlatLiteral::OnboardingData(d) => write!(f, "{:?}", d),
             CPFlatLiteral::OnboardingResult(r) => write!(f, "{:?}", r),
+            CPFlatLiteral::Policy() => unimplemented!(),//write!(f, "{:?}", r),
         }
     }
 }
@@ -1108,6 +1142,7 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
             CPFlatLiteral::Unit => CPFlatTyp::unit(),
             CPFlatLiteral::OnboardingData(_) => CPFlatTyp::OnboardingData,
             CPFlatLiteral::OnboardingResult(_) => CPFlatTyp::OnboardingData,
+            CPFlatLiteral::Policy() => CPFlatTyp::OnboardingData,
         }
     }
     

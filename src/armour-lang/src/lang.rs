@@ -6,6 +6,7 @@ use super::{
     lexer,
     literals::{self, TFlatLiteral},
     parser::{self, TParser },
+    types_cp::{CPFlatTyp},
     types::{self, TFlatTyp}
 };
 use petgraph::graph;
@@ -72,12 +73,13 @@ impl CallGraph {
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Program<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     pub code: Code<FlatTyp, FlatLiteral>,
-    pub externals: externals::Externals,//FIXME not yet generic -> having generic actor is pain full....
+    pub externals: externals::Externals,
     pub headers: Headers<FlatTyp>,
     phantom: PhantomData<FlatLiteral>
 }
 
 pub type DPProgram = Program<types::FlatTyp, literals::FlatLiteral>;
+pub type CPProgram = Program<CPFlatTyp, literals::CPFlatLiteral>;
 
 impl< FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Program<FlatTyp, FlatLiteral> {
     pub fn set_timeout(&mut self, t: std::time::Duration) {

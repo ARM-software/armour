@@ -28,6 +28,9 @@ impl Error {
     pub fn from_display<D: std::fmt::Display>(e: D) -> Error {
         Error(e.to_string())
     }
+    pub fn to_string(&self) -> String {
+        self.0.clone()
+    }
 }
 
 impl fmt::Display for Error {

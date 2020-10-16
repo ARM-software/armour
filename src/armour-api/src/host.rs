@@ -20,14 +20,14 @@ pub const UDS_SOCKET: &str = "armour";
 #[derive(Serialize, Deserialize)]
 pub struct PolicyUpdate {
     pub label: Label,
-    pub policy: policies::Policies,
+    pub policy: policies::DPPolicies,
 }
 
 /// Query current policy status
 #[derive(Serialize, Deserialize)]
 pub struct PolicyQuery {
     pub label: Label,
-    pub potocol: policies::Protocol,
+    pub potocol: policies::DPProtocol,
 }
 
 /// Current policy status
@@ -55,12 +55,12 @@ pub enum PolicyResponse {
         tcp: Box<Status>,
     },
     Stopped,
-    UpdatedPolicy(policies::Protocol, String), // hash of new policy
+    UpdatedPolicy(policies::DPProtocol, String), // hash of new policy
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Status {
-    pub policy: policies::Policy,
+    pub policy: policies::DPPolicy,
     pub port: Option<u16>,
     pub ingress: Option<std::net::SocketAddrV4>,
 }

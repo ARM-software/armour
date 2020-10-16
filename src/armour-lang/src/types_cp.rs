@@ -4,11 +4,12 @@ use std::fmt;
 use std::result::Result;
 use super::types::{Error, DPTyp, Typ, FlatTyp, TFlatTyp, Signature, DPError};
 
-#[derive(Clone,  Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone,  Debug,  PartialEq, Serialize, Deserialize)]
 pub enum CPFlatTyp {
    DPFlatTyp(FlatTyp),
    OnboardingData,
    OnboardingResult,
+   Policy,
 }
 
 impl CPTyp {
@@ -17,6 +18,9 @@ impl CPTyp {
     }
     pub fn onboardingResult() -> Self {
         Self::FlatTyp(CPFlatTyp::OnboardingResult)
+    }
+    pub fn policy() -> Self {
+        Self::FlatTyp(CPFlatTyp::Policy)
     }
 }
 
@@ -47,6 +51,7 @@ impl fmt::Display for CPFlatTyp {
             CPFlatTyp::DPFlatTyp(t) => FlatTyp::fmt(t, f),
             CPFlatTyp::OnboardingData => write!(f, "onboardingData"),
             CPFlatTyp::OnboardingResult => write!(f, "onboardingResult"),
+            CPFlatTyp::Policy => write!(f, "policy"),
         }
     }
 }

@@ -22,9 +22,9 @@ use tokio_util::codec::FramedRead;
 pub trait Policy<P> {
     fn start(&mut self, proxy: P, port: u16);
     fn stop(&mut self);
-    fn set_policy(&mut self, p: policies::Policy);
+    fn set_policy(&mut self, p: policies::DPPolicy);
     fn port(&self) -> Option<u16>;
-    fn policy(&self) -> Arc<policies::Policy>;
+    fn policy(&self) -> Arc<policies::DPPolicy>;
     fn hash(&self) -> String;
     fn env(&self) -> &DPEnv;
     fn status(&self) -> Box<Status>;
@@ -436,6 +436,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                     self.uds_framed.write(PolicyResponse::Stopped)
                 }
             }
+            PolicyRequest::Stop(Protocol::Phantom(_)) => { unimplemented!() }
             PolicyRequest::StartHttp(config) => {
                 let port = config.port();
                 if let Some(current_port) = self.http.port() {
@@ -566,14 +567,14 @@ impl PolicyActor {
 
 // install policies
 impl PolicyActor {
-    fn install_http(&mut self, policy: policies::Policy) {
+    fn install_http(&mut self, policy: policies::DPPolicy) {
         let hash = policy.blake3();
         self.http.set_policy(policy);
         self.uds_framed
             .write(PolicyResponse::UpdatedPolicy(Protocol::HTTP, hash));
         log::info!("installed HTTP policy")
     }
-    fn install_tcp(&mut self, policy: policies::Policy) {
+    fn install_tcp(&mut self, policy: policies::DPPolicy) {
         let hash = policy.blake3();
         self.tcp.set_policy(policy);
         self.uds_framed

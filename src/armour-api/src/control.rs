@@ -1,7 +1,7 @@
 //! Control plane API
 
 use armour_lang::labels::{Label, Labels};
-use armour_lang::policies::Policies;
+use armour_lang::policies::DPPolicies;
 use serde::{Deserialize, Serialize};
 
 pub const CONTROL_PLANE: &str = "https://localhost:8088";
@@ -27,7 +27,7 @@ pub struct OnboardServiceRequest {
 #[derive(Serialize, Deserialize)]
 pub struct PolicyUpdateRequest {
     pub label: Label,
-    pub policy: Policies,
+    pub policy: DPPolicies,
     pub labels: LabelMap,
 }
 
@@ -38,6 +38,6 @@ pub struct PolicyQueryRequest {
 
 #[derive(Serialize, Deserialize)]
 pub struct PolicyQueryResponse {
-    pub policy: Policies,
+    pub policy: DPPolicies,
     pub labels: LabelMap,
 }

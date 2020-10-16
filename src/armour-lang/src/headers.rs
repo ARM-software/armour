@@ -329,6 +329,7 @@ impl<FlatTyp:TFlatTyp> TBuiltin<FlatTyp> for Typ<FlatTyp> {
 
 impl TBuiltin<CPFlatTyp> for CPFlatTyp {
     fn builtins(f: &str) -> Option<CPSignature> {
+        let sig = |args:Vec<CPFlatTyp>, ty| Some(Signature::new(args.into_iter().map(|x:CPFlatTyp| Typ::FlatTyp(x)).collect(), Typ::FlatTyp(ty)));
         let convertsig = |sigopt:Option<DPSignature>| match sigopt {
             None => None,
             Some(sig) => { 
@@ -339,7 +340,17 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
             }
         };
         match f {
-            // TODO for onboarding data/result
+            //Onboarding policy
+            "compile_ingress" => sig(vec![CPFlatTyp::str(), CPFlatTyp::id()], CPFlatTyp::Policy),
+            "compile_egress" => sig(vec![CPFlatTyp::str(), CPFlatTyp::id()], CPFlatTyp::Policy),
+            "ControlPlane::onboard" => sig(vec![CPFlatTyp::id()], CPFlatTyp::bool()),
+            "ControlPlane::onboarded" => sig(vec![CPFlatTyp::label()], CPFlatTyp::id()),
+            "ControlPlane::newID" => sig(vec![CPFlatTyp::label()], CPFlatTyp::id()),
+            "OnboardingData::declaredDomain" => unimplemented!(),
+            "OnboardingData::host" => sig(vec![], CPFlatTyp::label()),
+            "OnboardingData::service" => sig(vec![], CPFlatTyp::label()),
+            "OnboardingResult::Ok" => sig(vec![CPFlatTyp::id(), CPFlatTyp::Policy], CPFlatTyp::OnboardingResult),
+            "OnboardingResult::Err" => sig(vec![CPFlatTyp::id(), CPFlatTyp::Policy], CPFlatTyp::OnboardingResult),
             _ => convertsig(FlatTyp::builtins(f)),
         }
     }
