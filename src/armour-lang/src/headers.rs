@@ -212,6 +212,7 @@ impl TBuiltin<FlatTyp> for FlatTyp {
             "Connection::set_to" => sig(vec![FlatTyp::Connection, FlatTyp::ID], FlatTyp::Connection),
             "Connection::set_number" => sig(vec![FlatTyp::Connection, FlatTyp::I64], FlatTyp::Connection),
             "Label::is_match" => sig(vec![FlatTyp::Label, FlatTyp::Label], FlatTyp::Bool),
+            "System::getCurrentTime" => sig(vec![], FlatTyp::I64), 
             _ => None,
         }
     }
@@ -312,6 +313,7 @@ impl<FlatTyp:TFlatTyp> TBuiltin<FlatTyp> for Typ<FlatTyp> {
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::str(), Typ::str()]))).option(),
             ),
             "Label::parts" => sig(vec![Typ::label()], Typ::List(Box::new(Typ::str())).option()),
+            "Label::parts" => sig(vec![Typ::label()], Typ::List(Box::new(Typ::str())).option()),
             f => FlatTyp::builtins(f),
         }
     }
@@ -347,6 +349,7 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
             "ControlPlane::onboard" => sig(vec![CPTyp::label(), CPTyp::label(), CPTyp::label()], CPTyp::bool()),
             "ControlPlane::onboarded" => sig(vec![CPTyp::label(), CPTyp::label()], CPTyp::label().option()),
             "ControlPlane::newID" => sig(vec![CPTyp::label(), CPTyp::label()], CPTyp::label()),
+            "labels::LoginTime" => sig(vec![CPTyp::i64()], CPTyp::label()),
             "OnboardingData::declaredDomain" => unimplemented!(),
             "OnboardingData::host" => sig(vec![], CPTyp::label()),
             "OnboardingData::service" => sig(vec![], CPTyp::label()),

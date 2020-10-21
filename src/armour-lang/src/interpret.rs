@@ -21,6 +21,7 @@ use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use async_trait::async_trait;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 //FIXME duplicated with lang and ? 
 //type Expr = expressions::Expr<types::FlatTyp, literals::DPFlatLiteral>;
@@ -237,6 +238,13 @@ impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
             "IpAddr::localhost" => Some(Literal::ipAddr(std::net::IpAddr::V4(
                 std::net::Ipv4Addr::new(127, 0, 0, 1),
             ))),
+            "System::getCurrentTime" => {
+                let start = SystemTime::now();
+                let since_the_epoch = start
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards");
+                Some(dplit!(Int(since_the_epoch.as_secs() as i64)))
+            }
             _ => None,
         }
     }
@@ -527,6 +535,13 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
                 std::net::Ipv4Addr::new(127, 0, 0, 1),
             ))),
             "OnboardingData::declaredDomain" => unimplemented!(),
+            "System::getCurrentTime" => {
+                let start = SystemTime::now();
+                let since_the_epoch = start
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards");
+                Some(cplit!(Int(since_the_epoch.as_secs() as i64)))
+            }
             _ => None,
         }
     }
@@ -535,6 +550,7 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             ("option::Some", _) => Some(Literal::some2(self)),
             ("i64::abs", cpflatlit!(Int(i))) => Some(cplit!(Int(i.abs()))),
             ("i64::to_str", cpflatlit!(Int(i))) => Some(cplit!(Str(i.to_string()))),
+            ("labels::LoginTime", cpflatlit!(Int(i))) => Some(cplit!(Label(Label::login_time(*i)))),
             ("str::len", cpflatlit!(Str(s))) => Some(cplit!(Int(s.len() as i64))),
             ("str::to_lowercase", cpflatlit!(Str(s))) => Some(cplit!(Str(s.to_lowercase()))),
             ("str::to_uppercase", cpflatlit!(Str(s))) => Some(cplit!(Str(s.to_uppercase()))),

@@ -197,6 +197,7 @@ impl PartialEq for Label {
     }
 }
 
+
 impl Eq for Label {}
 
 #[allow(clippy::len_without_is_empty)]
@@ -268,6 +269,30 @@ impl Label {
                 },
             )
         })
+    }
+    pub fn login_time(t: i64) -> Self {
+        Label(vec![
+            Node::Str("ControlPlane".to_string()),
+            Node::Str("LoginTimeg".to_string()),
+            Node::Str(t.to_string())
+        ])
+    }
+
+    pub fn is_login_time(&self) -> bool {
+        self.0.len() == 3 && 
+            self.0[0] == Node::Str("ControlPlane".to_string()) && 
+            self.0[1] == Node::Str("LoginTime".to_string())
+    }
+
+    pub fn get_login_time(&self) -> Option<i64> {
+        if self.is_login_time() {
+            match self.0[3] {
+                Node::Str(ref s) => Some(s.parse::<i64>().unwrap()),
+                _=> None
+            }
+        } else {
+            None
+        }
     }
 }
 
