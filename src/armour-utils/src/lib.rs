@@ -124,6 +124,9 @@ pub fn ssl_builder<P: AsRef<std::path::Path>>(
     Ok(ssl_builder)
 }
 
+pub type Client = awc::Client; 
+pub type ClientRes = Result<awc::Client, Box<dyn std::error::Error + Send + Sync>>;
+
 pub fn client<P: AsRef<std::path::Path>>(
     ca: P,
     certificate_password: &str,

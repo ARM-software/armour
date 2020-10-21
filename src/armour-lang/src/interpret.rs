@@ -20,6 +20,7 @@ use actix::prelude::*;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use async_trait::async_trait;
 
 //FIXME duplicated with lang and ? 
 //type Expr = expressions::Expr<types::FlatTyp, literals::DPFlatLiteral>;
@@ -28,9 +29,9 @@ type Headers = headers::Headers<types::FlatTyp>;
 #[derive(Clone)]
 pub struct Env<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>
 where FlatTyp: 'static + std::marker::Send, FlatLiteral: 'static + std::marker::Send { //it means the type does not contain any non-static references
-    internal: Arc<Code<FlatTyp, FlatLiteral>>,
-    external: Addr<ExternalActor>,//FIXME not yet generic -> having generic actor is pain full....
-    meta: Addr<IngressEgress>,
+    pub internal: Arc<Code<FlatTyp, FlatLiteral>>,
+    pub external: Addr<ExternalActor>,//FIXME not yet generic -> having generic actor is pain full....
+    pub meta: Addr<IngressEgress>,
 }
 
 pub type DPEnv = Env<types::FlatTyp, literals::DPFlatLiteral>;
@@ -45,7 +46,7 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send { //it means th
             meta: IngressEgress::start_default(),
         }
     }
-    fn get(&self, name: &str) -> Option<Expr<FlatTyp, FlatLiteral>> {
+    pub fn get(&self, name: &str) -> Option<Expr<FlatTyp, FlatLiteral>> {
         self.internal.0.get(name).cloned()
     }
     pub fn set_meta(&mut self, meta: IngressEgress) {
@@ -56,6 +57,7 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send { //it means th
     }
 }
 
+#[async_trait]
 pub trait TInterpret<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  {
     fn eval_prefix(&self, p: &Prefix<FlatTyp>) -> Option<Literal<FlatTyp, FlatLiteral>>;
     fn eval_infix(&self, op: &Infix<FlatTyp>, other: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
@@ -64,7 +66,7 @@ pub trait TInterpret<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  {
     fn eval_call2(&self, f: &str, other: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
     fn eval_call3(&self, f: &str, l1: &Self, l2: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
     fn eval_call4(&self, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
-    fn helper_evalexpr(e : &Expr<FlatTyp, FlatLiteral>, env: Env<FlatTyp, FlatLiteral>) -> BoxFuture<'static, Result<Expr<FlatTyp, FlatLiteral>, self::Error>>;
+    async fn helper_evalexpr(e : Expr<FlatTyp, FlatLiteral>, env: Env<FlatTyp, FlatLiteral>) -> Result<Expr<FlatTyp, FlatLiteral>, self::Error>;
 }
 
 macro_rules! dpflatlit (
@@ -87,6 +89,8 @@ macro_rules! cplit (
       Literal::FlatLiteral(CPFlatLiteral::$i($($args)*))
   );
 );
+
+#[async_trait]
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>+TInterpret<FlatTyp, FlatLiteral>> TInterpret<FlatTyp, FlatLiteral> for Literal<FlatTyp, FlatLiteral> {
     fn eval_prefix(&self, p: &Prefix<FlatTyp>) -> Option<Literal<FlatTyp, FlatLiteral>> {
         match self {
@@ -177,12 +181,13 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>+TInterpret<FlatTyp, Fla
         }
     }
 
-    fn helper_evalexpr(e : &Expr<FlatTyp, FlatLiteral>, env: Env<FlatTyp, FlatLiteral>) -> BoxFuture<'static, Result<Expr<FlatTyp, FlatLiteral>, self::Error>>{
-        unimplemented!()
+    async fn helper_evalexpr(e : Expr<FlatTyp, FlatLiteral>, env: Env<FlatTyp, FlatLiteral>) -> Result<Expr<FlatTyp, FlatLiteral>, self::Error>{
+       FlatLiteral::helper_evalexpr(e, env).await 
     }
 }
 
 //TODO factorize using same structure as in types.rs
+#[async_trait]
 impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
     fn eval_prefix(&self, p: &Prefix<types::FlatTyp>) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
         match (p, self) {
@@ -445,33 +450,33 @@ impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
             _ => None,
         }
     }
-    fn helper_evalexpr(e : &Expr<types::FlatTyp, DPFlatLiteral>, env: Env<types::FlatTyp, DPFlatLiteral>) -> BoxFuture<'static, Result<Expr<types::FlatTyp, DPFlatLiteral>, self::Error>>{
-        unimplemented!()
-        //async {
-        //    match e {
-        //        // short circuit for &&
-        //        Expr::InfixExpr(Infix::And, e1, e2) => match e1.eval(env.clone()).await? {
-        //            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dpflatlit!(Bool(false))) => Ok(r),
-        //            Expr::LitExpr(dpflatlit!(Bool(true))) => match e2.eval(env).await? {
-        //                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dpflatlit!(Bool(_))) => Ok(r),
-        //                _ => Err(Error::new("eval, infix")),
-        //            },
-        //            _ => Err(Error::new("eval, infix")),
-        //        },
-        //        // short circuit for ||
-        //        Expr::InfixExpr(Infix::Or, e1, e2) => match e1.eval(env.clone()).await? {
-        //            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dpflatlit!(Bool(true))) => Ok(r),
-        //            Expr::LitExpr(dpflatlit!(Bool(false))) => match e2.eval(env).await? {
-        //                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dpflatlit!(Bool(_))) => Ok(r),
-        //                _ => Err(Error::new("eval, infix")),
-        //            },
-        //            _ => Err(Error::new("eval, infix")),
-        //        },
-        //    }
-        //}
+
+    async fn helper_evalexpr(e : Expr<types::FlatTyp, DPFlatLiteral>, env: Env<types::FlatTyp, DPFlatLiteral>) -> Result<Expr<types::FlatTyp, DPFlatLiteral>, self::Error>{
+        match e {
+            // short circuit for &&
+            Expr::InfixExpr(Infix::And, e1, e2) => match e1.eval(env.clone()).await? {
+                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dplit!(Bool(false))) => Ok(r),
+                Expr::LitExpr(dplit!(Bool(true))) => match e2.eval(env).await? {
+                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dplit!(Bool(_))) => Ok(r),
+                    _ => Err(Error::new("eval, infix")),
+                },
+                _ => Err(Error::new("eval, infix")),
+            },
+            // short circuit for ||
+            Expr::InfixExpr(Infix::Or, e1, e2) => match e1.eval(env.clone()).await? {
+                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dplit!(Bool(true))) => Ok(r),
+                Expr::LitExpr(dplit!(Bool(false))) => match e2.eval(env).await? {
+                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dplit!(Bool(_))) => Ok(r),
+                    _ => Err(Error::new("eval, infix")),
+                },
+                _ => Err(Error::new("eval, infix")),
+            },
+            _ => unimplemented!()
+        }
     }
 }
 
+#[async_trait]
 impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
     fn eval_prefix(&self, p: &Prefix<CPFlatTyp>) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
         match (p, self) {
@@ -602,8 +607,8 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
                     Literal::none()
                 })
             },
-            ("OnboardingData::host", cpflatlit!(OnboardingData(obd))) => Some(obd.host()),
-            ("OnboardingData::service", cpflatlit!(OnboardingData(obd))) => Some(obd.service()),
+            ("OnboardingData::host", cpflatlit!(OnboardingData(obd))) => Some(obd.host_lit()),
+            ("OnboardingData::service", cpflatlit!(OnboardingData(obd))) => Some(obd.service_lit()),
             _ => None,
         }
     }
@@ -709,8 +714,8 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             ("Label::is_match", cpflatlit!(Label(i)), cpflatlit!(Label(j))) => {
                 Some(i.matches_with(j).into())
             }
-            ("OnboardingResult::Ok",  cpflatlit!(ID(id)), cpflatlit!(Str(p))) => Some(OnboardingResult::new_ok(id.clone(), p.clone())),
-            ("OnboardingResult::Err",  cpflatlit!(Str(err)), cpflatlit!(Str(p))) =>  Some(OnboardingResult::new_err(err.clone(), p.clone())),
+            ("OnboardingResult::Ok",  cpflatlit!(ID(id)), cpflatlit!(Policy(p))) => Some(OnboardingResult::new_ok_lit(id.clone(), *p.clone())),
+            ("OnboardingResult::Err",  cpflatlit!(Str(err)), cpflatlit!(Policy(p))) =>  Some(OnboardingResult::new_err_lit(err.clone(), *p.clone())),
             _ => None,
         }
     }
@@ -749,41 +754,40 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             _ => None,
         }
     }
-    fn helper_evalexpr(e : &Expr<CPFlatTyp, CPFlatLiteral>, env: Env<CPFlatTyp, CPFlatLiteral>) -> BoxFuture<'static, Result<Expr<CPFlatTyp, CPFlatLiteral>, self::Error>>{
-        unimplemented!()
-        //async {
-        //    match e {
-        //        // short circuit for &&
-        //        Expr::InfixExpr(Infix::And, e1, e2) => match e1.eval(env.clone()).await? {
-        //            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpflatlit!(Bool(false))) => Ok(r),
-        //            Expr::LitExpr(cpflatlit!(Bool(true))) => match e2.eval(env).await? {
-        //                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpflatlit!(Bool(_))) => Ok(r),
-        //                _ => Err(Error::new("eval, infix")),
-        //            },
-        //            _ => Err(Error::new("eval, infix")),
-        //        },
-        //        // short circuit for ||
-        //        Expr::InfixExpr(Infix::Or, e1, e2) => match e1.eval(env.clone()).await? {
-        //            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpflatlit!(Bool(true))) => Ok(r),
-        //            Expr::LitExpr(cpflatlit!(Bool(false))) => match e2.eval(env).await? {
-        //                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpflatlit!(Bool(_))) => Ok(r),
-        //                _ => Err(Error::new("eval, infix")),
-        //            },
-        //            _ => Err(Error::new("eval, infix")),
-        //        },
-        //    }
-        //}
+    async fn helper_evalexpr(e : Expr<CPFlatTyp, CPFlatLiteral>, env: Env<CPFlatTyp, CPFlatLiteral>) -> Result<Expr<CPFlatTyp, CPFlatLiteral>, self::Error>{
+        match e {
+            // short circuit for &&
+            Expr::InfixExpr(Infix::And, e1, e2) => match e1.eval(env.clone()).await? {
+                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(false))) => Ok(r),
+                Expr::LitExpr(cplit!(Bool(true))) => match e2.eval(env).await? {
+                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok(r),
+                    _ => Err(Error::new("eval, infix")),
+                },
+                _ => Err(Error::new("eval, infix")),
+            },
+            // short circuit for ||
+            Expr::InfixExpr(Infix::Or, e1, e2) => match e1.eval(env.clone()).await? {
+                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(true))) => Ok(r),
+                Expr::LitExpr(cplit!(Bool(false))) => match e2.eval(env).await? {
+                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok(r),
+                    _ => Err(Error::new("eval, infix")),
+                },
+                _ => Err(Error::new("eval, infix")),
+            },
+            _ => unimplemented!()
+        }
     }
 }
+
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> 
 where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<FlatTyp, FlatLiteral>{ //it means the type does not contain any non-static references
-    fn is_return(&self) -> bool {
+    pub fn is_return(&self) -> bool {
         match self {
             Expr::ReturnExpr(_) => true,
             _ => false,
         }
     }
-    fn literal_vector(args: Vec<Self>) -> Result<Vec<Literal<FlatTyp, FlatLiteral>>, Error> {
+    pub fn literal_vector(args: Vec<Self>) -> Result<Vec<Literal<FlatTyp, FlatLiteral>>, Error> {
         let mut v = Vec::new();
         for a in args {
             match a {
@@ -793,13 +797,13 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
         }
         Ok(v)
     }
-    fn strip_return(self) -> Self {
+    pub fn strip_return(self) -> Self {
         match self {
             Expr::ReturnExpr(r) => *r,
             _ => self,
         }
     }
-    fn perform_match(self, pat: Pattern) -> Option<(Self, Option<BTreeMap<String, Self>>)> {
+    pub fn perform_match(self, pat: Pattern) -> Option<(Self, Option<BTreeMap<String, Self>>)> {
         match pat {
             Pattern::Regex(re) => self.perform_regex_match(re),
             Pattern::Label(label) => self.perform_label_match(label),
@@ -931,9 +935,9 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                     _ => Err(Error::new("eval, prefix")),
                 },
                 // short circuit for &&
-                Expr::InfixExpr(Infix::And, _, _) => FlatLiteral::helper_evalexpr(&self, env).await, 
+                Expr::InfixExpr(Infix::And, _, _) => FlatLiteral::helper_evalexpr(self, env).await, 
                 // short circuit for ||
-                Expr::InfixExpr(Infix::Or, _, _) => FlatLiteral::helper_evalexpr(&self, env).await,
+                Expr::InfixExpr(Infix::Or, _, _) => FlatLiteral::helper_evalexpr(self, env).await,
                 Expr::InfixExpr(op, e1, e2) => {
                     let r1 = e1.eval(env.clone()).await?;
                     match (r1, e2.eval(env).await?) {

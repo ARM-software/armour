@@ -560,24 +560,6 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> VecSet<FlatTyp, FlatLi
     }
 }
 
-//TODO find a better structure 
-#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
-pub enum OnboardingResult {
-    Ok(ID<CPFlatTyp, CPFlatLiteral>, String), //TODO second member should a policy ?? is it still a literal ?
-    Err(String, String)    //TODO second member should a policy ?? is it still a literal ?
-}
-impl OnboardingResult {
-    pub fn new_ok(id: ID<CPFlatTyp, CPFlatLiteral>, p: String ) -> CPLiteral {
-        Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
-            Self::Ok(id, p)
-        )))
-    }
-    pub fn new_err(err: String, p : String ) -> CPLiteral {
-        Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
-            Self::Err(err, p)
-        )))
-    }
-}
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct OnboardingData {
     //host description                
@@ -604,13 +586,48 @@ impl OnboardingData {
             service: service,
         }
     }
-    pub fn service(&self) -> CPLiteral {
+    pub fn service(&self) -> labels::Label {
+        self.service.clone()
+    }
+    pub fn host(&self) -> labels::Label {
+        self.host.clone()
+    }
+    pub fn service_lit(&self) -> CPLiteral {
         CPLiteral::FlatLiteral(CPFlatLiteral::Label(self.service.clone()))
     }
-    pub fn host(&self) -> CPLiteral {
+    pub fn host_lit(&self) -> CPLiteral {
         CPLiteral::FlatLiteral(CPFlatLiteral::Label(self.host.clone()))
     }
 }
+
+//TODO find a better structure 
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub enum OnboardingResult {
+    Ok(ID<CPFlatTyp, CPFlatLiteral>, Policy),
+    Err(String, Policy)
+}
+
+impl OnboardingResult {
+    pub fn new_ok(id: ID<CPFlatTyp, CPFlatLiteral>, p: Policy ) -> Self {
+        Self::Ok(id, p)
+    }
+    pub fn new_err(err: String, p : Policy ) -> Self {
+        Self::Err(err, p)
+    }
+    pub fn new_ok_lit(id: ID<CPFlatTyp, CPFlatLiteral>, p: Policy ) -> CPLiteral {
+        Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
+            Self::new_ok(id, p)
+        )))
+    }
+    pub fn new_err_lit(err: String, p : Policy ) -> CPLiteral {
+        Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
+            Self::new_err(err, p)
+        )))
+    }
+}
+
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub struct Policy {}
 
 use super::externals;
 
@@ -986,7 +1003,7 @@ pub enum CPFlatLiteral {
 
     OnboardingData(Box<OnboardingData>),
     OnboardingResult(Box<OnboardingResult>),
-    Policy(),//TODO
+    Policy(Box<Policy>),
 
 }
 
@@ -997,7 +1014,7 @@ impl CPFlatLiteral {
             //CPFlatLiteral(dpft) => CPTyp::from(dpft.typ())
             CPFlatLiteral::OnboardingData(_) => CPTyp::onboardingData(),
             CPFlatLiteral::OnboardingResult(_) => CPTyp::onboardingResult(),
-            CPFlatLiteral::Policy() => CPTyp::policy(),
+            CPFlatLiteral::Policy(_) => CPTyp::policy(),
             _=> unimplemented!()
         }
     }
@@ -1035,7 +1052,7 @@ impl fmt::Display for CPFlatLiteral {
             CPFlatLiteral::Unit => write!(f, "()"),
             CPFlatLiteral::OnboardingData(d) => write!(f, "{:?}", d),
             CPFlatLiteral::OnboardingResult(r) => write!(f, "{:?}", r),
-            CPFlatLiteral::Policy() => unimplemented!(),//write!(f, "{:?}", r),
+            CPFlatLiteral::Policy(p) => write!(f, "{:?}", p),
         }
     }
 }
@@ -1142,7 +1159,7 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
             CPFlatLiteral::Unit => CPFlatTyp::unit(),
             CPFlatLiteral::OnboardingData(_) => CPFlatTyp::OnboardingData,
             CPFlatLiteral::OnboardingResult(_) => CPFlatTyp::OnboardingData,
-            CPFlatLiteral::Policy() => CPFlatTyp::OnboardingData,
+            CPFlatLiteral::Policy(_) => CPFlatTyp::Policy,
         }
     }
     
@@ -1162,7 +1179,6 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<bool> for Literal
         Self::bool(b)
     }
 }
-
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Connection<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
     fn from(conn: Connection<FlatTyp, FlatLiteral>) -> Self {
         Literal::connection(conn)
@@ -1209,6 +1225,52 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&labels::Label> f
     }
 }
 
+impl From<OnboardingData> for CPLiteral {
+    fn from(data: OnboardingData) -> Self {
+        Literal::FlatLiteral(
+            CPFlatLiteral::OnboardingData(Box::new(data))
+        )
+    }
+}
+impl From<&OnboardingData> for CPLiteral {
+    fn from(data: &OnboardingData) -> Self {
+        Literal::FlatLiteral(
+            CPFlatLiteral::OnboardingData(Box::new(OnboardingData::new(
+                data.host(),
+                data.service()
+            )))
+        )
+    }
+}
+impl From<OnboardingResult> for CPLiteral {
+    fn from(res: OnboardingResult) -> Self {
+        Literal::FlatLiteral(
+            CPFlatLiteral::OnboardingResult(Box::new(res))
+        )
+    }
+}
+impl From<&OnboardingResult> for CPLiteral {
+    fn from(res: &OnboardingResult) -> Self {
+        Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
+            match *res {
+                OnboardingResult::Ok(ref ID, ref pol) => OnboardingResult::new_ok(ID.clone(), pol.clone()),
+                OnboardingResult::Err(ref err, ref pol) => OnboardingResult::new_err(err.clone(), pol.clone())
+            }
+        )))
+    }
+}
+impl From<Policy> for CPLiteral {
+    fn from(pol: Policy) -> Self {
+        Literal::FlatLiteral(
+            CPFlatLiteral::Policy(Box::new(pol))
+        )
+    }
+}
+impl From<&Policy> for CPLiteral {
+    fn from(pol: &Policy) -> Self {
+        Literal::FlatLiteral(CPFlatLiteral::Policy(Box::new(Policy{})))
+    }
+}
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<HttpRequest<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
     fn from(r: HttpRequest<FlatTyp, FlatLiteral>) -> Self {
         Literal::httpRequest(Box::new(r))

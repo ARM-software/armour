@@ -10,8 +10,10 @@ edition = "2018"
 armour-api = { path = "../armour-api" }
 armour-lang = { path = "../armour-lang" }
 armour-utils = { path = "../armour-utils" }
+actix = "0.9"
 actix-rt = "1.1"
 actix-web = {version = "3.0", features = ["openssl"]}
+async-trait = "0.1.41"
 bson = "1.1"
 bytes = "0.5"
 clap = {version = "2.33", features = ["yaml"]}

@@ -333,7 +333,12 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policy<FlatTyp, FlatLi
 }
 
 impl DPPolicy {
-    pub fn from_bincode<R: std::io::Read>(r: R) -> Result<Self, std::io::Error> {
+    fn from_bincode<R: std::io::Read>(r: R) -> Result<Self, std::io::Error> {
+        armour_utils::bincode_gz_base64_dec(r)
+    }
+}
+impl GlobalPolicy {
+    fn from_bincode<R: std::io::Read>(r: R) -> Result<Self, std::io::Error> {
         armour_utils::bincode_gz_base64_dec(r)
     }
 }
@@ -448,9 +453,32 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Serialize for Policies
     }
 }
 
-struct PoliciesVisitor;
+struct DPPoliciesVisitor {} 
+struct CPPoliciesVisitor {} 
 
-impl<'de> Visitor<'de> for PoliciesVisitor {
+impl<'de> Visitor<'de> for CPPoliciesVisitor {
+    type Value = GlobalPolicies;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Policies")
+    }
+
+    fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        let mut map : GlobalPolicies = Policies::default();
+
+        while let Some((proto, bincode_policy)) = access.next_entry::<CPProtocol, String>()? {
+            let policy = GlobalPolicy::from_bincode(bincode_policy.as_bytes())
+                .map_err(|_| serde::de::Error::custom("failed to read policy from bincode"))?;
+            map.insert(proto, policy);
+        }
+
+        Ok(map)
+    }
+}
+impl<'de> Visitor<'de> for DPPoliciesVisitor {
     type Value = DPPolicies;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -464,7 +492,7 @@ impl<'de> Visitor<'de> for PoliciesVisitor {
         let mut map : DPPolicies = Policies::default();
 
         while let Some((proto, bincode_policy)) = access.next_entry::<DPProtocol, String>()? {
-            let policy = Policy::from_bincode(bincode_policy.as_bytes())
+            let policy = DPPolicy::from_bincode(bincode_policy.as_bytes())
                 .map_err(|_| serde::de::Error::custom("failed to read policy from bincode"))?;
             map.insert(proto, policy);
         }
@@ -478,6 +506,15 @@ impl<'de> Deserialize<'de> for DPPolicies {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_map(PoliciesVisitor)
+        deserializer.deserialize_map(DPPoliciesVisitor{})
+    }
+}
+
+impl<'de> Deserialize<'de> for GlobalPolicies {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_map(CPPoliciesVisitor{})
     }
 }

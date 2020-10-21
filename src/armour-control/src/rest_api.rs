@@ -4,12 +4,12 @@ use armour_api::host::PolicyUpdate;
 use armour_lang::{labels::Label, policies::DPPolicies};
 use bson::doc;
 
-const ARMOUR_DB: &str = "armour";
-const HOSTS_COL: &str = "hosts";
-const SERVICES_COL: &str = "services";
-const POLICIES_COL: &str = "policies";
+pub const ARMOUR_DB: &str = "armour";
+pub const HOSTS_COL: &str = "hosts";
+pub const SERVICES_COL: &str = "services";
+pub const POLICIES_COL: &str = "policies";
 
-type State = web::Data<super::ControlPlaneState>;
+pub type State = web::Data<super::ControlPlaneState>;
 
 pub mod host {
     use super::*;
@@ -97,6 +97,7 @@ use armour_lang::{
 };
 use futures::future::{BoxFuture, FutureExt};
 use std::convert::TryInto;
+use super::interpret::*;
 
 
 pub struct OnboardingPolicy{
@@ -133,6 +134,7 @@ impl OnboardingPolicy{
     }
     fn evaluate_custom(//<T: std::convert::TryFrom<literals::CPLiteral> + Send + 'static>(
         &self,
+        state: State,
         onboarding_data: expressions::CPExpr,//onboardingData
     ) -> BoxFuture<'static, Result<Box<literals::OnboardingResult>, expressions::Error>> {
         log::debug!("evaluting onboarding service policy");
@@ -140,7 +142,7 @@ impl OnboardingPolicy{
         let env = match self.env { Some(ref env) => env.clone(), _ => panic!("should never happen")}; //FIXME find a better structure than the panic 
         async move {
             let result = expressions::Expr::call(ONBOARDING_SERVICES, vec!(onboarding_data))
-                .evaluate(env.clone())
+                .sevaluate(&state, env.clone())
                 .await?;
             //let meta = env.egress().await;
             log::debug!("result ({:?}): {}", now.elapsed(), result);
@@ -159,11 +161,12 @@ impl OnboardingPolicy{
     }
     fn evaluate(//<T: std::convert::TryFrom<literals::CPLiteral> + Send + 'static>(
         &self,
+        state: State,
         onboarding_data: expressions::CPExpr,//onboardingData
     ) -> BoxFuture<'static, Result<Box<literals::OnboardingResult>, expressions::Error>> {
         log::debug!("evaluting onboarding service policy");
         match self.policy() {
-            ObPolicy::Custom(pol) => self.evaluate_custom(onboarding_data),
+            ObPolicy::Custom(pol) => self.evaluate_custom(state, onboarding_data),
             ObPolicy::None => {
                 async move {
                     Err(expressions::Error::new("onboarding is disallowed, onboarding policy needed")) 
@@ -249,7 +252,7 @@ pub mod service {
         );            
         
         //Eval policy
-        match ob_policy.evaluate(onboarding_data).await {
+        match ob_policy.evaluate(state, onboarding_data).await {
             Ok(_) => {
                 //TODO do something with the local policy
                 Ok(HttpResponse::Ok().body("success"))
@@ -494,7 +497,7 @@ pub mod policy {
     }
 }
 
-async fn present(
+pub async fn present(
     col: &mongodb::Collection,
     filter: impl Into<Option<bson::Document>>,
 ) -> Result<bool, actix_web::Error> {
@@ -508,11 +511,11 @@ async fn present(
         .is_some())
 }
 
-fn collection(state: &State, collection: &str) -> mongodb::Collection {
+pub fn collection(state: &State, collection: &str) -> mongodb::Collection {
     state.db_con.database(ARMOUR_DB).collection(collection)
 }
 
-pub fn to_bson<T: ?Sized>(value: &T) -> Result<bson::Bson, actix_web::Error>
+fn to_bson<T: ?Sized>(value: &T) -> Result<bson::Bson, actix_web::Error>
 where
     T: serde::Serialize,
 {

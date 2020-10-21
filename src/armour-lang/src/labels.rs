@@ -204,6 +204,12 @@ impl Label {
     // pub fn wild(&self) -> bool {
     //     self.0.iter().any(|n| n.0 == NodeType::Any)
     // }
+    pub fn concat(l1: &Label, l2: &Label) -> Label {
+        let mut tmp = l1.nodes().clone();
+        tmp.extend(l2.nodes().clone().into_iter());
+        Label(tmp)
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }
@@ -219,6 +225,7 @@ impl Label {
             _ => None,
         }
     }
+    fn nodes(&self) -> &Vec<Node> { &self.0 }    
     pub fn parts(&self) -> Option<Vec<String>> {
         self.0.iter().map(Node::get_str).collect()
     }
