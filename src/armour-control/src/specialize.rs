@@ -529,14 +529,6 @@ pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPoli
                 match fexpr.pevaluate(state, env).await {                        
                     Ok((f, e)) =>{ 
 
-                        //pol.program.code.insert(ALLOW_REST_REQUEST+"_inner", e);                            
-
-                        //let new_expr = Expr::CallExpr(ALLOW_REST_REQUEST+"_inner", vec![
-                        //    Expr::CallExpr("HttpRequest::from", vec![Expr::BVar("req", 0)],
-                        //    Expr::CallExpr("HttpRequest::to", vec![Expr::BVar("req", 0)],
-                        //    Expr::BVar("req", 0),
-                        //    Expr::BVar("payload", 1)
-                        //]);
                         let mut e = e.apply(&Expr::call("HttpRequest::from", vec![Expr::bvar("req", 0)]))?;
                         e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;
                         e = e.apply(&Expr::bvar("req", 0))?;
@@ -552,6 +544,39 @@ pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPoli
     Ok(policies::DPPolicies::from(global_pol))
 }
 
-pub async fn compile_egress(state: &State, global_pol: policies::GlobalPolicies, function: &String, from: &CPID) -> Result<policies::DPPolicies, self::Error> {
-    unimplemented!()
+pub async fn compile_egress(state: &State, mut global_pol: policies::GlobalPolicies, function: &String, from: &CPID) -> Result<policies::DPPolicies, self::Error> {
+    for (_, pol)  in (&mut global_pol).policies_mut() {
+        let env = CPEnv::new(&pol.program);        
+
+        //FIXME check correct type of http_rest_request
+        //let sig = Typ::Signature(Some(vec![
+        //    Typ::FlatTyp(FlatTyp::connection()), 
+        //    Typ::FlatTyp(FlatTyp::i64()),
+        //    Typ::FlatTyp(FlatTyp::i64())
+        //]));
+
+        //Typ::type_check (sig, pol.pprogram.code.get ()) 
+        //FIXME how to do the type conversion from fexpr to typ
+        //or just check that there is four argument
+
+        match pol.program.code.get(policies::ALLOW_REST_RESPONSE.to_string()) {
+            None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", policies::ALLOW_REST_RESPONSE))), 
+            Some(ref fexpr) => {    
+                let fexpr = fexpr.clone().subst(0, &Expr::LitExpr(Literal::id(from.clone()))); 
+                match fexpr.pevaluate(state, env).await {                        
+                    Ok((f, e)) =>{ 
+
+                        let mut e = e.apply(&Expr::call("HttpRequest::from", vec![Expr::bvar("req", 0)]))?;
+                        e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;
+                        e = e.apply(&Expr::bvar("req", 0))?;
+                        e = e.apply(&Expr::bvar("payload", 1))?;
+
+                        pol.program.code.insert(policies::ALLOW_REST_RESPONSE.to_string(), e.clone()); 
+                    },
+                    Err(err) => return Err(err)
+                }
+            }
+        }
+    }
+    Ok(policies::DPPolicies::from(global_pol))
 }
