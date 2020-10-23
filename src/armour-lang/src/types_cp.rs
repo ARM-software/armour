@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::result::Result;
-use super::types::{Error, DPTyp, Typ, FlatTyp, TFlatTyp, Signature, DPError};
+use super::types::{Error, DPSignature, DPTyp, Typ, FlatTyp, TFlatTyp, Signature, DPError};
 
 #[derive(Clone,  Debug,  PartialEq, Serialize, Deserialize)]
 pub enum CPFlatTyp {
@@ -35,15 +35,45 @@ impl From<Typ<FlatTyp>> for CPTyp {
             Typ::FlatTyp(fty) => Typ::FlatTyp(CPFlatTyp::from(fty)),
             Typ::Tuple(tys) => Typ::Tuple(tys.into_iter().map(|ty| -> Typ<CPFlatTyp> { CPTyp::from(ty) }).collect()),
             Typ::List(bty) => Typ::List(Box::new(CPTyp::from(*bty))),
-
+       } 
+    }
+}
+impl From<CPFlatTyp> for FlatTyp {
+    fn from(ty: CPFlatTyp) -> Self {
+        match ty {
+            CPFlatTyp::DPFlatTyp(dty) => dty,
+            CPFlatTyp::OnboardingData => unimplemented!(),
+            CPFlatTyp::OnboardingResult => unimplemented!(),
+            CPFlatTyp::Policy => unimplemented!(),
+        }
+    }
+}
+impl From<CPTyp> for DPTyp {
+    fn from(ty: CPTyp) -> Self {
+       match ty {
+            Typ::FlatTyp(fty) => Typ::FlatTyp(FlatTyp::from(fty)),
+            Typ::Tuple(tys) => Typ::Tuple(tys.into_iter().map(|ty| -> Typ<FlatTyp> { DPTyp::from(ty) }).collect()),
+            Typ::List(bty) => Typ::List(Box::new(DPTyp::from(*bty))),
        } 
     }
 }
 
 
-
 pub type CPTyp = Typ<CPFlatTyp>;
 pub type CPSignature = Signature<CPFlatTyp>;
+
+impl From<CPSignature> for DPSignature {
+    fn from(cpsig:CPSignature) -> Self {
+        match cpsig.split() {
+            (None, t) => DPSignature::new_noargs(DPTyp::from(t)),
+            (Some(args), t) => DPSignature::new(
+                args.into_iter().map(|t| DPTyp::from(t)).collect(),
+                DPTyp::from(t)
+            ),
+        }
+
+    }
+}
 
 impl fmt::Display for CPFlatTyp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

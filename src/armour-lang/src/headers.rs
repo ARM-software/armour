@@ -21,7 +21,14 @@ impl std::fmt::Display for Error {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Headers<FlatTyp:TFlatTyp >(pub BTreeMap<String, Signature<FlatTyp>>);
+pub type DPHeaders = Headers<FlatTyp>;
 pub type CPHeaders = Headers<CPFlatTyp>;
+
+impl From<CPHeaders> for DPHeaders {
+    fn from(cph: CPHeaders) -> Self{
+        Headers( cph.0.into_iter().map(|(s, sig)| (s, DPSignature::from(sig))).collect())
+    }
+}
 
 impl<FlatTyp:TFlatTyp> Default for Headers<FlatTyp> {
     fn default() -> Self {

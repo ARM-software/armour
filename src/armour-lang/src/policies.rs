@@ -102,14 +102,16 @@ fn http_policy<FlatTyp:TFlatTyp>() -> ProtocolPolicy<FlatTyp> {
     policy.insert_bool(
         ALLOW_REST_REQUEST,
         vec![
-            vec![Typ::FlatTyp(FlatTyp::http_request()), Typ::FlatTyp(FlatTyp::data())],
-            vec![Typ::FlatTyp(FlatTyp::http_request())],
+            vec![Typ::id(), Typ::id(), Typ::http_request(), Typ::data()],
+            vec![Typ::http_request(), Typ::data()],
+            vec![Typ::http_request()],
             Vec::new(),
         ],
     );
     policy.insert_bool(
         ALLOW_REST_RESPONSE,
         vec![
+            vec![Typ::id(), Typ::id(), Typ::httpResponse(), Typ::data()],
             vec![Typ::FlatTyp(FlatTyp::httpResponse()), Typ::FlatTyp(FlatTyp::data())],
             vec![Typ::FlatTyp(FlatTyp::httpResponse())],
             Vec::new(),
@@ -180,6 +182,16 @@ pub trait TProtocol<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
 pub type DPProtocol = Protocol<FlatTyp, literals::FlatLiteral>;
 pub type CPProtocol = Protocol<types_cp::CPFlatTyp, literals::CPFlatLiteral>;
 
+impl From<CPProtocol> for DPProtocol {
+    fn from(p: CPProtocol) -> Self {
+        match p {
+            CPProtocol::HTTP => Protocol::HTTP,
+            CPProtocol::TCP => Protocol::TCP,
+            CPProtocol::Phantom(_) => Protocol::Phantom(PhantomData)
+        }
+    } 
+}
+            
 impl TProtocol<FlatTyp, Self> for literals::FlatLiteral {
     fn policy(p: &DPProtocol) -> &DPProtocolPolicy {
         match p {
@@ -231,10 +243,19 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> FromStr for Protocol<F
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Policy<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     pub program: lang::Program<FlatTyp, FlatLiteral>,
-    fn_policies: FnPolicies,
+    pub fn_policies: FnPolicies,
 }
 pub type DPPolicy = Policy<types::FlatTyp, literals::DPFlatLiteral>;
 pub type GlobalPolicy = Policy<types_cp::CPFlatTyp, literals::CPFlatLiteral>;
+
+impl From<GlobalPolicy> for DPPolicy {
+    fn from(gps: GlobalPolicy) -> Self {
+        DPPolicy {
+            program: lang::DPProgram::from(gps.program),
+            fn_policies: gps.fn_policies
+        }
+    }
+}
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policy<FlatTyp, FlatLiteral> {
     pub fn allow_all(p: Protocol<FlatTyp, FlatLiteral>) -> Self {
@@ -361,7 +382,26 @@ pub struct Policies<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(BTreeMa
 pub type DPPolicies = Policies<FlatTyp, literals::FlatLiteral>;
 pub type GlobalPolicies = Policies<types_cp::CPFlatTyp, literals::CPFlatLiteral>;
 
+impl From<GlobalPolicies> for DPPolicies {
+    fn from(gps: GlobalPolicies) -> Self {
+        let mut pols = DPPolicies::new();
+        for (p, pol)  in gps.policies() {
+            pols.insert(DPProtocol::from(p.clone()), DPPolicy::from(pol.clone()));
+        }
+        pols
+    }
+}
+
+impl From<DPPolicies> for literals::Policy {
+    fn from(dppol: DPPolicies) -> Self {
+        unimplemented!()
+    }
+}
+
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, FlatLiteral> {
+    pub fn new() -> Self {
+        Policies(BTreeMap::new())  
+    }
     fn insert(&mut self, p: Protocol<FlatTyp, FlatLiteral>, policy: Policy<FlatTyp, FlatLiteral>) {
         self.0.insert(p, policy);
     }
@@ -395,6 +435,12 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, Flat
     }
     pub fn policy(&self, p: Protocol<FlatTyp, FlatLiteral>) -> Option<&Policy<FlatTyp, FlatLiteral>> {
         self.0.get(&p)
+    }
+    pub fn policies(&self) -> std::collections::btree_map::Iter<Protocol<FlatTyp, FlatLiteral>, Policy<FlatTyp, FlatLiteral>> {
+        (&self.0).iter()
+    }
+    pub fn policies_mut(&mut self) -> std::collections::btree_map::IterMut<Protocol<FlatTyp, FlatLiteral>, Policy<FlatTyp, FlatLiteral>> {
+        (&mut self.0).iter_mut()
     }
     pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, expressions::Error> {
         let pre_prog = lang::PreProgram::from_file(path)?;

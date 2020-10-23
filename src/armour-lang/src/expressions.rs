@@ -1,14 +1,15 @@
 /// policy language
 use super::{headers, labels, lexer, literals, parser, types, types_cp};
 use headers::{Headers, THeaders};
-use literals::{Literal, TFlatLiteral, DPFlatLiteral, CPFlatLiteral};
+use literals::{Literal, TFlatLiteral, DPLiteral, CPLiteral, DPFlatLiteral, CPFlatLiteral};
 use parser::{Infix, Prefix, TParser};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::marker::PhantomData;
-use types::{Typ, TTyp, TFlatTyp};
+use types::{Typ, TTyp, FlatTyp, TFlatTyp};
+use types_cp::{CPFlatTyp};
 
 #[derive(Debug, Clone)]
 pub struct Error(String);
@@ -251,6 +252,116 @@ pub trait TExpr<FlatTyp:TFlatTyp> {
 pub type DPExpr = Expr<types::FlatTyp, DPFlatLiteral>;
 pub type CPExpr = Expr<types_cp::CPFlatTyp, CPFlatLiteral>;
 
+pub type DPPrefix = Prefix<FlatTyp>;
+pub type CPPrefix = Prefix<CPFlatTyp>;
+
+impl From<CPPrefix> for DPPrefix {
+    fn from(cpp: CPPrefix) -> Self {
+        match cpp {
+            CPPrefix::Minus => Prefix::Minus,
+            CPPrefix::Not => Prefix::Not,
+            CPPrefix::Phantom(_) => Prefix::Phantom(PhantomData),
+        }
+    }
+}
+pub type DPInfix = Infix<FlatTyp>;
+pub type CPInfix = Infix<CPFlatTyp>;
+
+impl From<CPInfix> for DPInfix {
+    fn from(cpp: CPInfix) -> Self {
+        match cpp {
+            Infix::Equal => Infix::Equal,
+            Infix::NotEqual=> Infix::NotEqual,
+            Infix::Plus=> Infix::Plus,
+            Infix::Minus=> Infix::Minus,
+            Infix::Divide=> Infix::Divide,
+            Infix::Multiply=> Infix::Multiply,
+            Infix::Remainder=> Infix::Remainder,
+            Infix::GreaterThanEqual=> Infix::GreaterThanEqual,
+            Infix::LessThanEqual=> Infix::LessThanEqual,
+            Infix::GreaterThan=> Infix::GreaterThan,
+            Infix::LessThan=> Infix::LessThan,
+            Infix::And=> Infix::And,
+            Infix::Or=> Infix::Or,
+            Infix::Concat=> Infix::Concat,
+            Infix::ConcatStr=> Infix::ConcatStr,
+            Infix::Module=> Infix::Module,
+            Infix::In=> Infix::In,
+            Infix::Dot=> Infix::Dot,
+            Infix::Phantom(_) => Infix::Phantom(PhantomData)
+        }
+    }
+}
+
+
+impl From<CPExpr> for DPExpr {
+    fn from(cpexpr: CPExpr) -> DPExpr {
+        match cpexpr {
+            CPExpr::Var(v) => DPExpr::Var(v) ,
+            CPExpr::BVar(v, u) => DPExpr::BVar(v, u) ,
+            CPExpr::LitExpr(lit) => DPExpr::LitExpr(DPLiteral::from(lit)) ,
+            CPExpr::ReturnExpr(e) => DPExpr::ReturnExpr(Box::new(DPExpr::from(*e))) ,
+            CPExpr::PrefixExpr(pre, e) => DPExpr::PrefixExpr(DPPrefix::from(pre), Box::new(DPExpr::from(*e))) ,
+            CPExpr::InfixExpr(inf, e1, e2) => DPExpr::InfixExpr(DPInfix::from(inf), Box::new(DPExpr::from(*e1)), Box::new(DPExpr::from(*e2))),
+            CPExpr::BlockExpr(b, es) => DPExpr::BlockExpr(b, es.into_iter().map(|e| DPExpr::from(e)).collect()),
+            CPExpr::Let(vs, e1, e2) => DPExpr::Let(vs, Box::new(DPExpr::from(*e1)), Box::new(DPExpr::from(*e2))),
+            CPExpr::Iter(it, vs, e1, e2) => DPExpr::Iter(it, vs, Box::new(DPExpr::from(*e1)), Box::new(DPExpr::from(*e2))),
+            CPExpr::Closure(ident, e) => DPExpr::Closure(ident, Box::new(DPExpr::from(*e))),
+            CPExpr::IfExpr {
+                cond,
+                consequence,
+                alternative,
+            } => DPExpr::IfExpr { 
+                cond: Box::new(DPExpr::from(*cond)),
+                consequence: Box::new(DPExpr::from(*consequence)),
+                alternative: {match alternative {
+                    None => None,
+                    Some(e) => Some(Box::new(DPExpr::from(*e))),
+                }}
+            } ,
+            CPExpr::IfMatchExpr {
+                variables,
+                matches,
+                consequence,
+                alternative,
+            } => DPExpr::IfMatchExpr {
+                variables,
+                matches: matches.into_iter().map(|x| (DPExpr::from(x.0), x.1)).collect() ,
+                consequence: Box::new(DPExpr::from(*consequence)),
+                alternative: {match alternative {
+                    None => None,
+                    Some(e) => Some(Box::new(DPExpr::from(*e))),
+                }},
+
+            },
+            CPExpr::IfSomeMatchExpr {
+                expr,
+                consequence,
+                alternative,
+            } => DPExpr::IfSomeMatchExpr {
+                expr:  Box::new(DPExpr::from(*expr)),
+                consequence: Box::new(DPExpr::from(*consequence)),
+                alternative: {match alternative {
+                    None => None,
+                    Some(e) => Some(Box::new(DPExpr::from(*e))),
+                }},
+            },
+            CPExpr::CallExpr {
+                function,
+                arguments,
+                is_async,
+            } => DPExpr::CallExpr {
+                function: function,
+                arguments: arguments.into_iter().map(|e| DPExpr::from(e)).collect(),
+                is_async: is_async
+            },
+            CPExpr::Phantom(_) => DPExpr::Phantom(PhantomData) ,
+        }
+    }
+
+}
+
+
 impl TExpr<types_cp::CPFlatTyp> for CPExpr {
     fn host(&self) -> Option<String> {
         match self {
@@ -270,6 +381,9 @@ impl TExpr<types::FlatTyp> for DPExpr {
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> {
     pub fn var(v: &str) -> Self {
         Self::Var(parser::Ident(v.to_string()))
+    }
+    pub fn bvar(v: &str, u: usize) -> Self {
+        Self::BVar(parser::Ident(v.to_string()), u)
     }
     pub fn none() -> Self {
         Self::LitExpr(Literal::none())
@@ -406,7 +520,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
             }
         }
     }
-    fn subst(self, i: usize, u: &Self) -> Self {
+    pub fn subst(self, i: usize, u: &Self) -> Self {
         match self {
             Self::Var(_) | Self::LitExpr(_) => self,
             Self::BVar(ref id, j) => match j.cmp(&i) {

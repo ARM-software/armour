@@ -15,7 +15,7 @@ use armour_lang::literals::{
 use armour_lang::meta::{Egress, IngressEgress, Meta};
 use armour_lang::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
 use armour_lang::policies;
-use armour_lang::specialize;
+use super::specialize;
 use armour_lang::types::{self, TFlatTyp};
 use armour_lang::types_cp::{CPFlatTyp};
 use actix::prelude::*;
@@ -59,9 +59,9 @@ pub async fn present(
 pub trait TSLitInterpret {
     fn seval_call0(state: State, f: &str) -> Option<CPLiteral>;
     fn seval_call1(&self, state:State, f: &str) -> Option<CPLiteral>;
-    async fn seval_call2(&self, state: State, f: &str, other: &Self) -> Option<CPLiteral>;
-    async fn seval_call3(&self, state: State, f: &str, l1: &Self, l2: &Self) -> Option<CPLiteral>;
-    async fn seval_call4(&self, state: State, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Option<CPLiteral>;
+    async fn seval_call2(&self, state: State, f: &str, other: &Self) -> Result<Option<CPLiteral>, self::Error>;
+    async fn seval_call3(&self, state: State, f: &str, l1: &Self, l2: &Self) -> Result<Option<CPLiteral>, self::Error>;
+    async fn seval_call4(&self, state: State, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Result<Option<CPLiteral>, self::Error>;
     async fn helper_sevalexpr(state: State, e : Expr<CPFlatTyp, CPFlatLiteral>, env: CPEnv) -> Result<CPExpr, self::Error>;
 }
 
@@ -77,6 +77,7 @@ macro_rules! cpflatlit (
         CPFlatLiteral::$i($($args)*)
   );
 );
+
 macro_rules! cplit (
   ($i: ident ($($args:tt)*) ) => (
       Literal::FlatLiteral(CPFlatLiteral::$i($($args)*))
@@ -95,14 +96,15 @@ impl<T> OnErr<T, bson::de::Error> for bson::de::Result<T> {}
 impl<T> OnErr<T, bson::ser::Error> for bson::ser::Result<T> {}
 impl<T> OnErr<T, mongodb::error::Error> for mongodb::error::Result<T> {}
 
-fn tt<T, E>(x:Result<Option<T>,E>) -> Option<T> {
+
+fn tt<T, E>(x:Result<T,E>) -> Option<T> {
     match x {
-        Ok(x) => x,
+        Ok(x) => Some(x),
         _ => None
     }
  }
 
-async fn helper_compile_ingress(state: State, function: &String, id: &CPID) ->  Result<Option<CPLiteral>, self::Error> {
+async fn helper_compile_ingress(state: State, function: &String, id: &CPID) ->  Result<CPLiteral, self::Error> {
     let col = collection(&state, POLICIES_COL);
     if let Ok(Some(doc)) = col
         .find_one(Some(doc! {"label" : ONBOARDING_POLICY_KEY}), None)
@@ -111,12 +113,16 @@ async fn helper_compile_ingress(state: State, function: &String, id: &CPID) ->  
         let global_pol=
             bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc))
                 .on_err("Bson conversion error")?;
-        Ok(Some(specialize::compile_ingress(global_pol.policy, function, id)))
+        Ok(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
+            Box::new(literals::Policy::from(
+                specialize::compile_ingress(&state, global_pol.policy, function, id).await?
+            ))
+        )))
     } else {
-        Ok(None) //TODO
+        Err(Error::from(format!("No global policy in MongoDB")))
     }
 }
-async fn helper_compile_egress(state: State, function: &String, id: &CPID) ->  Result<Option<CPLiteral>, self::Error> {
+async fn helper_compile_egress(state: State, function: &String, id: &CPID) ->  Result<CPLiteral, self::Error> {
     let col = collection(&state, POLICIES_COL);
     if let Ok(Some(doc)) = col
         .find_one(Some(doc! {"label" : ONBOARDING_POLICY_KEY}), None)
@@ -125,13 +131,17 @@ async fn helper_compile_egress(state: State, function: &String, id: &CPID) ->  R
         let global_pol=
             bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc))
                 .on_err("Bson conversion error")?;
-        Ok(Some(specialize::compile_egress(global_pol.policy, function, id)))
+        Ok(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
+            Box::new(literals::Policy::from(
+                specialize::compile_egress(&state, global_pol.policy, function, id).await?
+            ))
+        )))
     } else {
-        Ok(None) //TODO
+        Err(Error::from(format!("No global policy in MongoDB")))
     }
 }
 
-async fn helper_onboarded(state: State, service: &Label, host: &Label) ->  Result<Option<CPLiteral>, self::Error>  {
+async fn helper_onboarded(state: State, service: &Label, host: &Label) ->  Result<CPLiteral, self::Error>  {
     let col = collection(&state, SERVICES_COL);
 
     //FIXME we assume that (service, host) is unique
@@ -142,13 +152,13 @@ async fn helper_onboarded(state: State, service: &Label, host: &Label) ->  Resul
         let request =
             bson::from_bson::<control::POnboardServiceRequest>(bson::Bson::Document(doc))
                 .on_err("Bson conversion error")?;
-        Ok(Some(cplit!(Label(request.service_id)).some()))
+        Ok(cplit!(Label(request.service_id)).some())
     } else {
-        Ok(Some(Literal::none()))
+        Ok(Literal::none())
     }
 }
 
-async fn helper_onboard(state: State, service: &Label, service_id: &Label, host: &Label) ->  Result<Option<CPLiteral>, self::Error>  {
+async fn helper_onboard(state: State, service: &Label, service_id: &Label, host: &Label) ->  Result<CPLiteral, self::Error>  {
     let request = control::POnboardServiceRequest {
         service: service.clone(),
         service_id: service_id.clone(),
@@ -158,16 +168,16 @@ async fn helper_onboard(state: State, service: &Label, service_id: &Label, host:
 
     // Check if the service is already there
     if present(&col, doc! { "service_id" : to_bson(service_id)? }).await? {
-        Ok(Some(cplit!(Bool(true))))
+        Ok(cplit!(Bool(true)))
 
     } else if let bson::Bson::Document(document) = to_bson(&request)? {
         col.insert_one(document, None) // Insert into a MongoDB collection
             .await
             .on_err("error inserting in MongoDB")?;
-        Ok(Some(cplit!(Bool(true))))
+        Ok(cplit!(Bool(true)))
 
     } else {
-        Ok(Some(cplit!(Bool(false))))
+        Ok(cplit!(Bool(false)))
     }
 }
 
@@ -184,20 +194,20 @@ impl TSLitInterpret for CPLiteral {
             _ => self.eval_call1(f),
         }
     }
-    async fn seval_call2(&self, state: State, f: &str, other: &Self) -> Option<CPLiteral> {
+    async fn seval_call2(&self, state: State, f: &str, other: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, other) {
             ("compile_ingress", cplit!(Str(function)), cplit!(ID(id))) => {
-                tt(helper_compile_ingress(state, function, id).await)
+                Ok(Some(helper_compile_ingress(state, function, id).await?))
             },
             ("compile_egress", cplit!(Str(function)), cplit!(ID(id))) =>  {
-                tt(helper_compile_egress(state, function, id).await)
+                Ok(Some(helper_compile_egress(state, function, id).await?))
             },
             (
                 "ControlPlane::onboarded", 
                 cplit!(Label(service)), 
                 cplit!(Label(host))
             ) => { 
-                tt(helper_onboarded(state, service, host).await)
+                Ok(Some(helper_onboarded(state, service, host).await?))
             }
             (
                 "ControlPlane::newID", 
@@ -205,12 +215,12 @@ impl TSLitInterpret for CPLiteral {
                 cplit!(Label(host))
             ) => { 
                 let service_id = Label::concat(host, service);//TODO refine newid
-                Some(cplit!(Label(service_id)))
+                Ok(Some(cplit!(Label(service_id))))
             }
-            _ => self.eval_call2(f, other),
+            _ => Ok(self.eval_call2(f, other)),
         }
     }
-    async fn seval_call3(&self, state: State, f: &str, l1: &Self, l2: &Self) -> Option<CPLiteral> {
+    async fn seval_call3(&self, state: State, f: &str, l1: &Self, l2: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, l1, l2) {
             (
                 "ControlPlane::onboard",
@@ -218,15 +228,15 @@ impl TSLitInterpret for CPLiteral {
                 cplit!(Label(service_id)), 
                 cplit!(Label(host))
             ) => { 
-                tt(helper_onboard(state, service, service_id, host).await)
+                Ok(Some(helper_onboard(state, service, service_id, host).await?))
             }
-            _ => self.eval_call3(f, l1, l2),
+            _ => Ok(self.eval_call3(f, l1, l2)),
         }
     }
     #[allow(clippy::many_single_char_names)]
-    async fn seval_call4(&self, state:State, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Option<CPLiteral> {
+    async fn seval_call4(&self, state:State, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, l1, l2, l3) {
-            _ => self.eval_call4(f, l1, l2, l3),
+            _ => Ok(self.eval_call4(f, l1, l2, l3)),
         }
     }
     async fn helper_sevalexpr(state: State, e : Expr<CPFlatTyp, CPFlatLiteral>, env: CPEnv) -> Result<CPExpr, self::Error>{
@@ -267,18 +277,18 @@ impl TSExprInterpret for CPExpr {
                 Some(r) => Ok(r.into()),
                 None => Err(Error::new("eval, call(1): type error")),
             },
-            [Expr::LitExpr(l1), Expr::LitExpr(l2)] => match l1.seval_call2(state, &function, l2).await {
+            [Expr::LitExpr(l1), Expr::LitExpr(l2)] => match l1.seval_call2(state, &function, l2).await? {
                 Some(r) => Ok(r.into()),
                 None => Err(Error::new("eval, call(2): type error")),
             },
             [Expr::LitExpr(l1), Expr::LitExpr(l2), Expr::LitExpr(l3)] => {
-                match l1.seval_call3(state, &function, l2, l3).await {
+                match l1.seval_call3(state, &function, l2, l3).await? {
                     Some(r) => Ok(r.into()),
                     None => Err(Error::new("eval, call(3): type error")),
                 }
             }
             [Expr::LitExpr(l1), Expr::LitExpr(l2), Expr::LitExpr(l3), Expr::LitExpr(l4)] => {
-                match l1.seval_call4(state, &function, l2, l3, l4).await {
+                match l1.seval_call4(state, &function, l2, l3, l4).await? {
                     Some(r) => Ok(r.into()),
                     None => Err(Error::new("eval, call(4): type error")),
                 }

@@ -47,7 +47,7 @@ impl Default for Method {
 
 #[derive( PartialEq, Debug, Clone, Serialize, Deserialize)]
 #[allow(non_camel_case_types)]
-enum Version {
+pub enum Version {
     HTTP_09,
     HTTP_10,
     HTTP_11,
@@ -86,9 +86,21 @@ impl Default for Version {
 }
 
 #[derive( PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
-struct Headers<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
-    headers: BTreeMap<String, Vec<Vec<u8>>>,
+pub struct Headers<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+    pub headers: BTreeMap<String, Vec<Vec<u8>>>,
     phantom: PhantomData<(FlatTyp, FlatLiteral)>,
+}
+
+pub type DPHeaders = Headers<FlatTyp, FlatLiteral>;
+pub type CPHeaders = Headers<CPFlatTyp, CPFlatLiteral>;
+
+impl From<CPHeaders> for DPHeaders {
+    fn from(h: CPHeaders) -> DPHeaders {
+        DPHeaders{
+            headers: h.headers,
+            phantom: PhantomData
+        }
+    }
 }
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Headers<FlatTyp, FlatLiteral> {
@@ -153,14 +165,26 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Vec<(&str, &[u8])
 
 #[derive( PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ID<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
-    hosts: BTreeSet<String>,
-    ips: BTreeSet<std::net::IpAddr>,
-    port: Option<u16>,
-    labels: BTreeSet<labels::Label>,
+    pub hosts: BTreeSet<String>,
+    pub ips: BTreeSet<std::net::IpAddr>,
+    pub port: Option<u16>,
+    pub labels: BTreeSet<labels::Label>,
     phantom : PhantomData<(FlatTyp, FlatLiteral)>,
 }
 pub type DPID = ID<FlatTyp, FlatLiteral>;
 pub type CPID = ID<CPFlatTyp, CPFlatLiteral>;
+
+impl From<CPID> for DPID {
+    fn from(cpid: CPID) -> Self {
+        DPID {
+            hosts: cpid.hosts,
+            ips: cpid.ips,
+            port: cpid.port,
+            labels: cpid.labels,
+            phantom: PhantomData
+        }
+    }
+}
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> ID<FlatTyp, FlatLiteral> {
     pub fn new(
@@ -246,12 +270,24 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> ID<FlatTyp, FlatLitera
 
 #[derive( PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Connection<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
-    from: ID<FlatTyp, FlatLiteral>,
-    to: ID<FlatTyp, FlatLiteral>,
-    number: i64,
+    pub from: ID<FlatTyp, FlatLiteral>,
+    pub to: ID<FlatTyp, FlatLiteral>,
+    pub number: i64,
     phantom : PhantomData<(FlatTyp, FlatLiteral)>,
 }
 pub type DPConnection = Connection<FlatTyp, FlatLiteral>;
+pub type CPConnection = Connection<CPFlatTyp, CPFlatLiteral>;
+
+impl From<CPConnection> for DPConnection {
+    fn from(cpco: CPConnection) -> DPConnection {
+        DPConnection {
+            from: DPID::from(cpco.from),
+            to: DPID::from(cpco.to),
+            number: cpco.number,
+            phantom: PhantomData
+        }
+    }
+}
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Connection<FlatTyp, FlatLiteral> {
     pub fn literal(from: &ID<FlatTyp, FlatLiteral>, to: &ID<FlatTyp, FlatLiteral>, number: i64) -> Literal<FlatTyp, FlatLiteral> {
@@ -301,12 +337,28 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<(&ID<FlatTyp, Fla
 
 #[derive( PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HttpRequest<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
-    method: Method,
-    version: Version,
-    path: String,
-    query: String,
-    headers: Headers<FlatTyp, FlatLiteral>,
-    connection: Connection<FlatTyp, FlatLiteral>,
+    pub method: Method,
+    pub version: Version,
+    pub path: String,
+    pub query: String,
+    pub headers: Headers<FlatTyp, FlatLiteral>,
+    pub connection: Connection<FlatTyp, FlatLiteral>,
+}
+
+pub type DPHttpRequest = HttpRequest<FlatTyp, FlatLiteral>;
+pub type CPHttpRequest = HttpRequest<CPFlatTyp, CPFlatLiteral>;
+
+impl From<CPHttpRequest> for DPHttpRequest{
+    fn from(req: CPHttpRequest) -> Self {
+        HttpRequest {
+            method: req.method, 
+            version: req.version,
+            path: req.path,
+            query: req.query,
+            headers: DPHeaders::from(req.headers),
+            connection: Connection::from(req.connection),
+        }
+    } 
 }
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> HttpRequest<FlatTyp, FlatLiteral> {
@@ -443,6 +495,20 @@ pub struct HttpResponse<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  {
     connection: Connection<FlatTyp, FlatLiteral>,
 }
 
+pub type DPHttpResponse = HttpResponse<FlatTyp, FlatLiteral>;
+pub type CPHttpResponse = HttpResponse<CPFlatTyp, CPFlatLiteral>;
+
+impl From<CPHttpResponse> for DPHttpResponse{
+    fn from(req: CPHttpResponse) -> Self {
+        HttpResponse {
+            version: req.version,
+            status: req.status,
+            headers: Headers::from(req.headers),
+            reason: req.reason, 
+            connection: Connection::from(req.connection),
+        }
+    } 
+}
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> HttpResponse<FlatTyp, FlatLiteral> {
     pub fn new(
         version: &str,
@@ -1007,6 +1073,37 @@ pub enum CPFlatLiteral {
 
 }
 
+impl From<CPFlatLiteral> for DPFlatLiteral {
+    fn from(cl: CPFlatLiteral) -> Self {
+        match cl {
+            CPFlatLiteral::Bool(b) => Self::Bool(b),
+            CPFlatLiteral::Connection(c) => Self::Connection(DPConnection::from(c)),
+            CPFlatLiteral::Data(d) => Self::Data(d),
+            CPFlatLiteral::Float(f) => Self::Float(f),
+            CPFlatLiteral::HttpRequest(req) => Self::HttpRequest(Box::new(DPHttpRequest::from(*req))),
+            CPFlatLiteral::HttpResponse(res) => Self::HttpResponse(Box::new(DPHttpResponse::from(*res))),
+            CPFlatLiteral::ID(id) => Self::ID(DPID::from(id)),
+            CPFlatLiteral::Int(i) => Self::Int(i),
+            CPFlatLiteral::IpAddr(ip) => Self::IpAddr(ip),
+            CPFlatLiteral::Label(l) => Self::Label(l),
+            CPFlatLiteral::Regex(r) => Self::Regex(r),
+            CPFlatLiteral::Str(s) => Self::Str(s),
+            CPFlatLiteral::Unit => Self::Unit,
+            _ => unimplemented!()
+        }
+    }
+}
+
+impl From<CPLiteral> for DPLiteral {
+    fn from(lit: CPLiteral) -> DPLiteral {
+        match lit {
+            CPLiteral::FlatLiteral(fl) => Self::FlatLiteral(FlatLiteral::from(fl)),
+            CPLiteral::List(lits) => Self::List(lits.into_iter().map(|l| Self::from(l)).collect()),
+            CPLiteral::Tuple(lits) => Self::Tuple(lits.into_iter().map(|l| Self::from(l)).collect()),
+            CPLiteral::Phantom(_) => Self::Phantom(PhantomData)
+        }
+    }
+}
 
 impl CPFlatLiteral {
     pub fn typ(&self) -> CPTyp {

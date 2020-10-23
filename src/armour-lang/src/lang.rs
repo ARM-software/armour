@@ -2,7 +2,7 @@
 use super::{
     externals,
     expressions::{self, DPExpr, Error, Expr},
-    headers::{Headers, THeaders},
+    headers::{Headers, DPHeaders, CPHeaders, THeaders},
     lexer,
     literals::{self, TFlatLiteral},
     parser::{self, TParser },
@@ -13,6 +13,7 @@ use petgraph::graph;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
+use std::iter::FromIterator;
 
 //FIXME duplicated with interpreter
 //type Headers = headers::Headers<parser::Typ, types::Typ>;
@@ -20,12 +21,29 @@ use std::marker::PhantomData;
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Code<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(pub BTreeMap<String, Expr<FlatTyp, FlatLiteral>>);
+pub type DPCode = Code<types::FlatTyp, literals::FlatLiteral>;
+pub type CPCode = Code<CPFlatTyp, literals::CPFlatLiteral>;
+
+impl From<CPCode> for DPCode {
+    fn from(cpcode: CPCode) -> DPCode {
+        Code( BTreeMap::from_iter( cpcode.0.into_iter().map(|(s, e)| (s, DPExpr::from(e)) )))
+    }
+}
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Code<FlatTyp, FlatLiteral> {
     fn cut(&mut self, set: &[String]) {
         for s in set.iter() {
             self.0.remove(s);
         }
+    }
+    pub fn get(&self, s: String) -> Option<Expr<FlatTyp, FlatLiteral>> {
+        match self.0.get(&s) {
+            None => None,
+            Some(e) => Some(e.clone())
+        }
+    }
+    pub fn insert(&mut self, s: String, e: Expr<FlatTyp, FlatLiteral>) -> Option<Expr<FlatTyp, FlatLiteral>> {
+        self.0.insert(s, e)
     }
 }
 
@@ -80,6 +98,17 @@ pub struct Program<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
 
 pub type DPProgram = Program<types::FlatTyp, literals::FlatLiteral>;
 pub type CPProgram = Program<CPFlatTyp, literals::CPFlatLiteral>;
+
+impl From<CPProgram> for DPProgram {
+    fn from(cp: CPProgram) -> Self {
+        DPProgram {
+            code: DPCode::from(cp.code), 
+            externals: cp.externals,
+            headers: DPHeaders::from(cp.headers),
+            phantom: PhantomData
+        }
+    }
+}
 
 impl< FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Program<FlatTyp, FlatLiteral> {
     pub fn set_timeout(&mut self, t: std::time::Duration) {

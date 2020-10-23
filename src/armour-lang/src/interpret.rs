@@ -13,7 +13,6 @@ use super::literals::{
 use super::meta::{Egress, IngressEgress, Meta};
 use super::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
 use super::policies;
-use super::specialize;
 use super::types::{self, TFlatTyp};
 use super::types_cp::{CPFlatTyp};
 use actix::prelude::*;
@@ -630,14 +629,6 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
     }
     fn eval_call2(&self, f: &str, other: &Self) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
         match (f, self, other) {
-            ("compile_ingress", cpflatlit!(Str(function)), cpflatlit!(ID(id))) => {
-                let global_pol : policies::GlobalPolicies = unimplemented!(); //TODO need to get it from the state of control plane
-                Some(specialize::compile_ingress(global_pol, function, id)) 
-            },
-            ("compile_egress", cpflatlit!(Str(function)), cpflatlit!(ID(id))) =>  {
-                let global_pol : policies::GlobalPolicies = unimplemented!(); //TODO need to get it from the state of control plane
-                Some(specialize::compile_ingress(global_pol, function, id)) 
-            },
             ("i64::pow", cpflatlit!(Int(i)), cpflatlit!(Int(j))) => Some(cplit!(Int(i.pow(*j as u32)))),
             ("i64::min", cpflatlit!(Int(i)), cpflatlit!(Int(j))) => {
                 Some(cplit!(Int(std::cmp::min(*i, *j))))

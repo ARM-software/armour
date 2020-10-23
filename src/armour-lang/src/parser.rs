@@ -537,6 +537,7 @@ pub enum Prefix<FlatTyp:TFlatTyp> {
     Phantom(PhantomData<FlatTyp>)
 }
 
+
 impl<FlatTyp:TFlatTyp> std::fmt::Display for Prefix<FlatTyp>{
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -569,6 +570,7 @@ pub enum Infix<FlatTyp:TFlatTyp> {
     Dot,
     Phantom(PhantomData<FlatTyp>)
 }
+
 
 impl<FlatTyp:TFlatTyp> std::fmt::Display for Infix<FlatTyp> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
