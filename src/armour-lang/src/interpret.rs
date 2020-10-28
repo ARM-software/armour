@@ -21,6 +21,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use async_trait::async_trait;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::str::FromStr;
 
 //FIXME duplicated with lang and ? 
 //type Expr = expressions::Expr<types::FlatTyp, literals::DPFlatLiteral>;
@@ -549,7 +550,13 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             ("option::Some", _) => Some(Literal::some2(self)),
             ("i64::abs", cpflatlit!(Int(i))) => Some(cplit!(Int(i.abs()))),
             ("i64::to_str", cpflatlit!(Int(i))) => Some(cplit!(Str(i.to_string()))),
-            ("labels::LoginTime", cpflatlit!(Int(i))) => Some(cplit!(Label(Label::login_time(*i)))),
+            ("Label::new", cpflatlit!(Str(s))) => {
+                match Label::from_str(s) {
+                    Ok(l)=> Some(cplit!(Label(l))),
+                    _ => None 
+                }
+            },
+            ("Label::login_time", cpflatlit!(Int(i))) => Some(cplit!(Label(Label::login_time(*i)))),
             ("str::len", cpflatlit!(Str(s))) => Some(cplit!(Int(s.len() as i64))),
             ("str::to_lowercase", cpflatlit!(Str(s))) => Some(cplit!(Str(s.to_lowercase()))),
             ("str::to_uppercase", cpflatlit!(Str(s))) => Some(cplit!(Str(s.to_uppercase()))),
@@ -562,9 +569,6 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             ("str::to_base64", cpflatlit!(Str(s))) => Some(cplit!(Str(base64::encode(s)))),
             ("data::to_base64", cpflatlit!(Data(d))) => Some(cplit!(Str(base64::encode(d)))),
             ("data::len", cpflatlit!(Data(d))) => Some(cplit!(Int(d.len() as i64))),
-            ("ControlPlane::onboard", cpflatlit!(ID(id))) => Some(cplit!(Bool(unimplemented!()))), //TODO Rest request to control plan because control plan not accessible otherwise ?
-            ("ControlPlane::onboarded", cpflatlit!(Label(l))) => Some(cplit!(ID(unimplemented!()))), //TODO Rest request to control plan because control plan not accessible otherwise ?
-            ("ControlPlane::newID", cpflatlit!(Label(l))) => Some(cplit!(ID(unimplemented!()))), //TODO Rest request to control plan because control plan not accessible otherwise ?
             ("HttpRequest::connection", cpflatlit!(HttpRequest(req))) => Some(req.connection()),
             ("HttpRequest::from", cpflatlit!(HttpRequest(req))) => Some(req.from_lit()),
             ("HttpRequest::to", cpflatlit!(HttpRequest(req))) => Some(req.to_lit()),
@@ -722,7 +726,6 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
                 Some(i.matches_with(j).into())
             }
             ("OnboardingResult::Ok",  cpflatlit!(ID(id)), cpflatlit!(Policy(p))) => Some(OnboardingResult::new_ok_lit(id.clone(), *p.clone())),
-            ("OnboardingResult::Err",  cpflatlit!(Str(err)), cpflatlit!(Policy(p))) =>  Some(OnboardingResult::new_err_lit(err.clone(), *p.clone())),
             _ => None,
         }
     }
@@ -742,7 +745,8 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             ) => Some(res.set_header(h, v).into()),
             ("Connection::new", cpflatlit!(ID(from)), cpflatlit!(ID(to)), cpflatlit!(Int(number))) => {
                 Some(Connection::literal(from, to, *number))
-            }
+            },
+            ("OnboardingResult::Err",  cpflatlit!(Str(err)), cpflatlit!(ID(id)), cpflatlit!(Policy(p))) =>  Some(OnboardingResult::new_err_lit(err.clone(), id.clone(), *p.clone())),
             _ => None,
         }
     }
@@ -927,6 +931,8 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
     }
     #[allow(clippy::cognitive_complexity)]
     fn eval(self, env: Env<FlatTyp, FlatLiteral>) -> BoxFuture<'static, Result<Self, self::Error>> {
+        //println!("### Interpreting expression: ");
+        //self.print_debug();
         async {
             match self {
                 Expr::Var(_) | Expr::BVar(_, _) => Err(Error::new("eval variable")),

@@ -1,6 +1,7 @@
 use super::{
-    policies::{FnPolicy, FnPolicies},//TODO should i reuse policies::FnPolicies
-    lang::{self, CPProgram},
+    expressions,
+    policies::{Policy,ProtocolPolicy, FnPolicy, FnPolicies},//TODO should i reuse policies::FnPolicies
+    lang::{self, CPProgram, CPPreProgram},
     literals::CPFlatLiteral,
     types_cp::{CPFlatTyp, CPTyp, CPSignature},
     types::{Signature, Typ},
@@ -28,11 +29,25 @@ pub struct OnboardingPolicy {
     pub program: CPProgram,
     //fn_policies: FnPolicies,
 }
+impl OnboardingPolicy {
+    fn inner_from(pre_prog: lang::CPPreProgram) -> Result<Self, expressions::Error> {
+        Ok(OnboardingPolicy {
+            name: ONBOARDING_SERVICES.to_string(),
+            sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
+            program: pre_prog.program(&vec![ONBOARDING_SERVICES.to_string()][..]),
+        })
+    }
+
+    pub fn from_buf(buf: &str) -> Result<Self, expressions::Error> {
+        Self::inner_from(lang::PreProgram::from_buf(buf)?)
+    }
+}
 #[derive(Serialize, Deserialize, Clone)]
 pub enum ObPolicy {
     None, //Onboard no services
     Custom(OnboardingPolicy) //Use cuserd defined policy
 }
+
 impl ObPolicy {
     pub fn onboard_none() -> Self {
         Self::None
@@ -41,8 +56,11 @@ impl ObPolicy {
         Self::Custom(OnboardingPolicy {
             name: ONBOARDING_SERVICES.to_string(),
             sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
-            program: CPProgram::default(),
+            program: p,
         })
+    }
+    pub fn from_buf(buf: &str) -> Result<Self, expressions::Error> {
+        Ok(Self::Custom(OnboardingPolicy::from_buf(buf)?))
     }
 }
 

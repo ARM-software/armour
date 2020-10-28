@@ -367,6 +367,9 @@ impl<FlatTyp:types::TFlatTyp, FlatLiteral:literals::TFlatLiteral<FlatTyp>> Expr<
             .render_colored(80, StandardStream::stdout(ColorChoice::Auto))
             .unwrap()
     }
+    pub fn print_debug(&self) {
+        println!("{:#?}", self);
+    }
 }
 
 impl<FlatTyp:types::TFlatTyp, FlatLiteral:literals::TFlatLiteral<FlatTyp>> fmt::Display for Expr<FlatTyp, FlatLiteral> {

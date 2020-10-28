@@ -315,6 +315,7 @@ impl<FlatTyp:TFlatTyp> TBuiltin<FlatTyp> for Typ<FlatTyp> {
             "ID::labels" => sig(vec![Typ::id()], Typ::List(Box::new(Typ::label()))),
             "ID::hosts" => sig(vec![Typ::id()], Typ::List(Box::new(Typ::str()))),
             "ID::ips" => sig(vec![Typ::id()], Typ::List(Box::new(Typ::ipAddr()))),
+            "ID::port" => sig(vec![Typ::id()], Typ::i64().option()),
             "Label::captures" => sig(
                 vec![Typ::label(), Typ::label()],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::str(), Typ::str()]))).option(),
@@ -349,19 +350,21 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
                 }
             }
         };
+        println!("builtins {}\n", f);
         match f {
             //Onboarding policy
             "compile_ingress" => sig(vec![CPTyp::str(), CPTyp::id()], CPTyp::FlatTyp(CPFlatTyp::Policy)),
             "compile_egress" => sig(vec![CPTyp::str(), CPTyp::id()], CPTyp::FlatTyp(CPFlatTyp::Policy)),
-            "ControlPlane::onboard" => sig(vec![CPTyp::label(), CPTyp::label(), CPTyp::label()], CPTyp::bool()),
-            "ControlPlane::onboarded" => sig(vec![CPTyp::label(), CPTyp::label()], CPTyp::label().option()),
-            "ControlPlane::newID" => sig(vec![CPTyp::label(), CPTyp::label()], CPTyp::label()),
-            "labels::LoginTime" => sig(vec![CPTyp::i64()], CPTyp::label()),
+            "ControlPlane::onboard" => sig(vec![CPTyp::id()], CPTyp::bool()),
+            "ControlPlane::onboarded" => sig(vec![CPTyp::label(), CPTyp::label()], CPTyp::id().option()),
+            "ControlPlane::newID" => sig(vec![CPTyp::label(), CPTyp::label()], CPTyp::id()),
+            "Label::new" => sig(vec![CPTyp::str()], CPTyp::label()),
+            "Label::login_time" => sig(vec![CPTyp::i64()], CPTyp::label()),
             "OnboardingData::declaredDomain" => unimplemented!(),
-            "OnboardingData::host" => sig(vec![], CPTyp::label()),
-            "OnboardingData::service" => sig(vec![], CPTyp::label()),
+            "OnboardingData::host" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::label()),
+            "OnboardingData::service" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::label()),
             "OnboardingResult::Ok" => sig(vec![CPTyp::id(), CPTyp::FlatTyp(CPFlatTyp::Policy)], CPTyp::FlatTyp(CPFlatTyp::OnboardingResult)),
-            "OnboardingResult::Err" => sig(vec![CPTyp::id(), CPTyp::FlatTyp(CPFlatTyp::Policy)], CPTyp::FlatTyp(CPFlatTyp::OnboardingResult)),
+            "OnboardingResult::Err" => sig(vec![CPTyp::str(), CPTyp::id(), CPTyp::FlatTyp(CPFlatTyp::Policy)], CPTyp::FlatTyp(CPFlatTyp::OnboardingResult)),
             _ => convertsig(FlatTyp::builtins(f)),
         }
     }

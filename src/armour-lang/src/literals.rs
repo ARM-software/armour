@@ -260,6 +260,9 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> ID<FlatTyp, FlatLitera
     pub fn has_label(&self, label: &labels::Label) -> bool {
         self.labels.iter().any(|x| label.matches_with(x))
     }
+    pub fn find_label(&self, label: &labels::Label) -> Option<&labels::Label> {
+        self.labels.iter().find(|x| label.matches_with(x))
+    }
     pub fn has_host(&self, host: &str) -> bool {
         self.hosts.iter().any(|x| x == host)
     }
@@ -288,6 +291,8 @@ impl From<CPConnection> for DPConnection {
         }
     }
 }
+
+
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Connection<FlatTyp, FlatLiteral> {
     pub fn literal(from: &ID<FlatTyp, FlatLiteral>, to: &ID<FlatTyp, FlatLiteral>, number: i64) -> Literal<FlatTyp, FlatLiteral> {
@@ -669,25 +674,25 @@ impl OnboardingData {
 //TODO find a better structure 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum OnboardingResult {
-    Ok(ID<CPFlatTyp, CPFlatLiteral>, Policy),
-    Err(String, Policy)
+    Ok(CPID, Policy),
+    Err(String, CPID, Policy)
 }
 
 impl OnboardingResult {
-    pub fn new_ok(id: ID<CPFlatTyp, CPFlatLiteral>, p: Policy ) -> Self {
+    pub fn new_ok(id: CPID, p: Policy ) -> Self {
         Self::Ok(id, p)
     }
-    pub fn new_err(err: String, p : Policy ) -> Self {
-        Self::Err(err, p)
+    pub fn new_err(err: String, id: CPID, p : Policy ) -> Self {
+        Self::Err(err, id, p)
     }
-    pub fn new_ok_lit(id: ID<CPFlatTyp, CPFlatLiteral>, p: Policy ) -> CPLiteral {
+    pub fn new_ok_lit(id: CPID, p: Policy ) -> CPLiteral {
         Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
             Self::new_ok(id, p)
         )))
     }
-    pub fn new_err_lit(err: String, p : Policy ) -> CPLiteral {
+    pub fn new_err_lit(err: String, id: CPID, p : Policy ) -> CPLiteral {
         Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
-            Self::new_err(err, p)
+            Self::new_err(err, id, p)
         )))
     }
 }
@@ -1350,8 +1355,8 @@ impl From<&OnboardingResult> for CPLiteral {
     fn from(res: &OnboardingResult) -> Self {
         Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
             match *res {
-                OnboardingResult::Ok(ref ID, ref pol) => OnboardingResult::new_ok(ID.clone(), pol.clone()),
-                OnboardingResult::Err(ref err, ref pol) => OnboardingResult::new_err(err.clone(), pol.clone())
+                OnboardingResult::Ok(ref id, ref pol) => OnboardingResult::new_ok(id.clone(), pol.clone()),
+                OnboardingResult::Err(ref err, ref id, ref pol) => OnboardingResult::new_err(err.clone(), id.clone(), pol.clone())
             }
         )))
     }

@@ -1,6 +1,7 @@
 //! Control plane API
 
 use armour_lang::labels::{Label, Labels};
+use armour_lang::literals::{CPID};
 use armour_lang::policies::{GlobalPolicies, DPPolicies};
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +28,7 @@ pub struct OnboardServiceRequest {
 #[derive(Serialize, Deserialize)]
 pub struct POnboardServiceRequest {
     pub service: Label,
-    pub service_id: Label, //assigned by control plane
+    pub service_id: CPID, //assigned by control plane
     pub host: Label,
 }
 

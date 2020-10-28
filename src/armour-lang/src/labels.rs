@@ -211,6 +211,10 @@ impl Label {
         Label(tmp)
     }
 
+    pub fn prefix(&mut self, s:String) {
+        self.0.insert(0, Node::Str(s));
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }

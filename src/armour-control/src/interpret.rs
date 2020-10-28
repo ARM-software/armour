@@ -29,6 +29,7 @@ use futures::executor;
 use super::rest_api::{collection, ONBOARDING_POLICY_KEY, POLICIES_COL, SERVICES_COL, State};
 use async_trait::async_trait;
 use bson::doc;
+use std::str::FromStr;
 
 
 
@@ -58,7 +59,7 @@ pub async fn present(
 #[async_trait]
 pub trait TSLitInterpret {
     fn seval_call0(state: State, f: &str) -> Option<CPLiteral>;
-    fn seval_call1(&self, state:State, f: &str) -> Option<CPLiteral>;
+    async fn seval_call1(&self, state:State, f: &str) -> Result<Option<CPLiteral>, self::Error>;
     async fn seval_call2(&self, state: State, f: &str, other: &Self) -> Result<Option<CPLiteral>, self::Error>;
     async fn seval_call3(&self, state: State, f: &str, l1: &Self, l2: &Self) -> Result<Option<CPLiteral>, self::Error>;
     async fn seval_call4(&self, state: State, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Result<Option<CPLiteral>, self::Error>;
@@ -152,22 +153,34 @@ async fn helper_onboarded(state: State, service: &Label, host: &Label) ->  Resul
         let request =
             bson::from_bson::<control::POnboardServiceRequest>(bson::Bson::Document(doc))
                 .on_err("Bson conversion error")?;
-        Ok(cplit!(Label(request.service_id)).some())
+        Ok(cplit!(ID(request.service_id)).some())
     } else {
         Ok(Literal::none())
     }
 }
 
-async fn helper_onboard(state: State, service: &Label, service_id: &Label, host: &Label) ->  Result<CPLiteral, self::Error>  {
+async fn helper_onboard(state: State, id: &CPID) ->  Result<CPLiteral, self::Error>  {
+    let host = match id.find_label(&Label::from_str("Host::*")?) {
+        Some(l) => l.clone(),
+        _ =>  return Err(Error::from(format!("Extracting host from id labels")))
+    };
+    let service = match id.find_label(&Label::from_str("Service::*")?) {
+        Some(l) => l.clone(),
+        _ =>  return Err(Error::from(format!("Extracting servie from id labels")))
+    };
     let request = control::POnboardServiceRequest {
         service: service.clone(),
-        service_id: service_id.clone(),
+        service_id: id.clone(),
         host: host.clone()
     };                       
     let col = collection(&state, SERVICES_COL);
+    let service_id = match id.find_label(&Label::from_str("ServiceID::*")?) {
+        Some(l) => l.clone(),
+        _ =>  return Err(Error::from(format!("Extracting label")))
+    };
 
     // Check if the service is already there
-    if present(&col, doc! { "service_id" : to_bson(service_id)? }).await? {
+    if present(&col, doc! { "service_id" : to_bson(&service_id)? }).await? {
         Ok(cplit!(Bool(true)))
 
     } else if let bson::Bson::Document(document) = to_bson(&request)? {
@@ -189,9 +202,12 @@ impl TSLitInterpret for CPLiteral {
             _ => Self::eval_call0(f),
         }
     }
-    fn seval_call1(&self, state:State, f: &str) -> Option<CPLiteral> {
+    async fn seval_call1(&self, state:State, f: &str) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self) {
-            _ => self.eval_call1(f),
+            ( "ControlPlane::onboard", cplit!(ID(service_id)) ) => { 
+                Ok(Some(helper_onboard(state, service_id).await?))
+            },
+            _ => Ok(self.eval_call1(f)),
         }
     }
     async fn seval_call2(&self, state: State, f: &str, other: &Self) -> Result<Option<CPLiteral>, self::Error> {
@@ -208,28 +224,32 @@ impl TSLitInterpret for CPLiteral {
                 cplit!(Label(host))
             ) => { 
                 Ok(Some(helper_onboarded(state, service, host).await?))
-            }
+            },
             (
                 "ControlPlane::newID", 
                 cplit!(Label(service)), 
                 cplit!(Label(host))
             ) => { 
-                let service_id = Label::concat(host, service);//TODO refine newid
-                Ok(Some(cplit!(Label(service_id))))
+                let mut service_id = Label::concat(host, service);//TODO refine newid
+                service_id.prefix("ServiceID".to_string());
+
+                let mut service = service.clone();
+                service.prefix("Service".to_string());
+                let mut host = host.clone();
+                host.prefix("Host".to_string());
+
+                let id = CPID::default();
+                id.add_label(&service_id);
+                id.add_label(&service);
+                id.add_label(&host);
+
+                Ok(Some(cplit!(ID(id))))
             }
             _ => Ok(self.eval_call2(f, other)),
         }
     }
     async fn seval_call3(&self, state: State, f: &str, l1: &Self, l2: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, l1, l2) {
-            (
-                "ControlPlane::onboard",
-                cplit!(Label(service)),
-                cplit!(Label(service_id)), 
-                cplit!(Label(host))
-            ) => { 
-                Ok(Some(helper_onboard(state, service, service_id, host).await?))
-            }
             _ => Ok(self.eval_call3(f, l1, l2)),
         }
     }
@@ -273,7 +293,7 @@ impl TSExprInterpret for CPExpr {
                 Some(r) => Ok(r.into()),
                 None => Err(Error::new("eval, call(0): type error")),
             },
-            [Expr::LitExpr(l1)] => match l1.seval_call1(state, &function) {
+            [Expr::LitExpr(l1)] => match l1.seval_call1(state, &function).await? {
                 Some(r) => Ok(r.into()),
                 None => Err(Error::new("eval, call(1): type error")),
             },

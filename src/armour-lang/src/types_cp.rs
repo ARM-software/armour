@@ -79,9 +79,9 @@ impl fmt::Display for CPFlatTyp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             CPFlatTyp::DPFlatTyp(t) => FlatTyp::fmt(t, f),
-            CPFlatTyp::OnboardingData => write!(f, "onboardingData"),
-            CPFlatTyp::OnboardingResult => write!(f, "onboardingResult"),
-            CPFlatTyp::Policy => write!(f, "policy"),
+            CPFlatTyp::OnboardingData => write!(f, "OnboardingData"),
+            CPFlatTyp::OnboardingResult => write!(f, "OnboardingResult"),
+            CPFlatTyp::Policy => write!(f, "Policy"),
         }
     }
 }
@@ -109,6 +109,7 @@ impl TFlatTyp for CPFlatTyp {
         match s {
             "OnboardingData" => Ok(Self::OnboardingData),
             "OnboardingResult" => Ok(Self::OnboardingResult),
+            "Policy" => Ok(Self::Policy),
             s => match FlatTyp::try_from_str(s)  {
                 Ok(t) => Ok(Self::DPFlatTyp(t)),
                 Err(e) =>  Err(Error::from(e))

@@ -72,7 +72,7 @@ impl<FlatTyp:TFlatTyp> ProtocolPolicy<FlatTyp> {
     fn functions(&self) -> Vec<String> {
         self.0.keys().cloned().collect()
     }
-    fn insert(&mut self, name: &str, fn_policy: Vec<Signature<FlatTyp>>) {
+    pub fn insert(&mut self, name: &str, fn_policy: Vec<Signature<FlatTyp>>) {
         self.0.insert(name.to_string(), fn_policy);
     }
     fn insert_bool(&mut self, name: &str, args: Vec<Vec<Typ<FlatTyp>>>) {
@@ -155,16 +155,18 @@ pub enum Protocol<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> PartialOrd for Protocol<FlatTyp, FlatLiteral> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
-            (HTTP, TCP) => Some(Ordering::Less),
+            (Self::HTTP, Self::TCP) => Some(Ordering::Less),
             (x1, x2) if x1 == x2 => Some(Ordering::Equal),
-            (TCP, HTTP) => Some(Ordering::Greater),
+            (Self::TCP, Self::HTTP) => Some(Ordering::Greater),
             _ => None,
 
         }
     }
 }
+
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Eq for Protocol<FlatTyp, FlatLiteral> {
 }
+
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Ord for Protocol<FlatTyp, FlatLiteral> {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.partial_cmp(other) {
@@ -433,6 +435,9 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, Flat
     pub fn is_deny_all(&self) -> bool {
         self.0.values().all(|p| p.is_deny_all())
     }
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
     pub fn policy(&self, p: Protocol<FlatTyp, FlatLiteral>) -> Option<&Policy<FlatTyp, FlatLiteral>> {
         self.0.get(&p)
     }
@@ -442,8 +447,8 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, Flat
     pub fn policies_mut(&mut self) -> std::collections::btree_map::IterMut<Protocol<FlatTyp, FlatLiteral>, Policy<FlatTyp, FlatLiteral>> {
         (&mut self.0).iter_mut()
     }
-    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, expressions::Error> {
-        let pre_prog = lang::PreProgram::from_file(path)?;
+
+    fn inner_from(pre_prog: lang::PreProgram<FlatTyp, FlatLiteral>) -> Result<Self, expressions::Error> {
         let mut policies = Policies::default();
         let http : Protocol<FlatTyp, FlatLiteral> = Protocol::HTTP;
         let tcp : Protocol<FlatTyp, FlatLiteral> = Protocol::HTTP;
@@ -463,6 +468,13 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, Flat
         }
         Ok(policies)
     }
+
+    pub fn from_buf(buf: &str) -> Result<Self, expressions::Error> {
+        Self::inner_from(lang::PreProgram::from_buf(buf)?)
+    }
+    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, expressions::Error> {
+        Self::inner_from(lang::PreProgram::from_file(path)?)
+    }
 }
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Policies<FlatTyp, FlatLiteral> {
@@ -479,6 +491,12 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Polic
         } else {
             writeln!(f, "-")?
         }
+        write!(f, "Phantom: ")?;
+        if let Some(policy) = self.policy(Protocol::Phantom(PhantomData)) {
+            writeln!(f, "{}", policy)?
+        } else {
+            writeln!(f, "-")?
+        }        
         Ok(())
     }
 }
