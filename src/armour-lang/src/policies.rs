@@ -34,7 +34,7 @@ impl Default for FnPolicy {
 }
 
 // map from function name to `FnPolicy`
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Default)]
 pub struct FnPolicies(BTreeMap<String, FnPolicy>);
 
 impl FnPolicies {
@@ -242,7 +242,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> FromStr for Protocol<F
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct Policy<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     pub program: lang::Program<FlatTyp, FlatLiteral>,
     pub fn_policies: FnPolicies,
@@ -379,7 +379,7 @@ impl<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> fmt::Display for Pol
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(PartialEq, Debug, Clone, Default)]
 pub struct Policies<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(BTreeMap<Protocol<FlatTyp, FlatLiteral>, Policy<FlatTyp, FlatLiteral>>);
 pub type DPPolicies = Policies<FlatTyp, literals::FlatLiteral>;
 pub type GlobalPolicies = Policies<types_cp::CPFlatTyp, literals::CPFlatLiteral>;
@@ -396,7 +396,7 @@ impl From<GlobalPolicies> for DPPolicies {
 
 impl From<DPPolicies> for literals::Policy {
     fn from(dppol: DPPolicies) -> Self {
-        unimplemented!()
+           literals::Policy{pol: Box::new(dppol)} 
     }
 }
 

@@ -1,6 +1,6 @@
 use super::pretty::TPrettyLit;
 use super::{interpret::TInterpret, labels, parser, types::{Typ, FlatTyp, TFlatTyp, TTyp}, types_cp::{CPFlatTyp, CPTyp}};
-use super::policies::TProtocol;
+use super::policies::{TProtocol,DPPolicies};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Display};
@@ -698,7 +698,9 @@ impl OnboardingResult {
 }
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
-pub struct Policy {}
+pub struct Policy {
+    pub pol: Box<DPPolicies>
+}
 
 use super::externals;
 
@@ -1370,7 +1372,7 @@ impl From<Policy> for CPLiteral {
 }
 impl From<&Policy> for CPLiteral {
     fn from(pol: &Policy) -> Self {
-        Literal::FlatLiteral(CPFlatLiteral::Policy(Box::new(Policy{})))
+        Literal::FlatLiteral(CPFlatLiteral::Policy(Box::new(pol.clone())))
     }
 }
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<HttpRequest<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {

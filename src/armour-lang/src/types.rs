@@ -489,7 +489,7 @@ impl<FlatTyp:TFlatTyp> parser::Pattern<FlatTyp> {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Signature<FlatTyp: TFlatTyp >(Option<Vec<Typ<FlatTyp>>>, Typ<FlatTyp>);
 
 impl<FlatTyp: TFlatTyp> Default for Signature<FlatTyp> {

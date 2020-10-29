@@ -45,6 +45,8 @@ pub trait TSExprPEval : Sized{
 #[async_trait]
 impl TSExprPEval for CPExpr {
     fn peval(self, state: State, env: CPEnv) -> BoxFuture<'static, Result<(bool, Self), self::Error>> {
+        println!("### Peval, interpreting expression: ");
+        self.print_debug();
         async { 
             match self {
                 Expr::Var(_) | Expr::BVar(_, _) => Ok((false, self)),
@@ -65,7 +67,7 @@ impl TSExprPEval for CPExpr {
                         None => Err(Error::new("peval prefix: type error")),
                     },
                     (false, n_e) => Ok((false, Expr::PrefixExpr(p, Box::new(n_e)))),//evaluation delayed
-                    _ => Err(Error::new("peval, prefix")),
+                    _ => Err(Error::new("ppeval, prefix")),
                 },
                 // short circuit for &&
                 Expr::InfixExpr(Infix::And, e1, e2) =>{ 
@@ -74,12 +76,13 @@ impl TSExprPEval for CPExpr {
                     let flag = b1 && b2; 
 
                     match n_e1 {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(false))) => Ok((flag, r)),
-                    Expr::LitExpr(cplit!(Bool(true))) => match n_e2 {
-                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok((flag, r)),
-                        _ => Err(Error::new("eval, infix")),
-                    },
-                    _ => Err(Error::new("eval, infix")),
+                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(false))) => Ok((flag, r)),
+                        Expr::LitExpr(cplit!(Bool(true))) => match n_e2 {
+                            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok((flag, r)),
+                            _ => Err(Error::new("peval, infix")),
+                        },
+                        _ if !flag => Ok((flag, Expr::InfixExpr(Infix::And, Box::new(n_e1), Box::new(n_e2)))),
+                        _ => Err(Error::new("peval, infix")),
                     }
                 },
                 // short circuit for ||
@@ -92,9 +95,9 @@ impl TSExprPEval for CPExpr {
                         r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(true))) => Ok((flag, r)),
                         Expr::LitExpr(cplit!(Bool(false))) => match n_e2 {
                             r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok((flag, r)),
-                            _ => Err(Error::new("eval, infix")),
+                            _ => Err(Error::new("peval, infix")),
                         },
-                        _ => Err(Error::new("eval, infix")),
+                        _ => Err(Error::new("peval, infix")),
                 }
                 },
                 Expr::InfixExpr(op, e1, e2) => {
@@ -190,7 +193,8 @@ impl TSExprPEval for CPExpr {
                         } else {
                             Err(Error::new("peval, let-expression (literal not a tuple)"))
                         }
-                    }
+                    },
+                    (false, ee1) =>  Ok((false, Expr::Let(vs, Box::new(ee1), e2))),
                     _ => Err(Error::new("peval, let-expression")),
                 },
                 Expr::Iter(op, vs, e1, e2) => match e1.peval(state.clone(), env.clone()).await? {
@@ -525,12 +529,14 @@ pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPoli
         match pol.program.code.get(policies::ALLOW_REST_REQUEST.to_string()) {
             None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", policies::ALLOW_REST_REQUEST))), 
             Some(ref fexpr) => {    
-                let fexpr = fexpr.clone().subst(1, &Expr::LitExpr(Literal::id(to.clone()))); 
+                let fexpr = fexpr.clone().propagate_subst(2, 1, &Expr::LitExpr(Literal::id(to.clone()))); 
+                //println!("#### After subst of 'to'");
+                //fexpr.print_debug();
                 match fexpr.pevaluate(state, env).await {                        
                     Ok((f, e)) =>{ 
 
                         let mut e = e.apply(&Expr::call("HttpRequest::from", vec![Expr::bvar("req", 0)]))?;
-                        e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;
+                        //e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;
                         e = e.apply(&Expr::bvar("req", 0))?;
                         e = e.apply(&Expr::bvar("payload", 1))?;
 
@@ -562,12 +568,11 @@ pub async fn compile_egress(state: &State, mut global_pol: policies::GlobalPolic
         match pol.program.code.get(policies::ALLOW_REST_RESPONSE.to_string()) {
             None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", policies::ALLOW_REST_RESPONSE))), 
             Some(ref fexpr) => {    
-                let fexpr = fexpr.clone().subst(0, &Expr::LitExpr(Literal::id(from.clone()))); 
+                let fexpr = fexpr.clone().propagate_subst(3, 0, &Expr::LitExpr(Literal::id(from.clone()))); 
                 match fexpr.pevaluate(state, env).await {                        
                     Ok((f, e)) =>{ 
 
-                        let mut e = e.apply(&Expr::call("HttpRequest::from", vec![Expr::bvar("req", 0)]))?;
-                        e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;
+                        let mut e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;
                         e = e.apply(&Expr::bvar("req", 0))?;
                         e = e.apply(&Expr::bvar("payload", 1))?;
 

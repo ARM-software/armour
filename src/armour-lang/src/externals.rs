@@ -97,7 +97,7 @@ impl From<async_std::future::TimeoutError> for expressions::Error {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct Externals {
     /// map from external names to TCP/Unix socket names
     sockets: BTreeMap<String, String>,

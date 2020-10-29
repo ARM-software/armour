@@ -3,6 +3,8 @@ use armour_api::control;
 use armour_api::host::PolicyUpdate;
 use armour_lang::{labels::Label, policies::DPPolicies};
 use bson::doc;
+use std::str::FromStr;
+
 
 pub const ARMOUR_DB: &str = "armour";
 pub const HOSTS_COL: &str = "hosts";
@@ -191,6 +193,13 @@ impl Default for OnboardingPolicy {
 }
 
 pub const ONBOARDING_POLICY_KEY : &str = "onboarding_policy";
+pub const GLOBAL_POLICY_KEY : &str = "global_policy";
+pub fn ONBOARDING_POLICY_LABEL() -> Label {
+    Label::from_str(ONBOARDING_POLICY_KEY).unwrap()
+}
+pub fn GLOBAL_POLICY_LABEL() -> Label {
+    Label::from_str(GLOBAL_POLICY_KEY).unwrap()
+}
 /// END
 
 pub mod service {
@@ -230,7 +239,7 @@ pub mod service {
             let col = collection(&state, POLICIES_COL);
 
             if let Ok(Some(doc)) = col
-                .find_one(Some(doc! { "label" : ONBOARDING_POLICY_KEY }), None)
+                .find_one(Some(doc! { "label" : to_bson(&ONBOARDING_POLICY_LABEL())? }), None)
                 .await
             {
                 OnboardingPolicy::new(
@@ -515,7 +524,7 @@ pub fn collection(state: &State, collection: &str) -> mongodb::Collection {
     state.db_con.database(ARMOUR_DB).collection(collection)
 }
 
-fn to_bson<T: ?Sized>(value: &T) -> Result<bson::Bson, actix_web::Error>
+pub fn to_bson<T: ?Sized>(value: &T) -> Result<bson::Bson, actix_web::Error>
 where
     T: serde::Serialize,
 {

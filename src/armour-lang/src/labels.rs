@@ -7,12 +7,14 @@ use std::slice::SliceIndex;
 use std::str::FromStr;
 
 thread_local!(static NODE_ANY: regex::Regex = regex::Regex::new("^<[[:alpha:]][[:alnum:]]*>$").unwrap());
+thread_local!(static NODE_REC_ANY: regex::Regex = regex::Regex::new("^<<[[:alpha:]][[:alnum:]]*>>$").unwrap());
 thread_local!(static NODE_STR: regex::Regex = regex::Regex::new("^[[:alnum:]]([ _+-]?[[:alnum:]])*$").unwrap());
 
 /// Node element of [Label](struct.Label.html)
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Node {
     Any(String),
+    RecAny(String),
     Str(String),
 }
 
@@ -25,7 +27,14 @@ impl fmt::Display for Node {
                 } else {
                     write!(f, "<{}>", s)
                 }
-            }
+            },
+            Node::RecAny(s) => {
+                if s.is_empty() {
+                    write!(f, "**")
+                } else {
+                    write!(f, "<<{}>>", s)
+                }
+            }, 
             Node::Str(s) => write!(f, "{}", s),
         }
     }
@@ -37,11 +46,18 @@ impl FromStr for Node {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s == "*" {
             Ok(Node::Any(String::new()))
+        } else if s == "**" {
+            Ok(Node::RecAny(String::new()))   
         } else if NODE_ANY.with(|f| f.is_match(s)) {
             Ok(Node::Any(
                 s.trim_start_matches('<').trim_end_matches('>').to_string(),
             ))
-        } else if NODE_STR.with(|f| f.is_match(s)) {
+        } else if NODE_ANY.with(|f| f.is_match(s)) {
+            Ok(Node::RecAny(
+                s.trim_start_matches('<').trim_end_matches('>').to_string(),
+            ))
+        } 
+         else if NODE_STR.with(|f| f.is_match(s)) {
             Ok(Node::Str(s.to_string()))
         } else {
             Err(format!("bad label: {}", s))
@@ -99,6 +115,7 @@ impl Node {
             (Node::Str(x), Node::Str(y)) if x == y => MatchNode::Match,
             (Node::Str(_), _) => MatchNode::Mismatch,
             (Node::Any(x), _) if !x.is_empty() => MatchNode::Map(x.clone(), l.clone()),
+            (Node::RecAny(x), _) if !x.is_empty() => MatchNode::Map(x.clone(), l.clone()),
             _ => MatchNode::Match,
         }
     }
@@ -112,6 +129,7 @@ impl Node {
     fn get_any(&self) -> Option<String> {
         match self {
             Node::Any(s) if !s.is_empty() => Some(s.to_string()),
+            Node::RecAny(s) if !s.is_empty() => Some(s.to_string()),
             _ => None,
         }
     }
@@ -241,11 +259,25 @@ impl Label {
         self.match_with(l).is_some()
     }
     pub fn match_with(&self, l: &Label) -> Option<Match> {
-        if self.0.len() != l.0.len() {
+        // TODO support R::**::Test::*
+        let pattern = match self.0.last() {
+            Some(Node::RecAny(y)) =>{
+                let mut p = self.clone();
+                for _ in self.0.len() .. l.0.len() {
+                    p.0.push(Node::RecAny(y.clone()))    
+                }
+                p
+            },
+            _ => self.clone()
+        };
+
+        if pattern.0.len() != l.0.len() {
             return None;
         };
+
         let mut map = Match(BTreeMap::new());
-        for (pat, node) in self.0.iter().zip(l.0.iter()) {
+
+        for (pat, node) in pattern.0.iter().zip(l.0.iter()) {
             match pat.match_with(node) {
                 MatchNode::Map(l, r) => {
                     if let Some(other) = map.0.insert(l, r.clone()) {
@@ -277,7 +309,7 @@ impl Label {
     pub fn login_time(t: i64) -> Self {
         Label(vec![
             Node::Str("ControlPlane".to_string()),
-            Node::Str("LoginTimeg".to_string()),
+            Node::Str("LoginTime".to_string()),
             Node::Str(t.to_string())
         ])
     }

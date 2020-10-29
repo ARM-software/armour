@@ -19,7 +19,7 @@ use std::iter::FromIterator;
 //type Headers = headers::Headers<parser::Typ, types::Typ>;
 //type DPExpr = expressions::Expr<types::FlatTyp, literals::DPFlatLiteral>;
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Default)]
 pub struct Code<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(pub BTreeMap<String, Expr<FlatTyp, FlatLiteral>>);
 pub type DPCode = Code<types::FlatTyp, literals::FlatLiteral>;
 pub type CPCode = Code<CPFlatTyp, literals::CPFlatLiteral>;
@@ -88,7 +88,7 @@ impl CallGraph {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Default)]
 pub struct Program<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     pub code: Code<FlatTyp, FlatLiteral>,
     pub externals: externals::Externals,

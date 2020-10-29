@@ -19,7 +19,7 @@ impl std::fmt::Display for Error {
 }
 
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Headers<FlatTyp:TFlatTyp >(pub BTreeMap<String, Signature<FlatTyp>>);
 pub type DPHeaders = Headers<FlatTyp>;
 pub type CPHeaders = Headers<CPFlatTyp>;

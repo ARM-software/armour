@@ -520,6 +520,22 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
             }
         }
     }
+
+    pub fn propagate_subst(self, i: usize, j: usize, u: &Self) -> Self {
+        match self {
+            Self::Closure(v, e) if j == 0 => e.psubst(i, u),
+            Self::Closure(v, e) => Self::Closure(v, Box::new(e.propagate_subst(i, j-1, u))),
+            _ => self.psubst(i, u)
+        }
+    }
+
+    pub fn psubst(self, i: usize, u: &Self) -> Self {
+        match self {
+            Self::Closure(v, e) => Self::Closure(v, Box::new(e.psubst(i, u))),
+            _ => self.subst(i, u)
+        }
+    }
+
     pub fn subst(self, i: usize, u: &Self) -> Self {
         match self {
             Self::Var(_) | Self::LitExpr(_) => self,

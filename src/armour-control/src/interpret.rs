@@ -26,7 +26,7 @@ use armour_api::control;
 use armour_utils::{Client, parse_https_url};
 use clap::{crate_version, App};
 use futures::executor;
-use super::rest_api::{collection, ONBOARDING_POLICY_KEY, POLICIES_COL, SERVICES_COL, State};
+use super::rest_api::{collection, GLOBAL_POLICY_LABEL, POLICIES_COL, SERVICES_COL, State};
 use async_trait::async_trait;
 use bson::doc;
 use std::str::FromStr;
@@ -105,28 +105,30 @@ fn tt<T, E>(x:Result<T,E>) -> Option<T> {
     }
  }
 
-async fn helper_compile_ingress(state: State, function: &String, id: &CPID) ->  Result<CPLiteral, self::Error> {
+pub async fn helper_compile_ingress(state: State, function: &String, id: &CPID) ->  Result<CPLiteral, self::Error> {
     let col = collection(&state, POLICIES_COL);
     if let Ok(Some(doc)) = col
-        .find_one(Some(doc! {"label" : ONBOARDING_POLICY_KEY}), None)
+        .find_one(Some(doc! {"label" : to_bson(&GLOBAL_POLICY_LABEL())?}), None)
         .await
     {
         let global_pol=
             bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc))
                 .on_err("Bson conversion error")?;
+        let local_pol = specialize::compile_ingress(&state, global_pol.policy, function, id).await?;        
+        println!("ingress local pol built");
         Ok(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
             Box::new(literals::Policy::from(
-                specialize::compile_ingress(&state, global_pol.policy, function, id).await?
+                local_pol  
             ))
         )))
     } else {
-        Err(Error::from(format!("No global policy in MongoDB")))
+        Err(Error::from(format!("helper_compile_ingress, No global policy in MongoDB")))
     }
 }
 async fn helper_compile_egress(state: State, function: &String, id: &CPID) ->  Result<CPLiteral, self::Error> {
     let col = collection(&state, POLICIES_COL);
     if let Ok(Some(doc)) = col
-        .find_one(Some(doc! {"label" : ONBOARDING_POLICY_KEY}), None)
+        .find_one(Some(doc! {"label" : to_bson(&GLOBAL_POLICY_LABEL()).unwrap()}), None)
         .await
     {
         let global_pol=
@@ -138,7 +140,7 @@ async fn helper_compile_egress(state: State, function: &String, id: &CPID) ->  R
             ))
         )))
     } else {
-        Err(Error::from(format!("No global policy in MongoDB")))
+        Err(Error::from(format!("helper_compile_egress, No global policy in MongoDB")))
     }
 }
 
@@ -166,7 +168,7 @@ async fn helper_onboard(state: State, id: &CPID) ->  Result<CPLiteral, self::Err
     };
     let service = match id.find_label(&Label::from_str("Service::*")?) {
         Some(l) => l.clone(),
-        _ =>  return Err(Error::from(format!("Extracting servie from id labels")))
+        _ =>  return Err(Error::from(format!("Extracting service from id labels")))
     };
     let request = control::POnboardServiceRequest {
         service: service.clone(),
@@ -174,9 +176,9 @@ async fn helper_onboard(state: State, id: &CPID) ->  Result<CPLiteral, self::Err
         host: host.clone()
     };                       
     let col = collection(&state, SERVICES_COL);
-    let service_id = match id.find_label(&Label::from_str("ServiceID::*")?) {
+    let service_id = match id.find_label(&Label::from_str("ServiceID::**")?) {
         Some(l) => l.clone(),
-        _ =>  return Err(Error::from(format!("Extracting label")))
+        _ =>  return Err(Error::from(format!("Extracting service_id from id labels")))
     };
 
     // Check if the service is already there
@@ -231,17 +233,18 @@ impl TSLitInterpret for CPLiteral {
                 cplit!(Label(host))
             ) => { 
                 let mut service_id = Label::concat(host, service);//TODO refine newid
-                service_id.prefix("ServiceID".to_string());
-
+                service_id.prefix("ServiceID".to_string());                    
                 let mut service = service.clone();
                 service.prefix("Service".to_string());
                 let mut host = host.clone();
                 host.prefix("Host".to_string());
 
+                //TODO add host to id.hosts
+
                 let id = CPID::default();
-                id.add_label(&service_id);
-                id.add_label(&service);
-                id.add_label(&host);
+                let id = id.add_label(&service_id);
+                let id = id.add_label(&service);
+                let id = id.add_label(&host);
 
                 Ok(Some(cplit!(ID(id))))
             }
@@ -291,47 +294,49 @@ impl TSExprInterpret for CPExpr {
         match args.as_slice() {
             [] => match Literal::seval_call0(state, function) {
                 Some(r) => Ok(r.into()),
-                None => Err(Error::new("eval, call(0): type error")),
+                None => Err(Error::new("seval, call(0): type error")),
             },
             [Expr::LitExpr(l1)] => match l1.seval_call1(state, &function).await? {
                 Some(r) => Ok(r.into()),
-                None => Err(Error::new("eval, call(1): type error")),
+                None => Err(Error::new("seval, call(1): type error")),
             },
             [Expr::LitExpr(l1), Expr::LitExpr(l2)] => match l1.seval_call2(state, &function, l2).await? {
                 Some(r) => Ok(r.into()),
-                None => Err(Error::new("eval, call(2): type error")),
+                None => Err(Error::new("seval, call(2): type error")),
             },
             [Expr::LitExpr(l1), Expr::LitExpr(l2), Expr::LitExpr(l3)] => {
                 match l1.seval_call3(state, &function, l2, l3).await? {
                     Some(r) => Ok(r.into()),
-                    None => Err(Error::new("eval, call(3): type error")),
+                    None => Err(Error::new("seval, call(3): type error")),
                 }
             }
             [Expr::LitExpr(l1), Expr::LitExpr(l2), Expr::LitExpr(l3), Expr::LitExpr(l4)] => {
                 match l1.seval_call4(state, &function, l2, l3, l4).await? {
                     Some(r) => Ok(r.into()),
-                    None => Err(Error::new("eval, call(4): type error")),
+                    None => Err(Error::new("seval, call(4): type error")),
                 }
             }
-            x => Err(Error::from(format!("eval, call: {}: {:?}", function, x))),
+            x => Err(Error::from(format!("seval, call: {}: {:?}", function, x))),
         }
     }
     #[allow(clippy::cognitive_complexity)]
     fn seval(self, state: State, env: CPEnv) -> BoxFuture<'static, Result<Self, self::Error>> {
+        println!("### Seval, interpreting expression: ");
+        //self.print_debug();
         async {
             match self {
-                Expr::Var(_) | Expr::BVar(_, _) => Err(Error::new("eval variable")),
+                Expr::Var(_) | Expr::BVar(_, _) => Err(Error::new("seval variable")),
                 Expr::LitExpr(_) => Ok(self),
-                Expr::Closure(_, _) => Err(Error::new("eval, closure")),
+                Expr::Closure(_, _) => Err(Error::new("seval, closure")),
 
                 Expr::ReturnExpr(e) => Ok(Expr::return_expr(e.seval(state, env).await?)),
                 Expr::PrefixExpr(p, e) => match e.seval(state, env).await? {
                     r @ Expr::ReturnExpr(_) => Ok(r),
                     Expr::LitExpr(l) => match l.eval_prefix(&p) {
                         Some(r) => Ok(r.into()),
-                        None => Err(Error::new("eval prefix: type error")),
+                        None => Err(Error::new("seval prefix: type error")),
                     },
-                    _ => Err(Error::new("eval, prefix")),
+                    _ => Err(Error::new("seval, prefix")),
                 },
                 // short circuit for &&
                 Expr::InfixExpr(Infix::And, _, _) => CPLiteral::helper_sevalexpr(state, self, env).await, 
@@ -344,9 +349,9 @@ impl TSExprInterpret for CPExpr {
                         (_, r @ Expr::ReturnExpr(_)) => Ok(r),
                         (Expr::LitExpr(l1), Expr::LitExpr(l2)) => match l1.eval_infix(&op, &l2) {
                             Some(r) => Ok(r.into()),
-                            None => Err(Error::new("eval, infix: type error")),
+                            None => Err(Error::new("seval, infix: type error")),
                         },
-                        _ => Err(Error::new("eval, infix: failed")),
+                        _ => Err(Error::new("seval, infix: failed")),
                     }
                 }
                 Expr::BlockExpr(b, mut es) => {
@@ -401,17 +406,17 @@ impl TSExprInterpret for CPExpr {
                                 .seval(state, env)
                                 .await
                         } else {
-                            Err(Error::new("eval, let-expression (tuple length mismatch)"))
+                            Err(Error::new("seval, let-expression (tuple length mismatch)"))
                         }
                     }
                     l @ Expr::LitExpr(_) => {
                         if vs.len() == 1 {
                             e2.apply(&l)?.seval(state, env).await
                         } else {
-                            Err(Error::new("eval, let-expression (literal not a tuple)"))
+                            Err(Error::new("seval, let-expression (literal not a tuple)"))
                         }
                     }
-                    _ => Err(Error::new("eval, let-expression")),
+                    _ => Err(Error::new("seval, let-expression")),
                 },
                 Expr::Iter(op, vs, e1, e2) => match e1.seval(state.clone(), env.clone()).await? {
                     r @ Expr::ReturnExpr(_) => Ok(r),
@@ -430,7 +435,7 @@ impl TSExprInterpret for CPExpr {
                                         res.push(e.seval(state.clone(), env.clone()).await?)
                                     } else {
                                         return Err(Error::new(
-                                            "eval, iter-expression (tuple length mismatch)",
+                                            "seval, iter-expression (tuple length mismatch)",
                                         ));
                                     }
                                 }
@@ -443,7 +448,7 @@ impl TSExprInterpret for CPExpr {
                                         res.push(e.seval(state.clone(), env.clone()).await?)
                                     } else {
                                         return Err(Error::new(
-                                            "eval, iter-expression (not a tuple list)",
+                                            "seval, iter-expression (not a tuple list)",
                                         ));
                                     }
                                 }
@@ -479,7 +484,7 @@ impl TSExprInterpret for CPExpr {
                             },
                         }
                     }
-                    _ => Err(Error::new("eval, map-expression")),
+                    _ => Err(Error::new("seval, map-expression")),
                 },
                 Expr::IfExpr {
                     cond,
@@ -492,7 +497,7 @@ impl TSExprInterpret for CPExpr {
                         Some(alt) => alt.seval(state, env).await,
                         None => Ok(Expr::from(())),
                     },
-                    _ => Err(Error::new("eval, if-expression")),
+                    _ => Err(Error::new("seval, if-expression")),
                 },
                 Expr::IfSomeMatchExpr {
                     expr,
@@ -513,7 +518,7 @@ impl TSExprInterpret for CPExpr {
                             }
                         }
                     }
-                    r => Err(Error::from(format!("eval, if-let-expression: {:#?}", r))),
+                    r => Err(Error::from(format!("seval, if-let-expression: {:#?}", r))),
                 },
                 Expr::IfMatchExpr {
                     variables,
@@ -526,7 +531,7 @@ impl TSExprInterpret for CPExpr {
                         if let Some(r) = e.seval(state.clone(), env.clone()).await?.perform_match(re) {
                             rs.push(r)
                         } else {
-                            return Err(Error::new("eval, if-match-expression: type error"));
+                            return Err(Error::new("seval, if-match-expression: type error"));
                         }
                     }
                     match rs.iter().find(|(r, _captures)| r.is_return()) {
@@ -539,7 +544,7 @@ impl TSExprInterpret for CPExpr {
                                     None => Ok(Expr::from(())),
                                     Some(alt) => match alt.seval(state, env).await? {
                                         r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => Ok(r),
-                                        _ => Err(Error::new("eval, if-match-expression")),
+                                        _ => Err(Error::new("seval, if-match-expression")),
                                     },
                                 }
                             } else {
@@ -556,13 +561,13 @@ impl TSExprInterpret for CPExpr {
                                         c = c.apply(e)?
                                     } else {
                                         return Err(Error::new(
-                                            "eval, if-match-expression: missing bind",
+                                            "seval, if-match-expression: missing bind",
                                         ));
                                     }
                                 }
                                 match c.seval(state, env).await? {
                                     r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => Ok(r),
-                                    _ => Err(Error::new("eval, if-match-expression")),
+                                    _ => Err(Error::new("seval, if-match-expression")),
                                 }
                             }
                         }
@@ -580,7 +585,10 @@ impl TSExprInterpret for CPExpr {
                     match args.iter().find(|r| r.is_return()) {
                         Some(r) => Ok(r.clone()),
                         None => {
+                            println!("#### Seval callexpr");
                             if let Some(mut r) = env.get(&function) {
+                                println!("* Seval user function {}", function);
+                                r.print_debug();
                                 // user defined function
                                 for a in args {
                                     r = r.apply(&a)?
@@ -614,7 +622,7 @@ impl TSExprInterpret for CPExpr {
                                         .map_err(|_| Error::new("capnp error"))?
                                 }
                             } else {
-                                Err(Error::from(format!("eval, call: {}: {:?}", function, args)))
+                                Err(Error::from(format!("seval, call: {}: {:?}", function, args)))
                             }
                         }
                     }
