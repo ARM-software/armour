@@ -53,6 +53,16 @@ subcommands:
             takes_value: true
             value_name: "service label"
             help: Service label
+        - ONBOARDING:
+            long: onboarding    
+            required: false
+            takes_value: false
+            help: Onboarding policy flag
+        - GLOBAL:
+            long: global    
+            required: false
+            takes_value: false
+            help: Global policy flag
         - LABELS:
             short: l
             long: label

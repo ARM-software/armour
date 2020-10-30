@@ -1,6 +1,7 @@
 use armour_api::control;
 use armour_lang::labels::Label;
 use armour_lang::policies;
+use armour_lang::policies_cp;
 use armour_utils::parse_https_url;
 use clap::{crate_version, App};
 
@@ -41,17 +42,49 @@ async fn main() -> Result<(), Error> {
         let file = update_matches.value_of("POLICYFILE").unwrap();
         let service = update_matches.value_of("SERVICE").unwrap();
         let labels = labels(update_matches);
-        let policy = policies::Policies::from_file(file)?;
-        let update_payload = control::PolicyUpdateRequest {
-            label: service.parse().unwrap(),
-            policy,
-            labels,
+
+        let client = {
+            if update_matches.is_present("ONBOARDING") {
+                println!("updating onboarding policy");
+                let policy = policies_cp::OnboardingPolicy::from_file(file)?;
+
+                let update_payload = control::OnboardingUpdateRequest {
+                    label: service.parse().unwrap(),
+                    policy,
+                    labels,
+                };
+                client
+                .post(url("policy/update-onboarding"))
+                .send_json(&update_payload)
+                .await
+            } else if update_matches.is_present("GLOBAL") {
+                println!("updating global policy");
+                let policy = policies::Policies::from_file(file)?;
+                let update_payload = control::CPPolicyUpdateRequest {
+                    label: service.parse().unwrap(),
+                    policy,
+                    labels,
+                };
+                client
+                .post(url("policy/update-global"))
+                .send_json(&update_payload)
+                .await
+            }
+             else {
+                let policy = policies::Policies::from_file(file)?;
+                let update_payload = control::PolicyUpdateRequest {
+                    label: service.parse().unwrap(),
+                    policy,
+                    labels,
+                };
+                client
+                .post(url("policy/update"))
+                .send_json(&update_payload)
+                .await
+            }
         };
-        match client
-            .post(url("policy/update"))
-            .send_json(&update_payload)
-            .await
-        {
+
+        match client {
             Ok(response) => println!("success: {}", response.status().is_success()),
             Err(err) => println!("{}", err),
         }

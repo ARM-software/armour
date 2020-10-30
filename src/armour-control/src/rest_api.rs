@@ -1,7 +1,7 @@
 use actix_web::{client, delete, get, post, web, web::Json, HttpResponse};
 use armour_api::control;
 use armour_api::host::PolicyUpdate;
-use armour_lang::{labels::Label, policies::DPPolicies, literals::OnboardingResult};
+use armour_lang::{labels::Label, policies::{self, DPPolicies}, literals::OnboardingResult};
 use armour_utils;
 use bson::doc;
 use std::str::FromStr;
@@ -112,13 +112,10 @@ pub struct OnboardingPolicy{
 }
 
 impl OnboardingPolicy{
-    fn new(ob : ObPolicy) -> Self {
-        let env = match ob {
-            ObPolicy::Custom(ref pol) => Some(CPEnv::new(&pol.program)),
-            _ => None
-        };
+    fn new(pol : policies_cp::OnboardingPolicy) -> Self {
+        let env = Some(CPEnv::new(&pol.program));
         OnboardingPolicy {
-            policy: ob,
+            policy: ObPolicy::Custom(pol),
             env,
         }
     }
@@ -127,7 +124,7 @@ impl OnboardingPolicy{
         //self.status.update_for_policy(&p);
         self.policy = p;
         self.env = match self.policy() {
-            ObPolicy::Custom(ref pol) => Some(CPEnv::new(&pol.program)),
+            ObPolicy::Custom(ref pol) => Some(CPEnv::new(pol.program())),
             _ => None
         };
     }
@@ -185,7 +182,7 @@ impl Default for OnboardingPolicy {
     fn default() -> Self {
         let policy = ObPolicy::onboard_none();
         let env = match policy {
-            ObPolicy::Custom(ref pol) => Some(CPEnv::new(&pol.program)),
+            ObPolicy::Custom(ref pol) => Some(CPEnv::new(pol.program())),
             _ => None
         };
         OnboardingPolicy {
@@ -246,10 +243,10 @@ pub mod service {
                 .find_one(Some(doc! { "label" : to_bson(&ONBOARDING_POLICY_LABEL())? }), None)
                 .await
             {
-                OnboardingPolicy::new(
-                    bson::from_bson::<ObPolicy>(bson::Bson::Document(doc))
-                        .on_err("Bson conversion error")?
-                )
+                let request = bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc))
+                        .on_err("Bson conversion error")?;
+                let pol = control::OnboardingUpdateRequest::unpack(request).policy;       
+                OnboardingPolicy::new(pol)
             } else {
                 OnboardingPolicy::default() 
             }
@@ -320,6 +317,7 @@ pub mod service {
     }
 }
 
+use std::collections::BTreeMap;
 pub mod policy {
     use super::*;
     use std::collections::BTreeSet;
@@ -457,6 +455,67 @@ pub mod policy {
                 .on_err("error inserting new policy")?;
             // push policy to hosts
             update_hosts(&client.into_inner(), &state, label, &request.policy).await?;
+            Ok(HttpResponse::Ok().finish())
+        } else {
+            log::warn!("error converting the BSON object into a MongoDB document");
+            Ok(internal("error inserting policy"))
+        }
+    }
+    #[post("/update-global")]
+    pub async fn update_global(
+        client: web::Data<client::Client>,
+        state: State,
+        request: Json<control::CPPolicyUpdateRequest>,
+    ) -> Result<HttpResponse, actix_web::Error> {
+        let mut request = request.into_inner();
+        request.label = GLOBAL_POLICY_LABEL();
+
+        let label = &request.label.clone();
+        log::info!(r#"updating policy for label "{}""#, label);
+
+        if let bson::Bson::Document(document) = to_bson(&request)? {
+            // update policy in database
+            let col = collection(&state, POLICIES_COL);
+            let filter = doc! { "label" : to_bson(label)? };
+            col.delete_many(filter, None)
+                .await
+                .on_err("error removing old policies")?;
+            col.insert_one(document, None)
+                .await
+                .on_err("error inserting new policy")?;
+            Ok(HttpResponse::Ok().finish())
+        } else {
+            log::warn!("error converting the BSON object into a MongoDB document");
+            Ok(internal("error inserting policy"))
+        }
+    }
+
+    #[post("/update-onboarding")]
+    pub async fn update_onboarding(
+        client: web::Data<client::Client>,
+        state: State,
+        request: Json<control::OnboardingUpdateRequest>,
+    ) -> Result<HttpResponse, actix_web::Error> {
+        let mut request = request.into_inner().pack();//FIXME Some issue with bson encoding, get ride of this with pack/unpack, issues with private/public ? /kind of scope
+        request.label = ONBOARDING_POLICY_LABEL();
+        let label = &request.label.clone();
+
+        log::info!(r#"updating policy for label "{}""#, label);
+        if let bson::Bson::Document(document) = to_bson(&request)? {
+            log::info!("1");
+            // update policy in database
+            let col = collection(&state, POLICIES_COL);
+            log::info!("2");
+            let filter = doc! { "label" : to_bson(label)? };
+            log::info!("3");
+            col.delete_many(filter, None)
+                .await
+                .on_err("error removing old policies")?;
+            log::info!("4");
+            col.insert_one(document, None)
+                .await
+                .on_err("error inserting new policy")?;
+            log::info!("5");
             Ok(HttpResponse::Ok().finish())
         } else {
             log::warn!("error converting the BSON object into a MongoDB document");

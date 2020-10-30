@@ -1,0 +1,22 @@
+fn onboarding_policy(od: OnboardingData) -> OnboardingResult {
+    let ep = od.host();
+    let service = od.service();
+    if let Some(id) = ControlPlane::onboarded(ep, service) {
+        OnboardingResult::Err("Endpoint already onboarded",
+                            id,
+                            compile_ingress("allow_rest_request", id))
+    } else {
+        let id = ControlPlane::newID(service, ep);
+        let id = id.add_label(Label::new("SecureService"));
+        let id = id.add_label(Label::login_time(System::getCurrentTime()));
+        if ControlPlane::onboard(id) {
+            OnboardingResult::Ok(id, compile_ingress("allow_rest_request", id))            
+        } else {
+            OnboardingResult::Err("Onboard failure",
+                            id,
+                            compile_ingress("allow_rest_request", id))
+
+        }
+    }
+        
+}

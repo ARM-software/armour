@@ -93,6 +93,8 @@ async fn main() -> Result<(), Error> {
                 web::scope("/policy")
                     .service(rest_api::policy::list)
                     .service(rest_api::policy::update)
+                    .service(rest_api::policy::update_onboarding)
+                    .service(rest_api::policy::update_global)
                     .service(rest_api::policy::query)
                     .service(rest_api::policy::drop)
                     .service(rest_api::policy::drop_all)

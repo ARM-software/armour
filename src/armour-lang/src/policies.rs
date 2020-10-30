@@ -404,7 +404,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, Flat
     pub fn new() -> Self {
         Policies(BTreeMap::new())  
     }
-    fn insert(&mut self, p: Protocol<FlatTyp, FlatLiteral>, policy: Policy<FlatTyp, FlatLiteral>) {
+    pub fn insert(&mut self, p: Protocol<FlatTyp, FlatLiteral>, policy: Policy<FlatTyp, FlatLiteral>) {
         self.0.insert(p, policy);
     }
     pub fn allow_all() -> Self {

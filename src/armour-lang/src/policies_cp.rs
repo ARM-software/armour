@@ -1,6 +1,6 @@
 use super::{
     expressions,
-    policies::{Policy,ProtocolPolicy, FnPolicy, FnPolicies},//TODO should i reuse policies::FnPolicies
+    policies::{GlobalPolicy, Policy,ProtocolPolicy, FnPolicy, FnPolicies},//TODO should i reuse policies::FnPolicies
     lang::{self, CPProgram, CPPreProgram},
     literals::CPFlatLiteral,
     types_cp::{CPFlatTyp, CPTyp, CPSignature},
@@ -14,32 +14,41 @@ use serde::{
     ser::SerializeMap,
     Deserialize, Serialize,
 };
+use std::collections::BTreeMap;
 
 
 pub const ONBOARDING_SERVICES: &str = "onboarding_policy";
 
+pub type OnboardingPolicy = GlobalPolicy;
+//#[derive(Serialize, Deserialize, Clone, Debug)]
+//pub struct OnboardingPolicy {
+//    //From ProtocolPolicy struct
+//    pub name : String,//FIXME usefull ???
+//    sig : CPSignature,//FIXME only one ??
+//
+//    //From Policy struct
+//    program: CPProgram,
+//    //fn_policies: FnPolicies,
+//}
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct OnboardingPolicy {
-    //From ProtocolPolicy struct
-    name : String,//FIXME usefull ???
-    sig : CPSignature,//FIXME only one ??
-
-    //From Policy struct
-    pub program: CPProgram,
-    //fn_policies: FnPolicies,
-}
 impl OnboardingPolicy {
+    pub fn program<'a>(&'a self) -> &'a CPProgram {
+        &self.program
+    }
     fn inner_from(pre_prog: lang::CPPreProgram) -> Result<Self, expressions::Error> {
         Ok(OnboardingPolicy {
-            name: ONBOARDING_SERVICES.to_string(),
-            sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
+            //name: ONBOARDING_SERVICES.to_string(),
+            //sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
+            fn_policies: FnPolicies::default(),
             program: pre_prog.program(&vec![ONBOARDING_SERVICES.to_string()][..]),
         })
     }
 
     pub fn from_buf(buf: &str) -> Result<Self, expressions::Error> {
         Self::inner_from(lang::PreProgram::from_buf(buf)?)
+    }
+    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, expressions::Error> {
+        Self::inner_from(lang::PreProgram::from_file(path)?)
     }
 }
 #[derive(Serialize, Deserialize, Clone)]
@@ -54,8 +63,9 @@ impl ObPolicy {
     }
     pub fn onboard_from(p: CPProgram) -> Self {
         Self::Custom(OnboardingPolicy {
-            name: ONBOARDING_SERVICES.to_string(),
-            sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
+            //name: ONBOARDING_SERVICES.to_string(),
+            //sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
+            fn_policies: FnPolicies::default(),
             program: p,
         })
     }
@@ -70,9 +80,9 @@ impl ObPolicy {
 //TODO: only one object Onboarding policiy is need at least for now
 lazy_static! {
     static ref ONBOARDING_SERVICES_POLICY: OnboardingPolicy = OnboardingPolicy {
-        name: ONBOARDING_SERVICES.to_string(),
-        sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
-
+        //name: ONBOARDING_SERVICES.to_string(),
+        //sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
+        fn_policies: FnPolicies::default(),
         program: CPProgram::default(),
     };
 }
