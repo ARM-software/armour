@@ -1,9 +1,12 @@
 use actix_web::{client, delete, get, post, web, web::Json, HttpResponse};
 use armour_api::control;
 use armour_api::host::PolicyUpdate;
-use armour_lang::{labels::Label, policies::DPPolicies};
+use armour_lang::{labels::Label, policies::DPPolicies, literals::OnboardingResult};
+use armour_utils;
 use bson::doc;
 use std::str::FromStr;
+use clap::{crate_version, App};
+
 
 
 pub const ARMOUR_DB: &str = "armour";
@@ -163,12 +166,12 @@ impl OnboardingPolicy{
     }
     fn evaluate(//<T: std::convert::TryFrom<literals::CPLiteral> + Send + 'static>(
         &self,
-        state: State,
+        state: &State,
         onboarding_data: expressions::CPExpr,//onboardingData
     ) -> BoxFuture<'static, Result<Box<literals::OnboardingResult>, expressions::Error>> {
         log::debug!("evaluting onboarding service policy");
         match self.policy() {
-            ObPolicy::Custom(pol) => self.evaluate_custom(state, onboarding_data),
+            ObPolicy::Custom(pol) => self.evaluate_custom(state.clone(), onboarding_data),
             ObPolicy::None => {
                 async move {
                     Err(expressions::Error::new("onboarding is disallowed, onboarding policy needed")) 
@@ -228,6 +231,7 @@ pub mod service {
 
     #[post("/on-board")]
     pub async fn on_board(
+        client: web::Data<client::Client>,
         state: State,
         request: Json<control::OnboardServiceRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
@@ -236,9 +240,9 @@ pub mod service {
 
         //Getting current onboarding policy from db
         let ob_policy: OnboardingPolicy = {             
-            let col = collection(&state, POLICIES_COL);
+            let pol_col = collection(&state, POLICIES_COL);
 
-            if let Ok(Some(doc)) = col
+            if let Ok(Some(doc)) = pol_col
                 .find_one(Some(doc! { "label" : to_bson(&ONBOARDING_POLICY_LABEL())? }), None)
                 .await
             {
@@ -261,11 +265,22 @@ pub mod service {
         );            
         
         //Eval policy
-        match ob_policy.evaluate(state, onboarding_data).await {
-            Ok(_) => {
-                //TODO do something with the local policy
-                Ok(HttpResponse::Ok().body("success"))
-            },
+        match ob_policy.evaluate(&state, onboarding_data).await {
+            Ok(obr) => match *obr {
+                OnboardingResult::Ok(id, local_pol) => {
+                    let col = collection(&state, SERVICES_COL);
+
+                    //register obr into db
+                    let request = control::PolicyUpdateRequest{
+                        label: request.service.clone(),
+                        policy: *local_pol.pol,
+                        labels: control::LabelMap::default()
+                    };
+                        
+                    policy::helper_update(client, state, request).await 
+                },
+                OnboardingResult::Err(e, _,_) => { Ok(internal(e)) } 
+            }
             Err(e) => { Ok(internal(e.to_string())) }             
         }
 
@@ -422,13 +437,11 @@ pub mod policy {
         Ok(HttpResponse::Ok().body(s))
     }
 
-    #[post("/update")]
-    pub async fn update(
+    pub async fn helper_update(
         client: web::Data<client::Client>,
         state: State,
-        request: Json<control::PolicyUpdateRequest>,
+        request: control::PolicyUpdateRequest,
     ) -> Result<HttpResponse, actix_web::Error> {
-        let request = request.into_inner();
         let label = &request.label.clone();
         log::info!(r#"updating policy for label "{}""#, label);
 
@@ -449,6 +462,14 @@ pub mod policy {
             log::warn!("error converting the BSON object into a MongoDB document");
             Ok(internal("error inserting policy"))
         }
+    }
+    #[post("/update")]
+    pub async fn update(
+        client: web::Data<client::Client>,
+        state: State,
+        request: Json<control::PolicyUpdateRequest>,
+    ) -> Result<HttpResponse, actix_web::Error> {
+       helper_update(client, state,  request.into_inner()).await 
     }
 
     #[get("/query")]
