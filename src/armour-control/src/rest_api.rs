@@ -226,32 +226,31 @@ pub mod service {
         Ok(HttpResponse::Ok().body(s))
     }
 
+    async fn get_onboarding_policy(state: &State) -> Result<OnboardingPolicy, actix_web::Error>{
+        let pol_col = collection(&state, POLICIES_COL);
 
-    #[post("/on-board")]
-    pub async fn on_board(
-        client: web::Data<client::Client>,
-        state: State,
-        request: Json<control::OnboardServiceRequest>,
-    ) -> Result<HttpResponse, actix_web::Error> {
+        if let Ok(Some(doc)) = pol_col
+            .find_one(Some(doc! { "label" : to_bson(&onboarding_policy_label())? }), None)
+            .await
+        {
+            let request = bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc))
+                    .on_err("Bson conversion error")?;
+            let pol = control::OnboardingUpdateRequest::unpack(request).policy;       
+            Ok(OnboardingPolicy::new(pol))
+        } else {
+            Ok(OnboardingPolicy::default())
+        }
+    }
+
+    pub async fn helper_on_board(
+        state: &State,
+        request: control::OnboardServiceRequest,
+    ) -> Result<Result<control::PolicyUpdateRequest, String>, actix_web::Error> {
         let service = &request.service;
         log::info!("onboarding service: {}", service);
 
         //Getting current onboarding policy from db
-        let ob_policy: OnboardingPolicy = {             
-            let pol_col = collection(&state, POLICIES_COL);
-
-            if let Ok(Some(doc)) = pol_col
-                .find_one(Some(doc! { "label" : to_bson(&onboarding_policy_label())? }), None)
-                .await
-            {
-                let request = bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc))
-                        .on_err("Bson conversion error")?;
-                let pol = control::OnboardingUpdateRequest::unpack(request).policy;       
-                OnboardingPolicy::new(pol)
-            } else {
-                OnboardingPolicy::default() 
-            }
-        };
+        let ob_policy: OnboardingPolicy = get_onboarding_policy(state).await?;
 
         //Converting OnboardServiceRequest to OnboardingData
         let onboarding_data : expressions::CPExpr = expressions::Expr::LitExpr(
@@ -261,9 +260,9 @@ pub mod service {
                     request.service.clone()
             ))))
         );            
-        
+
         //Eval policy and register specialized policies
-        match ob_policy.evaluate(&state, onboarding_data).await {
+        Ok(match ob_policy.evaluate(state, onboarding_data).await {
             Ok(obr) => match *obr {
                 OnboardingResult::Ok(id, local_pol) => {
                     let service_id = id.find_label(
@@ -271,17 +270,27 @@ pub mod service {
                     ).ok_or(internal("Extracting service_id from id labels"))?
                     .clone(); 
                     
-                    let request = control::PolicyUpdateRequest{
+                    Ok(control::PolicyUpdateRequest{
                         label: service_id,
                         policy: *local_pol.pol,
                         labels: control::LabelMap::default()
-                    };
-                        
-                    policy::helper_update(client, state, request).await 
+                    })
                 },
-                OnboardingResult::Err(e, _,_) => { Ok(internal(e)) } 
+                OnboardingResult::Err(e, _,_) => { Err(e) } 
             }
-            Err(e) => { Ok(internal(e.to_string())) }             
+            Err(e) => { Err(e.to_string()) }             
+        })
+    }
+
+    #[post("/on-board")]
+    pub async fn on_board(
+        client: web::Data<client::Client>,
+        state: State,
+        request: Json<control::OnboardServiceRequest>,
+    ) -> Result<HttpResponse, actix_web::Error> {
+        match helper_on_board(&state, request.into_inner()).await? {
+            Ok(request) => policy::helper_update(client, state, request).await, 
+            Err(s)=> Ok(internal(s))  
         }
     }
 
@@ -304,6 +313,7 @@ pub mod service {
         }
     }
 }
+
 
 pub mod policy {
     use super::*;

@@ -10,8 +10,9 @@ use armour_lang::literals::{
     CPFlatLiteral,
     TFlatLiteral 
 };
-use armour_lang::parser::{Infix, Iter};
+use armour_lang::parser::{Ident, Infix, Iter};
 use armour_lang::policies;
+use armour_lang::types::{Signature, Typ, TTyp};
 use actix::prelude::*;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
@@ -56,22 +57,24 @@ impl TSExprPEval for CPExpr {
                         None => Err(Error::new("peval prefix: type error")),
                     },
                     (false, n_e) => Ok((false, Expr::PrefixExpr(p, Box::new(n_e)))),//evaluation delayed
-                    _ => Err(Error::new("ppeval, prefix")),
+                    _ => Err(Error::new("peval, prefix")),
                 },
                 // short circuit for &&
                 Expr::InfixExpr(Infix::And, e1, e2) =>{ 
                     let (b1, n_e1) =  e1.peval(state.clone(), env.clone()).await?;
                     let (b2, n_e2) = e2.peval(state, env).await?;
                     let flag = b1 && b2; 
-
+                    n_e1.print_debug();
+                    n_e2.print_debug();
                     match n_e1 {
                         r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(false))) => Ok((flag, r)),
                         Expr::LitExpr(cplit!(Bool(true))) => match n_e2 {
                             r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok((flag, r)),
-                            _ => Err(Error::new("peval, infix")),
+                            _ if !flag => Ok((flag, n_e2)),
+                            _ => Err(Error::new("peval, && infix")),
                         },
                         _ if !flag => Ok((flag, Expr::InfixExpr(Infix::And, Box::new(n_e1), Box::new(n_e2)))),
-                        _ => Err(Error::new("peval, infix")),
+                        _ => Err(Error::new("peval, && infix")),
                     }
                 },
                 // short circuit for ||
@@ -84,8 +87,10 @@ impl TSExprPEval for CPExpr {
                         r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(true))) => Ok((flag, r)),
                         Expr::LitExpr(cplit!(Bool(false))) => match n_e2 {
                             r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok((flag, r)),
+                            _ if !flag => Ok((flag, n_e2)),
                             _ => Err(Error::new("peval, infix")),
                         },
+                        _ if !flag => Ok((flag, Expr::InfixExpr(Infix::Or, Box::new(n_e1), Box::new(n_e2)))),
                         _ => Err(Error::new("peval, infix")),
                 }
                 },
@@ -414,7 +419,7 @@ impl TSExprPEval for CPExpr {
                         args.push(e.peval(state.clone(), env.clone()).await?)
                     }                        
                     let flag = args.iter().fold(true, |f, e| f && e.0);
-
+                    println!("Flag: {}", flag);
                     match args.iter().find(|r| r.1.is_return()) {
                         Some(r) => Ok((flag, r.1.clone())),
                         None if flag => {
@@ -523,13 +528,20 @@ pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPoli
                 //fexpr.print_debug();
                 match fexpr.pevaluate(state, env).await {                        
                     Ok((_, e)) =>{ 
-
+                        println!{"{}",e};
                         let mut e = e.apply(&Expr::call("HttpRequest::from", vec![Expr::bvar("req", 0)]))?;
                         //e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;
                         e = e.apply(&Expr::bvar("req", 0))?;
                         e = e.apply(&Expr::bvar("payload", 1))?;
 
+                        e = Expr::Closure(Ident("req".to_string()), Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e))));
+
                         pol.program.code.insert(function.to_string(), e.clone()); 
+                        
+                        //Update headers
+                        let ret_typ = pol.program.headers.remove(&function.to_string()).unwrap().typ(); //unwrap is safe since we are actually working on existing fct
+                        let sig = Signature::new(vec![Typ::http_request(), Typ::data()], ret_typ);
+                        pol.program.headers.insert(function.to_string(), sig);
                     },
                     Err(err) => return Err(err)
                 }

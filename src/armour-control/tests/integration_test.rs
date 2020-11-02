@@ -13,7 +13,6 @@ use armour_lang::labels::{self, *};
 use armour_lang::literals::{self, *};
 use armour_lang::policies::{self, *};
 use armour_lang::types::{self, *};
-use armour_lang::types_cp::{self, *};
 
 use bson::doc;
 use mongodb::{options::ClientOptions, Client};
@@ -76,6 +75,37 @@ async fn register_policy(
     }
 }
 
+
+async fn register_onboarding_policy(
+    state: &State,
+    raw_pol : &str,
+) -> Result<bool, expressions::Error> {
+    let request = OnboardingUpdateRequest {
+        label: onboarding_policy_label(),
+        policy: policies::OnboardingPolicy::from_buf(raw_pol)?,
+        labels: LabelMap::default()
+    }.pack();
+    let label = &request.label.clone();
+    println!(r#"updating policy for label "{}""#, label);
+
+    if let bson::Bson::Document(document) = to_bson(&request).map_err(|x|expressions::Error::from(format!("{:?}", x)))? {
+        // update policy in database
+        let col = collection(&state, POLICIES_COL);
+        let filter = doc! { "label" : to_bson(label).map_err(|x|expressions::Error::from(format!("{:?}", x)))? };
+        col.delete_many(filter, None)
+            .await
+            .map_err(|_| expressions::Error::from(format!("error removing old policies")))?;
+        col.insert_one(document, None)
+            .await
+            .map_err(|_| expressions::Error::from(format!("error inserting new policy")))?;
+        Ok(true)
+    } else {
+        println!("error converting the BSON object into a MongoDB document");
+        Ok(false)
+    }
+}
+
+
 async fn load_global_policy(
     function: &str,
     from: CPID,
@@ -106,7 +136,7 @@ async fn load_onboarding_policy(
     raw_pol: &str,
     onboarding_data: CPLiteral
 ) -> Result<(CPExpr, CPEnv), expressions::Error> {
-    let policy =  policies_cp::OnboardingPolicy::from_buf(raw_pol)?; 
+    let policy =  policies::OnboardingPolicy::from_buf(raw_pol)?; 
     println!("onboarding policy built");
     let env : CPEnv = Env::new(&policy.program);
 
@@ -117,6 +147,32 @@ async fn load_onboarding_policy(
     println!("Expr built");
     expr.print_debug();                    
     Ok((expr, env))
+}
+
+fn raw_onboard1() -> &'static str {
+"
+    fn onboarding_policy(od: OnboardingData) -> OnboardingResult {
+        let ep = od.host();
+        let service = od.service();
+        if let Some(id) = ControlPlane::onboarded(ep, service) {
+            OnboardingResult::Err(\"Endpoint already onboarded\",
+                                id,
+                                compile_ingress(\"allow_rest_request\", id))
+        } else {
+            let id = ControlPlane::newID(service, ep);
+            let id = id.add_label(Label::new(\"SecureService\"));
+            let id = id.add_label(Label::login_time(System::getCurrentTime()));
+            if ControlPlane::onboard(id) {
+                OnboardingResult::Ok(id, compile_ingress(\"allow_rest_request\", id))            
+            } else {
+                OnboardingResult::Err(\"Onboard failure\",
+                                id,
+                                compile_ingress(\"allow_rest_request\", id))
+
+            }
+        }
+    }
+"
 }
 
 async fn onboarding_pol1() ->  Result<(CPExpr, CPEnv),  expressions::Error> {
@@ -174,29 +230,7 @@ async fn onboarding_pol1() ->  Result<(CPExpr, CPEnv),  expressions::Error> {
     //        id.set_label(\"MyPolicy::SecureService\");
     //        id.set_label(LoginTime(getCurrentTime()));
     //";
-    let raw_pol = "
-        fn onboarding_policy(od: OnboardingData) -> OnboardingResult {
-            let ep = od.host();
-            let service = od.service();
-            if let Some(id) = ControlPlane::onboarded(ep, service) {
-                OnboardingResult::Err(\"Endpoint already onboarded\",
-                                    id,
-                                    compile_ingress(\"allow_rest_request\", id))
-            } else {
-                let id = ControlPlane::newID(service, ep);
-                let id = id.add_label(Label::new(\"SecureService\"));
-                let id = id.add_label(Label::login_time(System::getCurrentTime()));
-                if ControlPlane::onboard(id) {
-                    OnboardingResult::Ok(id, compile_ingress(\"allow_rest_request\", id))            
-                } else {
-                    OnboardingResult::Err(\"Onboard failure\",
-                                    id,
-                                    compile_ingress(\"allow_rest_request\", id))
-
-                }
-            }
-        }
-    ";
+    let raw_pol = raw_onboard1();
 
     let (pol, env) = load_onboarding_policy(
         mock_state().await.map_err(|x| expressions::Error::from(x.to_string()))?,
@@ -230,6 +264,15 @@ fn raw_pol1() -> &'static str {
             let (rfrom, rto) = req.from_to();
             true
             //rfrom in from.hosts() && rto in to.hosts(), hosts should be ID not string ??
+        }
+    "
+}
+
+fn raw_pol2() -> &'static str {
+    "
+        fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {
+            to.has_label(Label::new(\"SecureService\")) && 
+            req.method() == \"GET\"
         }
     "
 }
@@ -374,11 +417,21 @@ mod tests_control {
         Ok(())
     }
     
-    //#[actix_rt::test]
-    //async fn test_seval() -> Result<(),  expressions::Error> {
-    //        println!("Evaluating the expression");
-    //        Ok(expr.sevaluate(mock_state, env.clone()).await?)
-    //    assert_eq!(onboarding_pol1().await?, Expr::LitExpr(Literal::bool(false)));
-    //    Ok(())
-    //}
+    #[actix_rt::test]
+    async fn test_onboard() -> Result<(),  actix_web::Error> {
+        let state = mock_state().await.unwrap();
+        state.db_con.database("armour").drop(None).await;
+        register_policy(&state, raw_pol2()).await.unwrap();
+        register_onboarding_policy(&state, raw_onboard1()).await.unwrap();
+
+        let request = OnboardServiceRequest{
+            service: labels::Label::from_str("Service21").unwrap(),
+            host: labels::Label::from_str("Host42").unwrap()
+        };
+
+        Ok(match service::helper_on_board(&state, request).await? {
+            Ok(req) => println!("Updating policy for label {}\n{}", req.label, req.policy),
+            Err(res) => panic!(res)
+        })
+    }
 }
