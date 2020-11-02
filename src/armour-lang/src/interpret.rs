@@ -12,8 +12,7 @@ use super::literals::{
 };
 use super::meta::{Egress, IngressEgress, Meta};
 use super::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
-use super::types::{self, TFlatTyp};
-use super::types_cp::{CPFlatTyp};
+use super::types::{self, CPFlatTyp, TFlatTyp};
 use actix::prelude::*;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;

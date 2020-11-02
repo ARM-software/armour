@@ -5,9 +5,8 @@ use super::{
     headers::{Headers, DPHeaders, THeaders},
     lexer,
     literals::{self, TFlatLiteral, CPFlatLiteral},
-    parser::{self, TParser },
-    types_cp::{CPFlatTyp},
-    types::{self, TFlatTyp}
+    parser::{self, TParser},
+    types::{self, CPFlatTyp, TFlatTyp}
 };
 use petgraph::graph;
 use serde::{Deserialize, Serialize};

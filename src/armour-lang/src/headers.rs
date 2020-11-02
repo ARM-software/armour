@@ -1,5 +1,9 @@
-use super::types::{Signature, DPTyp, DPSignature, FlatTyp, Typ, TBuiltin, TFlatTyp, TTyp}; 
-use super::types_cp::{CPTyp, CPFlatTyp, CPSignature};
+use super::types::{
+    CPTyp, CPFlatTyp, CPSignature,
+    Signature, DPTyp, DPSignature,
+    FlatTyp, Typ, TBuiltin, TFlatTyp,
+    TTyp
+}; 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

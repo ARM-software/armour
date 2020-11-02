@@ -1,5 +1,5 @@
 /// policy language
-use super::{headers, labels, lexer, literals, parser, types, types_cp};
+use super::{headers, labels, lexer, literals, parser, types};
 use headers::{Headers, THeaders};
 use literals::{Literal, TFlatLiteral, DPLiteral, DPFlatLiteral, CPFlatLiteral};
 use parser::{Infix, Prefix, TParser};
@@ -8,8 +8,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::marker::PhantomData;
-use types::{Typ, TTyp, FlatTyp, TFlatTyp};
-use types_cp::{CPFlatTyp};
+use types::{CPFlatTyp, Typ, TTyp, FlatTyp, TFlatTyp};
 
 #[derive(Debug, Clone)]
 pub struct Error(String);
@@ -250,7 +249,7 @@ pub trait TExpr<FlatTyp:TFlatTyp> {
 }
 
 pub type DPExpr = Expr<types::FlatTyp, DPFlatLiteral>;
-pub type CPExpr = Expr<types_cp::CPFlatTyp, CPFlatLiteral>;
+pub type CPExpr = Expr<types::CPFlatTyp, CPFlatLiteral>;
 
 pub type DPPrefix = Prefix<FlatTyp>;
 pub type CPPrefix = Prefix<CPFlatTyp>;
@@ -362,7 +361,7 @@ impl From<CPExpr> for DPExpr {
 }
 
 
-impl TExpr<types_cp::CPFlatTyp> for CPExpr {
+impl TExpr<types::CPFlatTyp> for CPExpr {
     fn host(&self) -> Option<String> {
         match self {
             Self::LitExpr(Literal::FlatLiteral(CPFlatLiteral::ID(id))) => id.host(),

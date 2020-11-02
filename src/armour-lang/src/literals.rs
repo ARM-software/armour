@@ -1,6 +1,11 @@
 use super::pretty::TPrettyLit;
-use super::{interpret::TInterpret, labels, parser, types::{Typ, FlatTyp, TFlatTyp, TTyp}, types_cp::{CPFlatTyp, CPTyp}};
-use super::policies::{TProtocol,DPPolicies};
+use super::{
+    interpret::TInterpret,
+    labels, 
+    parser, 
+    types::{CPFlatTyp, CPTyp, Typ, FlatTyp, TFlatTyp, TTyp}
+};
+use super::policies::{TProtocol, DPPolicies};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Display};

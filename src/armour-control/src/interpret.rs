@@ -13,7 +13,7 @@ use armour_lang::literals::{
 };
 use armour_lang::parser::{Infix, Iter};
 use super::specialize;
-use armour_lang::types_cp::{CPFlatTyp};
+use armour_lang::types::{CPFlatTyp};
 use actix::prelude::*;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;

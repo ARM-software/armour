@@ -2,8 +2,7 @@
 
 use armour_lang::labels::{Label, Labels};
 use armour_lang::literals::{CPID};
-use armour_lang::policies::{self, GlobalPolicies, DPPolicies};
-use armour_lang::policies_cp::{OnboardingPolicy};
+use armour_lang::policies::{self, OnboardingPolicy, GlobalPolicies, DPPolicies};
 use serde::{Deserialize, Serialize};
 
 pub const CONTROL_PLANE: &str = "https://localhost:8088";

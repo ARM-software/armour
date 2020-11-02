@@ -1,7 +1,6 @@
 use armour_api::control;
 use armour_lang::labels::Label;
 use armour_lang::policies;
-use armour_lang::policies_cp;
 use armour_utils::parse_https_url;
 use clap::{crate_version, App};
 
@@ -46,7 +45,7 @@ async fn main() -> Result<(), Error> {
         let client = {
             if update_matches.is_present("ONBOARDING") {
                 println!("updating onboarding policy");
-                let policy = policies_cp::OnboardingPolicy::from_file(file)?;
+                let policy = policies::OnboardingPolicy::from_file(file)?;
 
                 let update_payload = control::OnboardingUpdateRequest {
                     label: service.parse().unwrap(),

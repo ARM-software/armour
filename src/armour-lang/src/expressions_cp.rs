@@ -1,6 +1,6 @@
 // Control plane policy language
 use super::expressions::{Expr};
-use super::types_cp::{CPTyp};
+use super::types::{CPTyp};
 use super::literals::{CPLiteral};
 
 pub type CPExpr = Expr<CPTyp, CPLiteral>;

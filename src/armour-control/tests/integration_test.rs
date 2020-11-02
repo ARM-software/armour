@@ -12,7 +12,6 @@ use armour_lang::interpret::{Env, CPEnv, DPEnv};
 use armour_lang::labels::{self, *};
 use armour_lang::literals::{self, *};
 use armour_lang::policies::{self, *};
-use armour_lang::policies_cp::{self, *};
 use armour_lang::types::{self, *};
 use armour_lang::types_cp::{self, *};
 

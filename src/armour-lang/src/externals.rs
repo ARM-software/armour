@@ -1,6 +1,5 @@
 use super::expressions::{self, Expr};
 use super::types::{self, TFlatTyp};
-use super::types_cp;
 use super::lang::Program;
 use super::literals::{self, CPLiteral, CPFlatLiteral, DPLiteral, DPFlatLiteral, Literal, TFlatLiteral};
 use crate::external_capnp::external;
@@ -183,7 +182,7 @@ impl TExternals<types::FlatTyp, literals::DPFlatLiteral> for literals::DPFlatLit
     }
 }
 
-impl TExternals<types_cp::CPFlatTyp, literals::CPFlatLiteral> for literals::CPFlatLiteral {
+impl TExternals<types::CPFlatTyp, literals::CPFlatLiteral> for literals::CPFlatLiteral {
     /// Build a Cap'n Proto literal from an Armour literal
     fn build_value(mut v: external::value::Builder<'_>, lit: &CPLiteral) {
         match lit {

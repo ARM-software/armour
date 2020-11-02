@@ -24,6 +24,8 @@ pub enum FlatTyp {
     Unit
 }
 
+
+
 impl Default for FlatTyp {
     fn default() -> Self { Self::Unit }
 }
@@ -346,71 +348,18 @@ impl<FlatTyp:TFlatTyp> TTyp<FlatTyp> for Typ<FlatTyp> {
         }
     }
 }
-//impl<FlatTyp:TFlatTyp> Prefix<FlatTyp>         Typ::Tuple(l1.iter().zip(l2).map(|(t1, t2)| t1.unify(t2)).collect())
-//                }<FlatTyp><FlatTyp>
-//        let (t1, t2) =     }
-//            _ => self.clone(Flat),()bblat()
-//        }()iFlat()iFlat
-//    };
-//        (Typ::FlatTyp(t1), Typ::FlatTyp(t2))
-//
-//    pub fn intrinsic(&self) -> Option<String> {
-//        match self {
-//    <FlatTyp:TFlatTyp>      <FlatTyp>  Typ::FlatTyp(x) if x == FlatTyp::rreturn() => None,
-//            Typ::List(_) => S<FlatTyp>ome("<FlatTyp>list"<FlatTyp>.to_string()),
-//            Typ::Tuple(t) => {
-//                if t.len() < 2 {
-//                    Some("option".to_strrrng())()
-//                } else {()rr
-//                    None()rr
-//                }
-//            }()s()s()stact => unimplemented!(),
-//            Infix::Con
-//            _ => Some(self.to_string()),()b()rr()rr
-//        }()b()rr()rr
-//    }()b()b()b
-//
-//()i()i()i
-//    pub fn from_parse(ty: &parser::Typ) -> Result<Self, Error<FlatTyp>> {
-//        match ty {
-//            parser::Typ::Atom(a) => Typ::try_from_str(a.id()),
-//            parser::Typ::Cons(c, b) => {
-//                if c.id() == "List" {()b()i(i
-//                    Ok(Typ::List(Box::new(Typ::from_parse(b)?)))
-//                } else if c.id() == "Option" {
-//                    Ok(Typ::Tuple(vec![Typ::from_parse(b)?]))
-//                } else {
-//                    Err(Error::Parse(format!("expecting \"List\", got {}", c.id())))
-//                }
-//            }DP
-//            parser::Typ::Tuple(l) => match l.len() {
-//                0 => Ok(Typ::unit()),
-//                1 => Typ::from_parse(l.get(0).unwrap()),
-//                _ => {
-//    <FlatTyp:TFlatTyp>                <FlatTyp>let tys: Result<Vec<Self>, self::DPError> =
-//                        l.ite<FlatTyp>r().map(|x| Typ::from_parse(x)).collect();
-//                    Ok(Typ::Tuple(tys?))
-//                }()s
-//            },()l
-//        }
-//    }
-//    fn can_unify(&self, other: &Self) -> bool {
-//        match (self, other) {
-//            (Typ::FlatTyp(x), _) | (_, Typ::FlatTyp(x)) if x == FlatTyp::rreturn() => true,
-//            (Typ::LisFlat(l1), Flatyp:can_unify(l2),<Fl<FlatTyp>at
-//            (Typ::Tuple(l1), Typ::Tuple(l2)) => {
-//    <FlatTyp: TFlatTyp>            let n1 = l1Flat
-//                let n2 = l2.len();
-//                (n1 == n2 && FlatTyp(FlatTyp::u1.i())ter().zip(l2).all(|(t1, t2)| t1.can_unify(t2)))
-//                    || n1 == 0 && n2 == 1
-//                    || n1 == 1 && n2 == 0
-//            }
-//     Flat      Flatr,Flt
-//        }<FlatTyp><FlatTyp>
-//    }
-//}
 
-
+impl CPTyp {
+    pub fn onboarding_data() -> Self {
+        Self::FlatTyp(CPFlatTyp::OnboardingData)
+    }
+    pub fn onboarding_result() -> Self {
+        Self::FlatTyp(CPFlatTyp::OnboardingResult)
+    }
+    pub fn policy() -> Self {
+        Self::FlatTyp(CPFlatTyp::Policy)
+    }
+}
 
 impl<FlatTyp:TFlatTyp> Prefix<FlatTyp> {
     pub fn typ(&self) -> (Typ<FlatTyp>, Typ<FlatTyp>) {
@@ -546,3 +495,123 @@ impl parser::Head {
 
 pub type DPTyp = Typ<FlatTyp>;
 pub type DPSignature = Signature<FlatTyp>;
+
+
+#[derive(Clone,  Debug,  PartialEq, Serialize, Deserialize)]
+pub enum CPFlatTyp {
+   DPFlatTyp(FlatTyp),
+   OnboardingData,
+   OnboardingResult,
+   Policy,
+}
+pub type CPTyp = Typ<CPFlatTyp>;
+pub type CPSignature = Signature<CPFlatTyp>;
+
+impl From<FlatTyp> for CPFlatTyp {
+    fn from(ty: FlatTyp) -> CPFlatTyp{
+        CPFlatTyp::DPFlatTyp(ty)
+    }
+}
+impl From<Typ<FlatTyp>> for CPTyp {
+    fn from(ty: Typ<FlatTyp>) -> CPTyp{
+       match ty {
+            Typ::FlatTyp(fty) => Typ::FlatTyp(CPFlatTyp::from(fty)),
+            Typ::Tuple(tys) => Typ::Tuple(tys.into_iter().map(|ty| -> Typ<CPFlatTyp> { CPTyp::from(ty) }).collect()),
+            Typ::List(bty) => Typ::List(Box::new(CPTyp::from(*bty))),
+       } 
+    }
+}
+impl From<CPFlatTyp> for FlatTyp {
+    fn from(ty: CPFlatTyp) -> Self {
+        match ty {
+            CPFlatTyp::DPFlatTyp(dty) => dty,
+            CPFlatTyp::OnboardingData => unimplemented!(),
+            CPFlatTyp::OnboardingResult => unimplemented!(),
+            CPFlatTyp::Policy => unimplemented!(),
+        }
+    }
+}
+impl From<CPTyp> for DPTyp {
+    fn from(ty: CPTyp) -> Self {
+       match ty {
+            Typ::FlatTyp(fty) => Typ::FlatTyp(FlatTyp::from(fty)),
+            Typ::Tuple(tys) => Typ::Tuple(tys.into_iter().map(|ty| -> Typ<FlatTyp> { DPTyp::from(ty) }).collect()),
+            Typ::List(bty) => Typ::List(Box::new(DPTyp::from(*bty))),
+       } 
+    }
+}
+
+
+
+impl From<CPSignature> for DPSignature {
+    fn from(cpsig:CPSignature) -> Self {
+        match cpsig.split() {
+            (None, t) => DPSignature::new_noargs(DPTyp::from(t)),
+            (Some(args), t) => DPSignature::new(
+                args.into_iter().map(|t| DPTyp::from(t)).collect(),
+                DPTyp::from(t)
+            ),
+        }
+
+    }
+}
+
+impl fmt::Display for CPFlatTyp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            CPFlatTyp::DPFlatTyp(t) => FlatTyp::fmt(t, f),
+            CPFlatTyp::OnboardingData => write!(f, "OnboardingData"),
+            CPFlatTyp::OnboardingResult => write!(f, "OnboardingResult"),
+            CPFlatTyp::Policy => write!(f, "Policy"),
+        }
+    }
+}
+
+impl Default for CPFlatTyp {
+    fn default() -> Self { Self::DPFlatTyp(FlatTyp::default()) }
+}
+impl TFlatTyp for CPFlatTyp {
+    fn rreturn() -> Self { Self::DPFlatTyp(FlatTyp::Return) } 
+    fn unit() -> Self { Self::DPFlatTyp(FlatTyp::Unit) } 
+    fn bool() -> Self { Self::DPFlatTyp(FlatTyp::Bool) } 
+    fn connection() -> Self { Self::DPFlatTyp(FlatTyp::Connection) } 
+    fn f64() -> Self { Self::DPFlatTyp(FlatTyp::F64) } 
+    fn http_request() -> Self { Self::DPFlatTyp(FlatTyp::HttpRequest) } 
+    fn http_response() -> Self { Self::DPFlatTyp(FlatTyp::HttpResponse) } 
+    fn label() -> Self { Self::DPFlatTyp(FlatTyp::Label) } 
+    fn i64() -> Self { Self::DPFlatTyp(FlatTyp::I64) } 
+    fn id() -> Self { Self::DPFlatTyp(FlatTyp::ID) } 
+    fn ip_addr() -> Self { Self::DPFlatTyp(FlatTyp::IpAddr) } 
+    fn data() -> Self { Self::DPFlatTyp(FlatTyp::Data) }
+    fn str() -> Self { Self::DPFlatTyp(FlatTyp::Str) } 
+    fn regex() -> Self { Self::DPFlatTyp(FlatTyp::Regex) } 
+
+    fn try_from_str(s: &str) -> Result<Self, self::CPError > {
+        match s {
+            "OnboardingData" => Ok(Self::OnboardingData),
+            "OnboardingResult" => Ok(Self::OnboardingResult),
+            "Policy" => Ok(Self::Policy),
+            s => match FlatTyp::try_from_str(s)  {
+                Ok(t) => Ok(Self::DPFlatTyp(t)),
+                Err(e) =>  Err(Error::from(e))
+            }
+        }
+    }
+}
+
+type CPError = Error<CPFlatTyp>;
+
+impl From<DPError> for CPError{
+    fn from(error: DPError) -> Self{
+        match error {
+            Error::Mismatch(s, (ol1, t1), (ol2, t2)) =>{
+                let t1=CPTyp::from(t1.clone());
+                let t2=CPTyp::from(t2.clone());
+                Error::Mismatch(s, (ol1, t1), (ol2, t2))//can not return &CPTyp think created in the fct
+            },
+            Error::Args(x, y, z) => Error::Args(x, y, z),
+            Error::Parse(x) => Error::Parse(x),
+            Error::Dest => Error::Dest,
+        }
+    }
+}

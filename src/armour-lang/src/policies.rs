@@ -4,8 +4,7 @@ use super::{
     headers::THeaders,
     lang,
     literals::{self, TFlatLiteral},
-    types_cp,
-    types::{self, Signature, FlatTyp, Typ, TFlatTyp, TTyp},
+    types::{self, Signature, FlatTyp, CPTyp, CPFlatTyp, Typ, TFlatTyp, TTyp},
 };
 use lazy_static::lazy_static;
 use serde::{
@@ -66,7 +65,7 @@ impl FnPolicies {
 #[derive(Default)]
 pub struct ProtocolPolicy<FlatTyp:TFlatTyp>(BTreeMap<String, Vec<Signature<FlatTyp>>>);
 type DPProtocolPolicy = ProtocolPolicy<types::FlatTyp>;
-type CPProtocolPolicy = ProtocolPolicy<types_cp::CPFlatTyp>;
+type CPProtocolPolicy = ProtocolPolicy<types::CPFlatTyp>;
 
 impl<FlatTyp:TFlatTyp> ProtocolPolicy<FlatTyp> {
     fn functions(&self) -> Vec<String> {
@@ -182,7 +181,7 @@ pub trait TProtocol<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     fn policy(p: &Protocol<FlatTyp, FlatLiteral>) -> &ProtocolPolicy<FlatTyp>;
 }
 pub type DPProtocol = Protocol<FlatTyp, literals::FlatLiteral>;
-pub type CPProtocol = Protocol<types_cp::CPFlatTyp, literals::CPFlatLiteral>;
+pub type CPProtocol = Protocol<types::CPFlatTyp, literals::CPFlatLiteral>;
 
 impl From<CPProtocol> for DPProtocol {
     fn from(p: CPProtocol) -> Self {
@@ -203,7 +202,7 @@ impl TProtocol<FlatTyp, Self> for literals::FlatLiteral {
         }
     }
 }
-impl TProtocol<types_cp::CPFlatTyp, Self> for literals::CPFlatLiteral {
+impl TProtocol<types::CPFlatTyp, Self> for literals::CPFlatLiteral {
     fn policy(p: &CPProtocol) -> &CPProtocolPolicy {
         match p {
             Protocol::HTTP => &*CP_HTTP_POLICY,
@@ -248,7 +247,7 @@ pub struct Policy<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     pub fn_policies: FnPolicies,
 }
 pub type DPPolicy = Policy<types::FlatTyp, literals::DPFlatLiteral>;
-pub type GlobalPolicy = Policy<types_cp::CPFlatTyp, literals::CPFlatLiteral>;
+pub type GlobalPolicy = Policy<types::CPFlatTyp, literals::CPFlatLiteral>;
 
 impl From<GlobalPolicy> for DPPolicy {
     fn from(gps: GlobalPolicy) -> Self {
@@ -382,7 +381,7 @@ impl<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> fmt::Display for Pol
 #[derive(PartialEq, Debug, Clone, Default)]
 pub struct Policies<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(BTreeMap<Protocol<FlatTyp, FlatLiteral>, Policy<FlatTyp, FlatLiteral>>);
 pub type DPPolicies = Policies<FlatTyp, literals::FlatLiteral>;
-pub type GlobalPolicies = Policies<types_cp::CPFlatTyp, literals::CPFlatLiteral>;
+pub type GlobalPolicies = Policies<types::CPFlatTyp, literals::CPFlatLiteral>;
 
 impl From<GlobalPolicies> for DPPolicies {
     fn from(gps: GlobalPolicies) -> Self {
@@ -581,4 +580,74 @@ impl<'de> Deserialize<'de> for GlobalPolicies {
     {
         deserializer.deserialize_map(CPPoliciesVisitor{})
     }
+}
+
+pub const ONBOARDING_SERVICES: &str = "onboarding_policy";
+
+pub type OnboardingPolicy = GlobalPolicy;
+//#[derive(Serialize, Deserialize, Clone, Debug)]
+//pub struct OnboardingPolicy {
+//    //From ProtocolPolicy struct
+//    pub name : String,//FIXME usefull ???
+//    sig : CPSignature,//FIXME only one ??
+//
+//    //From Policy struct
+//    program: CPProgram,
+//    //fn_policies: FnPolicies,
+//}
+
+impl OnboardingPolicy {
+    pub fn program<'a>(&'a self) -> &'a lang::CPProgram {
+        &self.program
+    }
+    fn inner_from(pre_prog: lang::CPPreProgram) -> Result<Self, expressions::Error> {
+        Ok(OnboardingPolicy {
+            //name: ONBOARDING_SERVICES.to_string(),
+            //sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
+            fn_policies: FnPolicies::default(),
+            program: pre_prog.program(&vec![ONBOARDING_SERVICES.to_string()][..]),
+        })
+    }
+
+    pub fn from_buf(buf: &str) -> Result<Self, expressions::Error> {
+        Self::inner_from(lang::PreProgram::from_buf(buf)?)
+    }
+    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, expressions::Error> {
+        Self::inner_from(lang::PreProgram::from_file(path)?)
+    }
+}
+#[derive(Serialize, Deserialize, Clone)]
+pub enum ObPolicy {
+    None, //Onboard no services
+    Custom(OnboardingPolicy) //Use cuserd defined policy
+}
+
+impl ObPolicy {
+    pub fn onboard_none() -> Self {
+        Self::None
+    }
+    pub fn onboard_from(p: lang::CPProgram) -> Self {
+        Self::Custom(OnboardingPolicy {
+            //name: ONBOARDING_SERVICES.to_string(),
+            //sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
+            fn_policies: FnPolicies::default(),
+            program: p,
+        })
+    }
+    pub fn from_buf(buf: &str) -> Result<Self, expressions::Error> {
+        Ok(Self::Custom(OnboardingPolicy::from_buf(buf)?))
+    }
+}
+
+
+//TODO create types : OnboardingData +  OnboardingResult
+//FIXME : for now use protocoloPolicy instead of a dedicated OnboardingPolicy
+//TODO: only one object Onboarding policiy is need at least for now
+lazy_static! {
+    static ref ONBOARDING_SERVICES_POLICY: OnboardingPolicy = OnboardingPolicy {
+        //name: ONBOARDING_SERVICES.to_string(),
+        //sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
+        fn_policies: FnPolicies::default(),
+        program: lang::CPProgram::default(),
+    };
 }

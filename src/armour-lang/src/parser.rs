@@ -3,7 +3,6 @@ use super::lexer::{Loc, Token, Tokens};
 use super::literals::{Literal, DPFlatLiteral, CPFlatLiteral, TFlatLiteral};
 use super::{types};
 use super::types::{TFlatTyp};
-use super::types_cp;
 use nom::error::ErrorKind;
 use nom::{self,*};
 use regex::Regex;
@@ -12,11 +11,11 @@ use std::collections::HashSet;
 use std::marker::PhantomData;
 
 pub type DPExpr = Expr<types::FlatTyp, DPFlatLiteral>;
-pub type CPExpr = Expr<types_cp::CPTyp, CPFlatLiteral>;
+pub type CPExpr = Expr<types::CPTyp, CPFlatLiteral>;
 
 pub type Program<FlatTyp, FlatLiteral> = Vec<Decl<FlatTyp, FlatLiteral>>;
 pub type DPProgram = Program<types::FlatTyp, DPFlatLiteral>;
-pub type CPProgram = Program<types_cp::CPTyp, CPFlatLiteral>;
+pub type CPProgram = Program<types::CPTyp, CPFlatLiteral>;
 
 pub enum Decl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     External(External),

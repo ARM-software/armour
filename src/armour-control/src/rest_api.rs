@@ -100,7 +100,7 @@ use armour_lang::{
     expressions,
     interpret::CPEnv,
     literals::{self, CPFlatLiteral, CPLiteral},
-    policies_cp::{self, ObPolicy, ONBOARDING_SERVICES},
+    policies::{self, ObPolicy, ONBOARDING_SERVICES},
 };
 use futures::future::{BoxFuture, FutureExt};
 use super::interpret::*;
@@ -113,7 +113,7 @@ pub struct OnboardingPolicy{
 }
 
 impl OnboardingPolicy{
-    fn new(pol : policies_cp::OnboardingPolicy) -> Self {
+    fn new(pol : policies::OnboardingPolicy) -> Self {
         let env = Some(CPEnv::new(&pol.program));
         OnboardingPolicy {
             policy: ObPolicy::Custom(pol),
