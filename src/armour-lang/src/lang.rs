@@ -1,8 +1,8 @@
 /// policy language
 use super::{
     externals,
-    expressions::{self, DPExpr, Error, Expr},
-    headers::{Headers, DPHeaders, CPHeaders, THeaders},
+    expressions::{DPExpr, Error, Expr},
+    headers::{Headers, DPHeaders, THeaders},
     lexer,
     literals::{self, TFlatLiteral, CPFlatLiteral},
     parser::{self, TParser },

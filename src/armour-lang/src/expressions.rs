@@ -1,9 +1,9 @@
 /// policy language
 use super::{headers, labels, lexer, literals, parser, types, types_cp};
 use headers::{Headers, THeaders};
-use literals::{Literal, TFlatLiteral, DPLiteral, CPLiteral, DPFlatLiteral, CPFlatLiteral};
+use literals::{Literal, TFlatLiteral, DPLiteral, DPFlatLiteral, CPFlatLiteral};
 use parser::{Infix, Prefix, TParser};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -523,7 +523,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
 
     pub fn propagate_subst(self, i: usize, j: usize, u: &Self) -> Self {
         match self {
-            Self::Closure(v, e) if j == 0 => e.psubst(i, u),
+            Self::Closure(_, e) if j == 0 => e.psubst(i, u),
             Self::Closure(v, e) => Self::Closure(v, Box::new(e.propagate_subst(i, j-1, u))),
             _ => self.psubst(i, u)
         }

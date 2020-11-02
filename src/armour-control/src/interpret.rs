@@ -1,32 +1,24 @@
 /// onboarding policy language interpreter
 // NOTE: no optimization
-use armour_lang::expressions::{Block, CPExpr, DPExpr, Error, Expr, self, Pattern};
-use armour_lang::externals::{Call, ExternalActor};
-use armour_lang::headers::{self, CPHeaders, Headers, THeaders};
+use armour_lang::expressions::{Block, CPExpr, Error, Expr};
+use armour_lang::externals::{Call};
+use armour_lang::headers::{CPHeaders, THeaders};
 use armour_lang::interpret::{CPEnv, TInterpret};
 use armour_lang::labels::Label;
-use armour_lang::lang::{Code, Program};
 use armour_lang::literals::{
-    self, Connection, HttpRequest, HttpResponse, Literal,
-    FlatLiteral, CPLiteral, CPID,
-    DPFlatLiteral, CPFlatLiteral, Method, OnboardingData,
-    OnboardingResult, TFlatLiteral, VecSet
+    self, Literal,
+    CPLiteral, CPID,
+    CPFlatLiteral,
+    TFlatLiteral
 };
-use armour_lang::meta::{Egress, IngressEgress, Meta};
-use armour_lang::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
-use armour_lang::policies;
+use armour_lang::parser::{Infix, Iter};
 use super::specialize;
-use armour_lang::types::{self, TFlatTyp};
 use armour_lang::types_cp::{CPFlatTyp};
 use actix::prelude::*;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
-use std::sync::Arc;
 use armour_api::control;
-use armour_utils::{Client, parse_https_url};
-use clap::{crate_version, App};
-use futures::executor;
-use super::rest_api::{collection, GLOBAL_POLICY_LABEL, POLICIES_COL, SERVICES_COL, State};
+use super::rest_api::{collection, global_policy_label, POLICIES_COL, SERVICES_COL, State};
 use async_trait::async_trait;
 use bson::doc;
 use std::str::FromStr;
@@ -73,12 +65,6 @@ pub trait TSExprInterpret : Sized{
     async fn sevaluate(self, state: &State, env: CPEnv) -> Result<Self, self::Error>;
 }
 
-macro_rules! cpflatlit (
-  ($i: ident ($($args:tt)*) ) => (
-        CPFlatLiteral::$i($($args)*)
-  );
-);
-
 macro_rules! cplit (
   ($i: ident ($($args:tt)*) ) => (
       Literal::FlatLiteral(CPFlatLiteral::$i($($args)*))
@@ -98,17 +84,10 @@ impl<T> OnErr<T, bson::ser::Error> for bson::ser::Result<T> {}
 impl<T> OnErr<T, mongodb::error::Error> for mongodb::error::Result<T> {}
 
 
-fn tt<T, E>(x:Result<T,E>) -> Option<T> {
-    match x {
-        Ok(x) => Some(x),
-        _ => None
-    }
- }
-
 pub async fn helper_compile_ingress(state: State, function: &String, id: &CPID) ->  Result<CPLiteral, self::Error> {
     let col = collection(&state, POLICIES_COL);
     if let Ok(Some(doc)) = col
-        .find_one(Some(doc! {"label" : to_bson(&GLOBAL_POLICY_LABEL())?}), None)
+        .find_one(Some(doc! {"label" : to_bson(&global_policy_label())?}), None)
         .await
     {
         let global_pol=
@@ -128,7 +107,7 @@ pub async fn helper_compile_ingress(state: State, function: &String, id: &CPID) 
 async fn helper_compile_egress(state: State, function: &String, id: &CPID) ->  Result<CPLiteral, self::Error> {
     let col = collection(&state, POLICIES_COL);
     if let Ok(Some(doc)) = col
-        .find_one(Some(doc! {"label" : to_bson(&GLOBAL_POLICY_LABEL()).unwrap()}), None)
+        .find_one(Some(doc! {"label" : to_bson(&global_policy_label()).unwrap()}), None)
         .await
     {
         let global_pol=
@@ -199,7 +178,7 @@ async fn helper_onboard(state: State, id: &CPID) ->  Result<CPLiteral, self::Err
 
 #[async_trait]
 impl TSLitInterpret for CPLiteral {
-    fn seval_call0(state: State, f: &str) -> Option<CPLiteral> {
+    fn seval_call0(_state: State, f: &str) -> Option<CPLiteral> {
         match f {
             _ => Self::eval_call0(f),
         }
@@ -251,13 +230,13 @@ impl TSLitInterpret for CPLiteral {
             _ => Ok(self.eval_call2(f, other)),
         }
     }
-    async fn seval_call3(&self, state: State, f: &str, l1: &Self, l2: &Self) -> Result<Option<CPLiteral>, self::Error> {
+    async fn seval_call3(&self, _state: State, f: &str, l1: &Self, l2: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, l1, l2) {
             _ => Ok(self.eval_call3(f, l1, l2)),
         }
     }
     #[allow(clippy::many_single_char_names)]
-    async fn seval_call4(&self, state:State, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Result<Option<CPLiteral>, self::Error> {
+    async fn seval_call4(&self, _state:State, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, l1, l2, l3) {
             _ => Ok(self.eval_call4(f, l1, l2, l3)),
         }

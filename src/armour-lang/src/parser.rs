@@ -1,7 +1,7 @@
 /// parser
 use super::lexer::{Loc, Token, Tokens};
 use super::literals::{Literal, DPFlatLiteral, CPFlatLiteral, TFlatLiteral};
-use super::{parser, types};
+use super::{types};
 use super::types::{TFlatTyp};
 use super::types_cp;
 use nom::error::ErrorKind;
@@ -14,8 +14,7 @@ use std::marker::PhantomData;
 pub type DPExpr = Expr<types::FlatTyp, DPFlatLiteral>;
 pub type CPExpr = Expr<types_cp::CPTyp, CPFlatLiteral>;
 
-pub type Program<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> =
-    Vec<Decl<FlatTyp, FlatLiteral>>;
+pub type Program<FlatTyp, FlatLiteral> = Vec<Decl<FlatTyp, FlatLiteral>>;
 pub type DPProgram = Program<types::FlatTyp, DPFlatLiteral>;
 pub type CPProgram = Program<types_cp::CPTyp, CPFlatLiteral>;
 
@@ -490,7 +489,7 @@ enum LocExprOrMatches<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     Expr(LocExpr<FlatTyp, FlatLiteral>),
     Matches(Vec<(LocExpr<FlatTyp, FlatLiteral>, Pattern<FlatTyp>)>),
     SomeMatch(LocIdent, LocExpr<FlatTyp, FlatLiteral>),
-    Phantom(PhantomData<(FlatTyp, FlatLiteral)>),
+    //Phantom(PhantomData<(FlatTyp, FlatLiteral)>),
 }
 
 #[derive(Debug, Clone)]
@@ -649,18 +648,6 @@ macro_rules! parse_ident (
         }
     }
   );
-);
-
-//FIXME i don't know why but using the method! from nom-methods failed, this one is a merge from nom named! and nom-methods method!
-macro_rules! methodd (
-    ($vis:vis $name:ident<$i:ty,$o:ty>, &$self_:ident, $submac:ident!( $($args:tt)* )) => (
-        #[allow(unused_variables)]
-
-        $vis fn $name( &$self_,  i: $i ) -> nom::IResult<$i, $o, ($i, ::nom::error::ErrorKind)> {
-            let result = $submac!(i, $($args)*);
-            result
-        }
-    );
 );
 
 /// Used to called methods then move self back into self
@@ -1431,7 +1418,7 @@ pub trait TParser<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
                     LocExprOrMatches::Expr(expr) => Expr::IfExpr { cond: Box::new(expr), consequence, alternative },
                     LocExprOrMatches::Matches(matches) => Expr::IfMatchExpr { matches, consequence, alternative },
                     LocExprOrMatches::SomeMatch(var, expr) => Expr::IfSomeMatchExpr { var, expr: Box::new(expr), consequence, alternative },
-                    LocExprOrMatches::Phantom(_) => unimplemented!()
+                    //LocExprOrMatches::Phantom(_) => unimplemented!()
                 }
             ))
         )

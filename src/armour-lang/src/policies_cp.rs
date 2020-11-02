@@ -1,20 +1,13 @@
 use super::{
     expressions,
-    policies::{GlobalPolicy, Policy,ProtocolPolicy, FnPolicy, FnPolicies},//TODO should i reuse policies::FnPolicies
-    lang::{self, CPProgram, CPPreProgram},
-    literals::CPFlatLiteral,
-    types_cp::{CPFlatTyp, CPTyp, CPSignature},
-    types::{Signature, Typ},
-    parser
+    lang,
+    policies::{GlobalPolicy, FnPolicies}
 };
 
 use lazy_static::lazy_static;
 use serde::{
-    de::{Deserializer, MapAccess, Visitor},
-    ser::SerializeMap,
     Deserialize, Serialize,
 };
-use std::collections::BTreeMap;
 
 
 pub const ONBOARDING_SERVICES: &str = "onboarding_policy";
@@ -32,7 +25,7 @@ pub type OnboardingPolicy = GlobalPolicy;
 //}
 
 impl OnboardingPolicy {
-    pub fn program<'a>(&'a self) -> &'a CPProgram {
+    pub fn program<'a>(&'a self) -> &'a lang::CPProgram {
         &self.program
     }
     fn inner_from(pre_prog: lang::CPPreProgram) -> Result<Self, expressions::Error> {
@@ -61,7 +54,7 @@ impl ObPolicy {
     pub fn onboard_none() -> Self {
         Self::None
     }
-    pub fn onboard_from(p: CPProgram) -> Self {
+    pub fn onboard_from(p: lang::CPProgram) -> Self {
         Self::Custom(OnboardingPolicy {
             //name: ONBOARDING_SERVICES.to_string(),
             //sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
@@ -83,7 +76,7 @@ lazy_static! {
         //name: ONBOARDING_SERVICES.to_string(),
         //sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
         fn_policies: FnPolicies::default(),
-        program: CPProgram::default(),
+        program: lang::CPProgram::default(),
     };
 }
 

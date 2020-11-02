@@ -1,4 +1,4 @@
-use super::expressions::{self, Expr, DPExpr};
+use super::expressions::{self, Expr};
 use super::types::{self, TFlatTyp};
 use super::types_cp;
 use super::lang::Program;

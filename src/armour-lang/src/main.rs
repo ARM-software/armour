@@ -2,11 +2,10 @@
 use actix::prelude::*;
 use armour_lang::{
     expressions, 
-    interpret::{Env, TInterpret}, 
+    interpret::{Env}, 
     lang, 
     literals::{self, TFlatLiteral}, 
     policies, 
-    types_cp, 
     types::{self, TFlatTyp}
 };
 use clap::{crate_version, App, Arg, SubCommand, ArgMatches};
@@ -147,7 +146,7 @@ async fn main() -> std::io::Result<()> {
 
 
     if let Some(dataplane_matches) = matches.subcommand_matches("dataplane") {
-        if let Some(export_matches) = matches.subcommand_matches("export") {
+        if let Some(export_matches) = dataplane_matches.subcommand_matches("export") {
             let policy: policies::DPPolicies = match matches.value_of("input file") {
                 Some(file) => policies::Policies::from_file(file)?,
                 _ => match export_matches.value_of("policy").unwrap_or("deny") {
@@ -215,8 +214,8 @@ async fn main() -> std::io::Result<()> {
                 log::warn!("{}", e)
             }
         }
-    } else if let Some(dataplane_matches) = matches.subcommand_matches("controlplane") {
-        let prog = load_from_file::<types_cp::CPFlatTyp, literals::CPFlatLiteral>(matches)?; 
+    } else if let Some(control_matches) = matches.subcommand_matches("controlplane") {
+        //let prog = load_from_file::<types_cp::CPFlatTyp, literals::CPFlatLiteral>(matches)?; 
 
         //TODO compile/specialization
         unimplemented!()

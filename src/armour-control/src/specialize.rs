@@ -1,34 +1,23 @@
 // Specialize global policy
 // NOTE: no optimization
-use armour_lang::expressions::{Block, CPExpr, DPExpr, Error, Expr, self, Pattern};
-use armour_lang::externals::{Call, ExternalActor};
-use armour_lang::headers::{self, CPHeaders, Headers, THeaders};
+use armour_lang::expressions::{Block, CPExpr, Error, Expr};
+use armour_lang::externals::{Call};
+use armour_lang::headers::{CPHeaders, THeaders};
 use armour_lang::interpret::{CPEnv, TInterpret};
-use armour_lang::labels::Label;
-use armour_lang::lang::{Code, Program};
 use armour_lang::literals::{
-    self, Connection, HttpRequest, HttpResponse, Literal,
-    FlatLiteral, CPLiteral, CPID,
-    DPFlatLiteral, CPFlatLiteral, Method, OnboardingData,
-    OnboardingResult, TFlatLiteral, VecSet
+    Literal,
+    CPID,
+    CPFlatLiteral,
+    TFlatLiteral 
 };
-use armour_lang::meta::{Egress, IngressEgress, Meta};
-use armour_lang::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
+use armour_lang::parser::{Infix, Iter};
 use armour_lang::policies;
-use armour_lang::types::{self, TFlatTyp};
-use armour_lang::types_cp::{CPFlatTyp};
 use actix::prelude::*;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
-use std::sync::Arc;
-use armour_api::control;
-use armour_utils::{Client, parse_https_url};
-use clap::{crate_version, App};
-use futures::executor;
-use super::rest_api::{collection, ONBOARDING_POLICY_KEY, POLICIES_COL, SERVICES_COL, State};
-use super::interpret::{TSExprInterpret, TSLitInterpret};
+use super::rest_api::{State};
+use super::interpret::{TSExprInterpret};
 use async_trait::async_trait;
-use bson::doc;
 
 macro_rules! cplit (
   ($i: ident ($($args:tt)*) ) => (
@@ -511,7 +500,7 @@ impl TSExprPEval for CPExpr {
     }
 }
 
-pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPolicies, function: &String, to: &CPID) -> Result<policies::DPPolicies, self::Error> {
+pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPolicies, function: &str, to: &CPID) -> Result<policies::DPPolicies, self::Error> {
     for (_, pol)  in (&mut global_pol).policies_mut() {
         let env = CPEnv::new(&pol.program);        
 
@@ -526,21 +515,21 @@ pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPoli
         //FIXME how to do the type conversion from fexpr to typ
         //or just check that there is four argument
 
-        match pol.program.code.get(policies::ALLOW_REST_REQUEST.to_string()) {
-            None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", policies::ALLOW_REST_REQUEST))), 
+        match pol.program.code.get(function.to_string()) {
+            None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", function))), 
             Some(ref fexpr) => {    
                 let fexpr = fexpr.clone().propagate_subst(2, 1, &Expr::LitExpr(Literal::id(to.clone()))); 
                 //println!("#### After subst of 'to'");
                 //fexpr.print_debug();
                 match fexpr.pevaluate(state, env).await {                        
-                    Ok((f, e)) =>{ 
+                    Ok((_, e)) =>{ 
 
                         let mut e = e.apply(&Expr::call("HttpRequest::from", vec![Expr::bvar("req", 0)]))?;
                         //e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;
                         e = e.apply(&Expr::bvar("req", 0))?;
                         e = e.apply(&Expr::bvar("payload", 1))?;
 
-                        pol.program.code.insert(policies::ALLOW_REST_REQUEST.to_string(), e.clone()); 
+                        pol.program.code.insert(function.to_string(), e.clone()); 
                     },
                     Err(err) => return Err(err)
                 }
@@ -550,7 +539,7 @@ pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPoli
     Ok(policies::DPPolicies::from(global_pol))
 }
 
-pub async fn compile_egress(state: &State, mut global_pol: policies::GlobalPolicies, function: &String, from: &CPID) -> Result<policies::DPPolicies, self::Error> {
+pub async fn compile_egress(state: &State, mut global_pol: policies::GlobalPolicies, function: &str, from: &CPID) -> Result<policies::DPPolicies, self::Error> {
     for (_, pol)  in (&mut global_pol).policies_mut() {
         let env = CPEnv::new(&pol.program);        
 
@@ -565,18 +554,18 @@ pub async fn compile_egress(state: &State, mut global_pol: policies::GlobalPolic
         //FIXME how to do the type conversion from fexpr to typ
         //or just check that there is four argument
 
-        match pol.program.code.get(policies::ALLOW_REST_RESPONSE.to_string()) {
-            None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", policies::ALLOW_REST_RESPONSE))), 
+        match pol.program.code.get(function.to_string()) {
+            None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", function))), 
             Some(ref fexpr) => {    
                 let fexpr = fexpr.clone().propagate_subst(3, 0, &Expr::LitExpr(Literal::id(from.clone()))); 
                 match fexpr.pevaluate(state, env).await {                        
-                    Ok((f, e)) =>{ 
+                    Ok((_, e)) =>{ 
 
                         let mut e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;
                         e = e.apply(&Expr::bvar("req", 0))?;
                         e = e.apply(&Expr::bvar("payload", 1))?;
 
-                        pol.program.code.insert(policies::ALLOW_REST_RESPONSE.to_string(), e.clone()); 
+                        pol.program.code.insert(function.to_string(), e.clone()); 
                     },
                     Err(err) => return Err(err)
                 }

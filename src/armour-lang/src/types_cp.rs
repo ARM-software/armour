@@ -13,10 +13,10 @@ pub enum CPFlatTyp {
 }
 
 impl CPTyp {
-    pub fn onboardingData() -> Self {
+    pub fn onboarding_data() -> Self {
         Self::FlatTyp(CPFlatTyp::OnboardingData)
     }
-    pub fn onboardingResult() -> Self {
+    pub fn onboarding_result() -> Self {
         Self::FlatTyp(CPFlatTyp::OnboardingResult)
     }
     pub fn policy() -> Self {
@@ -96,11 +96,11 @@ impl TFlatTyp for CPFlatTyp {
     fn connection() -> Self { Self::DPFlatTyp(FlatTyp::Connection) } 
     fn f64() -> Self { Self::DPFlatTyp(FlatTyp::F64) } 
     fn http_request() -> Self { Self::DPFlatTyp(FlatTyp::HttpRequest) } 
-    fn httpResponse() -> Self { Self::DPFlatTyp(FlatTyp::HttpResponse) } 
+    fn http_response() -> Self { Self::DPFlatTyp(FlatTyp::HttpResponse) } 
     fn label() -> Self { Self::DPFlatTyp(FlatTyp::Label) } 
     fn i64() -> Self { Self::DPFlatTyp(FlatTyp::I64) } 
     fn id() -> Self { Self::DPFlatTyp(FlatTyp::ID) } 
-    fn ipAddr() -> Self { Self::DPFlatTyp(FlatTyp::IpAddr) } 
+    fn ip_addr() -> Self { Self::DPFlatTyp(FlatTyp::IpAddr) } 
     fn data() -> Self { Self::DPFlatTyp(FlatTyp::Data) }
     fn str() -> Self { Self::DPFlatTyp(FlatTyp::Str) } 
     fn regex() -> Self { Self::DPFlatTyp(FlatTyp::Regex) } 
@@ -163,17 +163,6 @@ impl From<DPError> for CPError{
     }
 
 }
-
-
-//can not define convert since result external to the crate ....
-type CPResult = Result<CPTyp, CPError>;
-///fromfn fromres(res:Result<CPTyp, DPError>) -> CPResult{
-//    match res {
-//        Ok(t) => Ok(CPTyp::DPTyp(t)),
-//        Err(e) => Err(CPError::from(e))
-//    }
-//}
-
 
 
 impl CPTyp {

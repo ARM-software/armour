@@ -1,18 +1,17 @@
 /// policy language interpreter
 // NOTE: no optimization
-use super::expressions::{Block, DPExpr, Error, Expr, self, Pattern};
+use super::expressions::{Block, Error, Expr, Pattern};
 use super::externals::{Call, ExternalActor};
 use super::headers::{self, THeaders};
 use super::labels::Label;
 use super::lang::{Code, Program};
 use super::literals::{
     self, Connection, HttpRequest, HttpResponse, Literal,
-    DPFlatLiteral, CPFlatLiteral, Method, OnboardingData,
+    DPFlatLiteral, CPFlatLiteral, Method,
     OnboardingResult, TFlatLiteral, VecSet
 };
 use super::meta::{Egress, IngressEgress, Meta};
 use super::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
-use super::policies;
 use super::types::{self, TFlatTyp};
 use super::types_cp::{CPFlatTyp};
 use actix::prelude::*;
@@ -235,7 +234,7 @@ impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
             "HttpRequest::TRACE" => Some(Method::TRACE.into()),
             "ID::default" => Some(Literal::id(Default::default())),
             "Connection::default" => Some(Literal::connection(Default::default())),
-            "IpAddr::localhost" => Some(Literal::ipAddr(std::net::IpAddr::V4(
+            "IpAddr::localhost" => Some(Literal::ip_addr(std::net::IpAddr::V4(
                 std::net::Ipv4Addr::new(127, 0, 0, 1),
             ))),
             "System::getCurrentTime" => {
@@ -531,7 +530,7 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             "HttpRequest::TRACE" => Some(Method::TRACE.into()),
             "ID::default" => Some(Literal::id(Default::default())),
             "Connection::default" => Some(Literal::connection(Default::default())),
-            "IpAddr::localhost" => Some(Literal::ipAddr(std::net::IpAddr::V4(
+            "IpAddr::localhost" => Some(Literal::ip_addr(std::net::IpAddr::V4(
                 std::net::Ipv4Addr::new(127, 0, 0, 1),
             ))),
             "OnboardingData::declaredDomain" => unimplemented!(),

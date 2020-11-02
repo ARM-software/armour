@@ -1,11 +1,13 @@
 use actix_web::{client, delete, get, post, web, web::Json, HttpResponse};
 use armour_api::control;
 use armour_api::host::PolicyUpdate;
-use armour_lang::{labels::Label, policies::{self, DPPolicies}, literals::OnboardingResult};
-use armour_utils;
+use armour_lang::{
+    labels::Label, 
+    policies::{DPPolicies}, 
+    literals::OnboardingResult
+};
 use bson::doc;
 use std::str::FromStr;
-use clap::{crate_version, App};
 
 
 
@@ -101,10 +103,9 @@ use armour_lang::{
     policies_cp::{self, ObPolicy, ONBOARDING_SERVICES},
 };
 use futures::future::{BoxFuture, FutureExt};
-use std::convert::TryInto;
 use super::interpret::*;
 
-
+//TODO get ride of ObPolicy and write a default OnboardingPolicy
 pub struct OnboardingPolicy{
     policy: ObPolicy,
     env: Option<CPEnv>,
@@ -167,8 +168,8 @@ impl OnboardingPolicy{
         onboarding_data: expressions::CPExpr,//onboardingData
     ) -> BoxFuture<'static, Result<Box<literals::OnboardingResult>, expressions::Error>> {
         log::debug!("evaluting onboarding service policy");
-        match self.policy() {
-            ObPolicy::Custom(pol) => self.evaluate_custom(state.clone(), onboarding_data),
+        match self.policy {
+            ObPolicy::Custom(_) => self.evaluate_custom(state.clone(), onboarding_data),
             ObPolicy::None => {
                 async move {
                     Err(expressions::Error::new("onboarding is disallowed, onboarding policy needed")) 
@@ -194,10 +195,10 @@ impl Default for OnboardingPolicy {
 
 pub const ONBOARDING_POLICY_KEY : &str = "onboarding_policy";
 pub const GLOBAL_POLICY_KEY : &str = "global_policy";
-pub fn ONBOARDING_POLICY_LABEL() -> Label {
+pub fn onboarding_policy_label() -> Label {
     Label::from_str(ONBOARDING_POLICY_KEY).unwrap()
 }
-pub fn GLOBAL_POLICY_LABEL() -> Label {
+pub fn global_policy_label() -> Label {
     Label::from_str(GLOBAL_POLICY_KEY).unwrap()
 }
 /// END
@@ -240,7 +241,7 @@ pub mod service {
             let pol_col = collection(&state, POLICIES_COL);
 
             if let Ok(Some(doc)) = pol_col
-                .find_one(Some(doc! { "label" : to_bson(&ONBOARDING_POLICY_LABEL())? }), None)
+                .find_one(Some(doc! { "label" : to_bson(&onboarding_policy_label())? }), None)
                 .await
             {
                 let request = bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc))
@@ -261,15 +262,17 @@ pub mod service {
             ))))
         );            
         
-        //Eval policy
+        //Eval policy and register specialized policies
         match ob_policy.evaluate(&state, onboarding_data).await {
             Ok(obr) => match *obr {
                 OnboardingResult::Ok(id, local_pol) => {
-                    let col = collection(&state, SERVICES_COL);
-
-                    //register obr into db
+                    let service_id = id.find_label(
+                        &Label::from_str("ServiceID::**").unwrap()
+                    ).ok_or(internal("Extracting service_id from id labels"))?
+                    .clone(); 
+                    
                     let request = control::PolicyUpdateRequest{
-                        label: request.service.clone(),
+                        label: service_id,
                         policy: *local_pol.pol,
                         labels: control::LabelMap::default()
                     };
@@ -280,21 +283,6 @@ pub mod service {
             }
             Err(e) => { Ok(internal(e.to_string())) }             
         }
-
-        ////tODO should use as builtin armour type/function
-        //let col = collection(&state, SERVICES_COL);
-
-        //// Check if the service is already there
-        //if present(&col, doc! { "service" : to_bson(service)? }).await? {
-        //    Ok(internal(format!("service label in use {}", service)))
-        //} else if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
-        //    col.insert_one(document, None) // Insert into a MongoDB collection
-        //        .await
-        //        .on_err("error inserting in MongoDB")?;
-        //    Ok(HttpResponse::Ok().body("success"))
-        //} else {
-        //    Ok(internal("error extracting document"))
-        //}
     }
 
     #[delete("/drop")]
@@ -317,7 +305,6 @@ pub mod service {
     }
 }
 
-use std::collections::BTreeMap;
 pub mod policy {
     use super::*;
     use std::collections::BTreeSet;
@@ -463,12 +450,11 @@ pub mod policy {
     }
     #[post("/update-global")]
     pub async fn update_global(
-        client: web::Data<client::Client>,
         state: State,
         request: Json<control::CPPolicyUpdateRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
         let mut request = request.into_inner();
-        request.label = GLOBAL_POLICY_LABEL();
+        request.label = global_policy_label();
 
         let label = &request.label.clone();
         log::info!(r#"updating policy for label "{}""#, label);
@@ -492,30 +478,24 @@ pub mod policy {
 
     #[post("/update-onboarding")]
     pub async fn update_onboarding(
-        client: web::Data<client::Client>,
         state: State,
         request: Json<control::OnboardingUpdateRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
         let mut request = request.into_inner().pack();//FIXME Some issue with bson encoding, get ride of this with pack/unpack, issues with private/public ? /kind of scope
-        request.label = ONBOARDING_POLICY_LABEL();
+        request.label = onboarding_policy_label();
         let label = &request.label.clone();
 
         log::info!(r#"updating policy for label "{}""#, label);
         if let bson::Bson::Document(document) = to_bson(&request)? {
-            log::info!("1");
             // update policy in database
             let col = collection(&state, POLICIES_COL);
-            log::info!("2");
             let filter = doc! { "label" : to_bson(label)? };
-            log::info!("3");
             col.delete_many(filter, None)
                 .await
                 .on_err("error removing old policies")?;
-            log::info!("4");
             col.insert_one(document, None)
                 .await
                 .on_err("error inserting new policy")?;
-            log::info!("5");
             Ok(HttpResponse::Ok().finish())
         } else {
             log::warn!("error converting the BSON object into a MongoDB document");

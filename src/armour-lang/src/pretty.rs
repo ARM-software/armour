@@ -1,4 +1,4 @@
-use super::expressions::{Block, DPExpr, Expr, Pattern};
+use super::expressions::{Block, Expr, Pattern};
 use super::headers::{THeaders};
 use super::{headers, types, literals};
 use super::lang::Program;
@@ -501,13 +501,9 @@ impl Pattern {
     }
 }
 
-impl<FlatTyp: types::TFlatTyp, FlatLiteral: literals::TFlatLiteral<FlatTyp>> Literal<FlatTyp, FlatLiteral> {
-    fn literal<'a, 'b>(&'a self) -> RcDoc<'b, ColorSpec> {
-        RcDoc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Green)).clone())
-    }
-    fn non_parse_literal<'a, 'b>(&'a self) -> RcDoc<'b, ColorSpec> {
-        RcDoc::as_string(self).annotate(ColorSpec::new().set_fg(Some(Color::Blue)).clone())
-    }
+impl<FlatTyp, FlatLiteral> TPrettyLit for  Literal<FlatTyp, FlatLiteral> where 
+    FlatTyp: types::TFlatTyp,
+    FlatLiteral: literals::TFlatLiteral<FlatTyp> {
 
     fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         match self {

@@ -53,7 +53,7 @@ async fn register_policy(
     raw_pol : &str,
 ) -> Result<bool, expressions::Error> {
     let request = CPPolicyUpdateRequest {
-        label: GLOBAL_POLICY_LABEL(),
+        label: global_policy_label(),
         policy: policies::Policies::from_buf(raw_pol)?,
         labels: LabelMap::default()
     };
@@ -277,7 +277,7 @@ async fn global_pol1() ->  Result<CPExpr,  expressions::Error> {
     let raw_pol = raw_pol1();
 
     let args = vec![
-        Literal::httpRequest(Box::new(HttpRequest::new(
+        Literal::http_request(Box::new(HttpRequest::new(
             "method",
             "HTTP_20",
             "path",
@@ -315,7 +315,7 @@ mod tests_control {
         register_policy(&state, raw_pol1()).await?;
 
         if let Ok(Some(doc)) = collection(&state.clone(), POLICIES_COL)
-            .find_one(Some(doc! {"label" : to_bson(&GLOBAL_POLICY_LABEL()).unwrap()}), None)
+            .find_one(Some(doc! {"label" : to_bson(&global_policy_label()).unwrap()}), None)
             .await
         {
             assert!(true)
@@ -354,7 +354,7 @@ mod tests_control {
         register_policy(&state, raw_pol1()).await?;
 
         if let Ok(Some(doc)) = collection(&state.clone(), POLICIES_COL)
-            .find_one(Some(doc! {"label" : to_bson(&GLOBAL_POLICY_LABEL()).unwrap()}), None)
+            .find_one(Some(doc! {"label" : to_bson(&global_policy_label()).unwrap()}), None)
             .await
         {
             assert!(true)

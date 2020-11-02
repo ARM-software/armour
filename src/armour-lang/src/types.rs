@@ -1,11 +1,10 @@
 /// really basic type system
 use super::lexer::Loc;
-use super::{parser, expressions};
+use super::{parser};
 use super::literals::TFlatLiteral;
 use parser::{Infix, Prefix};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::marker::PhantomData;
 
 #[derive(Clone, Debug,  PartialEq, Serialize, Deserialize)]
 pub enum FlatTyp {
@@ -80,13 +79,13 @@ impl<FlatTyp:TFlatTyp> fmt::Display for Typ<FlatTyp> {
     }
 }
 
-pub type LocType<FlatTyp:TFlatTyp> = (Option<Loc>, Typ<FlatTyp>);//FIXME: i use value not ref because i can not create a fct &Typ -> &CPTyp due to lifetime (fct=fromres)
-pub type LocTypes<FlatTyp:TFlatTyp> = Vec<LocType<FlatTyp>>;
+pub type LocType<FlatTyp> = (Option<Loc>, Typ<FlatTyp>);//FIXME: i use value not ref because i can not create a fct &Typ -> &CPTyp due to lifetime (fct=fromres)
+pub type LocTypes<FlatTyp> = Vec<LocType<FlatTyp>>;
 
 //TBuiltin is a work around since specialization is unsable 
 pub trait TBuiltin<FlatTyp:TFlatTyp>{
-    fn builtins(f: &str) -> Option<Signature<FlatTyp>> {None}
-    fn internal_service(f: &str) -> Option<Signature<FlatTyp>> {None}
+    fn builtins(_f: &str) -> Option<Signature<FlatTyp>> {None}
+    fn internal_service(_f: &str) -> Option<Signature<FlatTyp>> {None}
 }
 
 pub trait TFlatTyp : fmt::Display + std::fmt::Debug + Sized + Serialize + Clone + PartialEq + TBuiltin<Self> + Unpin + std::marker::Send + Default + std::marker::Sync {
@@ -101,35 +100,13 @@ pub trait TFlatTyp : fmt::Display + std::fmt::Debug + Sized + Serialize + Clone 
     fn label() -> Self;
     fn id() -> Self;
     fn i64() -> Self;
-    fn ipAddr() -> Self;
+    fn ip_addr() -> Self;
     fn http_request() -> Self;
-    fn httpResponse() -> Self;
+    fn http_response() -> Self;
     fn regex() -> Self;
     fn str() -> Self;
 
-    //fn intrinsic(&self) -> Option<String>;
-    //fn can_unify(&self, other: &Self) -> bool;
-
     fn try_from_str(s: &str) -> Result<Self, Error<Self> >; 
-    //fn from_parse(ty: &parser::Typ) -> Result<Self, Error<Self> >; 
-
-
-    //fn unify(&self, other: &Self) -> Self; 
-
-    //fn type_check(s: &str, v1: LocTypes<Self>, v2: LocTypes<Self>) -> Result<(), Error<Self>> {
-    //    let len1 = v1.len();
-    //    let len2 = v2.len();
-    //    if len1 == len2 {
-    //        for (t1, t2) in v1.into_iter().zip(v2.into_iter()) {
-    //            if !t1.1.can_unify(&t2.1) {
-    //                return Err(Error::Mismatch(s.to_string(), t1, t2));
-    //            }
-    //        }
-    //        Ok(())
-    //    } else {
-    //        Err(Error::Args(s.to_string(), len1, len2))
-    //    }
-    //}
 }
 
 #[derive(Clone, Debug)]
@@ -162,7 +139,6 @@ impl<'a, FlatTyp:TFlatTyp> fmt::Display for Error<FlatTyp> {
                 }
             }
             Error::Dest => write!(f, "expecting Option<..> type"),
-            _ => panic!("For phantom data")
         }
     }
 }
@@ -298,11 +274,11 @@ impl TFlatTyp for FlatTyp {
     fn data() -> Self { Self::Data }
     fn f64() -> Self{ Self::F64 }
     fn http_request() -> Self { Self::HttpRequest } 
-    fn httpResponse() -> Self { Self::HttpResponse } 
+    fn http_response() -> Self { Self::HttpResponse } 
     fn label() -> Self { Self::Label } 
     fn i64() -> Self { Self::I64 } 
     fn id() -> Self { Self::ID } 
-    fn ipAddr() -> Self { Self::IpAddr } 
+    fn ip_addr() -> Self { Self::IpAddr } 
     fn regex() -> Self { Self::Regex } 
     fn str() -> Self { Self::Str } 
 
@@ -335,11 +311,11 @@ pub trait TTyp<FlatTyp:TFlatTyp> : Sized {
     fn f64() -> Self;
     fn data() -> Self;
     fn http_request() -> Self;
-    fn httpResponse() -> Self;
+    fn http_response() -> Self;
     fn label() -> Self;
     fn i64() -> Self;
     fn id() -> Self;
-    fn ipAddr() -> Self;
+    fn ip_addr() -> Self;
     fn regex() -> Self;
     fn str() -> Self;
 
@@ -355,11 +331,11 @@ impl<FlatTyp:TFlatTyp> TTyp<FlatTyp> for Typ<FlatTyp> {
     fn connection() -> Self { Self::FlatTyp(FlatTyp::connection()) } 
     fn f64() -> Self { Self::FlatTyp(FlatTyp::f64()) }
     fn http_request() -> Self { Self::FlatTyp(FlatTyp::http_request()) } 
-    fn httpResponse() -> Self { Self::FlatTyp(FlatTyp::httpResponse()) } 
+    fn http_response() -> Self { Self::FlatTyp(FlatTyp::http_response()) } 
     fn label() -> Self { Self::FlatTyp(FlatTyp::label()) } 
     fn i64() -> Self { Self::FlatTyp(FlatTyp::i64()) } 
     fn id() -> Self { Self::FlatTyp(FlatTyp::id()) } 
-    fn ipAddr() -> Self { Self::FlatTyp(FlatTyp::ipAddr()) } 
+    fn ip_addr() -> Self { Self::FlatTyp(FlatTyp::ip_addr()) } 
     fn str() -> Self { Self::FlatTyp(FlatTyp::str()) } 
     fn regex() -> Self { Self::FlatTyp(FlatTyp::regex()) } 
 

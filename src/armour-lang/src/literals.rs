@@ -229,7 +229,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> ID<FlatTyp, FlatLitera
         )
     }
     pub fn ips(&self) -> Literal<FlatTyp, FlatLiteral> {
-        Literal::List(self.ips.iter().map(|ip| Literal::ipAddr(*ip)).collect())
+        Literal::List(self.ips.iter().map(|ip| Literal::ip_addr(*ip)).collect())
     }
     pub fn port(&self) -> Literal<FlatTyp, FlatLiteral> {
         match self.port {
@@ -487,7 +487,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Method> for HttpR
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Method> for Literal<FlatTyp, FlatLiteral> {
     fn from(method: Method) -> Self {
-        Self::httpRequest(Box::new(method.into()))
+        Self::http_request(Box::new(method.into()))
     }
 }
 
@@ -730,11 +730,11 @@ pub trait TFlatLiteral<FlatTyp:TFlatTyp> : std::fmt::Debug + PartialEq + Clone +
     fn is_data(&self) -> bool;
     fn get_data(&self) -> Vec<u8>;
     fn float( f:f64 ) -> Self;
-    fn httpRequest( r:Box<HttpRequest<FlatTyp, Self>>) -> Self;
-    fn httpResponse( r:Box<HttpResponse<FlatTyp, Self>>) -> Self ;
+    fn http_request( r:Box<HttpRequest<FlatTyp, Self>>) -> Self;
+    fn http_response( r:Box<HttpResponse<FlatTyp, Self>>) -> Self ;
     fn id( i:ID<FlatTyp, Self> ) -> Self;
     fn int( i:i64) -> Self;
-    fn ipAddr( i:std::net::IpAddr) -> Self;
+    fn ip_addr( i:std::net::IpAddr) -> Self;
     fn label( ls:labels::Label) -> Self;
     fn is_label(&self) -> bool;
     fn get_label<'a>(&'a self) -> &'a labels::Label;
@@ -777,7 +777,7 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
     fn bool( b:bool ) -> Self { Self::Bool(b) }
     fn is_bool(&self) -> bool{
         match self {
-            Self::Bool(l) => true,
+            Self::Bool(_) => true,
             _ => false
         }
     }
@@ -813,19 +813,19 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
         }
     }
     fn float( f:f64 ) -> Self { Self::Float(f) }
-    fn httpRequest( r:Box<HttpRequest<FlatTyp, Self>>) -> Self {
+    fn http_request( r:Box<HttpRequest<FlatTyp, Self>>) -> Self {
         Self::HttpRequest(r)
     }
-    fn httpResponse( r:Box<HttpResponse<FlatTyp, Self>>) -> Self {
+    fn http_response( r:Box<HttpResponse<FlatTyp, Self>>) -> Self {
         Self::HttpResponse(r)
     }
     fn id( i:ID<FlatTyp, FlatLiteral> ) -> Self { Self::ID(i) }
     fn int( i:i64) -> Self { Self::Int(i) }
-    fn ipAddr( i:std::net::IpAddr) -> Self { Self::IpAddr(i) }
+    fn ip_addr( i:std::net::IpAddr) -> Self { Self::IpAddr(i) }
     fn label( l:labels::Label) -> Self { Self::Label(l) }
     fn is_label(&self) -> bool{
         match self {
-            Self::Label(l) => true,
+            Self::Label(_) => true,
             _ => false
         }
     }
@@ -841,7 +841,7 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
     fn str( s:String ) -> Self { Self::Str(s) }
     fn is_str(&self) -> bool {
         match self {
-            Self::Str(l) => true,
+            Self::Str(_) => true,
             _ => false
         }
     }
@@ -899,8 +899,8 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Literal<FlatTyp, FlatL
     pub fn bool( b:bool ) -> Self { Self::FlatLiteral(FlatLiteral::bool(b)) }
     pub fn is_bool(&self) -> bool{
         match self {
-            Self::FlatLiteral(fl) => true,
-            _ => unimplemented!() 
+            Self::FlatLiteral(ref fl) => fl.is_bool(),
+            _ => false 
         }
     }
     pub fn get_bool(&self) -> bool{
@@ -913,31 +913,31 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Literal<FlatTyp, FlatL
         Self::FlatLiteral(FlatLiteral::connection(c))
     }
     pub fn data( v:Vec<u8> ) -> Self { Self::FlatLiteral(FlatLiteral::data(v)) }
-    fn is_data(&self) -> bool { 
+    pub fn is_data(&self) -> bool { 
         match self {
             Self::FlatLiteral(fl) => fl.is_data(),
             _ => false
         }
     }
-    fn get_data(&self) -> Vec<u8> { 
+    pub fn get_data(&self) -> Vec<u8> { 
         match self { 
             Self::FlatLiteral(fl) => fl.get_data(),
             _ => unimplemented!()
         }
     }
     pub fn float( f:f64 ) -> Self { Self::FlatLiteral(FlatLiteral::float(f)) }
-    pub fn httpRequest( r:Box<HttpRequest<FlatTyp, FlatLiteral>>) -> Self {
-        Self::FlatLiteral(FlatLiteral::httpRequest(r))
+    pub fn http_request( r:Box<HttpRequest<FlatTyp, FlatLiteral>>) -> Self {
+        Self::FlatLiteral(FlatLiteral::http_request(r))
     }
-    pub fn httpResponse( r:Box<HttpResponse<FlatTyp, FlatLiteral>>) -> Self {
-        Self::FlatLiteral(FlatLiteral::httpResponse(r))
+    pub fn http_response( r:Box<HttpResponse<FlatTyp, FlatLiteral>>) -> Self {
+        Self::FlatLiteral(FlatLiteral::http_response(r))
     }
     pub fn id( i:ID<FlatTyp, FlatLiteral> ) -> Self {
         Self::FlatLiteral(FlatLiteral::id(i)) 
     }
     pub fn int( i:i64) -> Self { Self::FlatLiteral(FlatLiteral::int(i)) }
-    pub fn ipAddr( i:std::net::IpAddr) -> Self {
-        Self::FlatLiteral(FlatLiteral::ipAddr(i))
+    pub fn ip_addr( i:std::net::IpAddr) -> Self {
+        Self::FlatLiteral(FlatLiteral::ip_addr(i))
     }
     pub fn label( l:labels::Label) -> Self {
         Self::FlatLiteral(FlatLiteral::label(l))
@@ -1116,8 +1116,8 @@ impl CPFlatLiteral {
     pub fn typ(&self) -> CPTyp {
         match self {
             //CPFlatLiteral(dpft) => CPTyp::from(dpft.typ())
-            CPFlatLiteral::OnboardingData(_) => CPTyp::onboardingData(),
-            CPFlatLiteral::OnboardingResult(_) => CPTyp::onboardingResult(),
+            CPFlatLiteral::OnboardingData(_) => CPTyp::onboarding_data(),
+            CPFlatLiteral::OnboardingResult(_) => CPTyp::onboarding_result(),
             CPFlatLiteral::Policy(_) => CPTyp::policy(),
             _=> unimplemented!()
         }
@@ -1161,11 +1161,10 @@ impl fmt::Display for CPFlatLiteral {
     }
 }
 impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
-
     fn bool( b:bool ) -> Self { Self::Bool(b) }
     fn is_bool(&self) -> bool{
         match self {
-            Self::Bool(l) => true,
+            Self::Bool(_) => true,
             _ => false
         }
     }
@@ -1202,19 +1201,19 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
         }
     }
     fn float( f:f64 ) -> Self { Self::Float(f) }
-    fn httpRequest( r:Box<HttpRequest<CPFlatTyp, Self>>) -> Self {
+    fn http_request( r:Box<HttpRequest<CPFlatTyp, Self>>) -> Self {
         Self::HttpRequest(r)
     }
-    fn httpResponse( r:Box<HttpResponse<CPFlatTyp, Self>>) -> Self {
+    fn http_response( r:Box<HttpResponse<CPFlatTyp, Self>>) -> Self {
         Self::HttpResponse(r)
     }
     fn id( i:ID<CPFlatTyp, Self> ) -> Self { Self::ID(i) }
     fn int( i:i64) -> Self { Self::Int(i) }
-    fn ipAddr( i:std::net::IpAddr) -> Self { Self::IpAddr(i) }
+    fn ip_addr( i:std::net::IpAddr) -> Self { Self::IpAddr(i) }
     fn label( l:labels::Label) -> Self { Self::Label(l) }
     fn is_label(&self) -> bool{
         match self {
-            Self::Label(l) => true,
+            Self::Label(_) => true,
             _ => false
         }
     }
@@ -1229,7 +1228,7 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
     fn str( s:String ) -> Self { Self::Str(s) }
     fn is_str(&self) -> bool{
         match self {
-            Self::Str(l) => true,
+            Self::Str(_) => true,
             _ => false
         }
     }
@@ -1253,10 +1252,10 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
             CPFlatLiteral::Data(_) => CPFlatTyp::data(),
             CPFlatLiteral::Float(_) => CPFlatTyp::f64(),
             CPFlatLiteral::HttpRequest(_) => CPFlatTyp::http_request(),
-            CPFlatLiteral::HttpResponse(_) => CPFlatTyp::httpResponse(),
+            CPFlatLiteral::HttpResponse(_) => CPFlatTyp::http_response(),
             CPFlatLiteral::ID(_) => CPFlatTyp::id(),
             CPFlatLiteral::Int(_) => CPFlatTyp::i64(),
-            CPFlatLiteral::IpAddr(_) => CPFlatTyp::ipAddr(),
+            CPFlatLiteral::IpAddr(_) => CPFlatTyp::ip_addr(),
             CPFlatLiteral::Label(_) => CPFlatTyp::label(),
             CPFlatLiteral::Regex(_) => CPFlatTyp::regex(),
             CPFlatLiteral::Str(_) => CPFlatTyp::str(),
@@ -1377,7 +1376,7 @@ impl From<&Policy> for CPLiteral {
 }
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<HttpRequest<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
     fn from(r: HttpRequest<FlatTyp, FlatLiteral>) -> Self {
-        Literal::httpRequest(Box::new(r))
+        Literal::http_request(Box::new(r))
     }
 }
 
@@ -1396,7 +1395,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&HttpRequest<Flat
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<HttpResponse<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
     fn from(r: HttpResponse<FlatTyp, FlatLiteral>) -> Self {
-        Literal::httpResponse(Box::new(r))
+        Literal::http_response(Box::new(r))
     }
 }
 
@@ -1443,7 +1442,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<i64> for Literal<
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<std::net::IpAddr> for Literal<FlatTyp, FlatLiteral> {
     fn from(ip: std::net::IpAddr) -> Self {
-        Literal::ipAddr(ip)
+        Literal::ip_addr(ip)
     }
 }
 

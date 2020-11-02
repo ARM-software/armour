@@ -103,10 +103,21 @@ async fn main() -> Result<(), Error> {
             Ok(mut response) => {
                 let body = response.body().await.map_err(|_| "Payload error")?;
                 if response.status().is_success() {
-                    let req: armour_api::control::PolicyUpdateRequest =
-                        serde_json::from_slice(body.as_ref())?;
-                    println!("{}", req.policy);
-                    println!("labels: {:?}", req.labels)
+                    let req: Result<armour_api::control::PolicyUpdateRequest, _> =
+                        serde_json::from_slice(body.as_ref());
+                    match req {
+                        Ok(req) => { 
+                            println!("{}", req.policy);
+                            println!("labels: {:?}", req.labels)
+                        },
+                        Err(_) => {
+                            let req: armour_api::control::PolicyUpdateRequest =
+                                serde_json::from_slice(body.as_ref())?;
+
+                            println!("{}", req.policy);
+                            println!("labels: {:?}", req.labels)
+                        }
+                    }
                 } else {
                     println!("{}", string_from_bytes(body))
                 }

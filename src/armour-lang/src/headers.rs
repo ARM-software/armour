@@ -288,39 +288,38 @@ impl<FlatTyp:TFlatTyp> TBuiltin<FlatTyp> for Typ<FlatTyp> {
                 vec![Typ::FlatTyp(FlatTyp::http_request())],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::str(), Typ::data()]))),
             ),
-            "HttpResponse::reason" => sig(vec![Typ::FlatTyp(FlatTyp::httpResponse())], Typ::str().option()),
+            "HttpResponse::reason" => sig(vec![Typ::FlatTyp(FlatTyp::http_response())], Typ::str().option()),
             "HttpRequest::unique_header" => {
                 sig(vec![Typ::FlatTyp(FlatTyp::http_request()), Typ::str()], Typ::data().option())
             }
             "HttpResponse::from_to" => {
-                sig(vec![Typ::FlatTyp(FlatTyp::httpResponse())], Typ::Tuple(vec![Typ::id(), Typ::id()]))
+                sig(vec![Typ::FlatTyp(FlatTyp::http_response())], Typ::Tuple(vec![Typ::id(), Typ::id()]))
             }
             "HttpResponse::header" => sig(
-                vec![Typ::FlatTyp(FlatTyp::httpResponse()), Typ::str()],
+                vec![Typ::FlatTyp(FlatTyp::http_response()), Typ::str()],
                 Typ::List(Box::new(Typ::data())).option(),
             ),
-            "HttpResponse::headers" => sig(vec![Typ::FlatTyp(FlatTyp::httpResponse())], Typ::List(Box::new(Typ::str()))),
+            "HttpResponse::headers" => sig(vec![Typ::FlatTyp(FlatTyp::http_response())], Typ::List(Box::new(Typ::str()))),
             "HttpResponse::header_pairs" => sig(
-                vec![Typ::FlatTyp(FlatTyp::httpResponse())],
+                vec![Typ::FlatTyp(FlatTyp::http_response())],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::str(), Typ::data()]))),
             ),
             "HttpResponse::unique_header" => {
-                sig(vec![Typ::FlatTyp(FlatTyp::httpResponse()), Typ::str()], Typ::data().option())
+                sig(vec![Typ::FlatTyp(FlatTyp::http_response()), Typ::str()], Typ::data().option())
             }
-            "IpAddr::lookup" => sig(vec![Typ::str()], Typ::List(Box::new(Typ::ipAddr())).option()),
+            "IpAddr::lookup" => sig(vec![Typ::str()], Typ::List(Box::new(Typ::ip_addr())).option()),
             "IpAddr::octets" => sig(
-                vec![Typ::ipAddr()],
+                vec![Typ::ip_addr()],
                 Typ::Tuple(vec![Typ::i64(), Typ::i64(), Typ::i64(), Typ::i64()]),
             ),
             "ID::labels" => sig(vec![Typ::id()], Typ::List(Box::new(Typ::label()))),
             "ID::hosts" => sig(vec![Typ::id()], Typ::List(Box::new(Typ::str()))),
-            "ID::ips" => sig(vec![Typ::id()], Typ::List(Box::new(Typ::ipAddr()))),
+            "ID::ips" => sig(vec![Typ::id()], Typ::List(Box::new(Typ::ip_addr()))),
             "ID::port" => sig(vec![Typ::id()], Typ::i64().option()),
             "Label::captures" => sig(
                 vec![Typ::label(), Typ::label()],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::str(), Typ::str()]))).option(),
             ),
-            "Label::parts" => sig(vec![Typ::label()], Typ::List(Box::new(Typ::str())).option()),
             "Label::parts" => sig(vec![Typ::label()], Typ::List(Box::new(Typ::str())).option()),
             f => FlatTyp::builtins(f),
         }

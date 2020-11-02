@@ -111,9 +111,9 @@ fn http_policy<FlatTyp:TFlatTyp>() -> ProtocolPolicy<FlatTyp> {
     policy.insert_bool(
         ALLOW_REST_RESPONSE,
         vec![
-            vec![Typ::id(), Typ::id(), Typ::httpResponse(), Typ::data()],
-            vec![Typ::FlatTyp(FlatTyp::httpResponse()), Typ::FlatTyp(FlatTyp::data())],
-            vec![Typ::FlatTyp(FlatTyp::httpResponse())],
+            vec![Typ::id(), Typ::id(), Typ::http_response(), Typ::data()],
+            vec![Typ::FlatTyp(FlatTyp::http_response()), Typ::FlatTyp(FlatTyp::data())],
+            vec![Typ::FlatTyp(FlatTyp::http_response())],
             Vec::new(),
         ],
     );
