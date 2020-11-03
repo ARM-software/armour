@@ -366,8 +366,21 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
             "OnboardingData::declaredDomain" => unimplemented!(),
             "OnboardingData::host" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::label()),
             "OnboardingData::service" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::label()),
-            "OnboardingResult::Ok" => sig(vec![CPTyp::id(), CPTyp::FlatTyp(CPFlatTyp::Policy)], CPTyp::FlatTyp(CPFlatTyp::OnboardingResult)),
-            "OnboardingResult::Err" => sig(vec![CPTyp::str(), CPTyp::id(), CPTyp::FlatTyp(CPFlatTyp::Policy)], CPTyp::FlatTyp(CPFlatTyp::OnboardingResult)),
+            "OnboardingResult::Ok" => sig(
+                vec![
+                    CPTyp::id(), 
+                    CPTyp::FlatTyp(CPFlatTyp::Policy), 
+                    CPTyp::FlatTyp(CPFlatTyp::Policy)
+                ],
+                CPTyp::FlatTyp(CPFlatTyp::OnboardingResult)),
+            "OnboardingResult::Err" => sig(
+                vec![
+                    CPTyp::str(),
+                    CPTyp::id(), 
+                    CPTyp::FlatTyp(CPFlatTyp::Policy), 
+                    CPTyp::FlatTyp(CPFlatTyp::Policy)
+                ],
+                CPTyp::FlatTyp(CPFlatTyp::OnboardingResult)),
             _ => convertsig(FlatTyp::builtins(f)),
         }
     }

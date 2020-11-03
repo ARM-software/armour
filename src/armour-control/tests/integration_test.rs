@@ -154,20 +154,25 @@ fn raw_onboard1() -> &'static str {
     fn onboarding_policy(od: OnboardingData) -> OnboardingResult {
         let ep = od.host();
         let service = od.service();
+
         if let Some(id) = ControlPlane::onboarded(ep, service) {
             OnboardingResult::Err(\"Endpoint already onboarded\",
                                 id,
-                                compile_ingress(\"allow_rest_request\", id))
+                                compile_ingress(\"allow_rest_request\", id),
+                                compile_egress(\"allow_rest_request\", id)
+                            )
         } else {
             let id = ControlPlane::newID(service, ep);
             let id = id.add_label(Label::new(\"SecureService\"));
             let id = id.add_label(Label::login_time(System::getCurrentTime()));
+            let pol = (compile_ingress(\"allow_rest_request\", id),compile_egress(\"allow_rest_request\", id));
             if ControlPlane::onboard(id) {
-                OnboardingResult::Ok(id, compile_ingress(\"allow_rest_request\", id))            
+                OnboardingResult::Ok(id, pol.0, pol.1)            
             } else {
                 OnboardingResult::Err(\"Onboard failure\",
                                 id,
-                                compile_ingress(\"allow_rest_request\", id))
+                                pol.0, pol.1)
+
 
             }
         }

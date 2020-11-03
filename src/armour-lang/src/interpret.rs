@@ -723,7 +723,6 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             ("Label::is_match", cpflatlit!(Label(i)), cpflatlit!(Label(j))) => {
                 Some(i.matches_with(j).into())
             }
-            ("OnboardingResult::Ok",  cpflatlit!(ID(id)), cpflatlit!(Policy(p))) => Some(OnboardingResult::new_ok_lit(id.clone(), *p.clone())),
             _ => None,
         }
     }
@@ -744,7 +743,9 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             ("Connection::new", cpflatlit!(ID(from)), cpflatlit!(ID(to)), cpflatlit!(Int(number))) => {
                 Some(Connection::literal(from, to, *number))
             },
-            ("OnboardingResult::Err",  cpflatlit!(Str(err)), cpflatlit!(ID(id)), cpflatlit!(Policy(p))) =>  Some(OnboardingResult::new_err_lit(err.clone(), id.clone(), *p.clone())),
+            ("OnboardingResult::Ok",  cpflatlit!(ID(id)), cpflatlit!(Policy(p1)), cpflatlit!(Policy(p2))) =>{
+                Some(OnboardingResult::new_ok_lit(id.clone(), (*p1.clone(), *p2.clone())))
+            },
             _ => None,
         }
     }
@@ -760,6 +761,9 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             ) => Some(cplit!(IpAddr(std::net::IpAddr::V4(
                 std::net::Ipv4Addr::new(*a as u8, *b as u8, *c as u8, *d as u8),
             )))),
+            ("OnboardingResult::Err",  cpflatlit!(Str(err)), cpflatlit!(ID(id)), cpflatlit!(Policy(p1)), cpflatlit!(Policy(p2))) => {
+                    Some(OnboardingResult::new_err_lit(err.clone(), id.clone(), (*p1.clone(), *p2.clone())))
+            },  
             _ => None,
         }
     }

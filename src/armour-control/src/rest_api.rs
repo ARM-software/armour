@@ -272,7 +272,7 @@ pub mod service {
                     
                     Ok(control::PolicyUpdateRequest{
                         label: service_id,
-                        policy: *local_pol.pol,
+                        policy: *local_pol.0.pol, //TODO only ingress pol is propagated
                         labels: control::LabelMap::default()
                     })
                 },

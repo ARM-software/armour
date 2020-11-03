@@ -679,23 +679,23 @@ impl OnboardingData {
 //TODO find a better structure 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum OnboardingResult {
-    Ok(CPID, Policy),
-    Err(String, CPID, Policy)
+    Ok(CPID, (Policy, Policy)),//ingress policy, egress policy
+    Err(String, CPID, (Policy, Policy))//ingress policy, egress policy
 }
 
 impl OnboardingResult {
-    pub fn new_ok(id: CPID, p: Policy ) -> Self {
+    pub fn new_ok(id: CPID, p: (Policy, Policy) ) -> Self {
         Self::Ok(id, p)
     }
-    pub fn new_err(err: String, id: CPID, p : Policy ) -> Self {
+    pub fn new_err(err: String, id: CPID, p : (Policy, Policy) ) -> Self {
         Self::Err(err, id, p)
     }
-    pub fn new_ok_lit(id: CPID, p: Policy ) -> CPLiteral {
+    pub fn new_ok_lit(id: CPID, p: (Policy, Policy) ) -> CPLiteral {
         Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
             Self::new_ok(id, p)
         )))
     }
-    pub fn new_err_lit(err: String, id: CPID, p : Policy ) -> CPLiteral {
+    pub fn new_err_lit(err: String, id: CPID, p : (Policy, Policy) ) -> CPLiteral {
         Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
             Self::new_err(err, id, p)
         )))

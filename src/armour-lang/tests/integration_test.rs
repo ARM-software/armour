@@ -5,7 +5,6 @@ use armour_lang::labels::{self, *};
 use armour_lang::literals::{self, *};
 use armour_lang::policies;
 use armour_lang::types::{self, *};
-use armour_lang::types_cp::{self, *};
 
 use std::str::FromStr;
 use std::collections::{BTreeMap, BTreeSet};
@@ -88,7 +87,7 @@ async fn id_pol1<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'st
     ";
 
     let args = vec![
-        Literal::httpRequest(Box::new(HttpRequest::new(
+        Literal::http_request(Box::new(HttpRequest::new(
             "method",
             "HTTP_20",
             "path",
@@ -147,7 +146,7 @@ async fn log_pol1<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'s
     ";
 
     let args = vec![
-        Literal::httpRequest(Box::new(HttpRequest::new(
+        Literal::http_request(Box::new(HttpRequest::new(
             "method",
             "HTTP_20",
             "path",
