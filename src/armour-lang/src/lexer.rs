@@ -16,6 +16,12 @@ pub type Span<'a> = LocatedSpan<&'a str>;
 #[derive(Default, PartialEq, Eq, Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct Loc(u32, usize);
 
+impl Loc {
+    pub fn dummy() -> Self {
+        Loc(0,0)
+    }
+}
+
 impl<'a> fmt::Display for Loc {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, r#"line {}, column {}"#, self.0, self.1,)

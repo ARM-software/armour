@@ -271,8 +271,7 @@ fn raw_pol1() -> &'static str {
 fn raw_pol2() -> &'static str {
     "
         fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {
-            to.has_label(Label::new(\"SecureService\")) && 
-            req.method() == \"GET\"
+            req.method() == \"GET\" && to.has_label(Label::new(\"SecureService\")) 
         }
     "
 }
@@ -417,11 +416,52 @@ mod tests_control {
         Ok(())
     }
     
+    //#[actix_rt::test]
+    //async fn test_onboard_pol1_obd1() -> Result<(),  actix_web::Error> {
+    //    let state = mock_state().await.unwrap();
+    //    state.db_con.database("armour").drop(None).await;
+    //    register_policy(&state, raw_pol1()).await.unwrap();
+    //    register_onboarding_policy(&state, raw_onboard1()).await.unwrap();
+
+    //    let request = OnboardServiceRequest{
+    //        service: labels::Label::from_str("Service21").unwrap(),
+    //        host: labels::Label::from_str("Host42").unwrap()
+    //    };
+
+    //    Ok(match service::helper_on_board(&state, request).await? {
+    //        Ok(req) => assert_eq!(1,1),
+    //        Err(res) => panic!(res)
+    //    })
+    //}
+    
+//    #[actix_rt::test]
+//    async fn test_onboard_pol2_obd1() -> Result<(),  actix_web::Error> {
+//        let state = mock_state().await.unwrap();
+//        state.db_con.database("armour").drop(None).await;
+//        register_policy(&state, raw_pol2()).await.unwrap();
+//        register_onboarding_policy(&state, raw_onboard1()).await.unwrap();
+//
+//        let request = OnboardServiceRequest{
+//            service: labels::Label::from_str("Service21").unwrap(),
+//            host: labels::Label::from_str("Host42").unwrap()
+//        };
+//
+//        Ok(match service::helper_on_board(&state, request).await? {
+//            Ok(req) => assert_eq!(req.policy.policy(Protocol::HTTP).unwrap().program.to_string(), 
+//                                  "fn allow_rest_request(req: HttpRequest, payload: data) -> bool {
+//  req.method() == \"GET\" && true
+//}
+//"
+//                                ),
+//            Err(res) => panic!(res)
+//        })
+//    }
+
     #[actix_rt::test]
     async fn test_onboard() -> Result<(),  actix_web::Error> {
         let state = mock_state().await.unwrap();
         state.db_con.database("armour").drop(None).await;
-        register_policy(&state, raw_pol2()).await.unwrap();
+        register_policy(&state, raw_pol1()).await.unwrap();
         register_onboarding_policy(&state, raw_onboard1()).await.unwrap();
 
         let request = OnboardServiceRequest{

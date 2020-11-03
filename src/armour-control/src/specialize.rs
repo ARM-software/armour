@@ -35,8 +35,7 @@ pub trait TSExprPEval : Sized{
 #[async_trait]
 impl TSExprPEval for CPExpr {
     fn peval(self, state: State, env: CPEnv) -> BoxFuture<'static, Result<(bool, Self), self::Error>> {
-        println!("### Peval, interpreting expression: ");
-        self.print_debug();
+        println!("### Peval, interpreting expression: \n{}", self.to_string());
         async { 
             match self {
                 Expr::Var(_) | Expr::BVar(_, _) => Ok((false, self)),
@@ -63,17 +62,15 @@ impl TSExprPEval for CPExpr {
                 Expr::InfixExpr(Infix::And, e1, e2) =>{ 
                     let (b1, n_e1) =  e1.peval(state.clone(), env.clone()).await?;
                     let (b2, n_e2) = e2.peval(state, env).await?;
-                    let flag = b1 && b2; 
-                    n_e1.print_debug();
-                    n_e2.print_debug();
+
                     match n_e1 {
-                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(false))) => Ok((flag, r)),
-                        Expr::LitExpr(cplit!(Bool(true))) => match n_e2 {
-                            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok((flag, r)),
-                            _ if !flag => Ok((flag, n_e2)),
-                            _ => Err(Error::new("peval, && infix")),
+                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(false))) => Ok((b1, r)),
+                        Expr::LitExpr(cplit!(Bool(true))) => Ok((b2, n_e2)),
+                        _ if !b1 =>  match n_e2 {
+                            r2 @ Expr::ReturnExpr(_) | r2 @ Expr::LitExpr(cplit!(Bool(false))) => Ok((b2, r2)),
+                            Expr::LitExpr(cplit!(Bool(true))) => Ok((b1, n_e1)),
+                            _ => Ok((b1 || b2, Expr::InfixExpr(Infix::And, Box::new(n_e1), Box::new(n_e2)))),
                         },
-                        _ if !flag => Ok((flag, Expr::InfixExpr(Infix::And, Box::new(n_e1), Box::new(n_e2)))),
                         _ => Err(Error::new("peval, && infix")),
                     }
                 },
@@ -81,16 +78,15 @@ impl TSExprPEval for CPExpr {
                 Expr::InfixExpr(Infix::Or, e1, e2) => {
                     let (b1, n_e1) =  e1.peval(state.clone(), env.clone()).await?;
                     let (b2, n_e2) = e2.peval(state, env).await?;
-                    let flag = b1 && b2; 
 
                     match n_e1 {
-                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(true))) => Ok((flag, r)),
-                        Expr::LitExpr(cplit!(Bool(false))) => match n_e2 {
-                            r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok((flag, r)),
-                            _ if !flag => Ok((flag, n_e2)),
-                            _ => Err(Error::new("peval, infix")),
+                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(true))) => Ok((b1, r)),
+                        Expr::LitExpr(cplit!(Bool(false))) => Ok((b2, n_e2)),
+                        _ if !b1 => match n_e2 {
+                            Expr::LitExpr(cplit!(Bool(false))) => Ok((b1, n_e1)),
+                            r2 @ Expr::ReturnExpr(_) | r2 @ Expr::LitExpr(cplit!(Bool(true))) => Ok((b2, r2)),
+                            _ => Ok((b1 || b2, Expr::InfixExpr(Infix::Or, Box::new(n_e1), Box::new(n_e2)))),
                         },
-                        _ if !flag => Ok((flag, Expr::InfixExpr(Infix::Or, Box::new(n_e1), Box::new(n_e2)))),
                         _ => Err(Error::new("peval, infix")),
                 }
                 },
@@ -524,13 +520,10 @@ pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPoli
             None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", function))), 
             Some(ref fexpr) => {    
                 let fexpr = fexpr.clone().propagate_subst(2, 1, &Expr::LitExpr(Literal::id(to.clone()))); 
-                //println!("#### After subst of 'to'");
-                //fexpr.print_debug();
                 match fexpr.pevaluate(state, env).await {                        
                     Ok((_, e)) =>{ 
                         println!{"{}",e};
                         let mut e = e.apply(&Expr::call("HttpRequest::from", vec![Expr::bvar("req", 0)]))?;
-                        //e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;
                         e = e.apply(&Expr::bvar("req", 0))?;
                         e = e.apply(&Expr::bvar("payload", 1))?;
 
@@ -542,6 +535,10 @@ pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPoli
                         let ret_typ = pol.program.headers.remove(&function.to_string()).unwrap().typ(); //unwrap is safe since we are actually working on existing fct
                         let sig = Signature::new(vec![Typ::http_request(), Typ::data()], ret_typ);
                         pol.program.headers.insert(function.to_string(), sig);
+
+
+                        //Deadcode elimination
+                        pol.program = pol.program.deadcode_elim(&vec![function.to_string()][..])?;
                     },
                     Err(err) => return Err(err)
                 }
@@ -577,7 +574,17 @@ pub async fn compile_egress(state: &State, mut global_pol: policies::GlobalPolic
                         e = e.apply(&Expr::bvar("req", 0))?;
                         e = e.apply(&Expr::bvar("payload", 1))?;
 
+                        e = Expr::Closure(Ident("req".to_string()), Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e))));
+                        
                         pol.program.code.insert(function.to_string(), e.clone()); 
+                        
+                        //Update headers
+                        let ret_typ = pol.program.headers.remove(&function.to_string()).unwrap().typ(); //unwrap is safe since we are actually working on existing fct
+                        let sig = Signature::new(vec![Typ::http_request(), Typ::data()], ret_typ);
+                        pol.program.headers.insert(function.to_string(), sig);
+
+                        //Deadcode elimination
+                        pol.program = pol.program.deadcode_elim(&vec![function.to_string()][..])?;
                     },
                     Err(err) => return Err(err)
                 }
