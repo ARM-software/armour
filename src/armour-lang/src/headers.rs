@@ -381,6 +381,11 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
                     CPTyp::FlatTyp(CPFlatTyp::Policy)
                 ],
                 CPTyp::FlatTyp(CPFlatTyp::OnboardingResult)),
+            "OnboardingResult::ErrStr" => sig(
+                vec![
+                    CPTyp::str(),
+                ],
+                CPTyp::FlatTyp(CPFlatTyp::OnboardingResult)),
             _ => convertsig(FlatTyp::builtins(f)),
         }
     }

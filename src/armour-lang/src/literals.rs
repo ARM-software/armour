@@ -680,7 +680,7 @@ impl OnboardingData {
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum OnboardingResult {
     Ok(CPID, (Policy, Policy)),//ingress policy, egress policy
-    Err(String, CPID, (Policy, Policy))//ingress policy, egress policy
+    Err(String, Option<CPID>, Option<(Policy, Policy)>)//ingress policy, egress policy
 }
 
 impl OnboardingResult {
@@ -688,7 +688,10 @@ impl OnboardingResult {
         Self::Ok(id, p)
     }
     pub fn new_err(err: String, id: CPID, p : (Policy, Policy) ) -> Self {
-        Self::Err(err, id, p)
+        Self::Err(err, Some(id), Some(p))
+    }
+    pub fn new_err_str(err: String ) -> Self {
+        Self::Err(err, None, None)
     }
     pub fn new_ok_lit(id: CPID, p: (Policy, Policy) ) -> CPLiteral {
         Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
@@ -698,6 +701,11 @@ impl OnboardingResult {
     pub fn new_err_lit(err: String, id: CPID, p : (Policy, Policy) ) -> CPLiteral {
         Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
             Self::new_err(err, id, p)
+        )))
+    }
+    pub fn new_err_str_lit(err: String) -> CPLiteral {
+        Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
+            Self::new_err_str(err)
         )))
     }
 }
@@ -1359,12 +1367,7 @@ impl From<OnboardingResult> for CPLiteral {
 }
 impl From<&OnboardingResult> for CPLiteral {
     fn from(res: &OnboardingResult) -> Self {
-        Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
-            match *res {
-                OnboardingResult::Ok(ref id, ref pol) => OnboardingResult::new_ok(id.clone(), pol.clone()),
-                OnboardingResult::Err(ref err, ref id, ref pol) => OnboardingResult::new_err(err.clone(), id.clone(), pol.clone())
-            }
-        )))
+        Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(res.clone())))
     }
 }
 impl From<Policy> for CPLiteral {

@@ -100,49 +100,48 @@ use armour_lang::{
     expressions,
     interpret::CPEnv,
     literals::{self, CPFlatLiteral, CPLiteral},
-    policies::{self, ObPolicy, ONBOARDING_SERVICES},
+    policies::{self, ONBOARDING_SERVICES},
 };
 use futures::future::{BoxFuture, FutureExt};
 use super::interpret::*;
 
 //TODO get ride of ObPolicy and write a default OnboardingPolicy
 pub struct OnboardingPolicy{
-    policy: ObPolicy,
-    env: Option<CPEnv>,
+    policy: policies::OnboardingPolicy,
+    env: CPEnv,
     //status: PolicyStatus, FIXME maybe needed to add a timeout
 }
 
 impl OnboardingPolicy{
     fn new(pol : policies::OnboardingPolicy) -> Self {
-        let env = Some(CPEnv::new(&pol.program));
+        let env = CPEnv::new(&pol.program);
         OnboardingPolicy {
-            policy: ObPolicy::Custom(pol),
+            policy: pol,
             env,
         }
     }
 
-    fn set_policy(&mut self, p: ObPolicy) {
+    fn set_policy(&mut self, p: policies::OnboardingPolicy) {
         //self.status.update_for_policy(&p);
         self.policy = p;
-        self.env = match self.policy() {
-            ObPolicy::Custom(ref pol) => Some(CPEnv::new(pol.program())),
-            _ => None
-        };
+        self.env = CPEnv::new(self.policy.program());
     }
-    fn policy(&self) -> ObPolicy {
+    fn policy(&self) -> policies::OnboardingPolicy {
         self.policy.clone()
     }
-    fn env(&self) -> &Option<CPEnv> {
+    fn env(&self) -> &CPEnv {
         &self.env
     }
-    fn evaluate_custom(//<T: std::convert::TryFrom<literals::CPLiteral> + Send + 'static>(
+
+    fn evaluate(//<T: std::convert::TryFrom<literals::CPLiteral> + Send + 'static>(
         &self,
         state: State,
         onboarding_data: expressions::CPExpr,//onboardingData
     ) -> BoxFuture<'static, Result<Box<literals::OnboardingResult>, expressions::Error>> {
         log::debug!("evaluting onboarding service policy");
         let now = std::time::Instant::now();
-        let env = match self.env { Some(ref env) => env.clone(), _ => panic!("should never happen")}; //FIXME find a better structure than the panic 
+        let env =self.env.clone(); 
+
         async move {
             let result = expressions::Expr::call(ONBOARDING_SERVICES, vec!(onboarding_data))
                 .sevaluate(&state, env.clone())
@@ -162,34 +161,18 @@ impl OnboardingPolicy{
         }
         .boxed()
     }
-    fn evaluate(//<T: std::convert::TryFrom<literals::CPLiteral> + Send + 'static>(
-        &self,
-        state: &State,
-        onboarding_data: expressions::CPExpr,//onboardingData
-    ) -> BoxFuture<'static, Result<Box<literals::OnboardingResult>, expressions::Error>> {
-        log::debug!("evaluting onboarding service policy");
-        match self.policy {
-            ObPolicy::Custom(_) => self.evaluate_custom(state.clone(), onboarding_data),
-            ObPolicy::None => {
-                async move {
-                    Err(expressions::Error::new("onboarding is disallowed, onboarding policy needed")) 
-                }.boxed()
-            }
-        }
-    }
 }
 
 impl Default for OnboardingPolicy {
     fn default() -> Self {
-        let policy = ObPolicy::onboard_none();
-        let env = match policy {
-            ObPolicy::Custom(ref pol) => Some(CPEnv::new(pol.program())),
-            _ => None
-        };
-        OnboardingPolicy {
-            policy,
-            env,
-        }
+        let raw_pol = "
+            fn onboarding_policy(od: OnboardingData) -> OnboardingResult {
+                OnboardingResult::ErrStr(\"Onboarding disabled by default, update the onboarding policy first.\")
+            }
+        ";
+        let policy = policies::OnboardingPolicy::from_buf(raw_pol).unwrap();
+        let env = CPEnv::new(policy.program());
+        OnboardingPolicy { policy, env }
     }
 }
 
@@ -262,7 +245,7 @@ pub mod service {
         );            
 
         //Eval policy and register specialized policies
-        Ok(match ob_policy.evaluate(state, onboarding_data).await {
+        Ok(match ob_policy.evaluate(state.clone(), onboarding_data).await {
             Ok(obr) => match *obr {
                 OnboardingResult::Ok(id, local_pol) => {
                     let service_id = id.find_label(

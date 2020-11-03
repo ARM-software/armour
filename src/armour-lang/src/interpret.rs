@@ -626,6 +626,9 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             },
             ("OnboardingData::host", cpflatlit!(OnboardingData(obd))) => Some(obd.host_lit()),
             ("OnboardingData::service", cpflatlit!(OnboardingData(obd))) => Some(obd.service_lit()),
+            ("OnboardingResult::ErrStr",  cpflatlit!(Str(err))) => {
+                Some(OnboardingResult::new_err_str_lit(err.clone()))
+            },
             _ => None,
         }
     }

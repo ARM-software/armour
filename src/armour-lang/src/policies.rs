@@ -616,27 +616,14 @@ impl OnboardingPolicy {
     pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, expressions::Error> {
         Self::inner_from(lang::PreProgram::from_file(path)?)
     }
-}
-#[derive(Serialize, Deserialize, Clone)]
-pub enum ObPolicy {
-    None, //Onboard no services
-    Custom(OnboardingPolicy) //Use cuserd defined policy
-}
-
-impl ObPolicy {
-    pub fn onboard_none() -> Self {
-        Self::None
-    }
+    
     pub fn onboard_from(p: lang::CPProgram) -> Self {
-        Self::Custom(OnboardingPolicy {
+        OnboardingPolicy {
             //name: ONBOARDING_SERVICES.to_string(),
             //sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
             fn_policies: FnPolicies::default(),
             program: p,
-        })
-    }
-    pub fn from_buf(buf: &str) -> Result<Self, expressions::Error> {
-        Ok(Self::Custom(OnboardingPolicy::from_buf(buf)?))
+        }
     }
 }
 
