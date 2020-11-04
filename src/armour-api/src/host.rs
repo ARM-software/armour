@@ -5,6 +5,7 @@ use crate::{DeserializeDecoder, SerializeEncoder};
 use actix::prelude::*;
 use armour_lang::{
     labels::{Label, Labels},
+    literals::{DPID},
     policies,
 };
 use bytes::BytesMut;
@@ -44,7 +45,7 @@ pub struct PolicyStatus {
 #[derive(Serialize, Deserialize, Message)]
 #[rtype("()")]
 pub enum PolicyResponse {
-    Connect(u32, Label, String, String), // (PID, name, http hash, tcp hash)
+    Connect(u32, Option<DPID>, Label, String, String), // (PID, name, http hash, tcp hash)
     RequestFailed,
     ShuttingDown,
     Started,

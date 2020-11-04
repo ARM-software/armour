@@ -1,7 +1,7 @@
 //! Control plane API
 
 use armour_lang::labels::{Label, Labels};
-use armour_lang::literals::{CPID};
+use armour_lang::literals::{CPID, DPID};
 use armour_lang::policies::{self, OnboardingPolicy, GlobalPolicies, DPPolicies};
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +23,7 @@ pub struct OnboardHostRequest {
 pub struct OnboardServiceRequest {
     pub service: Label,
     pub host: Label,
+    pub tmp_dpid: Option<DPID>
 }
 
 #[derive(Serialize, Deserialize)]

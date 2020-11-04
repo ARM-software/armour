@@ -236,7 +236,12 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> ID<FlatTyp, FlatLitera
     pub fn ips(&self) -> Literal<FlatTyp, FlatLiteral> {
         Literal::List(self.ips.iter().map(|ip| Literal::ip_addr(*ip)).collect())
     }
-    pub fn port(&self) -> Literal<FlatTyp, FlatLiteral> {
+
+    pub fn port(&self) -> Option<u16> {
+        self.port
+    } 
+
+    pub fn port_lit(&self) -> Literal<FlatTyp, FlatLiteral> {
         match self.port {
             Some(p) => Literal::int(p.into()).some(),
             None => Literal::none(),
@@ -639,10 +644,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> VecSet<FlatTyp, FlatLi
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct OnboardingData {
     //host description                
-    host : labels::Label, 
+    host: labels::Label, 
 
     //service description
-    service : labels::Label,                  
+    service: labels::Label,                  
+    port: Option<u16>,
     //TODO
 
     //authentification description
@@ -656,10 +662,12 @@ impl OnboardingData {
     pub fn new(
         host: labels::Label,
         service: labels::Label,
+        port: Option<u16>,
     ) -> Self {
         OnboardingData {
-            host: host,
-            service: service,
+            host,
+            service,
+            port
         }
     }
     pub fn service(&self) -> labels::Label {
@@ -667,6 +675,9 @@ impl OnboardingData {
     }
     pub fn host(&self) -> labels::Label {
         self.host.clone()
+    }
+    pub fn port(&self) -> Option<u16> {
+        self.port.clone()
     }
     pub fn service_lit(&self) -> CPLiteral {
         CPLiteral::FlatLiteral(CPFlatLiteral::Label(self.service.clone()))
@@ -1351,10 +1362,7 @@ impl From<OnboardingData> for CPLiteral {
 impl From<&OnboardingData> for CPLiteral {
     fn from(data: &OnboardingData) -> Self {
         Literal::FlatLiteral(
-            CPFlatLiteral::OnboardingData(Box::new(OnboardingData::new(
-                data.host(),
-                data.service()
-            )))
+            CPFlatLiteral::OnboardingData(Box::new(data.clone()))
         )
     }
 }
@@ -1426,7 +1434,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<ID<FlatTyp, FlatL
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&ID<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
     fn from(id: &ID<FlatTyp, FlatLiteral>) -> Self {
-        Literal::Tuple(vec![id.hosts(), id.ips(), id.port(), id.labels()])
+        Literal::Tuple(vec![id.hosts(), id.ips(), id.port_lit(), id.labels()])
     }
 }
 

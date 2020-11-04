@@ -149,9 +149,13 @@ async fn helper_onboard(state: State, id: &CPID) ->  Result<CPLiteral, self::Err
         Some(l) => l.clone(),
         _ =>  return Err(Error::from(format!("Extracting service from id labels")))
     };
+    
+    let mut new_id = id.clone();
+    new_id.port = None; //FIXME, use this due to some issues with bson encoding,  don't know how to use #[serde(with = "bson::compat::u2f")] with Option<u16>
+
     let request = control::POnboardServiceRequest {
         service: service.clone(),
-        service_id: id.clone(),
+        service_id: new_id.clone(),
         host: host.clone()
     };                       
     let col = collection(&state, SERVICES_COL);
@@ -159,7 +163,7 @@ async fn helper_onboard(state: State, id: &CPID) ->  Result<CPLiteral, self::Err
         Some(l) => l.clone(),
         _ =>  return Err(Error::from(format!("Extracting service_id from id labels")))
     };
-
+    
     // Check if the service is already there
     if present(&col, doc! { "service_id" : to_bson(&service_id)? }).await? {
         Ok(cplit!(Bool(true)))
@@ -188,6 +192,24 @@ impl TSLitInterpret for CPLiteral {
             ( "ControlPlane::onboard", cplit!(ID(service_id)) ) => { 
                 Ok(Some(helper_onboard(state, service_id).await?))
             },
+            ( "ControlPlane::newID", cplit!(OnboardingData(obd)) ) => { 
+                let mut service_id = Label::concat(&obd.host(), &obd.service());//TODO refine newid
+                service_id.prefix("ServiceID".to_string());                    
+                let mut service = obd.service();
+                service.prefix("Service".to_string());
+                let mut host = obd.host();
+                host.prefix("Host".to_string());
+
+                //TODO add host to id.hosts
+
+                let mut id = CPID::default();
+                id.port = obd.port();
+                let id = id.add_label(&service_id);
+                let id = id.add_label(&service);
+                let id = id.add_label(&host);
+
+                Ok(Some(cplit!(ID(id))))
+            }
             _ => Ok(self.eval_call1(f)),
         }
     }
@@ -206,27 +228,6 @@ impl TSLitInterpret for CPLiteral {
             ) => { 
                 Ok(Some(helper_onboarded(state, service, host).await?))
             },
-            (
-                "ControlPlane::newID", 
-                cplit!(Label(service)), 
-                cplit!(Label(host))
-            ) => { 
-                let mut service_id = Label::concat(host, service);//TODO refine newid
-                service_id.prefix("ServiceID".to_string());                    
-                let mut service = service.clone();
-                service.prefix("Service".to_string());
-                let mut host = host.clone();
-                host.prefix("Host".to_string());
-
-                //TODO add host to id.hosts
-
-                let id = CPID::default();
-                let id = id.add_label(&service_id);
-                let id = id.add_label(&service);
-                let id = id.add_label(&host);
-
-                Ok(Some(cplit!(ID(id))))
-            }
             _ => Ok(self.eval_call2(f, other)),
         }
     }

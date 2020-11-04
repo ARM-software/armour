@@ -277,34 +277,34 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  Program<FlatTyp, Flat
         match e {
             Expr::Var(_) | Expr::BVar(_, _) | Expr::LitExpr(_) => Ok(()),
             Expr::ReturnExpr(e) | Expr::PrefixExpr(_, e) |Expr::Closure(_, e) => Self::aux_deadcode_elim(module, e, own_idx),
-            Expr::InfixExpr(_, e1, e2) | Expr::Let(_, e1, e2) | Expr::Iter(_, _, e1, e2)=> {Self::aux_deadcode_elim(module, e1, own_idx); Self::aux_deadcode_elim(module, e2, own_idx)},
-            Expr::BlockExpr(_, xs) => {xs.iter().map(|e| Self::aux_deadcode_elim(module, e, own_idx)).collect::<Result<(), Error>>(); Ok(())},
+            Expr::InfixExpr(_, e1, e2) | Expr::Let(_, e1, e2) | Expr::Iter(_, _, e1, e2)=> {Self::aux_deadcode_elim(module, e1, own_idx)?; Self::aux_deadcode_elim(module, e2, own_idx)},
+            Expr::BlockExpr(_, xs) => {xs.iter().map(|e| Self::aux_deadcode_elim(module, e, own_idx)).for_each(drop); Ok(())},
             Expr::IfExpr { cond, consequence, alternative} => {
-                Self::aux_deadcode_elim(module, cond, own_idx);
-                Self::aux_deadcode_elim(module, consequence, own_idx); 
+                Self::aux_deadcode_elim(module, cond, own_idx)?;
+                Self::aux_deadcode_elim(module, consequence, own_idx)?; 
                 match alternative {
                     Some(e3) => Self::aux_deadcode_elim(module, e3, own_idx),
                     _ => Ok(())
                 }
             },
             Expr::IfSomeMatchExpr  { expr, consequence, alternative} => {
-                Self::aux_deadcode_elim(module, expr, own_idx); 
-                Self::aux_deadcode_elim(module, consequence, own_idx); 
+                Self::aux_deadcode_elim(module, expr, own_idx)?; 
+                Self::aux_deadcode_elim(module, consequence, own_idx)?; 
                 match alternative {
                     Some(e3) => Self::aux_deadcode_elim(module, e3, own_idx),
                     _ => Ok(())
                 }
             },
-            Expr::IfMatchExpr { variables, matches, consequence, alternative} => {
-                matches.iter().map(|(e,_)| Self::aux_deadcode_elim(module, e, own_idx)).collect::<Result<(), Error>>();
-                Self::aux_deadcode_elim(module, consequence, own_idx);
+            Expr::IfMatchExpr { variables:_, matches, consequence, alternative} => {
+                matches.iter().map(|(e,_)| Self::aux_deadcode_elim(module, e, own_idx)).for_each(drop);
+                Self::aux_deadcode_elim(module, consequence, own_idx)?;
                 match alternative {
                     Some(e3) => Self::aux_deadcode_elim(module, e3, own_idx),
                     _ => Ok(())
                 }
             },
-            Expr::CallExpr { function, arguments, is_async} => {
-                arguments.iter().map(|e| Self::aux_deadcode_elim(module, e, own_idx)).collect::<Result<(), Error>>();
+            Expr::CallExpr { function, arguments, is_async:_} => {
+                arguments.iter().map(|e| Self::aux_deadcode_elim(module, e, own_idx)).for_each(drop);
                 if  !<Headers<FlatTyp>>::is_internal(&function) {
                     let call_idx = module 
                         .call_graph

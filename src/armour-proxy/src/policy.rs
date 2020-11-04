@@ -3,7 +3,7 @@ use super::{http_policy::HttpPolicy, http_proxy, tcp_policy::TcpPolicy, tcp_prox
 use actix::prelude::*;
 use actix_web::http::uri;
 use armour_api::host::{PolicyResponse, Status};
-use armour_api::proxy::{LabelOp, PolicyCodec, PolicyRequest};
+use armour_api::proxy::{HttpConfig, LabelOp, PolicyCodec, PolicyRequest};
 use armour_lang::{
     expressions,
     interpret::DPEnv,
@@ -14,6 +14,7 @@ use armour_lang::{
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::WriteHalf;
 use tokio_util::codec::FramedRead;
@@ -82,9 +83,25 @@ pub struct PolicyActor {
 impl Actor for PolicyActor {
     type Context = Context<Self>;
     fn started(&mut self, _ctx: &mut Self::Context) {
+        let dpid = {
+            if let Some(ingress) = self.http.ingress() {
+                Some(self.id(ID::SocketAddr(ingress)))
+            } else if let Some(port) = self.http.port() {
+                let mut id = literals::ID::default();
+                id.port = Some(port);
+                Some(id)
+            } else if let Some(port) = self.tcp.port()  {
+                let mut id = literals::ID::default();
+                id.port = Some(port);
+                Some(id)
+            } else { 
+                None
+            }
+        };
         // send a connection message to the data plane host
         self.uds_framed.write(PolicyResponse::Connect(
             std::process::id(),
+            dpid,
             self.label.clone(),
             self.http.hash(),
             self.tcp.hash(),

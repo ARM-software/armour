@@ -4,7 +4,7 @@ use super::host::{
 use actix::prelude::*;
 use armour_api::host::{self, HostCodec, PolicyResponse};
 use armour_api::proxy::PolicyRequest;
-use armour_lang::{labels::Label, policies::Protocol};
+use armour_lang::{labels::Label, literals::DPID, policies::Protocol};
 use log::*;
 use std::collections::HashMap;
 use std::fmt;
@@ -20,6 +20,7 @@ pub enum InstanceSelector {
 #[derive(Clone)]
 pub struct Meta {
     pub pid: u32,
+    pub tmp_dpid: Option<DPID>,
     pub label: Label,
     pub http: String, // hash of HTTP policy
     pub tcp: String,  // hash of TCP policy
@@ -36,9 +37,10 @@ impl From<&Meta> for host::PolicyStatus {
 }
 
 impl Meta {
-    fn new(pid: u32, label: Label, http: String, tcp: String) -> Self {
+    fn new(pid: u32, tmp_dpid: Option<DPID>, label: Label, http: String, tcp: String) -> Self {
         Meta {
             pid,
+            tmp_dpid,
             label,
             http,
             tcp,
@@ -137,10 +139,10 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
     fn handle(&mut self, msg: Result<PolicyResponse, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
             match msg {
-                PolicyResponse::Connect(pid, label, http, tcp) => {
-                    info!(r#"{}: connect with process "{}" {}"#, self.id, label, pid);
+                PolicyResponse::Connect(pid, tmp_dpid, label, http, tcp) => {
+                    info!(r#"{}: connect with process "{}" {} {:?}"#, self.id, label, pid, tmp_dpid);
                     self.host
-                        .do_send(RegisterProxy(self.id, Meta::new(pid, label, http, tcp)))
+                        .do_send(RegisterProxy(self.id, Meta::new(pid, tmp_dpid, label, http, tcp)))
                 }
                 PolicyResponse::Started => info!("{}: started a proxy", self.id),
                 PolicyResponse::Stopped => info!("{}: stopped a proxy", self.id),

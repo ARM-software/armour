@@ -155,11 +155,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> PartialOrd for Protoco
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
             (Self::HTTP, Self::TCP) => Some(Ordering::Less),
-            (x1, x2) if x1 == x2 => Some(Ordering::Equal),
+            (Self::TCP, Self::TCP) => Some(Ordering::Equal),
+            (Self::HTTP, Self::HTTP) => Some(Ordering::Equal),
             (Self::TCP, Self::HTTP) => Some(Ordering::Greater),
             (Self::Phantom(_), _) => Some(Ordering::Less),
             (_, Self::Phantom(_)) => Some(Ordering::Greater),
-            _ => None
         }
     }
 }

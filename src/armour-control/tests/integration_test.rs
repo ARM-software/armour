@@ -151,9 +151,9 @@ async fn load_onboarding_policy(
 
 fn raw_onboard1() -> &'static str {
 "
-    fn onboarding_policy(od: OnboardingData) -> OnboardingResult {
-        let ep = od.host();
-        let service = od.service();
+    fn onboarding_policy(obd: OnboardingData) -> OnboardingResult {
+        let ep = obd.host();
+        let service = obd.service();
 
         if let Some(id) = ControlPlane::onboarded(ep, service) {
             OnboardingResult::Err(\"Endpoint already onboarded\",
@@ -162,7 +162,7 @@ fn raw_onboard1() -> &'static str {
                                 compile_egress(\"allow_rest_request\", id)
                             )
         } else {
-            let id = ControlPlane::newID(service, ep);
+            let id = ControlPlane::newID(obd);
             let id = id.add_label(Label::new(\"SecureService\"));
             let id = id.add_label(Label::login_time(System::getCurrentTime()));
             let pol = (compile_ingress(\"allow_rest_request\", id),compile_egress(\"allow_rest_request\", id));
@@ -184,6 +184,7 @@ async fn onboarding_pol1() ->  Result<(CPExpr, CPEnv),  expressions::Error> {
     let ob_data = OnboardingData::new(
         Label::from_str("host").map_err(|x| expressions::Error::from(x)).unwrap(),
         Label::from_str("service").map_err(|x| expressions::Error::from(x)).unwrap(),
+        Some(80),
     );
 
     //let raw_pol = "
@@ -471,7 +472,13 @@ mod tests_control {
 
         let request = OnboardServiceRequest{
             service: labels::Label::from_str("Service21").unwrap(),
-            host: labels::Label::from_str("Host42").unwrap()
+            host: labels::Label::from_str("Host42").unwrap(),
+            tmp_dpid: Some(literals::DPID::new(
+                BTreeSet::default(),
+                BTreeSet::default(),
+                Some(80),
+                BTreeSet::default()
+            ))
         };
 
         Ok(match service::helper_on_board(&state, request).await? {

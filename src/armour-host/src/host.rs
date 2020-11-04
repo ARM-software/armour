@@ -136,6 +136,7 @@ impl Handler<Disconnect> for ArmourDataHost {
                             let onboard = OnboardServiceRequest {
                                 service: meta.label,
                                 host: self.label.clone(),
+                                tmp_dpid: None
                             };
                             let url = self.url.clone();
                             let client = self.client.clone();
@@ -177,6 +178,8 @@ impl Handler<RegisterProxy> for ArmourDataHost {
     fn handle(&mut self, msg: RegisterProxy, ctx: &mut Context<Self>) -> Self::Result {
         if let Some(instance) = self.instances.0.get_mut(&msg.0) {
             let label = msg.1.label.clone();
+            let tmp_dpid = msg.1.tmp_dpid.clone();
+
             instance.set_meta(msg.1);
             // if host on-boarded then notify control plane
             if self.onboarded {
@@ -187,6 +190,7 @@ impl Handler<RegisterProxy> for ArmourDataHost {
                 let onboard = OnboardServiceRequest {
                     service: label,
                     host: self.label.clone(),
+                    tmp_dpid: tmp_dpid.clone()
                 };
                 let url = self.url.clone();
                 let url_clone = self.url.clone();

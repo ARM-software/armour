@@ -240,7 +240,8 @@ pub mod service {
             literals::CPLiteral::FlatLiteral(literals::CPFlatLiteral::OnboardingData(
                 Box::new(literals::OnboardingData::new(
                     request.host.clone(),
-                    request.service.clone()
+                    request.service.clone(),
+                    match request.tmp_dpid { Some(x) => x.port(), _ => None}
             ))))
         );            
 

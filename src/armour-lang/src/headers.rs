@@ -360,7 +360,7 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
             "compile_egress" => sig(vec![CPTyp::str(), CPTyp::id()], CPTyp::FlatTyp(CPFlatTyp::Policy)),
             "ControlPlane::onboard" => sig(vec![CPTyp::id()], CPTyp::bool()),
             "ControlPlane::onboarded" => sig(vec![CPTyp::label(), CPTyp::label()], CPTyp::id().option()),
-            "ControlPlane::newID" => sig(vec![CPTyp::label(), CPTyp::label()], CPTyp::id()),
+            "ControlPlane::newID" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::id()),
             "Label::new" => sig(vec![CPTyp::str()], CPTyp::label()),
             "Label::login_time" => sig(vec![CPTyp::i64()], CPTyp::label()),
             "OnboardingData::declaredDomain" => unimplemented!(),

@@ -136,6 +136,12 @@ impl HttpPolicy {
     pub fn set_timeout(&mut self, secs: u8) {
         self.status.timeout = std::time::Duration::from_secs(secs.into())
     }
+    pub fn ingress(&self) -> Option<std::net::SocketAddr> {
+        match self.proxy.as_ref().map(|p| p.ingress.map(std::net::SocketAddr::from)) {
+            Some(x) => x,
+            None => None
+        }
+    }
 }
 
 /// Information about REST policies
