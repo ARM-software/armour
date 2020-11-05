@@ -11,6 +11,7 @@ use armour_lang::literals::{
     CPFlatLiteral,
     TFlatLiteral
 };
+use armour_lang::policies::{GlobalPolicies};
 use armour_lang::parser::{Infix, Iter};
 use super::specialize;
 use armour_lang::types::{CPFlatTyp};
@@ -83,45 +84,48 @@ impl<T> OnErr<T, bson::de::Error> for bson::de::Result<T> {}
 impl<T> OnErr<T, bson::ser::Error> for bson::ser::Result<T> {}
 impl<T> OnErr<T, mongodb::error::Error> for mongodb::error::Result<T> {}
 
-//pub async fn get_global_pol(state: State, function: &String, id: &CPID) ->  Result<CPLiteral, self::Error> {
-
-pub async fn helper_compile_ingress(state: State, function: &String, id: &CPID) ->  Result<CPLiteral, self::Error> {
+pub async fn get_global_pol(state: State) ->  Result<control::CPPolicyUpdateRequest, self::Error> {
     let col = collection(&state, POLICIES_COL);
     if let Ok(Some(doc)) = col
         .find_one(Some(doc! {"label" : to_bson(&global_policy_label())?}), None)
         .await
     {
-        let global_pol=
-            bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc))
-                .on_err("Bson conversion error")?;
-        let local_pol = specialize::compile_ingress(&state, global_pol.policy, function, id).await?;        
+        bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc))
+            .on_err("Bson conversion error")
+    } else {
+        Ok(control::CPPolicyUpdateRequest{
+            label:global_policy_label(),
+            policy: GlobalPolicies::default(),
+            labels: control::LabelMap::default()
+        })
+    }
+}
+
+pub async fn helper_compile_ingress(
+    state: State, 
+    function: &String, 
+    id: &CPID
+) ->  Result<CPLiteral, self::Error> {
+        let global_pol=get_global_pol(state.clone()).await?;
         
         Ok(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
             Box::new(literals::Policy::from(
-                local_pol  
+                specialize::compile_ingress(&state, global_pol.policy, function, id).await?  
             ))
         )))
-    } else {
-        Err(Error::from(format!("helper_compile_ingress, No global policy in MongoDB")))
-    }
 }
-async fn helper_compile_egress(state: State, function: &String, id: &CPID) ->  Result<CPLiteral, self::Error> {
-    let col = collection(&state, POLICIES_COL);
-    if let Ok(Some(doc)) = col
-        .find_one(Some(doc! {"label" : to_bson(&global_policy_label()).unwrap()}), None)
-        .await
-    {
-        let global_pol=
-            bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc))
-                .on_err("Bson conversion error")?;
+async fn helper_compile_egress(
+    state: State, 
+    function: &String, 
+    id: &CPID
+) ->  Result<CPLiteral, self::Error> {
+        let global_pol=get_global_pol(state.clone()).await?;
+
         Ok(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
             Box::new(literals::Policy::from(
                 specialize::compile_egress(&state, global_pol.policy, function, id).await?
             ))
         )))
-    } else {
-        Err(Error::from(format!("helper_compile_egress, No global policy in MongoDB")))
-    }
 }
 
 async fn helper_onboarded(state: State, service: &Label, host: &Label) ->  Result<CPLiteral, self::Error>  {
