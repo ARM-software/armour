@@ -27,6 +27,11 @@ pub struct OnboardServiceRequest {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct OnboardServiceResponse {
+    pub service_id: Label,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct POnboardServiceRequest {
     pub service: Label,
     pub service_id: CPID, //assigned by control plane

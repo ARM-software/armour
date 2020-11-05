@@ -167,6 +167,13 @@ mod tests_dplang {
     use super::*;
 
     #[actix_rt::test]
+    async fn test_matches() {
+       let label1 = Label::from_str("Ingress::armour").unwrap();
+       let label2 = Label::from_str("Ingress::armour").unwrap();
+        assert!(label1.matches_with(&label2));
+    } 
+
+    #[actix_rt::test]
     async fn test_eval_req_id() -> Result<(),  expressions::Error> {
         assert_eq!(id_pol1::<FlatTyp, FlatLiteral>().await?, Expr::LitExpr(Literal::bool(false)));
         Ok(())

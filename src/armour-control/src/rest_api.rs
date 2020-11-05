@@ -228,7 +228,7 @@ pub mod service {
     pub async fn helper_on_board(
         state: &State,
         request: control::OnboardServiceRequest,
-    ) -> Result<Result<control::PolicyUpdateRequest, String>, actix_web::Error> {
+    ) -> Result<Result<(Label, control::PolicyUpdateRequest, control::PolicyUpdateRequest), String>, actix_web::Error> {
         let service = &request.service;
         log::info!("onboarding service: {}", service);
 
@@ -254,11 +254,19 @@ pub mod service {
                     ).ok_or(internal("Extracting service_id from id labels"))?
                     .clone(); 
                     
-                    Ok(control::PolicyUpdateRequest{
-                        label: service_id,
-                        policy: *local_pol.0.pol, //TODO only ingress pol is propagated
-                        labels: control::LabelMap::default()
-                    })
+                    Ok((
+                        service_id.clone(),
+                        control::PolicyUpdateRequest{
+                            label: service_id.clone(),
+                            policy: *local_pol.0.pol,
+                            labels: control::LabelMap::default()
+                        },
+                        control::PolicyUpdateRequest{
+                            label: service_id,
+                            policy: *local_pol.1.pol, 
+                            labels: control::LabelMap::default()
+                        }
+                    ))
                 },
                 OnboardingResult::Err(e, _,_) => { Err(e) } 
             }
@@ -272,9 +280,26 @@ pub mod service {
         state: State,
         request: Json<control::OnboardServiceRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
+        let label = request.service.clone();
         match helper_on_board(&state, request.into_inner()).await? {
-            Ok(request) => {log::info!("helper_on_board successfull"); policy::helper_update(client, state, request).await}, 
-            Err(s)=> {log::info!("helper_on_board failure: {}", s); Ok(internal(s))}  
+            Ok((service_id, ingress_req, egress_req)) =>{
+                match label.get_string(0) {
+                    Some(s) if s == "Egress".to_string() =>{
+                        policy::helper_update(client.clone(), state.clone(), egress_req).await?;
+                        Ok(HttpResponse::Ok().json(control::OnboardServiceResponse{
+                            service_id: service_id,
+                        }))
+                    },
+                   Some(s) if s == "Ingress".to_string() =>{
+                        policy::helper_update(client.clone(), state.clone(), ingress_req).await?;
+                        Ok(HttpResponse::Ok().json(control::OnboardServiceResponse{
+                            service_id: service_id,
+                        }))
+                    },
+                    _ => Ok(internal(format!("this neither an ingress nor an egress proxy")))
+                }
+            }, 
+            Err(s)=> Ok(internal(s))  
         }
     }
 
@@ -283,18 +308,25 @@ pub mod service {
         state: State,
         request: Json<control::OnboardServiceRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
+        let mut request = request.into_inner();
+        request.service.prefix("Service".to_string());
+
         let service = &request.service;
         log::info!("dropping service: {}", service);
         let col = collection(&state, SERVICES_COL);
 
-        if let bson::Bson::Document(document) = to_bson(&request.into_inner())? {
-            col.delete_one(document, None) // Insert into a MongoDB collection
-                .await
-                .on_err("error inserting in MongoDB")?;
-            Ok(HttpResponse::Ok().body("success"))
-        } else {
-            Ok(internal("error extracting document"))
-        }
+        col.delete_one(doc!{"service": request.service.to_string()}, None) // Insert into a MongoDB collection
+            .await
+            .on_err("error inserting in MongoDB")?;
+        Ok(HttpResponse::Ok().body("success"))
+        //if let bson::Bson::Document(document) = to_bson(&request)? {
+        //    col.delete_one(document, None) // Insert into a MongoDB collection
+        //        .await
+        //        .on_err("error inserting in MongoDB")?;
+        //    Ok(HttpResponse::Ok().body("success"))
+        //} else {
+        //    Ok(internal("error extracting document"))
+        //}
     }
 }
 
@@ -361,7 +393,10 @@ pub mod policy {
     ) -> Result<(), actix_web::Error> {
         let hosts = hosts(state, label).await?;
         log::debug!("hosts: {:?}", hosts);
+        log::info!("TODO hosts: {:?}", hosts);
         for host in hosts {
+            log::info!("TODO host: {:?}", host);
+
             if let Some(host_str) = host.host_str() {
                 let req = PolicyUpdate {
                     label: label.clone(),

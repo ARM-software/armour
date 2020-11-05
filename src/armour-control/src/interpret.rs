@@ -83,6 +83,7 @@ impl<T> OnErr<T, bson::de::Error> for bson::de::Result<T> {}
 impl<T> OnErr<T, bson::ser::Error> for bson::ser::Result<T> {}
 impl<T> OnErr<T, mongodb::error::Error> for mongodb::error::Result<T> {}
 
+//pub async fn get_global_pol(state: State, function: &String, id: &CPID) ->  Result<CPLiteral, self::Error> {
 
 pub async fn helper_compile_ingress(state: State, function: &String, id: &CPID) ->  Result<CPLiteral, self::Error> {
     let col = collection(&state, POLICIES_COL);
@@ -141,11 +142,11 @@ async fn helper_onboarded(state: State, service: &Label, host: &Label) ->  Resul
 }
 
 async fn helper_onboard(state: State, id: &CPID) ->  Result<CPLiteral, self::Error>  {
-    let host = match id.find_label(&Label::from_str("Host::*")?) {
+    let host = match id.find_label(&Label::from_str("Host::**")?) {
         Some(l) => l.clone(),
         _ =>  return Err(Error::from(format!("Extracting host from id labels")))
     };
-    let service = match id.find_label(&Label::from_str("Service::*")?) {
+    let service = match id.find_label(&Label::from_str("Service::**")?) {
         Some(l) => l.clone(),
         _ =>  return Err(Error::from(format!("Extracting service from id labels")))
     };

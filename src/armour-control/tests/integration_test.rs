@@ -472,7 +472,7 @@ mod tests_control {
         register_onboarding_policy(&state, raw_onboard1()).await.unwrap();
 
         let request = OnboardServiceRequest{
-            service: labels::Label::from_str("Service21").unwrap(),
+            service: labels::Label::from_str("Service21::ingress").unwrap(),
             host: labels::Label::from_str("Host42").unwrap(),
             tmp_dpid: Some(literals::DPID::new(
                 BTreeSet::default(),
@@ -483,7 +483,7 @@ mod tests_control {
         };
 
         Ok(match service::helper_on_board(&state, request).await? {
-            Ok(req) => println!("Updating policy for label {}\n{}", req.label, req.policy),
+            Ok((service_id, ingress_req, egress_req)) => println!("Updating policy for label {}\n{}", ingress_req.label, ingress_req.policy),
             Err(res) => panic!(res)
         })
     }

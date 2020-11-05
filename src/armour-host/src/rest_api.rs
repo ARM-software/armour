@@ -6,7 +6,8 @@ pub mod service {
 	use actix_web::{delete, post, web, HttpResponse};
 	use armour_api::host::{OnboardInformation, Proxies, Proxy};
 	use armour_api::proxy::{HttpConfig, LabelOp, PolicyRequest};
-	use armour_lang::labels::Labels;
+	use armour_lang::labels::{Label, Labels};
+	use std::str::FromStr;
 
 	#[derive(Debug)]
 	struct MailboxError;
@@ -79,10 +80,23 @@ pub mod service {
 	) -> Result<HttpResponse, actix_web::Error> {
 		let information = information.into_inner();
 		let port = information.top_port();
+
+		let mut proxies = Vec::new();
 		for proxy in information.proxies {
+			let mut p_ingress = proxy.clone();
+			p_ingress.label = Label::concat(&Label::from_str("Ingress").unwrap(), &proxy.label);
+			let mut p_egress = proxy.clone();
+			p_egress.label = Label::concat(&Label::from_str("Egress").unwrap(), &proxy.label);
+			proxies.push(p_ingress);
+			proxies.push(p_egress);
+		}
+
+		for proxy in proxies {
+		//for proxy in information.proxies {
 			// launch proxies (if not already launched)
 			launch_proxy(&host, &proxy).await?;
 			let instance = InstanceSelector::Label(proxy.label.clone());
+			
 			// add service labels
 			add_ip_labels(&host, &instance, &information.labels).await?;
 			let config = proxy.config(port);

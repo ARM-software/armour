@@ -1,7 +1,8 @@
 use super::instance::{ArmourDataInstance, Instance, InstanceSelector, Instances, Meta};
 use actix::prelude::*;
+use actix_web::{web::Json};
 use armour_api::{
-    control::{OnboardServiceRequest, PolicyQueryRequest, PolicyQueryResponse},
+    control::{OnboardServiceRequest, OnboardServiceResponse, PolicyQueryRequest, PolicyQueryResponse},
     host::{self, HostCodec},
     proxy::{LabelOp, PolicyRequest},
 };
@@ -10,6 +11,7 @@ use log::*;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use tokio_util::codec::FramedRead;
+use std::str::FromStr;
 
 /// Actor that handles Unix socket connections
 pub struct ArmourDataHost {
@@ -184,11 +186,8 @@ impl Handler<RegisterProxy> for ArmourDataHost {
             // if host on-boarded then notify control plane
             if self.onboarded {
                 let instance = InstanceSelector::Label(label.clone());
-                let query = PolicyQueryRequest {
-                    label: label.clone(),
-                };
                 let onboard = OnboardServiceRequest {
-                    service: label,
+                    service: label.clone(),
                     host: self.label.clone(),
                     tmp_dpid: tmp_dpid.clone()
                 };
@@ -197,7 +196,7 @@ impl Handler<RegisterProxy> for ArmourDataHost {
                 let client = self.client.clone();
                 // on-board
                 async move {
-                    crate::control_plane(
+                    crate::control_plane_deserialize::<_, OnboardServiceResponse>(
                         client,
                         &url,
                         http::Method::POST,
@@ -210,14 +209,21 @@ impl Handler<RegisterProxy> for ArmourDataHost {
                 .then(|on_board_res, act, _ctx| {
                     let client = act.client.clone();
                     async move {
-                        match on_board_res {
-                            Ok(message) => {
-                                log::info!("registered service with control plane: {}", message)
+                        let service_id = match on_board_res {
+                            Ok(req) => {
+                                log::info!("registered service with control plane: {}", req.service_id);
+                                req.service_id
                             }
-                            Err(err) => {
-                                log::warn!("failed to register service with control plane: {}", err)
+                            Err(ref err) => {
+                                log::warn!("failed to register service with control plane: {}", err);
+                                label.clone()
                             }
                         };
+
+                        let query = PolicyQueryRequest {
+                            label: service_id,
+                        };
+
                         // query policy
                         crate::control_plane_deserialize::<_, PolicyQueryResponse>(
                             client,
@@ -227,6 +233,7 @@ impl Handler<RegisterProxy> for ArmourDataHost {
                             &query,
                         )
                         .await
+
                     }
                     .into_actor(act)
                     .then(|policy_res, act, ctx| {
@@ -248,6 +255,7 @@ impl Handler<RegisterProxy> for ArmourDataHost {
                         };
                         async {}.into_actor(act)
                     })
+
                 })
                 .wait(ctx)
             }
