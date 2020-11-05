@@ -54,10 +54,10 @@ impl FnPolicies {
         )
     }
     fn is_allow_all(&self) -> bool {
-        self.0.values().all(|p| *p == FnPolicy::Allow)
+        !self.0.is_empty() && self.0.values().all(|p| *p == FnPolicy::Allow)
     }
     fn is_deny_all(&self) -> bool {
-        self.0.values().all(|p| *p == FnPolicy::Deny)
+        !self.0.is_empty() && self.0.values().all(|p| *p == FnPolicy::Deny)
     }
 }
 
@@ -451,7 +451,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, Flat
     fn inner_from(pre_prog: lang::PreProgram<FlatTyp, FlatLiteral>) -> Result<Self, expressions::Error> {
         let mut policies = Policies::default();
         let http : Protocol<FlatTyp, FlatLiteral> = Protocol::HTTP;
-        let tcp : Protocol<FlatTyp, FlatLiteral> = Protocol::HTTP;
+        let tcp : Protocol<FlatTyp, FlatLiteral> = Protocol::TCP;
         let http_prog = pre_prog.program(&http.functions());
         if !http_prog.is_empty() {
             policies.0.insert(

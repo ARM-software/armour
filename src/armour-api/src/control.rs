@@ -53,7 +53,7 @@ pub struct CPPolicyUpdateRequest {
     pub labels: LabelMap,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OnboardingUpdateRequest {
     pub label: Label,
     pub policy: OnboardingPolicy,

@@ -94,7 +94,7 @@ pub async fn helper_compile_ingress(state: State, function: &String, id: &CPID) 
             bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc))
                 .on_err("Bson conversion error")?;
         let local_pol = specialize::compile_ingress(&state, global_pol.policy, function, id).await?;        
-        println!("ingress local pol built");
+        
         Ok(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
             Box::new(literals::Policy::from(
                 local_pol  
@@ -301,7 +301,7 @@ impl TSExprInterpret for CPExpr {
     }
     #[allow(clippy::cognitive_complexity)]
     fn seval(self, state: State, env: CPEnv) -> BoxFuture<'static, Result<Self, self::Error>> {
-        println!("### Seval, interpreting expression: ");
+        //println!("### Seval, interpreting expression: ");
         //self.print_debug();
         async {
             match self {
@@ -565,10 +565,10 @@ impl TSExprInterpret for CPExpr {
                     match args.iter().find(|r| r.is_return()) {
                         Some(r) => Ok(r.clone()),
                         None => {
-                            println!("#### Seval callexpr");
+                            //println!("#### Seval callexpr");
                             if let Some(mut r) = env.get(&function) {
-                                println!("* Seval user function {}", function);
-                                r.print_debug();
+                                //println!("* Seval user function {}", function);
+                                //r.print_debug();
                                 // user defined function
                                 for a in args {
                                     r = r.apply(&a)?

@@ -94,34 +94,64 @@ async fn main() -> Result<(), Error> {
         let query_payload = control::PolicyQueryRequest {
             label: service.parse()?,
         };
-        match client
-            .get(url("policy/query"))
-            .send_json(&query_payload)
-            .await
-        {
-            Ok(mut response) => {
-                let body = response.body().await.map_err(|_| "Payload error")?;
-                if response.status().is_success() {
-                    let req: Result<armour_api::control::PolicyUpdateRequest, _> =
-                        serde_json::from_slice(body.as_ref());
-                    match req {
-                        Ok(req) => { 
-                            println!("{}", req.policy);
-                            println!("labels: {:?}", req.labels)
-                        },
-                        Err(_) => {
-                            let req: armour_api::control::PolicyUpdateRequest =
-                                serde_json::from_slice(body.as_ref())?;
 
-                            println!("{}", req.policy);
-                            println!("labels: {:?}", req.labels)
-                        }
+        if query_matches.is_present("ONBOARDING") {
+            match client
+                .get(url("policy/query-onboarding"))
+                .send_json(&query_payload)
+                .await
+            {
+                Ok(mut response) => {
+                    let body = response.body().await.map_err(|_| "Payload error")?;
+                    if response.status().is_success() {
+                        let req: armour_api::control::OnboardingUpdateRequest =
+                            serde_json::from_slice(body.as_ref())?;
+                        println!("{}", req.policy);
+                        println!("labels: {:?}", req.labels)
+                    } else {
+                        println!("{}", string_from_bytes(body))
                     }
-                } else {
-                    println!("{}", string_from_bytes(body))
                 }
+                Err(err) => println!("{}", err),
             }
-            Err(err) => println!("{}", err),
+        } else if query_matches.is_present("GLOBAL") {
+            match client
+                .get(url("policy/query-global"))
+                .send_json(&query_payload)
+                .await
+            {
+                Ok(mut response) => {
+                    let body = response.body().await.map_err(|_| "Payload error")?;
+                    if response.status().is_success() {
+                        let req: armour_api::control::CPPolicyUpdateRequest =
+                            serde_json::from_slice(body.as_ref())?;
+                        println!("{}", req.policy);
+                        println!("labels: {:?}", req.labels)
+                    } else {
+                        println!("{}", string_from_bytes(body))
+                    }
+                }
+                Err(err) => println!("{}", err),
+            }
+        } else {
+            match client
+                .get(url("policy/query"))
+                .send_json(&query_payload)
+                .await
+            {
+                Ok(mut response) => {
+                    let body = response.body().await.map_err(|_| "Payload error")?;
+                    if response.status().is_success() {
+                        let req: armour_api::control::PolicyUpdateRequest =
+                            serde_json::from_slice(body.as_ref())?;
+                        println!("{}", req.policy);
+                        println!("labels: {:?}", req.labels)
+                    } else {
+                        println!("{}", string_from_bytes(body))
+                    }
+                }
+                Err(err) => println!("{}", err),
+            }
         }
     }
     // drop

@@ -353,7 +353,7 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
                 }
             }
         };
-        println!("builtins {}\n", f);
+
         match f {
             //Onboarding policy
             "compile_ingress" => sig(vec![CPTyp::str(), CPTyp::id()], CPTyp::FlatTyp(CPFlatTyp::Policy)),

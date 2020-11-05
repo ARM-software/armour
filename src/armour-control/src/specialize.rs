@@ -35,7 +35,7 @@ pub trait TSExprPEval : Sized{
 #[async_trait]
 impl TSExprPEval for CPExpr {
     fn peval(self, state: State, env: CPEnv) -> BoxFuture<'static, Result<(bool, Self), self::Error>> {
-        println!("### Peval, interpreting expression: \n{}", self.to_string());
+        //println!("### Peval, interpreting expression: \n{}", self.to_string());
         async { 
             match self {
                 Expr::Var(_) | Expr::BVar(_, _) => Ok((false, self)),
@@ -415,7 +415,6 @@ impl TSExprPEval for CPExpr {
                         args.push(e.peval(state.clone(), env.clone()).await?)
                     }                        
                     let flag = args.iter().fold(true, |f, e| f && e.0);
-                    println!("Flag: {}", flag);
                     match args.iter().find(|r| r.1.is_return()) {
                         Some(r) => Ok((flag, r.1.clone())),
                         None if flag => {
@@ -522,7 +521,6 @@ pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPoli
                 let fexpr = fexpr.clone().propagate_subst(2, 1, &Expr::LitExpr(Literal::id(to.clone()))); 
                 match fexpr.pevaluate(state, env).await {                        
                     Ok((_, e)) =>{ 
-                        println!{"{}",e};
                         let mut e = e.apply(&Expr::call("HttpRequest::from", vec![Expr::bvar("req", 0)]))?;
                         e = e.apply(&Expr::bvar("req", 0))?;
                         e = e.apply(&Expr::bvar("payload", 1))?;

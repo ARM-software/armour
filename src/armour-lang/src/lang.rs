@@ -170,10 +170,8 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> PreProgram<FlatTyp, Fl
         prog
     }
     pub fn from_buf(buf: &str) -> Result<Self, Error> {
-        println!("lang::PreProgram::from_bu, building preprogrm");
         let pre_prog: PreProgram<FlatTyp, FlatLiteral> = buf.parse()?;
         pre_prog.call_graph.check_for_cycles()?;
-        println!("lang::PreProgram::from_bu, preprogram built");
         Ok(pre_prog)
     }
     pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, Error> {

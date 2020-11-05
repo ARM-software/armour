@@ -96,6 +96,8 @@ async fn main() -> Result<(), Error> {
                     .service(rest_api::policy::update_onboarding)
                     .service(rest_api::policy::update_global)
                     .service(rest_api::policy::query)
+                    .service(rest_api::policy::query_onboarding)
+                    .service(rest_api::policy::query_global)
                     .service(rest_api::policy::drop)
                     .service(rest_api::policy::drop_all)
                     .default_service(web::to(index)),

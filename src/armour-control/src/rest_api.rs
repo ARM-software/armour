@@ -209,7 +209,7 @@ pub mod service {
         Ok(HttpResponse::Ok().body(s))
     }
 
-    async fn get_onboarding_policy(state: &State) -> Result<OnboardingPolicy, actix_web::Error>{
+    pub async fn get_onboarding_policy(state: &State) -> Result<OnboardingPolicy, actix_web::Error>{
         let pol_col = collection(&state, POLICIES_COL);
 
         if let Ok(Some(doc)) = pol_col
@@ -273,8 +273,8 @@ pub mod service {
         request: Json<control::OnboardServiceRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
         match helper_on_board(&state, request.into_inner()).await? {
-            Ok(request) => policy::helper_update(client, state, request).await, 
-            Err(s)=> Ok(internal(s))  
+            Ok(request) => {log::info!("helper_on_board successfull"); policy::helper_update(client, state, request).await}, 
+            Err(s)=> {log::info!("helper_on_board failure: {}", s); Ok(internal(s))}  
         }
     }
 
@@ -517,13 +517,49 @@ pub mod policy {
             .find_one(Some(doc! { "label" : label.to_string() }), None)
             .await
         {
-            let current =
-                bson::from_bson::<control::PolicyUpdateRequest>(bson::Bson::Document(doc))
-                    .on_err("Bson conversion error")?;
+            
+            let current = bson::from_bson::<control::PolicyUpdateRequest>(bson::Bson::Document(doc.clone()))
+                            .on_err("Bson conversion error")?;
             Ok(HttpResponse::Ok().json(current))
         } else {
             Ok(HttpResponse::NotFound().body(format!("no policy for {}", label)))
         }
+    }
+    #[get("/query-global")]
+    async fn query_global(
+        state: State,
+        request: Json<control::PolicyQueryRequest>,
+    ) -> Result<HttpResponse, actix_web::Error> {
+        let label = &request.label;
+        log::info!("querying policy for {}", label);
+        let col = collection(&state, POLICIES_COL);
+        if let Ok(Some(doc)) = col
+            .find_one(Some(doc! { "label" : label.to_string() }), None)
+            .await
+        {
+            
+            let current = bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc.clone()))
+                            .on_err("Bson conversion error")?;
+            Ok(HttpResponse::Ok().json(current))
+        } else {
+            Ok(HttpResponse::NotFound().body(format!("no policy for {}", label)))
+        }
+    }
+    #[get("/query-onboarding")]
+    async fn query_onboarding(
+        state: State,
+        request: Json<control::PolicyQueryRequest>,
+    ) -> Result<HttpResponse, actix_web::Error> {
+        let label = &request.label;
+        log::info!("querying policy for {}", label);
+
+        let current = control::OnboardingUpdateRequest{
+            label: onboarding_policy_label(),
+            policy: service::get_onboarding_policy(&state).await?.policy(),
+            labels: control::LabelMap::default() 
+        };
+
+        Ok(HttpResponse::Ok().json(current))
     }
 
     #[delete("/drop")]

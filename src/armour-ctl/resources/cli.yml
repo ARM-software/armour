@@ -77,6 +77,16 @@ subcommands:
   - query:
       about: Query a policy
       args:
+        - GLOBAL:
+            long: global    
+            required: false
+            takes_value: false
+            help: Global policy flag
+        - ONBOARDING:
+            long: onboarding    
+            required: false
+            takes_value: false
+            help: Onboarding policy flag
         - SERVICE:
             short: s
             long: service

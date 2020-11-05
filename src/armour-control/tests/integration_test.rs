@@ -25,6 +25,7 @@ use futures::{future::BoxFuture, Stream};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 //clear && RUST_MIN_STACK=8388608 cargo test -j 20 -- --nocapture test_seval_onboarding
+//rsync -avz src vagrant@localhost:~/ -e "ssh -p 2222 -i /home/marmotte/armour/examples/.vagrant/machines/default/virtualbox/private_key" --exclude=target/
 async fn mock_state () -> Result<State, Error> {
     let mongo_url = "mongodb://localhost:27017" ;
 
