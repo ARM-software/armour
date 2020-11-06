@@ -54,7 +54,8 @@ async fn register_policy(
     let request = CPPolicyUpdateRequest {
         label: global_policy_label(),
         policy: policies::Policies::from_buf(raw_pol)?,
-        labels: LabelMap::default()
+        labels: LabelMap::default(),
+        selector: None 
     };
     let label = &request.label.clone();
     println!(r#"updating policy for label "{}""#, label);
@@ -361,7 +362,7 @@ mod tests_control {
         let state = mock_state().await.map_err(|x|expressions::Error::from(format!("{:?}", x)))?;
         state.db_con.database("armour").drop(None).await;
         register_policy(&state, raw_pol1()).await?;
-
+        
         if let Ok(Some(doc)) = collection(&state.clone(), POLICIES_COL)
             .find_one(Some(doc! {"label" : to_bson(&global_policy_label()).unwrap()}), None)
             .await

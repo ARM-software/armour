@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 use super::rest_api::{State};
 use super::interpret::{TSExprInterpret};
 use async_trait::async_trait;
+use std::sync::Arc;
 
 macro_rules! cplit (
   ($i: ident ($($args:tt)*) ) => (
@@ -28,13 +29,13 @@ macro_rules! cplit (
 
 #[async_trait]
 pub trait TSExprPEval : Sized{
-    fn peval(self, state: State, env: CPEnv) -> BoxFuture<'static, Result<(bool, Self), self::Error>>; 
-    async fn pevaluate(self, state: &State, env: CPEnv) -> Result<(bool, Self), self::Error>; 
+    fn peval(self, state: Arc<State>, env: CPEnv) -> BoxFuture<'static, Result<(bool, Self), self::Error>>; 
+    async fn pevaluate(self, state: Arc<State>, env: CPEnv) -> Result<(bool, Self), self::Error>; 
 }
 
 #[async_trait]
 impl TSExprPEval for CPExpr {
-    fn peval(self, state: State, env: CPEnv) -> BoxFuture<'static, Result<(bool, Self), self::Error>> {
+    fn peval(self, state: Arc<State>, env: CPEnv) -> BoxFuture<'static, Result<(bool, Self), self::Error>> {
         //println!("### Peval, interpreting expression: \n{}", self.to_string());
         async { 
             match self {
@@ -423,7 +424,7 @@ impl TSExprPEval for CPExpr {
                                 for a in args.into_iter().map(|x| x.1) {
                                     r = r.apply(&a)?
                                 }
-                                r.pevaluate(&state, env).await
+                                r.pevaluate(state, env).await
                             } else if CPHeaders::is_builtin(&function) {
                                     Ok((flag, Expr::seval_call(
                                         state,
@@ -474,7 +475,7 @@ impl TSExprPEval for CPExpr {
                                 for a in args.into_iter().map(|x| x.1) {
                                     r = r.apply(&a)?
                                 }
-                                match r.pevaluate(&state, env).await {
+                                match r.pevaluate(state, env).await {
                                     Ok((_, r)) => Ok((false, r)),
                                     err => err
                                 }
@@ -494,13 +495,13 @@ impl TSExprPEval for CPExpr {
         }.boxed()
     }
 
-    async fn pevaluate(self, state: &State, env: CPEnv) -> Result<(bool, Self), self::Error> {
+    async fn pevaluate(self, state: Arc<State>, env: CPEnv) -> Result<(bool, Self), self::Error> {
         let (b, e) = self.peval(state.clone(), env).await?;
         Ok((b,e.strip_return()))
     }
 }
 
-pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPolicies, function: &str, to: &CPID) -> Result<policies::DPPolicies, self::Error> {
+pub async fn compile_ingress(state: Arc<State>, mut global_pol: policies::GlobalPolicies, function: &str, to: &CPID) -> Result<policies::DPPolicies, self::Error> {
     for (_, pol)  in (&mut global_pol).policies_mut() {
         let env = CPEnv::new(&pol.program);        
 
@@ -519,7 +520,7 @@ pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPoli
             None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", function))), 
             Some(ref fexpr) => {    
                 let fexpr = fexpr.clone().propagate_subst(2, 1, &Expr::LitExpr(Literal::id(to.clone()))); 
-                match fexpr.pevaluate(state, env).await {                        
+                match fexpr.pevaluate(state.clone(), env).await {                        
                     Ok((_, e)) =>{ 
                         let mut e = e.apply(&Expr::call("HttpRequest::from", vec![Expr::bvar("req", 0)]))?;
                         e = e.apply(&Expr::bvar("req", 0))?;
@@ -546,7 +547,7 @@ pub async fn compile_ingress(state: &State, mut global_pol: policies::GlobalPoli
     Ok(policies::DPPolicies::from(global_pol))
 }
 
-pub async fn compile_egress(state: &State, mut global_pol: policies::GlobalPolicies, function: &str, from: &CPID) -> Result<policies::DPPolicies, self::Error> {
+pub async fn compile_egress(state: Arc<State>, mut global_pol: policies::GlobalPolicies, function: &str, from: &CPID) -> Result<policies::DPPolicies, self::Error> {
     for (_, pol)  in (&mut global_pol).policies_mut() {
         let env = CPEnv::new(&pol.program);        
 
@@ -565,7 +566,7 @@ pub async fn compile_egress(state: &State, mut global_pol: policies::GlobalPolic
             None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", function))), 
             Some(ref fexpr) => {    
                 let fexpr = fexpr.clone().propagate_subst(3, 0, &Expr::LitExpr(Literal::id(from.clone()))); 
-                match fexpr.pevaluate(state, env).await {                        
+                match fexpr.pevaluate(state.clone(), env).await {                        
                     Ok((_, e)) =>{ 
 
                         let mut e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;

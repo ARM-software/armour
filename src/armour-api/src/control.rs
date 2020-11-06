@@ -56,6 +56,8 @@ pub struct CPPolicyUpdateRequest {
     pub label: Label,
     pub policy: GlobalPolicies,
     pub labels: LabelMap,
+    //used to select onboarded services that need to be updated when the global policy is updated
+    pub selector: Option<Label>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -73,6 +75,7 @@ impl OnboardingUpdateRequest {
             label: self.label.clone(),
             policy: g,
             labels: self.labels,
+            selector: None,
         }
     }
     pub fn unpack(pol: CPPolicyUpdateRequest) -> Self {

@@ -8,6 +8,7 @@ use armour_lang::{
 };
 use bson::doc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 
 
@@ -104,6 +105,7 @@ use armour_lang::{
 };
 use futures::future::{BoxFuture, FutureExt};
 use super::interpret::*;
+use super::specialize::{compile_egress, compile_ingress};
 
 //TODO get ride of ObPolicy and write a default OnboardingPolicy
 pub struct OnboardingPolicy{
@@ -144,7 +146,7 @@ impl OnboardingPolicy{
 
         async move {
             let result = expressions::Expr::call(ONBOARDING_SERVICES, vec!(onboarding_data))
-                .sevaluate(&state, env.clone())
+                .sevaluate(Arc::new(state), env.clone())
                 .await?;
             //let meta = env.egress().await;
             log::debug!("result ({:?}): {}", now.elapsed(), result);
@@ -362,6 +364,24 @@ pub mod policy {
         Ok(services)
     }
 
+    async fn services_full(state: &State) -> Result<Vec<control::POnboardServiceRequest>, actix_web::Error> {
+        use futures::StreamExt;
+        let mut services = Vec::new();
+        let mut docs = collection(state, SERVICES_COL)
+            .find(doc! {}, None)
+            .await
+            .on_err("error finding services")?;
+        while let Some(doc) = docs.next().await {
+            if let Ok(doc) = doc {
+                let service =
+                    bson::from_bson::<control::POnboardServiceRequest>(bson::Bson::Document(doc))
+                        .on_err("Bson conversion error")?;
+                services.push(service);
+            }
+        }
+        Ok(services)
+    }
+
     async fn hosts(state: &State, label: &Label) -> Result<BTreeSet<url::Url>, actix_web::Error> {
         use futures::StreamExt;
         let hosts_col = collection(state, HOSTS_COL);
@@ -377,6 +397,8 @@ pub mod policy {
                     bson::from_bson::<control::OnboardServiceRequest>(bson::Bson::Document(doc))
                         .on_err("Bson conversion error")?
                         .host;
+                let host = Label::from_str("Host::<<host>>").unwrap().match_with(&host).unwrap().get_label("host").unwrap().clone();
+
                 // find host
                 if let Ok(Some(doc)) = hosts_col
                     .find_one(Some(doc! { "label" : to_bson(&host)? }), None)
@@ -397,17 +419,15 @@ pub mod policy {
         client: &client::Client,
         state: &State,
         label: &Label,
+        local_label: &Label,
         policy: &DPPolicies,
     ) -> Result<(), actix_web::Error> {
         let hosts = hosts(state, label).await?;
-        log::debug!("hosts: {:?}", hosts);
         
         for host in hosts {
-            log::info!("TODO host: {:?}", host);
-
             if let Some(host_str) = host.host_str() {
                 let req = PolicyUpdate {
-                    label: label.clone(),
+                    label: local_label.clone(),
                     policy: policy.clone(),
                 };
                 let url = format!(
@@ -487,6 +507,7 @@ pub mod policy {
     pub async fn helper_update(
         client: web::Data<client::Client>,
         state: State,
+        local_label: &Label,
         request: control::PolicyUpdateRequest,
     ) -> Result<HttpResponse, actix_web::Error> {
         let label = &request.label.clone();
@@ -503,7 +524,7 @@ pub mod policy {
                 .await
                 .on_err("error inserting new policy")?;
             // push policy to hosts
-            update_hosts(&client.into_inner(), &state, label, &request.policy).await?;
+            update_hosts(&client.into_inner(), &state, label, local_label, &request.policy).await?;
             Ok(HttpResponse::Ok().finish())
         } else {
             log::warn!("error converting the BSON object into a MongoDB document");
@@ -512,6 +533,7 @@ pub mod policy {
     }
     #[post("/update-global")]
     pub async fn update_global(
+        client: web::Data<client::Client>,
         state: State,
         request: Json<control::CPPolicyUpdateRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
@@ -531,6 +553,64 @@ pub mod policy {
             col.insert_one(document, None)
                 .await
                 .on_err("error inserting new policy")?;
+
+            log::info!("global policy has been updated");
+            //by default all onboarding services are concerned
+            let selector = &request.selector.unwrap_or(Label::from_str("ServiceID::**").unwrap());
+            log::info!("propagating to proxies according to selector: {}", selector);    
+            let services = services_full(&state).await?.into_iter().filter(|service|
+                service.service_id.has_label(&selector)
+            );
+            let ingress_selector = Label::from_str("Service::Ingress::**").unwrap();
+            let egress_selector = Label::from_str("Service::Egress::**").unwrap();
+            let global_policy = request.policy.clone();
+            for service in services {
+                let local_label = get_local_service_label(&state, &service.service).await?;
+
+                if service.service_id.has_label(&ingress_selector){
+                    log::info!("updating ingress policy for {}", service.service);
+                    let local_pol = compile_ingress(
+                        Arc::new(state.clone()), 
+                        global_policy.clone(), 
+                        policies::ALLOW_REST_REQUEST, //TODO only one main fucntion is supported...
+                        &service.service_id //FIXME service_id has no port inside since remove before storing in DB due to bson error
+                    ).await.map_err(|e| internal(e.to_string()))?;
+                    
+
+                    helper_update(
+                        client.clone(),
+                        state.clone(),
+                        &local_label,
+                        control::PolicyUpdateRequest{
+                            label: service.service.clone(),
+                            policy: local_pol,
+                            labels: request.labels.clone(),
+                        }
+                    ).await?;
+                } else if service.service_id.has_label(&egress_selector) {                        
+                    log::info!("updating egress policy for {}", service.service);
+                    let local_pol = compile_egress(
+                        Arc::new(state.clone()), 
+                        global_policy.clone(), 
+                        policies::ALLOW_REST_REQUEST, //TODO only one main fucntion is supported...
+                        &service.service_id //FIXME service_id has no port inside since remove before storing in DB due to bson error
+                    ).await.map_err(|e| internal(e.to_string()))?;
+                    
+
+                    helper_update(
+                        client.clone(),
+                        state.clone(),
+                        &local_label,
+                        control::PolicyUpdateRequest{
+                            label: service.service.clone(),
+                            policy: local_pol,
+                            labels: request.labels.clone(),
+                        }
+                    ).await?;
+                } else {
+                    log::info!("global policy update not propagated to proxy {}: it is neither an ingress nor an egress proxy", service.service);
+                }
+            }
             Ok(HttpResponse::Ok().finish())
         } else {
             log::warn!("error converting the BSON object into a MongoDB document");
@@ -564,13 +644,39 @@ pub mod policy {
             Ok(internal("error inserting policy"))
         }
     }
+
+    async fn get_local_service_label(
+        state: &State, 
+        label: &Label
+    ) -> Result<Label, actix_web::Error> {
+        if let Some(doc) = collection(state, SERVICES_COL)
+            .find_one(doc! { "service": to_bson(label)?}, None)
+            .await
+            .on_err("error finding services")?{
+
+            let service = bson::from_bson::<control::POnboardServiceRequest>(bson::Bson::Document(doc))
+                    .on_err("Bson conversion error")?;
+
+            let local_label = match service.service_id.find_label(&Label::from_str("Service::**").unwrap()) {
+                Some(l) => l.clone(),
+                _ =>  return Err(internal(format!("get_local_service_label failed for {}: no local id specified", label)).into())
+            };                
+            let local_label = Label::from_str("Service::<<service>>").unwrap().match_with(&local_label).unwrap().get_label("service").unwrap().clone();
+            Ok(local_label)
+        } else {
+            Err(internal(format!("get_local_service_label failed for {}: no related service in DB", label)).into())
+        }
+    }
+
     #[post("/update")]
     pub async fn update(
         client: web::Data<client::Client>,
         state: State,
         request: Json<control::PolicyUpdateRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
-       helper_update(client, state,  request.into_inner()).await 
+        let request = request.into_inner();
+        let local_label = &get_local_service_label(&state, &request.label).await?;
+        helper_update(client, state, local_label, request).await 
     }
 
     #[get("/query")]
@@ -643,7 +749,7 @@ pub mod policy {
             .delete_one(doc! { "label" : label.to_string() }, None)
             .await
             .on_err("failed to drop policy")?;
-        update_hosts(&client.into_inner(), &state, label, &DPPolicies::deny_all()).await?;
+        update_hosts(&client.into_inner(), &state, label, &get_local_service_label(&state, label).await?, &DPPolicies::deny_all()).await?;
         Ok(HttpResponse::Ok().body(format!("dropped {}", res.deleted_count)))
     }
 
@@ -657,7 +763,7 @@ pub mod policy {
         let client = client.into_inner();
         if collection(&state, POLICIES_COL).drop(None).await.is_ok() {
             for label in services {
-                update_hosts(&client, &state, &label, &DPPolicies::deny_all()).await?;
+                update_hosts(&client, &state, &label, &get_local_service_label(&state, &label).await?, &DPPolicies::deny_all()).await?;
             }
         }
         Ok(HttpResponse::Ok().body("dropped all policies"))

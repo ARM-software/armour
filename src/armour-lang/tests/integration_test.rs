@@ -168,9 +168,9 @@ mod tests_dplang {
 
     #[actix_rt::test]
     async fn test_matches() {
-       let label1 = Label::from_str("Ingress::armour").unwrap();
-       let label2 = Label::from_str("Ingress::armour").unwrap();
-        assert!(label1.matches_with(&label2));
+       let label1 = Label::from_str("Service::<<service>>").unwrap();
+       let label2 = Label::from_str("Service::Ingress::armour").unwrap();
+       assert_eq!(label1.match_with(&label2).unwrap().get_label("service").unwrap().clone(), Label::from_str("Ingress::armour").unwrap());
     } 
 
     #[actix_rt::test]

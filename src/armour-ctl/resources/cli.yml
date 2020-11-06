@@ -63,6 +63,12 @@ subcommands:
             required: false
             takes_value: false
             help: Global policy flag
+        - SELECTOR:
+            long: selector    
+            required: false
+            takes_value: true 
+            value_name: "selector label"
+            help: Label used to select onboarded services that need to be updated when the global policy changes 
         - LABELS:
             short: l
             long: label

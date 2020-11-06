@@ -23,6 +23,7 @@ use super::rest_api::{collection, global_policy_label, POLICIES_COL, SERVICES_CO
 use async_trait::async_trait;
 use bson::doc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 
 
@@ -51,19 +52,19 @@ pub async fn present(
 //Workaround since we can not do impl CPFLat.. since not in the same crate 
 #[async_trait]
 pub trait TSLitInterpret {
-    fn seval_call0(state: State, f: &str) -> Option<CPLiteral>;
-    async fn seval_call1(&self, state:State, f: &str) -> Result<Option<CPLiteral>, self::Error>;
-    async fn seval_call2(&self, state: State, f: &str, other: &Self) -> Result<Option<CPLiteral>, self::Error>;
-    async fn seval_call3(&self, state: State, f: &str, l1: &Self, l2: &Self) -> Result<Option<CPLiteral>, self::Error>;
-    async fn seval_call4(&self, state: State, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Result<Option<CPLiteral>, self::Error>;
-    async fn helper_sevalexpr(state: State, e : Expr<CPFlatTyp, CPFlatLiteral>, env: CPEnv) -> Result<CPExpr, self::Error>;
+    fn seval_call0(state: Arc<State>, f: &str) -> Option<CPLiteral>;
+    async fn seval_call1(&self, state: Arc<State>, f: &str) -> Result<Option<CPLiteral>, self::Error>;
+    async fn seval_call2(&self, state: Arc<State>, f: &str, other: &Self) -> Result<Option<CPLiteral>, self::Error>;
+    async fn seval_call3(&self, state: Arc<State>, f: &str, l1: &Self, l2: &Self) -> Result<Option<CPLiteral>, self::Error>;
+    async fn seval_call4(&self, state: Arc<State>, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Result<Option<CPLiteral>, self::Error>;
+    async fn helper_sevalexpr(state: Arc<State>, e : Expr<CPFlatTyp, CPFlatLiteral>, env: CPEnv) -> Result<CPExpr, self::Error>;
 }
 
 #[async_trait]
 pub trait TSExprInterpret : Sized{
-    async fn seval_call(state: State, function: &str, args: Vec<Self>) -> Result<Self, self::Error>;
-    fn seval(self, state: State, env: CPEnv) -> BoxFuture<'static, Result<Self, self::Error>>;
-    async fn sevaluate(self, state: &State, env: CPEnv) -> Result<Self, self::Error>;
+    async fn seval_call(state: Arc<State>, function: &str, args: Vec<Self>) -> Result<Self, self::Error>;
+    fn seval(self, state: Arc<State>, env: CPEnv) -> BoxFuture<'static, Result<Self, self::Error>>;
+    async fn sevaluate(self, state: Arc<State>, env: CPEnv) -> Result<Self, self::Error>;
 }
 
 macro_rules! cplit (
@@ -90,40 +91,45 @@ pub async fn get_global_pol(state: State) ->  Result<control::CPPolicyUpdateRequ
         .find_one(Some(doc! {"label" : to_bson(&global_policy_label())?}), None)
         .await
     {
+        match bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc.clone())) {
+            Ok(_)=> (),
+            Err(e) => println!("{}", e)
+        };
         bson::from_bson::<control::CPPolicyUpdateRequest>(bson::Bson::Document(doc))
             .on_err("Bson conversion error")
     } else {
         Ok(control::CPPolicyUpdateRequest{
             label:global_policy_label(),
             policy: GlobalPolicies::default(),
-            labels: control::LabelMap::default()
+            labels: control::LabelMap::default(),
+            selector: None 
         })
     }
 }
 
 pub async fn helper_compile_ingress(
-    state: State, 
+    state: Arc<State>, 
     function: &String, 
     id: &CPID
 ) ->  Result<CPLiteral, self::Error> {
-        let global_pol=get_global_pol(state.clone()).await?;
+        let global_pol=get_global_pol((*state).clone()).await?;
         
         Ok(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
             Box::new(literals::Policy::from(
-                specialize::compile_ingress(&state, global_pol.policy, function, id).await?  
+                specialize::compile_ingress(state, global_pol.policy, function, id).await?  
             ))
         )))
 }
 async fn helper_compile_egress(
-    state: State, 
+    state: Arc<State>, 
     function: &String, 
     id: &CPID
 ) ->  Result<CPLiteral, self::Error> {
-        let global_pol=get_global_pol(state.clone()).await?;
+        let global_pol=get_global_pol((*state).clone()).await?;
 
         Ok(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
             Box::new(literals::Policy::from(
-                specialize::compile_egress(&state, global_pol.policy, function, id).await?
+                specialize::compile_egress(state, global_pol.policy, function, id).await?
             ))
         )))
 }
@@ -145,7 +151,7 @@ async fn helper_onboarded(state: State, service: &Label, host: &Label) ->  Resul
     }
 }
 
-async fn helper_onboard(state: State, id: &CPID) ->  Result<CPLiteral, self::Error>  {
+async fn helper_onboard(state: Arc<State>, id: &CPID) ->  Result<CPLiteral, self::Error>  {
     let host = match id.find_label(&Label::from_str("Host::**")?) {
         Some(l) => l.clone(),
         _ =>  return Err(Error::from(format!("Extracting host from id labels")))
@@ -167,7 +173,7 @@ async fn helper_onboard(state: State, id: &CPID) ->  Result<CPLiteral, self::Err
         service_id: new_id.clone(),
         host: host.clone()
     };                       
-    let col = collection(&state, SERVICES_COL);
+    let col = collection(&*state, SERVICES_COL);
     
     // Check if the service is already there
     if present(&col, doc! { "service_id" : to_bson(&service_id)? }).await? {
@@ -187,12 +193,12 @@ async fn helper_onboard(state: State, id: &CPID) ->  Result<CPLiteral, self::Err
 
 #[async_trait]
 impl TSLitInterpret for CPLiteral {
-    fn seval_call0(_state: State, f: &str) -> Option<CPLiteral> {
+    fn seval_call0(_state: Arc<State>, f: &str) -> Option<CPLiteral> {
         match f {
             _ => Self::eval_call0(f),
         }
     }
-    async fn seval_call1(&self, state:State, f: &str) -> Result<Option<CPLiteral>, self::Error> {
+    async fn seval_call1(&self, state: Arc<State>, f: &str) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self) {
             ( "ControlPlane::onboard", cplit!(ID(service_id)) ) => { 
                 Ok(Some(helper_onboard(state, service_id).await?))
@@ -218,7 +224,7 @@ impl TSLitInterpret for CPLiteral {
             _ => Ok(self.eval_call1(f)),
         }
     }
-    async fn seval_call2(&self, state: State, f: &str, other: &Self) -> Result<Option<CPLiteral>, self::Error> {
+    async fn seval_call2(&self, state: Arc<State>, f: &str, other: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, other) {
             ("compile_ingress", cplit!(Str(function)), cplit!(ID(id))) => {
                 Ok(Some(helper_compile_ingress(state, function, id).await?))
@@ -231,23 +237,23 @@ impl TSLitInterpret for CPLiteral {
                 cplit!(Label(service)), 
                 cplit!(Label(host))
             ) => { 
-                Ok(Some(helper_onboarded(state, service, host).await?))
+                Ok(Some(helper_onboarded((*state).clone(), service, host).await?))
             },
             _ => Ok(self.eval_call2(f, other)),
         }
     }
-    async fn seval_call3(&self, _state: State, f: &str, l1: &Self, l2: &Self) -> Result<Option<CPLiteral>, self::Error> {
+    async fn seval_call3(&self, _state: Arc<State>, f: &str, l1: &Self, l2: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, l1, l2) {
             _ => Ok(self.eval_call3(f, l1, l2)),
         }
     }
     #[allow(clippy::many_single_char_names)]
-    async fn seval_call4(&self, _state:State, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Result<Option<CPLiteral>, self::Error> {
+    async fn seval_call4(&self, _state:Arc<State>, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, l1, l2, l3) {
             _ => Ok(self.eval_call4(f, l1, l2, l3)),
         }
     }
-    async fn helper_sevalexpr(state: State, e : Expr<CPFlatTyp, CPFlatLiteral>, env: CPEnv) -> Result<CPExpr, self::Error>{
+    async fn helper_sevalexpr(state: Arc<State>, e : Expr<CPFlatTyp, CPFlatLiteral>, env: CPEnv) -> Result<CPExpr, self::Error>{
         match e {
             // short circuit for &&
             Expr::InfixExpr(Infix::And, e1, e2) => match e1.seval(state.clone(), env.clone()).await? {
@@ -274,7 +280,7 @@ impl TSLitInterpret for CPLiteral {
 
 #[async_trait]
 impl TSExprInterpret for CPExpr {
-    async fn seval_call(state: State, function: &str, args: Vec<Self>) -> Result<Self, self::Error> {
+    async fn seval_call(state: Arc<State>, function: &str, args: Vec<Self>) -> Result<Self, self::Error> {
         // builtin function
         match args.as_slice() {
             [] => match Literal::seval_call0(state, function) {
@@ -305,7 +311,7 @@ impl TSExprInterpret for CPExpr {
         }
     }
     #[allow(clippy::cognitive_complexity)]
-    fn seval(self, state: State, env: CPEnv) -> BoxFuture<'static, Result<Self, self::Error>> {
+    fn seval(self, state: Arc<State>, env: CPEnv) -> BoxFuture<'static, Result<Self, self::Error>> {
         //println!("### Seval, interpreting expression: ");
         //self.print_debug();
         async {
@@ -324,9 +330,9 @@ impl TSExprInterpret for CPExpr {
                     _ => Err(Error::new("seval, prefix")),
                 },
                 // short circuit for &&
-                Expr::InfixExpr(Infix::And, _, _) => CPLiteral::helper_sevalexpr(state, self, env).await, 
+                Expr::InfixExpr(Infix::And, _, _) => CPLiteral::helper_sevalexpr(state.clone(), self, env).await, 
                 // short circuit for ||
-                Expr::InfixExpr(Infix::Or, _, _) => CPLiteral::helper_sevalexpr(state, self, env).await,
+                Expr::InfixExpr(Infix::Or, _, _) => CPLiteral::helper_sevalexpr(state.clone(), self, env).await,
                 Expr::InfixExpr(op, e1, e2) => {
                     let r1 = e1.seval(state.clone(), env.clone()).await?;
                     match (r1, e2.seval(state, env).await?) {
@@ -578,9 +584,9 @@ impl TSExprInterpret for CPExpr {
                                 for a in args {
                                     r = r.apply(&a)?
                                 }
-                                r.sevaluate(&state, env).await
+                                r.sevaluate(state, env).await
                             } else if CPHeaders::is_builtin(&function) {
-                                Expr::seval_call(state, function.as_str(), args).await
+                                Expr::seval_call(state.clone(), function.as_str(), args).await
                             } else if let Some((external, method)) = CPHeaders::split(&function) {
                                 // external function (RPC) or "Ingress/Egress" metadata
                                 let args = Self::literal_vector(args)?;
@@ -617,7 +623,7 @@ impl TSExprInterpret for CPExpr {
         }
         .boxed()
     }
-    async fn sevaluate(self, state: &State, env: CPEnv) -> Result<Self, self::Error> {
+    async fn sevaluate(self, state: Arc<State>, env: CPEnv) -> Result<Self, self::Error> {
         Ok(self.seval(state.clone(), env).await?.strip_return())
     }
 }

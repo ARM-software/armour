@@ -52,7 +52,7 @@ impl FromStr for Node {
             Ok(Node::Any(
                 s.trim_start_matches('<').trim_end_matches('>').to_string(),
             ))
-        } else if NODE_ANY.with(|f| f.is_match(s)) {
+        } else if NODE_REC_ANY.with(|f| f.is_match(s)) {
             Ok(Node::RecAny(
                 s.trim_start_matches('<').trim_end_matches('>').to_string(),
             ))
@@ -69,11 +69,12 @@ enum MatchNode {
     Mismatch,
     Match,
     Map(String, Node),
+    MapRec(String, Node),
 }
 
 /// Result of matching one label against another
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Match(BTreeMap<String, Node>);
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Match(BTreeMap<String, Label>);
 
 impl fmt::Display for Match {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -97,12 +98,12 @@ impl From<&Match> for Vec<(String, String)> {
 }
 
 impl Match {
-    pub fn get_node<T: AsRef<str>>(&self, s: T) -> Option<&Node> {
+    pub fn get_label<T: AsRef<str>>(&self, s: T) -> Option<&Label> {
         self.0.get(s.as_ref())
     }
     pub fn get<T: AsRef<str>>(&self, s: T) -> Option<String> {
-        if let Some(Node::Str(v)) = self.get_node(s) {
-            Some(v.to_string())
+        if let Some(l) = self.get_label(s) {
+            Some(l.to_string())
         } else {
             None
         }
@@ -115,7 +116,7 @@ impl Node {
             (Node::Str(x), Node::Str(y)) if x == y => MatchNode::Match,
             (Node::Str(_), _) => MatchNode::Mismatch,
             (Node::Any(x), _) if !x.is_empty() => MatchNode::Map(x.clone(), l.clone()),
-            (Node::RecAny(x), _) if !x.is_empty() => MatchNode::Map(x.clone(), l.clone()),
+            (Node::RecAny(x), _) if !x.is_empty() => MatchNode::MapRec(x.clone(), l.clone()),
             _ => MatchNode::Match,
         }
     }
@@ -136,7 +137,7 @@ impl Node {
 }
 
 /// Label type representing sequences of [Node](enum.Node.html) elements
-#[derive(Clone, PartialOrd, Ord)]
+#[derive(Clone, Default, PartialOrd, Ord)]
 pub struct Label(Vec<Node>);
 
 impl<'de> Deserialize<'de> for Label {
@@ -232,6 +233,9 @@ impl Label {
     pub fn prefix(&mut self, s:String) {
         self.0.insert(0, Node::Str(s));
     }
+    pub fn push(&mut self, n:Node) {
+        self.0.push(n);
+    }
 
     pub fn len(&self) -> usize {
         self.0.len()
@@ -280,12 +284,22 @@ impl Label {
         for (pat, node) in pattern.0.iter().zip(l.0.iter()) {
             match pat.match_with(node) {
                 MatchNode::Map(l, r) => {
-                    if let Some(other) = map.0.insert(l, r.clone()) {
-                        if other != r {
+                    let mut ll = Label::default();
+                    ll.push(r.clone());
+                    if let Some(other) = map.0.insert(l, ll.clone()) {
+                        if other != ll {
                             return None;
                         }
                     }
-                }
+                },
+                MatchNode::MapRec(l, r) => {
+                    let mut ll = Label::default();
+                    ll.push(r.clone());
+                    match map.0.get_mut(&l) {
+                        None => {map.0.insert(l, ll);},
+                        Some(ref mut x) => x.push(r.clone())
+                    };
+                },
                 MatchNode::Match => (),
                 MatchNode::Mismatch => {
                     return None;

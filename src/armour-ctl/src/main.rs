@@ -3,6 +3,7 @@ use armour_lang::labels::Label;
 use armour_lang::policies;
 use armour_utils::parse_https_url;
 use clap::{crate_version, App};
+use std::str::FromStr;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -57,12 +58,21 @@ async fn main() -> Result<(), Error> {
                 .send_json(&update_payload)
                 .await
             } else if update_matches.is_present("GLOBAL") {
+                let selector : Option<Label> = match update_matches.value_of("SELECTOR") {
+                    Some(x) => Some(x.parse().unwrap()),
+                    _ => {
+                        //by default all onboarding services are concerned
+                        Some(Label::from_str("ServiceID::**").unwrap())
+                    }
+                };
+
                 println!("updating global policy");
                 let policy = policies::Policies::from_file(file)?;
                 let update_payload = control::CPPolicyUpdateRequest {
                     label: service.parse().unwrap(),
                     policy,
                     labels,
+                    selector,
                 };
                 client
                 .post(url("policy/update-global"))
