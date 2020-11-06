@@ -17,7 +17,7 @@ pub enum InstanceSelector {
     ID(usize),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Meta {
     pub pid: u32,
     pub tmp_dpid: Option<DPID>,

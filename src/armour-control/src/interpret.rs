@@ -154,20 +154,20 @@ async fn helper_onboard(state: State, id: &CPID) ->  Result<CPLiteral, self::Err
         Some(l) => l.clone(),
         _ =>  return Err(Error::from(format!("Extracting service from id labels")))
     };
+    let service_id = match id.find_label(&Label::from_str("ServiceID::**")?) {
+        Some(l) => l.clone(),
+        _ =>  return Err(Error::from(format!("Extracting service from id labels")))
+    };
     
     let mut new_id = id.clone();
     new_id.port = None; //FIXME, use this due to some issues with bson encoding,  don't know how to use #[serde(with = "bson::compat::u2f")] with Option<u16>
 
     let request = control::POnboardServiceRequest {
-        service: service.clone(),
+        service: service_id.clone(),
         service_id: new_id.clone(),
         host: host.clone()
     };                       
     let col = collection(&state, SERVICES_COL);
-    let service_id = match id.find_label(&Label::from_str("ServiceID::**")?) {
-        Some(l) => l.clone(),
-        _ =>  return Err(Error::from(format!("Extracting service_id from id labels")))
-    };
     
     // Check if the service is already there
     if present(&col, doc! { "service_id" : to_bson(&service_id)? }).await? {

@@ -285,13 +285,13 @@ pub mod service {
             Ok((service_id, ingress_req, egress_req)) =>{
                 match label.get_string(0) {
                     Some(s) if s == "Egress".to_string() =>{
-                        policy::helper_update(client.clone(), state.clone(), egress_req).await?;
+                        policy::save_policy(client.clone(), state.clone(), egress_req).await?;
                         Ok(HttpResponse::Ok().json(control::OnboardServiceResponse{
                             service_id: service_id,
                         }))
                     },
                    Some(s) if s == "Ingress".to_string() =>{
-                        policy::helper_update(client.clone(), state.clone(), ingress_req).await?;
+                        policy::save_policy(client.clone(), state.clone(), ingress_req).await?;
                         Ok(HttpResponse::Ok().json(control::OnboardServiceResponse{
                             service_id: service_id,
                         }))
@@ -309,16 +309,24 @@ pub mod service {
         request: Json<control::OnboardServiceRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
         let mut request = request.into_inner();
-        request.service.prefix("Service".to_string());
 
-        let service = &request.service;
-        log::info!("dropping service: {}", service);
-        let col = collection(&state, SERVICES_COL);
+        //request.service.prefix("Service".to_string());
+        if let Some(dpid) = request.tmp_dpid {
+            let service = match dpid.find_label(&Label::from_str("ServiceID::**").unwrap()) {
+                Some(l) => l.clone(),
+                _ =>  return Ok(internal("error no global id provided"))
+            };
 
-        col.delete_one(doc!{"service": request.service.to_string()}, None) // Insert into a MongoDB collection
-            .await
-            .on_err("error inserting in MongoDB")?;
-        Ok(HttpResponse::Ok().body("success"))
+            log::info!("dropping service: {}", service);
+            let col = collection(&state, SERVICES_COL);
+
+            col.delete_one(doc!{"service": service.to_string()}, None) // Insert into a MongoDB collection
+                .await
+                .on_err("error inserting in MongoDB")?;
+            Ok(HttpResponse::Ok().body("success"))
+        } else { 
+            Ok(internal("error no global id provided"))
+        }
         //if let bson::Bson::Document(document) = to_bson(&request)? {
         //    col.delete_one(document, None) // Insert into a MongoDB collection
         //        .await
@@ -393,7 +401,7 @@ pub mod policy {
     ) -> Result<(), actix_web::Error> {
         let hosts = hosts(state, label).await?;
         log::debug!("hosts: {:?}", hosts);
-        log::info!("TODO hosts: {:?}", hosts);
+        
         for host in hosts {
             log::info!("TODO host: {:?}", host);
 
@@ -451,6 +459,31 @@ pub mod policy {
         Ok(HttpResponse::Ok().body(s))
     }
 
+    pub async fn save_policy(
+        client: web::Data<client::Client>,
+        state: State,
+        request: control::PolicyUpdateRequest,
+    ) -> Result<HttpResponse, actix_web::Error> {
+        let label = &request.label.clone();
+        log::info!(r#"updating policy for label "{}""#, label);
+
+        if let bson::Bson::Document(document) = to_bson(&request)? {
+            // update policy in database
+            let col = collection(&state, POLICIES_COL);
+            let filter = doc! { "label" : to_bson(label)? };
+            col.delete_many(filter, None)
+                .await
+                .on_err("error removing old policies")?;
+            col.insert_one(document, None)
+                .await
+                .on_err("error inserting new policy")?;
+            // push policy to hosts
+            Ok(HttpResponse::Ok().finish())
+        } else {
+            log::warn!("error converting the BSON object into a MongoDB document");
+            Ok(internal("error inserting policy"))
+        }
+    }
     pub async fn helper_update(
         client: web::Data<client::Client>,
         state: State,

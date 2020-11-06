@@ -6,7 +6,10 @@ use armour_api::{
     host::{self, HostCodec},
     proxy::{LabelOp, PolicyRequest},
 };
-use armour_lang::labels::Label;
+use armour_lang::{
+    labels::Label,
+    literals::DPID
+};
 use log::*;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
@@ -56,13 +59,23 @@ impl ArmourDataHost {
             key,
         }
     }
-    fn get_instances(&self, instances: &InstanceSelector) -> Vec<&Instance> {
+    fn update_instances(&mut self, instances:InstanceSelector, service_id: Label) {
+        let mut instances = self.get_instances(&instances);
+        for instance in instances {
+            let mut tmp = DPID::default().add_label(&service_id);
+            if let Some( ref mut meta ) = &mut instance.meta {
+                meta.tmp_dpid = Some(tmp);
+            }
+        }
+    }
+
+    fn get_instances(&mut self, instances: &InstanceSelector) -> Vec<&mut Instance> {
         match instances {
             InstanceSelector::Label(instance_label) => {
-                let v: Vec<&Instance> = self
+                let v: Vec<&mut Instance> = self
                     .instances
                     .0
-                    .iter()
+                    .iter_mut()
                     .filter_map(|i| match &i.1.meta {
                         Some(Meta { label, .. }) if instance_label.matches_with(label) => Some(i.1),
                         _ => None,
@@ -70,11 +83,11 @@ impl ArmourDataHost {
                     .collect();
                 v
             }
-            InstanceSelector::ID(id) => match self.instances.0.get(&id) {
+            InstanceSelector::ID(id) => match self.instances.0.get_mut(&id) {
                 None => Vec::new(),
                 Some(instance) => vec![instance],
             },
-            InstanceSelector::All => self.instances.0.values().collect(),
+            InstanceSelector::All => self.instances.0.values_mut().collect(),
         }
     }
 }
@@ -136,9 +149,18 @@ impl Handler<Disconnect> for ArmourDataHost {
                         log::info!("{} exited with {}", meta, code);
                         if self.onboarded {
                             let onboard = OnboardServiceRequest {
-                                service: meta.label,
+                                service: {
+                                    if let Some(dpid) = meta.tmp_dpid.clone() {
+                                        match dpid.find_label(&Label::from_str("ServiceID::**").unwrap()) {
+                                            Some(l) => l.clone(),
+                                            _ =>  meta.label
+                                        }
+                                    } else {
+                                        meta.label 
+                                    }
+                                },
                                 host: self.label.clone(),
-                                tmp_dpid: None
+                                tmp_dpid: meta.tmp_dpid
                             };
                             let url = self.url.clone();
                             let client = self.client.clone();
@@ -194,6 +216,7 @@ impl Handler<RegisterProxy> for ArmourDataHost {
                 let url = self.url.clone();
                 let url_clone = self.url.clone();
                 let client = self.client.clone();
+                
                 // on-board
                 async move {
                     crate::control_plane_deserialize::<_, OnboardServiceResponse>(
@@ -221,22 +244,23 @@ impl Handler<RegisterProxy> for ArmourDataHost {
                         };
 
                         let query = PolicyQueryRequest {
-                            label: service_id,
+                            label: service_id.clone(),
                         };
+                        
 
                         // query policy
-                        crate::control_plane_deserialize::<_, PolicyQueryResponse>(
+                        (service_id, crate::control_plane_deserialize::<_, PolicyQueryResponse>(
                             client,
                             &url_clone,
                             http::Method::GET,
                             "policy/query",
                             &query,
                         )
-                        .await
+                        .await)
 
                     }
                     .into_actor(act)
-                    .then(|policy_res, act, ctx| {
+                    .then(|(service_id, policy_res), act, ctx| {
                         match policy_res {
                             // log::debug!("got labels: {:?}", policy_response.labels);
                             Ok(policy_response) => {
@@ -247,15 +271,15 @@ impl Handler<RegisterProxy> for ArmourDataHost {
                                     )),
                                 ));
                                 ctx.notify(PolicyCommand::new(
-                                    instance,
+                                    instance.clone(),
                                     PolicyRequest::SetPolicy(policy_response.policy),
-                                ))
+                                ));
+                                ctx.notify(ServiceGlobalID::new(service_id, instance))
                             }
                             Err(err) => log::warn!("failed to obtain policy: {}", err),
                         };
                         async {}.into_actor(act)
                     })
-
                 })
                 .wait(ctx)
             }
@@ -399,6 +423,23 @@ impl Handler<MetaData> for ArmourDataHost {
                 .filter_map(|i| i.meta.as_ref().map(host::PolicyStatus::from))
                 .collect(),
         )
+    }
+}
+
+#[derive(Message)]
+#[rtype("()")]
+pub struct ServiceGlobalID(pub Label, pub InstanceSelector);
+impl ServiceGlobalID {
+    pub fn new(global_id:Label, instances: InstanceSelector) -> Self {
+        ServiceGlobalID(global_id, instances)
+    }
+}
+impl Handler<ServiceGlobalID> for ArmourDataHost {
+    type Result = ();
+    fn handle(&mut self, msg: ServiceGlobalID, ctx: &mut Context<Self>) -> Self::Result {
+        let ServiceGlobalID(global_id, instances) = msg;
+        log::info!("global id is: {} for {:?}", global_id.clone(), instances.clone());
+        self.update_instances(instances, global_id);
     }
 }
 
