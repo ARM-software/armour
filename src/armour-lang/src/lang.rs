@@ -272,6 +272,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  Program<FlatTyp, Flat
         e: &Expr<FlatTyp, FlatLiteral>, 
         own_idx: &graph::NodeIndex
     ) -> Result<(), Error> { 
+        println!("{:#?}", e);
         match e {
             Expr::Var(_) | Expr::BVar(_, _) | Expr::LitExpr(_) => Ok(()),
             Expr::ReturnExpr(e) | Expr::PrefixExpr(_, e) |Expr::Closure(_, e) => Self::aux_deadcode_elim(module, e, own_idx),
@@ -304,11 +305,15 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  Program<FlatTyp, Flat
             Expr::CallExpr { function, arguments, is_async:_} => {
                 arguments.iter().map(|e| Self::aux_deadcode_elim(module, e, own_idx)).for_each(drop);
                 if  !<Headers<FlatTyp>>::is_internal(&function) {
-                    let call_idx = module 
-                        .call_graph
-                        .nodes
-                        .get(function)
-                        .ok_or_else(|| Error::new(&format!("cannot find \"{}\" node", function)))?;
+                    let call_idx = match module.call_graph.nodes.get(function) {
+                        Some(x) => x,
+                        None => {                                
+                            //adding tmp node
+                            module.call_graph.add_node(&function);
+                            module.call_graph.nodes.get(function).unwrap()
+                        }
+                    };
+
                     module.call_graph.graph.add_edge(*own_idx, *call_idx, lexer::Loc::dummy()); //FIXME dummy loc
                 }
                 Ok(())
@@ -326,6 +331,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  Program<FlatTyp, Flat
         //Fn declaration
         for (name, _) in &self.headers.0 {
             module.call_graph.add_node(&name);
+            //module.call_graph.add_node(&name);
             let own_idx = module 
                 .call_graph
                 .nodes

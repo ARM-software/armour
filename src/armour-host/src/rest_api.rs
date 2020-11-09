@@ -99,7 +99,7 @@ pub mod service {
 			
 			// add service labels
 			add_ip_labels(&host, &instance, &information.labels).await?;
-			let config = proxy.config(port);
+			let config = proxy.config(port);//TODO same port for ingress and egress => EgressIngress ?
 			start_proxy(&host, instance, config).await?
 		}
 		log::info!("onboarded");

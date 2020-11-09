@@ -467,12 +467,14 @@ impl Handler<PolicyRequest> for PolicyActor {
                 http_proxy::start_proxy(ctx.address(), config.clone())
                     .into_actor(self)
                     .then(move |server, act, _ctx| {
-                        if let Ok(server) = server {
-                            act.http.start((server, config.ingress()), port);
-                            act.uds_framed.write(PolicyResponse::Started)
-                        } else {
-                            // TODO: show error and port
-                            log::warn!("failed to start HTTP proxy")
+                        match server {
+                            Ok(server) => {
+                                act.http.start((server, config.ingress()), port);
+                                act.uds_framed.write(PolicyResponse::Started)
+                            },
+                            Err(err) => {
+                                log::warn!("failed to start HTTP proxy: {}", err)
+                            }
                         };
                         async {}.into_actor(act)
                     })

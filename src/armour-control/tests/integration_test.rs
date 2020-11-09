@@ -17,7 +17,7 @@ use armour_lang::types::{self, *};
 use bson::doc;
 use mongodb::{options::ClientOptions, Client};
 
-
+use std::sync::Arc;
 use std::str::FromStr;
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter::Iterator;
@@ -59,6 +59,7 @@ async fn register_policy(
     };
     let label = &request.label.clone();
     println!(r#"updating policy for label "{}""#, label);
+
 
     if let bson::Bson::Document(document) = to_bson(&request).map_err(|x|expressions::Error::from(format!("{:?}", x)))? {
         // update policy in database
@@ -161,13 +162,13 @@ fn raw_onboard1() -> &'static str {
             OnboardingResult::Err(\"Endpoint already onboarded\",
                                 id,
                                 compile_ingress(\"allow_rest_request\", id),
-                                compile_egress(\"allow_rest_request\", id)
+                                compile_egress(\"allow_rest_response\", id)
                             )
         } else {
             let id = ControlPlane::newID(obd);
             let id = id.add_label(Label::new(\"SecureService\"));
             let id = id.add_label(Label::login_time(System::getCurrentTime()));
-            let pol = (compile_ingress(\"allow_rest_request\", id),compile_egress(\"allow_rest_request\", id));
+            let pol = (compile_ingress(\"allow_rest_request\", id),compile_egress(\"allow_rest_response\", id));
             if ControlPlane::onboard(id) {
                 OnboardingResult::Ok(id, pol.0, pol.1)            
             } else {
@@ -252,12 +253,22 @@ async fn onboarding_pol1() ->  Result<(CPExpr, CPEnv),  expressions::Error> {
 
 fn raw_pol1() -> &'static str {
     "
+        fn allow_rest_response(from: ID, to: ID, req: HttpResponse, payload: data) -> bool {
+            true
+        }
+
         fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {
             match_to_from(from, to, req) &&
             server_ok(to) &&
                 req.method() == \"GET\"
         }
     
+        fn match_to_from(from: ID, to: ID, req: HttpRequest) -> bool {
+            let (rfrom, rto) = req.from_to();
+            true
+            //rfrom in from.hosts() && rto in to.hosts(), hosts should be ID not string ??
+        }
+
         fn server_ok(id: ID) -> bool {
             \"server\" in id.hosts() &&
                 if let Some(port) = id.port() {
@@ -268,11 +279,6 @@ fn raw_pol1() -> &'static str {
                 }
         }
 
-        fn match_to_from(from: ID, to: ID, req: HttpRequest) -> bool {
-            let (rfrom, rto) = req.from_to();
-            true
-            //rfrom in from.hosts() && rto in to.hosts(), hosts should be ID not string ??
-        }
     "
 }
 
@@ -386,7 +392,7 @@ mod tests_control {
         );
 
         match helper_compile_ingress(
-            state,
+            Arc::new(state),
             &"allow_rest_request".to_string(),
             &id
         ).await? {
@@ -412,7 +418,7 @@ mod tests_control {
         }
 
         let (expr, env) = onboarding_pol1().await?;
-        let res_seval = expr.sevaluate(&state, env.clone()).await?;
+        let res_seval = expr.sevaluate(Arc::new(state), env.clone()).await?;
         
         match res_seval {
             Expr::LitExpr(Literal::FlatLiteral(r @ CPFlatLiteral::OnboardingResult(_))) =>{

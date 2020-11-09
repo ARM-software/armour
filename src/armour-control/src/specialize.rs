@@ -515,7 +515,6 @@ pub async fn compile_ingress(state: Arc<State>, mut global_pol: policies::Global
         //Typ::type_check (sig, pol.pprogram.code.get ()) 
         //FIXME how to do the type conversion from fexpr to typ
         //or just check that there is four argument
-
         match pol.program.code.get(function.to_string()) {
             None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", function))), 
             Some(ref fexpr) => {    
@@ -563,12 +562,11 @@ pub async fn compile_egress(state: Arc<State>, mut global_pol: policies::GlobalP
         //or just check that there is four argument
 
         match pol.program.code.get(function.to_string()) {
-            None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", function))), 
+            None => return Err(Error::from(format!("compile_egress, {} not define in global policy", function))), 
             Some(ref fexpr) => {    
                 let fexpr = fexpr.clone().propagate_subst(3, 0, &Expr::LitExpr(Literal::id(from.clone()))); 
                 match fexpr.pevaluate(state.clone(), env).await {                        
                     Ok((_, e)) =>{ 
-
                         let mut e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;
                         e = e.apply(&Expr::bvar("req", 0))?;
                         e = e.apply(&Expr::bvar("payload", 1))?;

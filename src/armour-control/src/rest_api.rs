@@ -592,7 +592,7 @@ pub mod policy {
                     let local_pol = compile_egress(
                         Arc::new(state.clone()), 
                         global_policy.clone(), 
-                        policies::ALLOW_REST_REQUEST, //TODO only one main fucntion is supported...
+                        policies::ALLOW_REST_RESPONSE, //TODO only one main fucntion is supported...
                         &service.service_id //FIXME service_id has no port inside since remove before storing in DB due to bson error
                     ).await.map_err(|e| internal(e.to_string()))?;
                     
