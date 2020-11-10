@@ -59,6 +59,13 @@ impl FnPolicies {
     fn is_deny_all(&self) -> bool {
         !self.0.is_empty() && self.0.values().all(|p| *p == FnPolicy::Deny)
     }
+    
+    pub fn merge(&self, other: &Self) -> Self{
+        FnPolicies(self.0.clone().into_iter().chain(other.0.clone().into_iter()).collect())
+    }
+    pub fn set_args(&mut self, k:String, u: u8) {
+        self.0.insert(k, FnPolicy::Args(u));
+    }
 }
 
 // map from function name to list of permitted types
@@ -274,6 +281,12 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policy<FlatTyp, FlatLi
             fn_policies,
         }
     }
+    pub fn merge(&self, other: &Self) -> Self{
+        Policy{
+            program: self.program.merge(&other.program),
+            fn_policies: self.fn_policies.merge(&other.fn_policies)
+        }
+    }
     pub fn get(&self, name: &str) -> Option<&FnPolicy> {
         self.fn_policies.0.get(name)
     }
@@ -407,6 +420,22 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, Flat
     pub fn insert(&mut self, p: Protocol<FlatTyp, FlatLiteral>, policy: Policy<FlatTyp, FlatLiteral>) {
         self.0.insert(p, policy);
     }
+
+    pub fn merge(&self, other: &Self) -> Self{
+        let mut new_pol = self.clone();
+
+        for (k,v) in other.0.clone().into_iter() {
+            match new_pol.0.get(&k) {
+                Some(x1) =>{ 
+                    new_pol.insert(k, v.merge(x1))
+                },
+                None => new_pol.insert(k, v)
+            }
+        }
+
+        new_pol
+    }
+
     pub fn allow_all() -> Self {
         let mut policies = Policies::default();
         let tcp: Protocol<FlatTyp, FlatLiteral> = Protocol::TCP;

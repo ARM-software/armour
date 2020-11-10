@@ -35,15 +35,19 @@ pub trait TSExprPEval : Sized{
 
 #[async_trait]
 impl TSExprPEval for CPExpr {
+
     fn peval(self, state: Arc<State>, env: CPEnv) -> BoxFuture<'static, Result<(bool, Self), self::Error>> {
-        //println!("### Peval, interpreting expression: \n{}", self.to_string());
         async { 
             match self {
                 Expr::Var(_) | Expr::BVar(_, _) => Ok((false, self)),
                 Expr::LitExpr(_) => Ok((true, self)),
                 Expr::Closure(x, e) => {
                     let (_, e) = e.peval(state, env).await?;
-                    Ok((false, Expr::Closure(x, Box::new(e))))    
+                    if e.is_free(0) {
+                        Ok((true, e))    
+                    } else {
+                        Ok((false, Expr::Closure(x, Box::new(e))))    
+                    }
                 },
 
                 Expr::ReturnExpr(e) =>{
@@ -158,35 +162,47 @@ impl TSExprPEval for CPExpr {
                         }
                     }
                 }
-                Expr::Let(vs, e1, e2) => match e1.peval(state.clone(), env.clone()).await? {
-                    (flag, r @ Expr::ReturnExpr(_)) => Ok((flag, r)),
-                    (true, Expr::LitExpr(Literal::Tuple(lits))) => {
-                        let lits_len = lits.len();
-                        if 1 < lits_len && vs.len() == lits_len {
-                            let mut e2a = *e2.clone();
-                            for (v, lit) in vs.iter().zip(lits) {
-                                if v != "_" {
-                                    e2a = e2a.apply(&Expr::LitExpr(lit))?
+                Expr::Let(vs, e1, e2) =>{
+                    let mut flag = true;
+                    for u in 0..vs.len(){
+                        flag = flag && e2.is_free(u);
+                        if !flag { break };
+                    }
+
+                    if flag { //e2 is independant of the let-bindings
+                        e2.peval(state, env).await
+                    } else {
+                        match e1.peval(state.clone(), env.clone()).await? {
+                            (flag, r @ Expr::ReturnExpr(_)) => Ok((flag, r)),
+                            (true, Expr::LitExpr(Literal::Tuple(lits))) => {
+                                let lits_len = lits.len();
+                                if 1 < lits_len && vs.len() == lits_len {
+                                    let mut e2a = *e2.clone();
+                                    for (v, lit) in vs.iter().zip(lits) {
+                                        if v != "_" {
+                                            e2a = e2a.apply(&Expr::LitExpr(lit))?
+                                        }
+                                    }
+                                    e2a.peval(state, env).await
+                                } else if vs.len() == 1 {
+                                    e2.apply(&Expr::LitExpr(Literal::Tuple(lits)))?
+                                        .peval(state, env)
+                                        .await
+                                } else {
+                                    Err(Error::new("peval, let-expression (tuple length mismatch)"))
                                 }
                             }
-                            e2a.peval(state, env).await
-                        } else if vs.len() == 1 {
-                            e2.apply(&Expr::LitExpr(Literal::Tuple(lits)))?
-                                .peval(state, env)
-                                .await
-                        } else {
-                            Err(Error::new("peval, let-expression (tuple length mismatch)"))
+                            (true, l @ Expr::LitExpr(_)) => {
+                                if vs.len() == 1 {
+                                    e2.apply(&l)?.peval(state, env).await
+                                } else {
+                                    Err(Error::new("peval, let-expression (literal not a tuple)"))
+                                }
+                            },
+                            (false, ee1) =>  Ok((false, Expr::Let(vs, Box::new(ee1), Box::new(e2.peval(state, env).await?.1)))),
+                            _ => Err(Error::new("peval, let-expression")),
                         }
                     }
-                    (true, l @ Expr::LitExpr(_)) => {
-                        if vs.len() == 1 {
-                            e2.apply(&l)?.peval(state, env).await
-                        } else {
-                            Err(Error::new("peval, let-expression (literal not a tuple)"))
-                        }
-                    },
-                    (false, ee1) =>  Ok((false, Expr::Let(vs, Box::new(ee1), e2))),
-                    _ => Err(Error::new("peval, let-expression")),
                 },
                 Expr::Iter(op, vs, e1, e2) => match e1.peval(state.clone(), env.clone()).await? {
                     (_, r @ Expr::ReturnExpr(_)) => Ok((true, r)),
@@ -519,11 +535,24 @@ pub async fn compile_ingress(state: Arc<State>, mut global_pol: policies::Global
             None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", function))), 
             Some(ref fexpr) => {    
                 let fexpr = fexpr.clone().propagate_subst(2, 1, &Expr::LitExpr(Literal::id(to.clone()))); 
-                match fexpr.pevaluate(state.clone(), env).await {                        
+                let body = match fexpr.at_depth(3) {
+                   Some(e) => e,
+                    _ => return Err(Error::from(format!("compile_ingress, {} wrong argument number (from, to, request, payload) are expected", function))),
+                };
+
+                match body.pevaluate(state.clone(), env).await {                        
                     Ok((_, e)) =>{ 
-                        let mut e = e.apply(&Expr::call("HttpRequest::from", vec![Expr::bvar("req", 0)]))?;
-                        e = e.apply(&Expr::bvar("req", 0))?;
-                        e = e.apply(&Expr::bvar("payload", 1))?;
+                        let e = Expr::Closure(
+                            Ident("from".to_string()),
+                            Box::new(Expr::Closure(
+                                Ident("req".to_string()),
+                                Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e))
+                            ))
+                        ));
+
+                        let mut e = e.apply(&Expr::call("HttpRequest::from", vec![Expr::bvar("req", 1)]))?;
+                        e = e.apply(&Expr::bvar("req", 1))?;
+                        e = e.apply(&Expr::bvar("payload", 0))?;
 
                         e = Expr::Closure(Ident("req".to_string()), Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e))));
 
@@ -534,6 +563,8 @@ pub async fn compile_ingress(state: Arc<State>, mut global_pol: policies::Global
                         let sig = Signature::new(vec![Typ::http_request(), Typ::data()], ret_typ);
                         pol.program.headers.insert(function.to_string(), sig);
 
+                        //Update fn_policies
+                        pol.fn_policies.set_args(function.to_string(), 2);
 
                         //Deadcode elimination
                         pol.program = pol.program.deadcode_elim(&vec![function.to_string()][..])?;
@@ -565,11 +596,24 @@ pub async fn compile_egress(state: Arc<State>, mut global_pol: policies::GlobalP
             None => return Err(Error::from(format!("compile_egress, {} not define in global policy", function))), 
             Some(ref fexpr) => {    
                 let fexpr = fexpr.clone().propagate_subst(3, 0, &Expr::LitExpr(Literal::id(from.clone()))); 
-                match fexpr.pevaluate(state.clone(), env).await {                        
+                let body = match fexpr.at_depth(3) {
+                   Some(e) => e,
+                    _ => return Err(Error::from(format!("compile_ingress, {} wrong argument number (from, to, request, payload) are expected", function))),
+                };
+
+                match body.pevaluate(state.clone(), env).await {                        
                     Ok((_, e)) =>{ 
-                        let mut e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 0)]))?;
-                        e = e.apply(&Expr::bvar("req", 0))?;
-                        e = e.apply(&Expr::bvar("payload", 1))?;
+                        let e = Expr::Closure(
+                            Ident("to".to_string()),
+                            Box::new(Expr::Closure(
+                                Ident("req".to_string()),
+                                Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e))
+                            ))
+                        ));
+
+                        let mut e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 1)]))?;
+                        e = e.apply(&Expr::bvar("req", 1))?;
+                        e = e.apply(&Expr::bvar("payload", 0))?;
 
                         e = Expr::Closure(Ident("req".to_string()), Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e))));
                         
@@ -579,6 +623,9 @@ pub async fn compile_egress(state: Arc<State>, mut global_pol: policies::GlobalP
                         let ret_typ = pol.program.headers.remove(&function.to_string()).unwrap().typ(); //unwrap is safe since we are actually working on existing fct
                         let sig = Signature::new(vec![Typ::http_request(), Typ::data()], ret_typ);
                         pol.program.headers.insert(function.to_string(), sig);
+
+                        //Update fn_policies
+                        pol.fn_policies.set_args(function.to_string(), 2);
 
                         //Deadcode elimination
                         pol.program = pol.program.deadcode_elim(&vec![function.to_string()][..])?;

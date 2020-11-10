@@ -290,6 +290,66 @@ fn raw_pol2() -> &'static str {
     "
 }
 
+fn raw_pol3() -> &'static str {
+    "
+fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {
+    match_to_from(from, to, req) &&
+        server_ok(to) &&
+        req.method() == \"GET\"
+}
+
+fn server_ok(id: ID) -> bool {
+        if let Some(port) = id.port() {
+            port == 80
+        } else {
+            // default is port 80
+            true
+        }
+}
+
+fn match_to_from(from: ID, to: ID, req: HttpRequest) -> bool {
+    let (rfrom, rto) = req.from_to();
+    true
+}
+
+fn allow_rest_response(from: ID, to: ID, req: HttpResponse, payload: data) -> bool {
+    true
+}
+    "
+}
+
+
+fn get_from_to() -> Result<(DPID, DPID), expressions::Error> {
+    let mut from_labels: BTreeSet<&str> = vec![ 
+        "allowed",
+    ].into_iter().collect(); 
+
+    let from = literals::ID::new(
+        BTreeSet::new(), //hosts
+        BTreeSet::new(), //ips
+        Some(80), //port
+        from_labels.into_iter()
+            .map(|x| Label::from_str(x).map_err(|x| expressions::Error::from(x)).unwrap() )
+            .collect() 
+    );
+    
+    let to_labels: BTreeSet<&str> = vec![ 
+    ].into_iter().collect();
+    let to_hosts: BTreeSet<String> = vec![ 
+        "server"
+    ].into_iter().map(&str::to_string).collect();
+
+    let to = literals::ID::new(
+        to_hosts, //hosts
+        BTreeSet::new(), //ips
+        Some(80), //port
+        to_labels.into_iter()
+            .map(|x| Label::from_str(x).map_err(|x| expressions::Error::from(x)).unwrap() )
+            .collect() 
+    );
+    Ok((from, to))
+}
+
 async fn global_pol1() ->  Result<CPExpr,  expressions::Error> {
     let function = "allow_rest_request";
 
@@ -494,4 +554,43 @@ mod tests_control {
             Err(res) => panic!(res)
         })
     }
+    
+    #[actix_rt::test]
+    async fn test_eval_specialize() -> Result<(),  actix_web::Error> {
+        let state = mock_state().await.unwrap();
+        state.db_con.database("armour").drop(None).await;
+        register_policy(&state, raw_pol3()).await.unwrap();
+        register_onboarding_policy(&state, raw_onboard1()).await.unwrap();
+
+        let request = OnboardServiceRequest{
+            service: labels::Label::from_str("Service21::ingress").unwrap(),
+            host: labels::Label::from_str("Host42").unwrap(),
+            tmp_dpid: Some(literals::DPID::new(
+                BTreeSet::default(),
+                BTreeSet::default(),
+                Some(80),
+                BTreeSet::default()
+            ))
+        };
+
+        Ok(match service::helper_on_board(&state, request).await? {
+            Ok((service_id, ingress_req, egress_req)) =>{
+                println!("Updating policy for label {}\n{:#?}", ingress_req.label, ingress_req.policy);
+                let (from, to) = get_from_to().unwrap();
+                let req =  literals::HttpRequest::new("GET", "1", "/", "", Vec::new(), Connection::new(&from, &to, 10));
+                let args : Vec<DPExpr> = vec![
+                    Expr::LitExpr(DPLiteral::http_request(Box::new(req))),
+                    Expr::LitExpr(DPLiteral::data(Vec::new())),
+                ];
+
+                let env : DPEnv = Env::new(&ingress_req.policy.policy(policies::Protocol::HTTP).unwrap().program);
+                let result = expressions::Expr::call("allow_rest_request", args)
+                .evaluate(env.clone())
+                .await;
+                println!{"{:#?}", result};
+            },
+            Err(res) => panic!(res)
+        })
+    }
+
 }

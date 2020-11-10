@@ -44,6 +44,10 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Code<FlatTyp, FlatLite
     pub fn insert(&mut self, s: String, e: Expr<FlatTyp, FlatLiteral>) -> Option<Expr<FlatTyp, FlatLiteral>> {
         self.0.insert(s, e)
     }
+
+    pub fn merge(&self, other: &Self) -> Self{
+        Code(self.0.clone().into_iter().chain(other.0.clone().into_iter()).collect())
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -131,6 +135,15 @@ impl< FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Program<FlatTyp, Flat
     }
     pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, Error> {
         Ok(PreProgram::from_file(path)?.program(&[]))
+    }
+
+    pub fn merge(&self, other: &Self) -> Self{
+        Program{
+            code: self.code.merge(&other.code),
+            externals: self.externals.merge(&other.externals),
+            headers: self.headers.merge(&other.headers),
+            phantom: PhantomData
+        }
     }
 }
 
@@ -272,7 +285,6 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  Program<FlatTyp, Flat
         e: &Expr<FlatTyp, FlatLiteral>, 
         own_idx: &graph::NodeIndex
     ) -> Result<(), Error> { 
-        println!("{:#?}", e);
         match e {
             Expr::Var(_) | Expr::BVar(_, _) | Expr::LitExpr(_) => Ok(()),
             Expr::ReturnExpr(e) | Expr::PrefixExpr(_, e) |Expr::Closure(_, e) => Self::aux_deadcode_elim(module, e, own_idx),

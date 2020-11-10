@@ -28,6 +28,12 @@ pub struct Headers<FlatTyp:TFlatTyp >(pub BTreeMap<String, Signature<FlatTyp>>);
 pub type DPHeaders = Headers<FlatTyp>;
 pub type CPHeaders = Headers<CPFlatTyp>;
 
+impl<FlatTyp:TFlatTyp> Headers<FlatTyp> {
+    pub fn merge(&self, other: &Self) -> Self{
+        Headers(self.0.clone().into_iter().chain(other.0.clone().into_iter()).collect())
+    }
+}
+
 impl From<CPHeaders> for DPHeaders {
     fn from(cph: CPHeaders) -> Self{
         Headers( cph.0.into_iter().map(|(s, sig)| (s, DPSignature::from(sig))).collect())

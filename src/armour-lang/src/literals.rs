@@ -305,6 +305,14 @@ impl From<CPConnection> for DPConnection {
 
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Connection<FlatTyp, FlatLiteral> {
+    pub fn new(from: &ID<FlatTyp, FlatLiteral>, to: &ID<FlatTyp, FlatLiteral>, number: i64) -> Self {
+        Connection {
+            from: from.clone(),
+            to: to.clone(), 
+            number: number,
+            phantom: PhantomData
+        }
+    }
     pub fn literal(from: &ID<FlatTyp, FlatLiteral>, to: &ID<FlatTyp, FlatLiteral>, number: i64) -> Literal<FlatTyp, FlatLiteral> {
         Literal::FlatLiteral(FlatLiteral::connection_from(from, to, number))//Since we can not do overloading, 
         

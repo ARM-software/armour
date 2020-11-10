@@ -219,6 +219,13 @@ impl TExternals<types::CPFlatTyp, literals::CPFlatLiteral> for literals::CPFlatL
     }
 }
 impl Externals {
+    pub fn merge(&self, other: &Self) -> Self{
+        Externals{
+            sockets: self.sockets.clone().into_iter().chain(other.clone().sockets.into_iter()).collect(),
+            timeout: self.timeout
+        }
+    }
+
     pub fn set_timeout(&mut self, t: Duration) {
         self.timeout = t
     }

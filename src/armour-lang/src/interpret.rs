@@ -931,13 +931,11 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                     None => Err(Error::new("eval, call(4): type error")),
                 }
             }
-            x => Err(Error::from(format!("eval, call: {}: {:?}", function, x))),
+            x => Err(Error::from(format!("eval, call ({}): {}: {:?}", x.len(), function, x))),
         }
     }
     #[allow(clippy::cognitive_complexity)]
     fn eval(self, env: Env<FlatTyp, FlatLiteral>) -> BoxFuture<'static, Result<Self, self::Error>> {
-        //println!("### Interpreting expression: ");
-        //self.print_debug();
         async {
             match self {
                 Expr::Var(_) | Expr::BVar(_, _) => Err(Error::new("eval variable")),

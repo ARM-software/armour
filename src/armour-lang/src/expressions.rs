@@ -378,6 +378,40 @@ impl TExpr<types::FlatTyp> for DPExpr {
     }
 }
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> {
+    pub fn is_free(&self, u: usize) -> bool {
+        match self {
+            Expr::Var(_) => true,
+            Expr::BVar(_, u1) => u1 == &u,
+            Expr::LitExpr(_) => true,
+            Expr::Closure(x, e) => e.is_free(u+1),
+            Expr::ReturnExpr(e) | Expr::PrefixExpr(_, e) => e.is_free(u),  
+            Expr::InfixExpr(_, e1, e2) | Expr::Let(_, e1, e2) | Expr::Iter(_, _, e1, e2) => e1.is_free(u) && e2.is_free(u), 
+            Expr::BlockExpr(_, es) => es.iter().fold(true, |acc, x| acc && x.is_free(u)),
+            Expr::IfExpr {
+                cond,
+                consequence,
+                alternative,
+            } => cond.is_free(u) && consequence.is_free(u) && alternative.as_ref().map_or_else( || true, |x| x.is_free(u)),
+            Expr::IfSomeMatchExpr {
+                expr,
+                consequence,
+                alternative,
+            } => expr.is_free(u) && consequence.is_free(u) && alternative.as_ref().map_or_else(|| true, |x| x.is_free(u)),
+            Expr::IfMatchExpr {
+                variables,
+                matches,
+                consequence,
+                alternative,
+            } =>  matches.iter().fold(true, |acc, (x,_)| acc && x.is_free(u)) && consequence.is_free(u) && alternative.as_ref().map_or_else(|| true, |x| x.is_free(u)),
+
+            Expr::CallExpr {
+                function,
+                arguments,
+                is_async,
+            } => arguments.iter().fold(true, |acc, x| acc && x.is_free(u)),
+            Expr::Phantom(_) => true
+        }
+    }
     pub fn var(v: &str) -> Self {
         Self::Var(parser::Ident(v.to_string()))
     }
@@ -526,6 +560,15 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
             Self::Closure(v, e) => Self::Closure(v, Box::new(e.propagate_subst(i, j-1, u))),
             _ => self.psubst(i, u)
         }
+    }
+
+    pub fn at_depth(self, i: usize) -> Option<Self> {
+        match self {
+            Self::Closure(_, e) => e.at_depth(i-1),
+            e if i == 0 => Some(e),
+            _ => None
+        }
+
     }
 
     pub fn psubst(self, i: usize, u: &Self) -> Self {

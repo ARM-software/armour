@@ -78,28 +78,34 @@ pub mod service {
 		host: web::Data<super::Host>,
 		information: web::Json<OnboardInformation>,
 	) -> Result<HttpResponse, actix_web::Error> {
-		let information = information.into_inner();
-		let port = information.top_port();
+		let mut information = information.into_inner();
+		let port = information.top_port();			
 
-		let mut proxies = Vec::new();
-		for proxy in information.proxies {
-			let mut p_ingress = proxy.clone();
-			p_ingress.label = Label::concat(&Label::from_str("Ingress").unwrap(), &proxy.label);
-			let mut p_egress = proxy.clone();
-			p_egress.label = Label::concat(&Label::from_str("Egress").unwrap(), &proxy.label);
-			proxies.push(p_ingress);
-			proxies.push(p_egress);
-		}
-
-		for proxy in proxies {
+		//If we want 2 proxies per service one for ingress and one for egress
+		//If so : 1) proxy.config with two different ports 2) write specific iptables rules
+		//let mut proxies = Vec::new();
 		//for proxy in information.proxies {
+		//	let mut p_ingress = proxy.clone();
+		//	p_ingress.label = Label::concat(&Label::from_str("Ingress").unwrap(), &proxy.label);
+		//	let mut p_egress = proxy.clone();
+		//	p_egress.label = Label::concat(&Label::from_str("Egress").unwrap(), &proxy.label);
+		//	proxies.push(p_ingress);
+		//	proxies.push(p_egress);
+		//}
+
+		//for proxy in proxies {
+
+		for mut proxy in information.proxies {
+			//One proxy for ingress and egress, FIXME: add labels ProxyType::EgressIngress and not change main proxy labels
+			proxy.label = Label::concat(&Label::from_str("EgressIngress").unwrap(), &proxy.label);
+
 			// launch proxies (if not already launched)
 			launch_proxy(&host, &proxy).await?;
 			let instance = InstanceSelector::Label(proxy.label.clone());
 			
 			// add service labels
 			add_ip_labels(&host, &instance, &information.labels).await?;
-			let config = proxy.config(port);//TODO same port for ingress and egress => EgressIngress ?
+			let config = proxy.config(port);
 			start_proxy(&host, instance, config).await?
 		}
 		log::info!("onboarded");
