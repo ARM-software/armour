@@ -1,5 +1,9 @@
 use actix_web::{client, delete, get, post, web, web::Json, HttpResponse};
-use armour_api::control;
+use armour_api::control::{
+    self, 
+    global_policy_label, 
+    onboarding_policy_label
+};
 use armour_api::host::PolicyUpdate;
 use armour_lang::{
     labels::Label, 
@@ -178,14 +182,6 @@ impl Default for OnboardingPolicy {
     }
 }
 
-pub const ONBOARDING_POLICY_KEY : &str = "onboarding_policy";
-pub const GLOBAL_POLICY_KEY : &str = "global_policy";
-pub fn onboarding_policy_label() -> Label {
-    Label::from_str(ONBOARDING_POLICY_KEY).unwrap()
-}
-pub fn global_policy_label() -> Label {
-    Label::from_str(GLOBAL_POLICY_KEY).unwrap()
-}
 /// END
 
 pub mod service {
@@ -481,11 +477,24 @@ pub mod policy {
                     bson::from_bson::<control::PolicyUpdateRequest>(bson::Bson::Document(doc))
                         .on_err("Bson conversion error")?;
                 let pol = if policy.policy.is_allow_all() {
-                    "(allow all)"
+                    "(allow all)".to_owned()
                 } else if policy.policy.is_deny_all() {
-                    "(deny all)"
+                    "(deny all)".to_owned()
                 } else {
-                    ""
+                    let mut pol : String = "".to_owned();
+                    if policy.policy.is_allow_egress() {
+                        pol += "(allow egress)";
+                    }
+                    if policy.policy.is_allow_ingress() {
+                        pol += "(allow ingress)";
+                    }
+                    if policy.policy.is_deny_ingress() {
+                        pol += "(deny ingress)";
+                    }
+                    if policy.policy.is_deny_ingress() {
+                        pol += "(deny ingress)";
+                    }
+                    pol
                 };
                 s.push_str(format!("{}{}\n", policy.label, pol).as_str())
             }

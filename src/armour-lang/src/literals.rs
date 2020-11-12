@@ -172,12 +172,62 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Vec<(&str, &[u8])
 pub struct ID<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     pub hosts: BTreeSet<String>,
     pub ips: BTreeSet<std::net::IpAddr>,
+
+    #[serde(default)]
+    #[serde(serialize_with = "port_serde::serialize")]
+    #[serde(deserialize_with = "port_serde::deserialize")]
     pub port: Option<u16>,
     pub labels: BTreeSet<labels::Label>,
     phantom : PhantomData<(FlatTyp, FlatLiteral)>,
 }
 pub type DPID = ID<FlatTyp, FlatLiteral>;
 pub type CPID = ID<CPFlatTyp, CPFlatLiteral>;
+
+mod port_serde {
+    use serde::{self, de, Deserialize, Serializer, Deserializer};
+    use bson::doc;
+    use std::fmt;
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<u16>, D::Error>
+    where D: Deserializer<'de> {
+        
+        struct FromPort ();
+
+        impl<'de> de::Visitor<'de> for FromPort {
+            type Value = Option<u16>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an Option<u16>")
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E> 
+            where
+                E: de::Error,
+            {
+                Ok(None)
+            }    
+            fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: Deserializer<'de>,            
+            {
+                Ok(Some(bson::compat::u2f::deserialize(deserializer)?))
+            }
+        }
+        
+        
+        deserializer.deserialize_option(FromPort())
+    }
+
+    pub fn serialize<S>(x: &Option<u16>, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {   
+        match *x {
+            Some(p) => bson::compat::u2f::serialize(&p, s),
+            None => s.serialize_none()
+        }
+    }
+}
 
 impl From<CPID> for DPID {
     fn from(cpid: CPID) -> Self {

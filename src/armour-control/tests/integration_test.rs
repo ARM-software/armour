@@ -550,7 +550,18 @@ mod tests_control {
         };
 
         Ok(match service::helper_on_board(&state, request).await? {
-            Ok((service_id, ingress_req, egress_req)) => println!("Updating policy for label {}\n{}", ingress_req.label, ingress_req.policy),
+            Ok((service_id, ingress_req, egress_req)) =>{
+                let fn_ingress = ingress_req.policy.policy(Protocol::HTTP).unwrap().fn_policies.0.get("allow_rest_request");
+                let fn_egress = egress_req.policy.policy(Protocol::HTTP).unwrap().fn_policies.0.get("allow_rest_response");
+                let merged_policy = ingress_req.policy.merge(&egress_req.policy);
+                let fn_egress_m = merged_policy.policy(Protocol::HTTP).unwrap().fn_policies.0.get("allow_rest_response");
+                let fn_ingress_m = merged_policy.policy(Protocol::HTTP).unwrap().fn_policies.0.get("allow_rest_request");
+                assert_eq!(fn_egress, Some(&FnPolicy::Args(2)));
+                assert_eq!(fn_ingress, Some(&FnPolicy::Args(2)));
+                assert_eq!(fn_egress_m, Some(&FnPolicy::Args(2)));
+                assert_eq!(fn_ingress_m, Some(&FnPolicy::Args(2)));
+                println!("Updating policy for label {}\n{}", ingress_req.label, ingress_req.policy)
+            },
             Err(res) => panic!(res)
         })
     }
@@ -558,7 +569,7 @@ mod tests_control {
     #[actix_rt::test]
     async fn test_eval_specialize() -> Result<(),  actix_web::Error> {
         let state = mock_state().await.unwrap();
-        state.db_con.database("armour").drop(None).await;
+        state.db_con.database("armour").drop(None).await.unwrap();
         register_policy(&state, raw_pol3()).await.unwrap();
         register_onboarding_policy(&state, raw_onboard1()).await.unwrap();
 

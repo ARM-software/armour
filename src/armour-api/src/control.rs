@@ -4,9 +4,21 @@ use armour_lang::labels::{Label, Labels};
 use armour_lang::literals::{CPID, DPID};
 use armour_lang::policies::{self, OnboardingPolicy, GlobalPolicies, DPPolicies};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 pub const CONTROL_PLANE: &str = "https://localhost:8088";
 pub const TCP_PORT: u16 = 8088;
+
+
+pub const ONBOARDING_POLICY_KEY : &str = "onboarding_policy";
+pub const GLOBAL_POLICY_KEY : &str = "global_policy";
+pub fn onboarding_policy_label() -> Label {
+    Label::from_str(ONBOARDING_POLICY_KEY).unwrap()
+}
+pub fn global_policy_label() -> Label {
+    Label::from_str(GLOBAL_POLICY_KEY).unwrap()
+}
+
 
 type Credentials = String;
 // map from domains to labels
@@ -84,7 +96,6 @@ impl OnboardingUpdateRequest {
             policy: pol.policy.policy(policies::Protocol::HTTP).unwrap().clone(),//FIXME unwrap dangerous
             labels: pol.labels
         }
-
     }
 }
 

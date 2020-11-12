@@ -34,13 +34,31 @@ impl Default for FnPolicy {
 
 // map from function name to `FnPolicy`
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Default)]
-pub struct FnPolicies(BTreeMap<String, FnPolicy>);
+pub struct FnPolicies(pub BTreeMap<String, FnPolicy>);
 
 impl FnPolicies {
     fn allow_all(names: &[String]) -> Self {
         FnPolicies(
             names
                 .iter()
+                .map(|name| (name.to_string(), FnPolicy::Allow))
+                .collect(),
+        )
+    }
+    fn allow_egress(names: &[String]) -> Self {
+        FnPolicies(
+            names
+                .iter()
+                .filter(|x| is_egress(x))
+                .map(|name| (name.to_string(), FnPolicy::Allow))
+                .collect(),
+        )
+    }
+    fn allow_ingress(names: &[String]) -> Self {
+        FnPolicies(
+            names
+                .iter()
+                .filter(|x| is_ingress(x))
                 .map(|name| (name.to_string(), FnPolicy::Allow))
                 .collect(),
         )
@@ -53,11 +71,41 @@ impl FnPolicies {
                 .collect(),
         )
     }
+    fn deny_egress(names: &[String]) -> Self {
+        FnPolicies(
+            names
+                .iter()
+                .filter(|x| is_egress(x))
+                .map(|name| (name.to_string(), FnPolicy::Deny))
+                .collect(),
+        )
+    }
+    fn deny_ingress(names: &[String]) -> Self {
+        FnPolicies(
+            names
+                .iter()
+                .filter(|x| is_ingress(x))
+                .map(|name| (name.to_string(), FnPolicy::Deny))
+                .collect(),
+        )
+    }
     fn is_allow_all(&self) -> bool {
         !self.0.is_empty() && self.0.values().all(|p| *p == FnPolicy::Allow)
     }
+    fn is_allow_egress(&self) -> bool {
+        !self.0.is_empty() && self.0.iter().all(|(k,p)| !is_egress(k) ||  *p == FnPolicy::Allow)
+    }
+    fn is_allow_ingress(&self) -> bool {
+        !self.0.is_empty() && self.0.iter().all(|(k,p)| !is_ingress(k) ||  *p == FnPolicy::Allow)
+    }
     fn is_deny_all(&self) -> bool {
         !self.0.is_empty() && self.0.values().all(|p| *p == FnPolicy::Deny)
+    }
+    fn is_deny_egress(&self) -> bool {
+        !self.0.is_empty() && self.0.iter().all(|(k,p)| !is_egress(k) || *p == FnPolicy::Deny )
+    }
+    fn is_deny_ingress(&self) -> bool {
+        !self.0.is_empty() && self.0.iter().all(|(k,p)| !is_ingress(k) || *p == FnPolicy::Deny )
     }
     
     pub fn merge(&self, other: &Self) -> Self{
@@ -102,6 +150,13 @@ pub const ALLOW_REST_RESPONSE: &str = "allow_rest_response";
 pub const ALLOW_TCP_CONNECTION: &str = "allow_tcp_connection";
 pub const ON_TCP_DISCONNECT: &str = "on_tcp_disconnect";
 
+fn is_ingress(function: &String) -> bool {
+    ALLOW_REST_REQUEST == function || ALLOW_TCP_CONNECTION == function
+}
+
+fn is_egress(function: &String) -> bool {
+    ALLOW_REST_RESPONSE == function 
+}
 
 fn http_policy<FlatTyp:TFlatTyp>() -> ProtocolPolicy<FlatTyp> {      
     let mut policy = ProtocolPolicy::default();
@@ -249,7 +304,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> FromStr for Protocol<F
     }
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
+#[derive(PartialEq, Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Policy<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     pub program: lang::Program<FlatTyp, FlatLiteral>,
     pub fn_policies: FnPolicies,
@@ -274,8 +329,36 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policy<FlatTyp, FlatLi
             fn_policies,
         }
     }
+    pub fn allow_egress(p: Protocol<FlatTyp, FlatLiteral>) -> Self {
+        let fn_policies = FnPolicies::allow_egress(p.policy().functions().as_ref());
+        Policy {
+            program: lang::Program::default(),
+            fn_policies,
+        }
+    }
+    pub fn allow_ingress(p: Protocol<FlatTyp, FlatLiteral>) -> Self {
+        let fn_policies = FnPolicies::allow_ingress(p.policy().functions().as_ref());
+        Policy {
+            program: lang::Program::default(),
+            fn_policies,
+        }
+    }
     pub fn deny_all(p: Protocol<FlatTyp, FlatLiteral>) -> Self {
         let fn_policies = FnPolicies::deny_all(p.policy().functions().as_ref());
+        Policy {
+            program: lang::Program::default(),
+            fn_policies,
+        }
+    }
+    pub fn deny_egress(p: Protocol<FlatTyp, FlatLiteral>) -> Self {
+        let fn_policies = FnPolicies::deny_egress(p.policy().functions().as_ref());
+        Policy {
+            program: lang::Program::default(),
+            fn_policies,
+        }
+    }
+    pub fn deny_ingress(p: Protocol<FlatTyp, FlatLiteral>) -> Self {
+        let fn_policies = FnPolicies::deny_ingress(p.policy().functions().as_ref());
         Policy {
             program: lang::Program::default(),
             fn_policies,
@@ -293,9 +376,22 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policy<FlatTyp, FlatLi
     pub fn is_allow_all(&self) -> bool {
         self.fn_policies.is_allow_all()
     }
+    pub fn is_allow_egress(&self) -> bool {
+        self.fn_policies.is_allow_egress()
+    }
+    pub fn is_allow_ingress(&self) -> bool {
+        self.fn_policies.is_allow_ingress()
+    }
     pub fn is_deny_all(&self) -> bool {
         self.fn_policies.is_deny_all()
     }
+    pub fn is_deny_egress(&self) -> bool {
+        self.fn_policies.is_deny_egress()
+    }
+    pub fn is_deny_ingress(&self) -> bool {
+        self.fn_policies.is_deny_ingress()
+    }
+
     fn blake3_hash(&self) -> Option<arrayvec::ArrayString<[u8; 64]>> {
         bincode::serialize(self)
             .map(|bytes| blake3::hash(&bytes).to_hex())
@@ -386,6 +482,19 @@ impl<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> fmt::Display for Pol
         } else if self.is_deny_all() {
             write!(f, "deny all")
         } else {
+            if self.is_allow_egress() {
+                write!(f, "allow egress");
+            }
+            if self.is_allow_ingress() {
+                write!(f, "allow ingress");
+            }
+            if self.is_deny_ingress() {
+                write!(f, "deny ingress");
+            }
+            if self.is_deny_ingress() {
+                write!(f, "deny ingress");
+            }
+
             writeln!(f, "[{}]", self.blake3())?;
             write!(f, "{}", self.program)
         }
@@ -448,6 +557,30 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, Flat
             .insert(Protocol::HTTP, Policy::allow_all(http));
         policies
     }
+    pub fn allow_egress() -> Self {
+        let mut policies = Policies::default();
+        let tcp: Protocol<FlatTyp, FlatLiteral> = Protocol::TCP;
+        let http: Protocol<FlatTyp, FlatLiteral> = Protocol::HTTP;
+        policies
+            .0
+            .insert(Protocol::TCP, Policy::allow_egress(tcp));
+        policies
+            .0
+            .insert(Protocol::HTTP, Policy::allow_egress(http));
+        policies
+    }
+    pub fn allow_ingress() -> Self {
+        let mut policies = Policies::default();
+        let tcp: Protocol<FlatTyp, FlatLiteral> = Protocol::TCP;
+        let http: Protocol<FlatTyp, FlatLiteral> = Protocol::HTTP;
+        policies
+            .0
+            .insert(Protocol::TCP, Policy::allow_ingress(tcp));
+        policies
+            .0
+            .insert(Protocol::HTTP, Policy::allow_ingress(http));
+        policies
+    }
     pub fn deny_all() -> Self {
         let mut policies = Policies::default();
         policies
@@ -458,11 +591,43 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, Flat
             .insert(Protocol::HTTP, Policy::deny_all(Protocol::HTTP));
         policies
     }
+    pub fn deny_egress() -> Self {
+        let mut policies = Policies::default();
+        policies
+            .0
+            .insert(Protocol::TCP, Policy::deny_egress(Protocol::TCP));
+        policies
+            .0
+            .insert(Protocol::HTTP, Policy::deny_egress(Protocol::HTTP));
+        policies
+    }
+    pub fn deny_ingress() -> Self {
+        let mut policies = Policies::default();
+        policies
+            .0
+            .insert(Protocol::TCP, Policy::deny_ingress(Protocol::TCP));
+        policies
+            .0
+            .insert(Protocol::HTTP, Policy::deny_ingress(Protocol::HTTP));
+        policies
+    }
     pub fn is_allow_all(&self) -> bool {
         self.0.values().all(|p| p.is_allow_all())
     }
+    pub fn is_allow_egress(&self) -> bool {
+        self.0.values().all(|p| p.is_allow_egress())
+    }
+    pub fn is_allow_ingress(&self) -> bool {
+        self.0.values().all(|p| p.is_allow_ingress())
+    }
     pub fn is_deny_all(&self) -> bool {
         self.0.values().all(|p| p.is_deny_all())
+    }
+    pub fn is_deny_egress(&self) -> bool {
+        self.0.values().all(|p| p.is_deny_egress())
+    }
+    pub fn is_deny_ingress(&self) -> bool {
+        self.0.values().all(|p| p.is_deny_ingress())
     }
     pub fn len(&self) -> usize {
         self.0.len()

@@ -53,22 +53,54 @@ subcommands:
             takes_value: true
             value_name: "service label"
             help: Service label
-        - ONBOARDING:
-            long: onboarding    
+        - LABELS:
+            short: l
+            long: label
             required: false
-            takes_value: false
-            help: Onboarding policy flag
-        - GLOBAL:
-            long: global    
-            required: false
-            takes_value: false
-            help: Global policy flag
+            takes_value: true
+            multiple: true
+            number_of_values: 2
+            value_names:
+                - "url"
+                - "label"
+            help: Policy labels
+  - update-global:
+      about: Update the global policy
+      args:
+        - POLICYFILE:
+            short: p
+            long: policy
+            required: true
+            takes_value: true
+            value_name: "policy filename"
+            help: Input policy file
         - SELECTOR:
             long: selector    
             required: false
             takes_value: true 
             value_name: "selector label"
             help: Label used to select onboarded services that need to be updated when the global policy changes 
+        - LABELS:
+            short: l
+            long: label
+            required: false
+            takes_value: true
+            multiple: true
+            number_of_values: 2
+            value_names:
+                - "url"
+                - "label"
+            help: Policy labels
+  - update-onboarding:
+      about: Update the onboarding policy
+      args:
+        - POLICYFILE:
+            short: p
+            long: policy
+            required: true
+            takes_value: true
+            value_name: "policy filename"
+            help: Input policy file
         - LABELS:
             short: l
             long: label
@@ -99,6 +131,10 @@ subcommands:
             required: true
             takes_value: true
             help: Service label
+  - query-global:
+      about: Query the global policy
+  - query-onboarding:
+      about: Query the onboarding policy
   - drop-all:
       about: Remove all policies
   - drop:
@@ -110,3 +146,8 @@ subcommands:
             required: true
             takes_value: true
             help: Service label
+  - drop-global:
+      about: Remove the global policy
+  - drop-onboarding:
+      about: Remove the onboarding policy
+

@@ -362,8 +362,12 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
 
         match f {
             //Onboarding policy
-            "compile_ingress" => sig(vec![CPTyp::str(), CPTyp::id()], CPTyp::FlatTyp(CPFlatTyp::Policy)),
+            "allow_egress" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Policy)),
+            "allow_ingress" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Policy)),
             "compile_egress" => sig(vec![CPTyp::str(), CPTyp::id()], CPTyp::FlatTyp(CPFlatTyp::Policy)),
+            "compile_ingress" => sig(vec![CPTyp::str(), CPTyp::id()], CPTyp::FlatTyp(CPFlatTyp::Policy)),
+            "deny_egress" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Policy)),
+            "deny_ingress" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Policy)),
             "ControlPlane::onboard" => sig(vec![CPTyp::id()], CPTyp::bool()),
             "ControlPlane::onboarded" => sig(vec![CPTyp::label(), CPTyp::label()], CPTyp::id().option()),
             "ControlPlane::newID" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::id()),

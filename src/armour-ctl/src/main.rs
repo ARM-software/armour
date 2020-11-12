@@ -44,53 +44,72 @@ async fn main() -> Result<(), Error> {
         let labels = labels(update_matches);
 
         let client = {
-            if update_matches.is_present("ONBOARDING") {
-                println!("updating onboarding policy");
-                let policy = policies::OnboardingPolicy::from_file(file)?;
+            let policy = policies::Policies::from_file(file)?;
+            let update_payload = control::PolicyUpdateRequest {
+                label: service.parse().unwrap(),
+                policy,
+                labels,
+            };
+            client
+            .post(url("policy/update"))
+            .send_json(&update_payload)
+            .await
+        };
 
-                let update_payload = control::OnboardingUpdateRequest {
-                    label: service.parse().unwrap(),
-                    policy,
-                    labels,
-                };
-                client
-                .post(url("policy/update-onboarding"))
-                .send_json(&update_payload)
-                .await
-            } else if update_matches.is_present("GLOBAL") {
-                let selector : Option<Label> = match update_matches.value_of("SELECTOR") {
-                    Some(x) => Some(x.parse().unwrap()),
-                    _ => {
-                        //by default all onboarding services are concerned
-                        Some(Label::from_str("ServiceID::**").unwrap())
-                    }
-                };
+        match client {
+            Ok(response) => println!("success: {}", response.status().is_success()),
+            Err(err) => println!("{}", err),
+        }
+    }
+    else if let Some(update_matches) = matches.subcommand_matches("update-global") {
+        let file = update_matches.value_of("POLICYFILE").unwrap();
+        let labels = labels(update_matches);
 
-                println!("updating global policy");
-                let policy = policies::Policies::from_file(file)?;
-                let update_payload = control::CPPolicyUpdateRequest {
-                    label: service.parse().unwrap(),
-                    policy,
-                    labels,
-                    selector,
-                };
-                client
-                .post(url("policy/update-global"))
-                .send_json(&update_payload)
-                .await
-            }
-             else {
-                let policy = policies::Policies::from_file(file)?;
-                let update_payload = control::PolicyUpdateRequest {
-                    label: service.parse().unwrap(),
-                    policy,
-                    labels,
-                };
-                client
-                .post(url("policy/update"))
-                .send_json(&update_payload)
-                .await
-            }
+        let client = {
+            let selector : Option<Label> = match update_matches.value_of("SELECTOR") {
+                Some(x) => Some(x.parse().unwrap()),
+                _ => {
+                    //by default all onboarding services are concerned
+                    Some(Label::from_str("ServiceID::**").unwrap())
+                }
+            };
+
+            println!("updating global policy");
+            let policy = policies::Policies::from_file(file)?;
+            let update_payload = control::CPPolicyUpdateRequest {
+                label: control::global_policy_label(),
+                policy,
+                labels,
+                selector,
+            };
+            client
+            .post(url("policy/update-global"))
+            .send_json(&update_payload)
+            .await
+        };
+
+        match client {
+            Ok(response) => println!("success: {}", response.status().is_success()),
+            Err(err) => println!("{}", err),
+        }
+    }
+    else if let Some(update_matches) = matches.subcommand_matches("update-onboarding") {
+        let file = update_matches.value_of("POLICYFILE").unwrap();
+        let labels = labels(update_matches);
+
+        let client = {
+            println!("updating onboarding policy");
+            let policy = policies::OnboardingPolicy::from_file(file)?;
+
+            let update_payload = control::OnboardingUpdateRequest {
+                label: control::onboarding_policy_label(),
+                policy,
+                labels,
+            };
+            client
+            .post(url("policy/update-onboarding"))
+            .send_json(&update_payload)
+            .await
         };
 
         match client {
@@ -105,63 +124,71 @@ async fn main() -> Result<(), Error> {
             label: service.parse()?,
         };
 
-        if query_matches.is_present("ONBOARDING") {
-            match client
-                .get(url("policy/query-onboarding"))
-                .send_json(&query_payload)
-                .await
-            {
-                Ok(mut response) => {
-                    let body = response.body().await.map_err(|_| "Payload error")?;
-                    if response.status().is_success() {
-                        let req: armour_api::control::OnboardingUpdateRequest =
-                            serde_json::from_slice(body.as_ref())?;
-                        println!("{}", req.policy);
-                        println!("labels: {:?}", req.labels)
-                    } else {
-                        println!("{}", string_from_bytes(body))
-                    }
+        match client
+            .get(url("policy/query"))
+            .send_json(&query_payload)
+            .await
+        {
+            Ok(mut response) => {
+                let body = response.body().await.map_err(|_| "Payload error")?;
+                if response.status().is_success() {
+                    let req: armour_api::control::PolicyUpdateRequest =
+                        serde_json::from_slice(body.as_ref())?;
+                    println!("{}", req.policy);
+                    println!("labels: {:?}", req.labels)
+                } else {
+                    println!("{}", string_from_bytes(body))
                 }
-                Err(err) => println!("{}", err),
             }
-        } else if query_matches.is_present("GLOBAL") {
-            match client
-                .get(url("policy/query-global"))
-                .send_json(&query_payload)
-                .await
-            {
-                Ok(mut response) => {
-                    let body = response.body().await.map_err(|_| "Payload error")?;
-                    if response.status().is_success() {
-                        let req: armour_api::control::CPPolicyUpdateRequest =
-                            serde_json::from_slice(body.as_ref())?;
-                        println!("{}", req.policy);
-                        println!("labels: {:?}", req.labels)
-                    } else {
-                        println!("{}", string_from_bytes(body))
-                    }
+            Err(err) => println!("{}", err),
+        }
+    }
+    else if let Some(query_matches) = matches.subcommand_matches("query-global") {
+        let query_payload = control::PolicyQueryRequest {
+            label: control::global_policy_label(),
+        };
+
+        match client
+            .get(url("policy/query-global"))
+            .send_json(&query_payload)
+            .await
+        {
+            Ok(mut response) => {
+                let body = response.body().await.map_err(|_| "Payload error")?;
+                if response.status().is_success() {
+                    let req: armour_api::control::CPPolicyUpdateRequest =
+                        serde_json::from_slice(body.as_ref())?;
+                    println!("{}", req.policy);
+                    println!("labels: {:?}", req.labels)
+                } else {
+                    println!("{}", string_from_bytes(body))
                 }
-                Err(err) => println!("{}", err),
             }
-        } else {
-            match client
-                .get(url("policy/query"))
-                .send_json(&query_payload)
-                .await
-            {
-                Ok(mut response) => {
-                    let body = response.body().await.map_err(|_| "Payload error")?;
-                    if response.status().is_success() {
-                        let req: armour_api::control::PolicyUpdateRequest =
-                            serde_json::from_slice(body.as_ref())?;
-                        println!("{}", req.policy);
-                        println!("labels: {:?}", req.labels)
-                    } else {
-                        println!("{}", string_from_bytes(body))
-                    }
+            Err(err) => println!("{}", err),
+        }
+    }
+    else if let Some(query_matches) = matches.subcommand_matches("query-onboarding") {
+        let query_payload = control::PolicyQueryRequest {
+            label: control::onboarding_policy_label(),
+        };
+
+        match client
+            .get(url("policy/query-onboarding"))
+            .send_json(&query_payload)
+            .await
+        {
+            Ok(mut response) => {
+                let body = response.body().await.map_err(|_| "Payload error")?;
+                if response.status().is_success() {
+                    let req: armour_api::control::OnboardingUpdateRequest =
+                        serde_json::from_slice(body.as_ref())?;
+                    println!("{}", req.policy);
+                    println!("labels: {:?}", req.labels)
+                } else {
+                    println!("{}", string_from_bytes(body))
                 }
-                Err(err) => println!("{}", err),
             }
+            Err(err) => println!("{}", err),
         }
     }
     // drop
@@ -169,6 +196,32 @@ async fn main() -> Result<(), Error> {
         let service = drop_matches.value_of("SERVICE").unwrap();
         let drop_payload = control::PolicyQueryRequest {
             label: service.parse()?,
+        };
+        match client
+            .delete(url("policy/drop"))
+            .send_json(&drop_payload)
+            .await
+        {
+            Ok(response) => println!("success: {}", response.status().is_success()),
+            Err(err) => println!("{}", err),
+        }
+    }
+    else if let Some(drop_matches) = matches.subcommand_matches("drop-global") {
+        let drop_payload = control::PolicyQueryRequest {
+            label: control::global_policy_label(),
+        };
+        match client
+            .delete(url("policy/drop"))
+            .send_json(&drop_payload)
+            .await
+        {
+            Ok(response) => println!("success: {}", response.status().is_success()),
+            Err(err) => println!("{}", err),
+        }
+    }
+    else if let Some(drop_matches) = matches.subcommand_matches("drop-onboarding") {
+        let drop_payload = control::PolicyQueryRequest {
+            label: control::onboarding_policy_label(),
         };
         match client
             .delete(url("policy/drop"))

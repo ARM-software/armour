@@ -11,15 +11,16 @@ use armour_lang::literals::{
     CPFlatLiteral,
     TFlatLiteral
 };
-use armour_lang::policies::{GlobalPolicies};
+use armour_lang::policies::{GlobalPolicies, DPPolicies};
 use armour_lang::parser::{Infix, Iter};
+use armour_api::control::{global_policy_label};
 use super::specialize;
 use armour_lang::types::{CPFlatTyp};
 use actix::prelude::*;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
 use armour_api::control;
-use super::rest_api::{collection, global_policy_label, POLICIES_COL, SERVICES_COL, State};
+use super::rest_api::{collection, POLICIES_COL, SERVICES_COL, State};
 use async_trait::async_trait;
 use bson::doc;
 use std::str::FromStr;
@@ -165,12 +166,12 @@ async fn helper_onboard(state: Arc<State>, id: &CPID) ->  Result<CPLiteral, self
         _ =>  return Err(Error::from(format!("Extracting service from id labels")))
     };
     
-    let mut new_id = id.clone();
-    new_id.port = None; //FIXME, use this due to some issues with bson encoding,  don't know how to use #[serde(with = "bson::compat::u2f")] with Option<u16>
+    //let mut new_id = id.clone();
+    //new_id.port = None; //FIXME, use this due to some issues with bson encoding,  don't know how to use #[serde(with = "bson::compat::u2f")] with Option<u16>
 
     let request = control::POnboardServiceRequest {
         service: service_id.clone(),
-        service_id: new_id.clone(),
+        service_id: id.clone(),
         host: host.clone()
     };                       
     let col = collection(&*state, SERVICES_COL);
@@ -195,6 +196,34 @@ async fn helper_onboard(state: Arc<State>, id: &CPID) ->  Result<CPLiteral, self
 impl TSLitInterpret for CPLiteral {
     fn seval_call0(_state: Arc<State>, f: &str) -> Option<CPLiteral> {
         match f {
+            ("allow_egress") => {
+                Some(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
+                    Box::new(literals::Policy{
+                        pol: Box::new(DPPolicies::allow_egress()) 
+                    })
+                )))
+            },
+            ("allow_ingress") => {
+                Some(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
+                    Box::new(literals::Policy{
+                        pol: Box::new(DPPolicies::allow_ingress()) 
+                    })
+                )))
+            },
+            ("deny_egress") => {
+                Some(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
+                    Box::new(literals::Policy{
+                        pol: Box::new(DPPolicies::deny_egress()) 
+                    })
+                )))
+            },
+            ("deny_ingress") => {
+                Some(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
+                    Box::new(literals::Policy{
+                        pol: Box::new(DPPolicies::deny_ingress())
+                    })
+                )))
+            },
             _ => Self::eval_call0(f),
         }
     }

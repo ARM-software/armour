@@ -91,9 +91,7 @@ impl Actor for PolicyActor {
                 id.port = Some(port);
                 Some(id)
             } else if let Some(port) = self.tcp.port()  {
-                let mut id = literals::ID::default();
-                id.port = Some(port);
-                Some(id)
+                Some(self.id(ID::SocketAddr(SocketAddr::from(([0, 0, 0, 0], port)))))
             } else { 
                 None
             }

@@ -517,8 +517,9 @@ impl TSExprPEval for CPExpr {
     }
 }
 
-pub async fn compile_ingress(state: Arc<State>, mut global_pol: policies::GlobalPolicies, function: &str, to: &CPID) -> Result<policies::DPPolicies, self::Error> {
-    for (_, pol)  in (&mut global_pol).policies_mut() {
+pub async fn compile_ingress(state: Arc<State>, global_pol: policies::GlobalPolicies, function: &str, to: &CPID) -> Result<policies::DPPolicies, self::Error> {
+    let mut new_gpol = policies::GlobalPolicies::default();
+    for (proto, pol)  in (&global_pol).policies() {
         let env = CPEnv::new(&pol.program);        
 
         //FIXME check correct type of http_rest_request
@@ -542,6 +543,7 @@ pub async fn compile_ingress(state: Arc<State>, mut global_pol: policies::Global
 
                 match body.pevaluate(state.clone(), env).await {                        
                     Ok((_, e)) =>{ 
+                        let mut n_pol = policies::GlobalPolicy::default();
                         let e = Expr::Closure(
                             Ident("from".to_string()),
                             Box::new(Expr::Closure(
@@ -556,29 +558,42 @@ pub async fn compile_ingress(state: Arc<State>, mut global_pol: policies::Global
 
                         e = Expr::Closure(Ident("req".to_string()), Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e))));
 
-                        pol.program.code.insert(function.to_string(), e.clone()); 
+                        n_pol.program.code.insert(function.to_string(), e.clone()); 
                         
-                        //Update headers
-                        let ret_typ = pol.program.headers.remove(&function.to_string()).unwrap().typ(); //unwrap is safe since we are actually working on existing fct
-                        let sig = Signature::new(vec![Typ::http_request(), Typ::data()], ret_typ);
-                        pol.program.headers.insert(function.to_string(), sig);
-
-                        //Update fn_policies
-                        pol.fn_policies.set_args(function.to_string(), 2);
-
-                        //Deadcode elimination
-                        pol.program = pol.program.deadcode_elim(&vec![function.to_string()][..])?;
+                        new_gpol.insert(
+                            proto.clone(), 
+                            compile_helper(pol, function, n_pol)?
+                        );
                     },
                     Err(err) => return Err(err)
                 }
             }
         }
     }
-    Ok(policies::DPPolicies::from(global_pol))
+    Ok(policies::DPPolicies::from(new_gpol))
 }
 
-pub async fn compile_egress(state: Arc<State>, mut global_pol: policies::GlobalPolicies, function: &str, from: &CPID) -> Result<policies::DPPolicies, self::Error> {
-    for (_, pol)  in (&mut global_pol).policies_mut() {
+fn compile_helper(
+    pol: &policies::GlobalPolicy, 
+    function: &str, 
+    mut n_pol: policies::GlobalPolicy
+) -> Result<policies::GlobalPolicy, self::Error>  {
+    //Update headers
+    let ret_typ = pol.program.headers.return_typ(&function.to_string()).unwrap(); //unwrap is safe since we are actually working on existing fct
+    let sig = Signature::new(vec![Typ::http_request(), Typ::data()], ret_typ);
+    n_pol.program.headers.insert(function.to_string(), sig);
+
+    //Update fn_policies
+    n_pol.fn_policies.set_args(function.to_string(), 2);
+
+    //Deadcode elimination
+    n_pol.program = n_pol.program.deadcode_elim(&vec![function.to_string()][..])?;
+    Ok(n_pol)
+}
+
+pub async fn compile_egress(state: Arc<State>, global_pol: policies::GlobalPolicies, function: &str, from: &CPID) -> Result<policies::DPPolicies, self::Error> {
+    let mut new_gpol = policies::GlobalPolicies::default();
+    for (proto, pol)  in (&global_pol).policies() {
         let env = CPEnv::new(&pol.program);        
 
         //FIXME check correct type of http_rest_request
@@ -603,6 +618,8 @@ pub async fn compile_egress(state: Arc<State>, mut global_pol: policies::GlobalP
 
                 match body.pevaluate(state.clone(), env).await {                        
                     Ok((_, e)) =>{ 
+                        let mut n_pol = policies::GlobalPolicy::default();
+
                         let e = Expr::Closure(
                             Ident("to".to_string()),
                             Box::new(Expr::Closure(
@@ -617,23 +634,18 @@ pub async fn compile_egress(state: Arc<State>, mut global_pol: policies::GlobalP
 
                         e = Expr::Closure(Ident("req".to_string()), Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e))));
                         
-                        pol.program.code.insert(function.to_string(), e.clone()); 
+                        n_pol.program.code.insert(function.to_string(), e.clone()); 
                         
-                        //Update headers
-                        let ret_typ = pol.program.headers.remove(&function.to_string()).unwrap().typ(); //unwrap is safe since we are actually working on existing fct
-                        let sig = Signature::new(vec![Typ::http_request(), Typ::data()], ret_typ);
-                        pol.program.headers.insert(function.to_string(), sig);
-
-                        //Update fn_policies
-                        pol.fn_policies.set_args(function.to_string(), 2);
-
-                        //Deadcode elimination
-                        pol.program = pol.program.deadcode_elim(&vec![function.to_string()][..])?;
+                        new_gpol.insert(
+                            proto.clone(), 
+                            compile_helper(pol, function, n_pol)?
+                        );
                     },
                     Err(err) => return Err(err)
                 }
             }
         }
     }
-    Ok(policies::DPPolicies::from(global_pol))
+    println!("compile egress\n{:#?}", new_gpol);
+    Ok(policies::DPPolicies::from(new_gpol))
 }
