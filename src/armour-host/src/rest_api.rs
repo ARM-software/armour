@@ -81,22 +81,8 @@ pub mod service {
 		let mut information = information.into_inner();
 		let port = information.top_port();			
 
-		//If we want 2 proxies per service one for ingress and one for egress
-		//If so : 1) proxy.config with two different ports 2) write specific iptables rules
-		//let mut proxies = Vec::new();
-		//for proxy in information.proxies {
-		//	let mut p_ingress = proxy.clone();
-		//	p_ingress.label = Label::concat(&Label::from_str("Ingress").unwrap(), &proxy.label);
-		//	let mut p_egress = proxy.clone();
-		//	p_egress.label = Label::concat(&Label::from_str("Egress").unwrap(), &proxy.label);
-		//	proxies.push(p_ingress);
-		//	proxies.push(p_egress);
-		//}
-
-		//for proxy in proxies {
-
 		for mut proxy in information.proxies {
-			//One proxy for ingress and egress, FIXME: add labels ProxyType::EgressIngress and not change main proxy labels
+			//FIXME: add labels ProxyType::EgressIngress and not change main proxy labels
 			proxy.label = Label::concat(&Label::from_str("EgressIngress").unwrap(), &proxy.label);
 
 			// launch proxies (if not already launched)

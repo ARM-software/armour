@@ -282,19 +282,7 @@ pub mod service {
         match helper_on_board(&state, request.into_inner()).await? {
             Ok((service_id, ingress_req, egress_req)) =>{
                 match label.get_string(0) {
-                    Some(s) if s == "Egress".to_string() => {
-                        policy::save_policy(client.clone(), state.clone(), egress_req).await?;
-                        Ok(HttpResponse::Ok().json(control::OnboardServiceResponse{
-                            service_id: service_id,
-                        }))
-                    },
-                   Some(s) if s == "Ingress".to_string() => {
-                        policy::save_policy(client.clone(), state.clone(), ingress_req).await?;
-                        Ok(HttpResponse::Ok().json(control::OnboardServiceResponse{
-                            service_id: service_id,
-                        }))
-                    },
-                    Some(s) if s == "EgressIngress".to_string() => {
+                    Some(s) if s == "EgressIngress".to_string() => { //FIXME rewrite this matching
                         let merged_request = control::PolicyUpdateRequest{
                             label: service_id.clone(),
                             policy: ingress_req.policy.merge(&egress_req.policy), 
@@ -584,66 +572,24 @@ pub mod policy {
             let services = services_full(&state).await?.into_iter().filter(|service|
                 service.service_id.has_label(&selector)
             );
-            let ingress_selector = Label::from_str("Service::Ingress::**").unwrap();
-            let egress_selector = Label::from_str("Service::Egress::**").unwrap();
             let egress_ingress_selector = Label::from_str("Service::EgressIngress::**").unwrap();
             let global_policy = request.policy.clone();
             for service in services {
                 let local_label = get_local_service_label(&state, &service.service).await?;
 
-                if service.service_id.has_label(&ingress_selector){
-                    log::info!("updating ingress policy for {}", service.service);
-                    let local_pol = compile_ingress(
-                        Arc::new(state.clone()), 
-                        global_policy.clone(), 
-                        policies::ALLOW_REST_REQUEST, //TODO only one main fucntion is supported...
-                        &service.service_id //FIXME service_id has no port inside since remove before storing in DB due to bson error
-                    ).await.map_err(|e| internal(e.to_string()))?;
-                    
-
-                    helper_update(
-                        client.clone(),
-                        state.clone(),
-                        &local_label,
-                        control::PolicyUpdateRequest{
-                            label: service.service.clone(),
-                            policy: local_pol,
-                            labels: request.labels.clone(),
-                        }
-                    ).await?;
-                } else if service.service_id.has_label(&egress_selector) {                        
-                    log::info!("updating egress policy for {}", service.service);
-                    let local_pol = compile_egress(
-                        Arc::new(state.clone()), 
-                        global_policy.clone(), 
-                        policies::ALLOW_REST_RESPONSE, //TODO only one main fucntion is supported...
-                        &service.service_id //FIXME service_id has no port inside since remove before storing in DB due to bson error
-                    ).await.map_err(|e| internal(e.to_string()))?;
-                    
-
-                    helper_update(
-                        client.clone(),
-                        state.clone(),
-                        &local_label,
-                        control::PolicyUpdateRequest{
-                            label: service.service.clone(),
-                            policy: local_pol,
-                            labels: request.labels.clone(),
-                        }
-                    ).await?;
-                } else if service.service_id.has_label(&egress_ingress_selector) {                        
+                if service.service_id.has_label(&egress_ingress_selector) {                        
                     log::info!("updating egressIngress policy for {}", service.service);
                     let local_egress_pol = compile_egress(
                         Arc::new(state.clone()), 
                         global_policy.clone(), 
-                        policies::ALLOW_REST_RESPONSE, //TODO only one main fucntion is supported...
+                        policies::ALLOW_REST_RESPONSE, //TODO only one main function is supported...
                         &service.service_id //FIXME service_id has no port inside since remove before storing in DB due to bson error
                     ).await.map_err(|e| internal(e.to_string()))?;
 
                     let local_ingress_pol = compile_ingress(
                         Arc::new(state.clone()), 
                         global_policy.clone(), 
-                        policies::ALLOW_REST_REQUEST, //TODO only one main fucntion is supported...
+                        policies::ALLOW_REST_REQUEST, //TODO only one main function is supported...
                         &service.service_id //FIXME service_id has no port inside since remove before storing in DB due to bson error
                     ).await.map_err(|e| internal(e.to_string()))?;
 
