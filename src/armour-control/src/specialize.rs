@@ -1,5 +1,5 @@
 // Specialize global policy
-// NOTE: no optimization
+use actix::prelude::*;
 use armour_lang::expressions::{Block, CPExpr, Error, Expr};
 use armour_lang::externals::{Call};
 use armour_lang::headers::{CPHeaders, THeaders};
@@ -13,13 +13,12 @@ use armour_lang::literals::{
 use armour_lang::parser::{Ident, Infix, Iter};
 use armour_lang::policies;
 use armour_lang::types::{Signature, Typ, TTyp};
-use actix::prelude::*;
+use async_trait::async_trait;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
-use super::rest_api::{State};
-use super::interpret::{TSExprInterpret};
-use async_trait::async_trait;
 use std::sync::Arc;
+use super::interpret::{TSExprInterpret};
+use super::State;
 
 macro_rules! cplit (
   ($i: ident ($($args:tt)*) ) => (
@@ -486,7 +485,7 @@ impl TSExprPEval for CPExpr {
                         },
                         None if !flag => {
                             if let Some(mut r) = env.get(&function) {
-                                // user defined function
+                                //user defined function
                                 //partial evaluation + inlining
                                 for a in args.into_iter().map(|x| x.1) {
                                     r = r.apply(&a)?

@@ -282,7 +282,7 @@ impl Externals {
         (client, disconnector)
     }
     /// Build a Cap'n Proto literal from an Armour literal
-    pub fn build_value<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>+TExternals<FlatTyp, FlatLiteral>>(mut v: external::value::Builder<'_>, lit: &Literal<FlatTyp, FlatLiteral>) {
+    pub fn build_value<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>+TExternals<FlatTyp, FlatLiteral>>(v: external::value::Builder<'_>, lit: &Literal<FlatTyp, FlatLiteral>) {
         FlatLiteral::build_value(v, lit)
     }
     /// Read a Cap'n Proto literal and return an Armour literal

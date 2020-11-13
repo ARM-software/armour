@@ -380,7 +380,6 @@ impl<FlatTyp:TFlatTyp> Infix<FlatTyp> {
                 Typ::List(Box::new(Typ::rreturn())),
                 Typ::List(Box::new(Typ::rreturn())),
             ),
-            Infix::Concat => unimplemented!(),
             Infix::ConcatStr => (Typ::str(), Typ::str(), Typ::str()),
             Infix::Equal | Infix::NotEqual => (Typ::rreturn(), Typ::rreturn(), Typ::bool()),
             Infix::In => (Typ::rreturn(), Typ::List(Box::new(Typ::rreturn())), Typ::bool()),

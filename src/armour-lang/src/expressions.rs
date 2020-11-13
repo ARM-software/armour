@@ -383,7 +383,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
             Expr::Var(_) => true,
             Expr::BVar(_, u1) => u1 == &u,
             Expr::LitExpr(_) => true,
-            Expr::Closure(x, e) => e.is_free(u+1),
+            Expr::Closure(_, e) => e.is_free(u+1),
             Expr::ReturnExpr(e) | Expr::PrefixExpr(_, e) => e.is_free(u),  
             Expr::InfixExpr(_, e1, e2) | Expr::Let(_, e1, e2) | Expr::Iter(_, _, e1, e2) => e1.is_free(u) && e2.is_free(u), 
             Expr::BlockExpr(_, es) => es.iter().fold(true, |acc, x| acc && x.is_free(u)),
@@ -398,16 +398,16 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
                 alternative,
             } => expr.is_free(u) && consequence.is_free(u) && alternative.as_ref().map_or_else(|| true, |x| x.is_free(u)),
             Expr::IfMatchExpr {
-                variables,
+                variables:_,
                 matches,
                 consequence,
                 alternative,
             } =>  matches.iter().fold(true, |acc, (x,_)| acc && x.is_free(u)) && consequence.is_free(u) && alternative.as_ref().map_or_else(|| true, |x| x.is_free(u)),
 
             Expr::CallExpr {
-                function,
+                function:_,
                 arguments,
-                is_async,
+                is_async:_,
             } => arguments.iter().fold(true, |acc, x| acc && x.is_free(u)),
             Expr::Phantom(_) => true
         }

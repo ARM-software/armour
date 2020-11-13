@@ -1,5 +1,4 @@
-/// onboarding policy language interpreter
-// NOTE: no optimization
+/// onboarding policy interpreter
 use armour_lang::expressions::{Block, CPExpr, Error, Expr};
 use armour_lang::externals::{Call};
 use armour_lang::headers::{CPHeaders, THeaders};
@@ -20,14 +19,12 @@ use actix::prelude::*;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
 use armour_api::control;
-use super::rest_api::{collection, POLICIES_COL, SERVICES_COL, State};
+use super::rest_api::{collection, POLICIES_COL, SERVICES_COL};
+use super::State;
 use async_trait::async_trait;
 use bson::doc;
 use std::str::FromStr;
 use std::sync::Arc;
-
-
-
 
 fn to_bson<T: ?Sized>(value: &T) -> Result<bson::Bson, self::Error>
 where
@@ -121,6 +118,7 @@ pub async fn helper_compile_ingress(
             ))
         )))
 }
+
 async fn helper_compile_egress(
     state: Arc<State>, 
     function: &String, 
@@ -139,6 +137,7 @@ async fn helper_onboarded(state: State, service: &Label, host: &Label) ->  Resul
     let col = collection(&state, SERVICES_COL);
 
     //FIXME we assume that (service, host) is unique
+    //Can't we use ServiceID:: here ?
     if let Ok(Some(doc)) = col
         .find_one(Some(doc! { "service" : to_bson(&service)?, "host" : to_bson(&host)? }), None)
         .await
@@ -157,18 +156,19 @@ async fn helper_onboard(state: Arc<State>, id: &CPID) ->  Result<CPLiteral, self
         Some(l) => l.clone(),
         _ =>  return Err(Error::from(format!("Extracting host from id labels")))
     };
-    let service = match id.find_label(&Label::from_str("Service::**")?) {
-        Some(l) => l.clone(),
-        _ =>  return Err(Error::from(format!("Extracting service from id labels")))
-    };
+
+    //local service label
+    //let service = match id.find_label(&Label::from_str("Service::**")?) {
+    //    Some(l) => l.clone(),
+    //    _ =>  return Err(Error::from(format!("Extracting service from id labels")))
+    //};
+
+    //global service label
     let service_id = match id.find_label(&Label::from_str("ServiceID::**")?) {
         Some(l) => l.clone(),
         _ =>  return Err(Error::from(format!("Extracting service from id labels")))
     };
     
-    //let mut new_id = id.clone();
-    //new_id.port = None; //FIXME, use this due to some issues with bson encoding,  don't know how to use #[serde(with = "bson::compat::u2f")] with Option<u16>
-
     let request = control::POnboardServiceRequest {
         service: service_id.clone(),
         service_id: id.clone(),
@@ -181,7 +181,8 @@ async fn helper_onboard(state: Arc<State>, id: &CPID) ->  Result<CPLiteral, self
         Ok(cplit!(Bool(true)))
 
     } else if let bson::Bson::Document(document) = to_bson(&request)? {
-        col.insert_one(document, None) // Insert into a MongoDB collection
+        // Insert into a MongoDB collection
+        col.insert_one(document, None) 
             .await
             .on_err("error inserting in MongoDB")?;
         Ok(cplit!(Bool(true)))
@@ -196,28 +197,28 @@ async fn helper_onboard(state: Arc<State>, id: &CPID) ->  Result<CPLiteral, self
 impl TSLitInterpret for CPLiteral {
     fn seval_call0(_state: Arc<State>, f: &str) -> Option<CPLiteral> {
         match f {
-            ("allow_egress") => {
+            "allow_egress" => {
                 Some(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
                     Box::new(literals::Policy{
                         pol: Box::new(DPPolicies::allow_egress()) 
                     })
                 )))
             },
-            ("allow_ingress") => {
+            "allow_ingress" => {
                 Some(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
                     Box::new(literals::Policy{
                         pol: Box::new(DPPolicies::allow_ingress()) 
                     })
                 )))
             },
-            ("deny_egress") => {
+            "deny_egress" => {
                 Some(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
                     Box::new(literals::Policy{
                         pol: Box::new(DPPolicies::deny_egress()) 
                     })
                 )))
             },
-            ("deny_ingress") => {
+            "deny_ingress" => {
                 Some(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
                     Box::new(literals::Policy{
                         pol: Box::new(DPPolicies::deny_ingress())
@@ -233,14 +234,14 @@ impl TSLitInterpret for CPLiteral {
                 Ok(Some(helper_onboard(state, service_id).await?))
             },
             ( "ControlPlane::newID", cplit!(OnboardingData(obd)) ) => { 
-                let mut service_id = Label::concat(&obd.host(), &obd.service());//TODO refine newid
+                let mut service_id = Label::concat(&obd.host(), &obd.service());
                 service_id.prefix("ServiceID".to_string());                    
                 let mut service = obd.service();
                 service.prefix("Service".to_string());
                 let mut host = obd.host();
                 host.prefix("Host".to_string());
 
-                //TODO add host to id.hosts
+                //TODO refine newid with service information
 
                 let mut id = CPID::default();
                 id.port = obd.port();
@@ -271,17 +272,20 @@ impl TSLitInterpret for CPLiteral {
             _ => Ok(self.eval_call2(f, other)),
         }
     }
+
     async fn seval_call3(&self, _state: Arc<State>, f: &str, l1: &Self, l2: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, l1, l2) {
             _ => Ok(self.eval_call3(f, l1, l2)),
         }
     }
+
     #[allow(clippy::many_single_char_names)]
     async fn seval_call4(&self, _state:Arc<State>, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, l1, l2, l3) {
             _ => Ok(self.eval_call4(f, l1, l2, l3)),
         }
     }
+
     async fn helper_sevalexpr(state: Arc<State>, e : Expr<CPFlatTyp, CPFlatLiteral>, env: CPEnv) -> Result<CPExpr, self::Error>{
         match e {
             // short circuit for &&
@@ -339,10 +343,9 @@ impl TSExprInterpret for CPExpr {
             x => Err(Error::from(format!("seval, call: {}: {:?}", function, x))),
         }
     }
+
     #[allow(clippy::cognitive_complexity)]
     fn seval(self, state: Arc<State>, env: CPEnv) -> BoxFuture<'static, Result<Self, self::Error>> {
-        //println!("### Seval, interpreting expression: ");
-        //self.print_debug();
         async {
             match self {
                 Expr::Var(_) | Expr::BVar(_, _) => Err(Error::new("seval variable")),
@@ -605,10 +608,7 @@ impl TSExprInterpret for CPExpr {
                     match args.iter().find(|r| r.is_return()) {
                         Some(r) => Ok(r.clone()),
                         None => {
-                            //println!("#### Seval callexpr");
                             if let Some(mut r) = env.get(&function) {
-                                //println!("* Seval user function {}", function);
-                                //r.print_debug();
                                 // user defined function
                                 for a in args {
                                     r = r.apply(&a)?
@@ -656,4 +656,3 @@ impl TSExprInterpret for CPExpr {
         Ok(self.seval(state.clone(), env).await?.strip_return())
     }
 }
-

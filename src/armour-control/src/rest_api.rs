@@ -6,22 +6,24 @@ use armour_api::control::{
 };
 use armour_api::host::PolicyUpdate;
 use armour_lang::{
+    expressions,
     labels::Label, 
-    policies::{DPPolicies}, 
+    literals,
+    policies::{self, DPPolicies}, 
     literals::OnboardingResult
 };
 use bson::doc;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::collections::BTreeMap;
+use super::policy::OnboardingPolicy;
+use super::specialize::{compile_egress, compile_ingress};
+use super::State;
 
 
 pub const ARMOUR_DB: &str = "armour";
 pub const HOSTS_COL: &str = "hosts";
 pub const SERVICES_COL: &str = "services";
 pub const POLICIES_COL: &str = "policies";
-
-pub type State = web::Data<super::ControlPlaneState>;
 
 pub mod host {
     use super::*;
@@ -99,90 +101,6 @@ pub mod host {
     }
 }
 
-/// BEGIN
-
-use armour_lang::{
-    expressions,
-    interpret::CPEnv,
-    literals::{self, CPFlatLiteral, CPLiteral},
-    policies::{self, ONBOARDING_SERVICES},
-};
-use futures::future::{BoxFuture, FutureExt};
-use super::interpret::*;
-use super::specialize::{compile_egress, compile_ingress};
-
-//TODO get ride of ObPolicy and write a default OnboardingPolicy
-pub struct OnboardingPolicy{
-    policy: policies::OnboardingPolicy,
-    env: CPEnv,
-    //status: PolicyStatus, FIXME maybe needed to add a timeout
-}
-
-impl OnboardingPolicy{
-    fn new(pol : policies::OnboardingPolicy) -> Self {
-        let env = CPEnv::new(&pol.program);
-        OnboardingPolicy {
-            policy: pol,
-            env,
-        }
-    }
-
-    fn set_policy(&mut self, p: policies::OnboardingPolicy) {
-        //self.status.update_for_policy(&p);
-        self.policy = p;
-        self.env = CPEnv::new(self.policy.program());
-    }
-    fn policy(&self) -> policies::OnboardingPolicy {
-        self.policy.clone()
-    }
-    fn env(&self) -> &CPEnv {
-        &self.env
-    }
-
-    fn evaluate(//<T: std::convert::TryFrom<literals::CPLiteral> + Send + 'static>(
-        &self,
-        state: State,
-        onboarding_data: expressions::CPExpr,//onboardingData
-    ) -> BoxFuture<'static, Result<Box<literals::OnboardingResult>, expressions::Error>> {
-        log::debug!("evaluting onboarding service policy");
-        let now = std::time::Instant::now();
-        let env =self.env.clone(); 
-
-        async move {
-            let result = expressions::Expr::call(ONBOARDING_SERVICES, vec!(onboarding_data))
-                .sevaluate(Arc::new(state), env.clone())
-                .await?;
-            //let meta = env.egress().await;
-            log::debug!("result ({:?}): {}", now.elapsed(), result);
-            if let expressions::Expr::LitExpr(lit) = result {
-                match lit {
-                    CPLiteral::FlatLiteral(CPFlatLiteral::OnboardingResult(r)) => {
-                        Ok(r)
-                    }, 
-                    _ => Err(expressions::Error::new("literal has wrong type"))
-                }
-            } else {
-                Err(expressions::Error::new("did not evaluate to a literal"))
-            }
-        }
-        .boxed()
-    }
-}
-
-impl Default for OnboardingPolicy {
-    fn default() -> Self {
-        let raw_pol = "
-            fn onboarding_policy(od: OnboardingData) -> OnboardingResult {
-                OnboardingResult::ErrStr(\"Onboarding disabled by default, update the onboarding policy first.\")
-            }
-        ";
-        let policy = policies::OnboardingPolicy::from_buf(raw_pol).unwrap();
-        let env = CPEnv::new(policy.program());
-        OnboardingPolicy { policy, env }
-    }
-}
-
-/// END
 
 pub mod service {
     use super::*;
@@ -274,7 +192,6 @@ pub mod service {
 
     #[post("/on-board")]
     pub async fn on_board(
-        client: web::Data<client::Client>,
         state: State,
         request: Json<control::OnboardServiceRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
@@ -289,7 +206,7 @@ pub mod service {
                             labels: ingress_req.labels.into_iter().chain(egress_req.labels.into_iter()).collect()
                         };
 
-                        policy::save_policy(client.clone(), state.clone(), merged_request).await?;
+                        policy::save_policy(state.clone(), merged_request).await?;
 
                         Ok(HttpResponse::Ok().json(control::OnboardServiceResponse{
                             service_id: service_id,
@@ -308,9 +225,8 @@ pub mod service {
         state: State,
         request: Json<control::OnboardServiceRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
-        let mut request = request.into_inner();
+        let request = request.into_inner();
 
-        //request.service.prefix("Service".to_string());
         if let Some(dpid) = request.tmp_dpid {
             let service = match dpid.find_label(&Label::from_str("ServiceID::**").unwrap()) {
                 Some(l) => l.clone(),
@@ -327,14 +243,6 @@ pub mod service {
         } else { 
             Ok(internal("error no global id provided"))
         }
-        //if let bson::Bson::Document(document) = to_bson(&request)? {
-        //    col.delete_one(document, None) // Insert into a MongoDB collection
-        //        .await
-        //        .on_err("error inserting in MongoDB")?;
-        //    Ok(HttpResponse::Ok().body("success"))
-        //} else {
-        //    Ok(internal("error extracting document"))
-        //}
     }
 }
 
@@ -491,7 +399,6 @@ pub mod policy {
     }
 
     pub async fn save_policy(
-        client: web::Data<client::Client>,
         state: State,
         request: control::PolicyUpdateRequest,
     ) -> Result<HttpResponse, actix_web::Error> {

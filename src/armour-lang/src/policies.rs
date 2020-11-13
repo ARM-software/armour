@@ -4,7 +4,7 @@ use super::{
     headers::THeaders,
     lang,
     literals::{self, TFlatLiteral},
-    types::{self, Signature, FlatTyp, CPTyp, CPFlatTyp, Typ, TFlatTyp, TTyp},
+    types::{self, Signature, FlatTyp, Typ, TFlatTyp, TTyp},
 };
 use lazy_static::lazy_static;
 use serde::{
@@ -483,16 +483,16 @@ impl<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> fmt::Display for Pol
             write!(f, "deny all")
         } else {
             if self.is_allow_egress() {
-                write!(f, "allow egress");
+                write!(f, "allow egress")?;
             }
             if self.is_allow_ingress() {
-                write!(f, "allow ingress");
+                write!(f, "allow ingress")?;
             }
             if self.is_deny_ingress() {
-                write!(f, "deny ingress");
+                write!(f, "deny ingress")?;
             }
             if self.is_deny_ingress() {
-                write!(f, "deny ingress");
+                write!(f, "deny ingress")?;
             }
 
             writeln!(f, "[{}]", self.blake3())?;
@@ -534,7 +534,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, Flat
         let mut new_pol = self.clone();
 
         for (k,v) in other.0.clone().into_iter() {
-            match new_pol.0.get(&k) {
+            match self.0.get(&k) {
                 Some(x1) =>{ 
                     new_pol.insert(k, v.merge(x1))
                 },

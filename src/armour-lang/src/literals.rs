@@ -184,8 +184,7 @@ pub type DPID = ID<FlatTyp, FlatLiteral>;
 pub type CPID = ID<CPFlatTyp, CPFlatLiteral>;
 
 mod port_serde {
-    use serde::{self, de, Deserialize, Serializer, Deserializer};
-    use bson::doc;
+    use serde::{self, de, Serializer, Deserializer};
     use std::fmt;
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<u16>, D::Error>
