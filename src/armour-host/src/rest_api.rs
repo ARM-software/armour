@@ -29,7 +29,7 @@ pub mod service {
 		}
 	}
 
-	async fn launch_proxy(host: &super::Host, proxy: &Proxy) -> Result<(), MailboxError> {
+	async fn launch_proxy(host: &super::Host, proxy: &Proxy, ip_labels: Vec<(std::net::Ipv4Addr, Labels)>) -> Result<(), actix_web::Error> {
 		// start a proxy (without forcing/duplication)
 		host.send(Launch::new(
 			proxy.label.clone(),
@@ -40,6 +40,7 @@ pub mod service {
 				log::Level::Info
 			},
 			proxy.timeout,
+			ip_labels
 		))
 		.await?;
 		Ok(())
@@ -78,7 +79,7 @@ pub mod service {
 		host: web::Data<super::Host>,
 		information: web::Json<OnboardInformation>,
 	) -> Result<HttpResponse, actix_web::Error> {
-		let mut information = information.into_inner();
+		let information = information.into_inner();
 		let port = information.top_port();			
 
 		for mut proxy in information.proxies {
@@ -86,7 +87,7 @@ pub mod service {
 			proxy.label = Label::concat(&Label::from_str("EgressIngress").unwrap(), &proxy.label);
 
 			// launch proxies (if not already launched)
-			launch_proxy(&host, &proxy).await?;
+			launch_proxy(&host, &proxy, information.labels.clone()).await?;
 			let instance = InstanceSelector::Label(proxy.label.clone());
 			
 			// add service labels

@@ -638,11 +638,13 @@ dependencies = [
 name = "armour-control"
 version = "0.1.0"
 dependencies = [
+ "actix 0.9.0",
  "actix-rt",
  "actix-web 3.1.0",
  "armour-api",
  "armour-lang",
  "armour-utils",
+ "async-trait",
  "bson",
  "bytes 0.5.6",
  "clap",
@@ -718,9 +720,11 @@ dependencies = [
  "armour-utils",
  "arrayvec 0.5.1",
  "async-std",
+ "async-trait",
  "base64 0.12.3",
  "bincode",
  "blake3",
+ "bson",
  "capnp",
  "capnp-rpc",
  "capnpc",
@@ -733,6 +737,7 @@ dependencies = [
  "log",
  "native-tls",
  "nom 5.1.2",
+ "nom-methods",
  "nom5_locate",
  "openssl",
  "petgraph",
@@ -2605,6 +2610,15 @@ dependencies = [
  "lexical-core",
  "memchr",
  "version_check 0.9.2",
+]
+
+[[package]]
+name = "nom-methods"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "268462e626e89e436c733a47a28c608ece2adb6c08fc1f68dcaebb7fd6408cf6"
+dependencies = [
+ "nom 5.1.2",
 ]
 
 [[package]]

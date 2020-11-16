@@ -1,5 +1,5 @@
 use super::host::{
-    ArmourDataHost, Connect, Disconnect, RegisterHttpHash, RegisterProxy, RegisterTcpHash,
+    ArmourDataHost, Connect, CPOnboardProxy, Disconnect, RegisterHttpHash, RegisterProxy, RegisterTcpHash,
 };
 use actix::prelude::*;
 use armour_api::host::{self, HostCodec, PolicyResponse};
@@ -140,10 +140,15 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
         if let Ok(msg) = msg {
             match msg {
                 PolicyResponse::Connect(pid, tmp_dpid, label, http, tcp) => {
-                    info!(r#"{}: connect with process "{}" {} {:?}"#, self.id, label, pid, tmp_dpid);
+                    info!(r#"{}: connect with process "{}" {} {:?}"#, self.id, label, pid, tmp_dpid);   
                     self.host
                         .do_send(RegisterProxy(self.id, Meta::new(pid, tmp_dpid, label, http, tcp)))
-                }
+                },
+                PolicyResponse::CPOnboardingProxy(ip_labels) => {
+                    info!(r#"{}: onboard with CP with information {:#?}"#, self.id, ip_labels);
+                    self.host
+                        .do_send(CPOnboardProxy(self.id, ip_labels))
+                },
                 PolicyResponse::Started => info!("{}: started a proxy", self.id),
                 PolicyResponse::Stopped => info!("{}: stopped a proxy", self.id),
                 PolicyResponse::UpdatedPolicy(protocol, hash) => {

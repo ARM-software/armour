@@ -1,13 +1,12 @@
 use super::instance::{ArmourDataInstance, Instance, InstanceSelector, Instances, Meta};
 use actix::prelude::*;
-use actix_web::{web::Json};
 use armour_api::{
     control::{OnboardServiceRequest, OnboardServiceResponse, PolicyQueryRequest, PolicyQueryResponse},
     host::{self, HostCodec},
     proxy::{LabelOp, PolicyRequest},
 };
 use armour_lang::{
-    labels::Label,
+    labels::{Label, Labels},
     literals::DPID
 };
 use log::*;
@@ -59,12 +58,11 @@ impl ArmourDataHost {
             key,
         }
     }
-    fn update_instances(&mut self, instances:InstanceSelector, service_id: Label) {
-        let mut instances = self.get_instances(&instances);
+    fn update_instances(&mut self, instances:InstanceSelector, tmp_dpid: DPID) {
+        let instances = self.get_instances(&instances);
         for instance in instances {
-            let mut tmp = DPID::default().add_label(&service_id);
             if let Some( ref mut meta ) = &mut instance.meta {
-                meta.tmp_dpid = Some(tmp);
+                meta.tmp_dpid = Some(tmp_dpid.clone());
             }
         }
     }
@@ -205,83 +203,116 @@ impl Handler<RegisterProxy> for ArmourDataHost {
             let tmp_dpid = msg.1.tmp_dpid.clone();
 
             instance.set_meta(msg.1);
-            // if host on-boarded then notify control plane
-            if self.onboarded {
-                let instance = InstanceSelector::Label(label.clone());
-                let onboard = OnboardServiceRequest {
-                    service: label.clone(),
-                    host: self.label.clone(),
-                    tmp_dpid: tmp_dpid.clone()
-                };
-                let url = self.url.clone();
-                let url_clone = self.url.clone();
-                let client = self.client.clone();
-                
-                // on-board
-                async move {
-                    crate::control_plane_deserialize::<_, OnboardServiceResponse>(
-                        client,
-                        &url,
-                        http::Method::POST,
-                        "service/on-board",
-                        &onboard,
-                    )
-                    .await
-                }
-                .into_actor(self)
-                .then(|on_board_res, act, _ctx| {
-                    let client = act.client.clone();
+        }
+    }
+}
+
+#[derive(Message)]
+#[rtype("()")]
+pub struct CPOnboardProxy(pub usize, pub HashMap<std::net::IpAddr, Labels>);
+
+impl Handler<CPOnboardProxy> for ArmourDataHost {
+    type Result = ();
+    fn handle(&mut self, msg: CPOnboardProxy, ctx: &mut Context<Self>) -> Self::Result {
+        if !self.onboarded {
+            return;
+        }
+        // if host on-boarded then notify control plane
+        if let Some(instance) = self.instances.0.get_mut(&msg.0) {
+            match &instance.meta {
+                None => log::warn!("RegisterProxy should be processed before CPOnboardingProxy"),
+                Some(meta) => {
+                    let label = meta.label.clone();
+
+                    //assume only one µservice per proxy
+                    //TODO maybe can be just borrow as mutable without the ServiceGlobalID notification/event
+                    assert_eq!(msg.1.len(), 0);
+                    let mut tmp_dpid = meta.tmp_dpid.clone().unwrap_or(DPID::default());
+                    for (ip, labels) in msg.1 {
+                        let mut ips = BTreeSet::new();
+                        ips.insert(ip);
+                        tmp_dpid.ips = ips;
+                        tmp_dpid.labels = labels;
+                        break;
+                    }
+
+                    let instance = InstanceSelector::Label(label.clone());
+                    let onboard = OnboardServiceRequest {
+                        service: label.clone(),
+                        host: self.label.clone(),
+                        tmp_dpid: Some(tmp_dpid.clone())
+                    };
+                    let url = self.url.clone();
+                    let url_clone = self.url.clone();
+                    let client = self.client.clone();
+                    
+                    // on-board
                     async move {
-                        let service_id = match on_board_res {
-                            Ok(req) => {
-                                log::info!("registered service with control plane: {}", req.service_id);
-                                req.service_id
-                            }
-                            Err(ref err) => {
-                                log::warn!("failed to register service with control plane: {}", err);
-                                label.clone()
-                            }
-                        };
-
-                        let query = PolicyQueryRequest {
-                            label: service_id.clone(),
-                        };
-                        
-
-                        // query policy
-                        (service_id, crate::control_plane_deserialize::<_, PolicyQueryResponse>(
+                        (tmp_dpid, crate::control_plane_deserialize::<_, OnboardServiceResponse>(
                             client,
-                            &url_clone,
-                            http::Method::GET,
-                            "policy/query",
-                            &query,
+                            &url,
+                            http::Method::POST,
+                            "service/on-board",
+                            &onboard,
                         )
                         .await)
-
                     }
-                    .into_actor(act)
-                    .then(|(service_id, policy_res), act, ctx| {
-                        match policy_res {
-                            // log::debug!("got labels: {:?}", policy_response.labels);
-                            Ok(policy_response) => {
-                                ctx.notify(PolicyCommand::new(
-                                    instance.clone(),
-                                    PolicyRequest::Label(LabelOp::AddUri(
-                                        policy_response.labels.into_iter().collect(),
-                                    )),
-                                ));
-                                ctx.notify(PolicyCommand::new(
-                                    instance.clone(),
-                                    PolicyRequest::SetPolicy(policy_response.policy),
-                                ));
-                                ctx.notify(ServiceGlobalID::new(service_id, instance))
-                            }
-                            Err(err) => log::warn!("failed to obtain policy: {}", err),
-                        };
-                        async {}.into_actor(act)
+                    .into_actor(self)
+                    .then(|(mut tmp_dpid, on_board_res), act, _ctx| {
+                        let client = act.client.clone();
+                        async move {
+                            let service_id = match on_board_res {
+                                Ok(req) => {
+                                    log::info!("registered service with control plane: {}", req.service_id);
+                                    req.service_id
+                                }
+                                Err(ref err) => {
+                                    log::warn!("failed to register service with control plane: {}", err);
+                                    label.clone()
+                                }
+                            };
+
+                            let query = PolicyQueryRequest {
+                                label: service_id.clone(),
+                            };
+                            
+                            tmp_dpid.labels.insert(service_id);
+
+                            // query policy
+                            (tmp_dpid, crate::control_plane_deserialize::<_, PolicyQueryResponse>(
+                                client,
+                                &url_clone,
+                                http::Method::GET,
+                                "policy/query",
+                                &query,
+                            )
+                            .await)
+
+                        }
+                        .into_actor(act)
+                        .then(|(tmp_dpid, policy_res), act, ctx| {
+                            match policy_res {
+                                // log::debug!("got labels: {:?}", policy_response.labels);
+                                Ok(policy_response) => {
+                                    ctx.notify(PolicyCommand::new(
+                                        instance.clone(),
+                                        PolicyRequest::Label(LabelOp::AddUri(
+                                            policy_response.labels.into_iter().collect(),
+                                        )),
+                                    ));
+                                    ctx.notify(PolicyCommand::new(
+                                        instance.clone(),
+                                        PolicyRequest::SetPolicy(policy_response.policy),
+                                    ));
+                                    ctx.notify(ServiceGlobalID::new(tmp_dpid, instance))
+                                }
+                                Err(err) => log::warn!("failed to obtain policy: {}", err),
+                            };
+                            async {}.into_actor(act)
+                        })
                     })
-                })
-                .wait(ctx)
+                    .wait(ctx)
+                }
             }
         }
     }
@@ -321,15 +352,17 @@ pub struct Launch {
     label: Label,
     log: log::Level,
     timeout: Option<u8>,
+    ip_labels: Vec<(std::net::Ipv4Addr, Labels)>
 }
 
 impl Launch {
-    pub fn new(label: Label, force: bool, log: log::Level, timeout: Option<u8>) -> Self {
+    pub fn new(label: Label, force: bool, log: log::Level, timeout: Option<u8>, ip_labels: Vec<(std::net::Ipv4Addr, Labels)>) -> Self {
         Launch {
             force,
             label,
             log,
             timeout,
+            ip_labels
         }
     }
 }
@@ -428,17 +461,17 @@ impl Handler<MetaData> for ArmourDataHost {
 
 #[derive(Message)]
 #[rtype("()")]
-pub struct ServiceGlobalID(pub Label, pub InstanceSelector);
+pub struct ServiceGlobalID(pub DPID, pub InstanceSelector);
 impl ServiceGlobalID {
-    pub fn new(global_id:Label, instances: InstanceSelector) -> Self {
+    pub fn new(global_id:DPID, instances: InstanceSelector) -> Self {
         ServiceGlobalID(global_id, instances)
     }
 }
 impl Handler<ServiceGlobalID> for ArmourDataHost {
     type Result = ();
-    fn handle(&mut self, msg: ServiceGlobalID, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: ServiceGlobalID, _ctx: &mut Context<Self>) -> Self::Result {
         let ServiceGlobalID(global_id, instances) = msg;
-        log::info!("global id is: {} for {:?}", global_id.clone(), instances.clone());
+        log::info!("global id is: {:#?} for {:?}", global_id.clone(), instances.clone());
         self.update_instances(instances, global_id);
     }
 }

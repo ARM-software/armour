@@ -10,7 +10,7 @@ use armour_lang::{
 };
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use tokio_util::codec::{Decoder, Encoder};
 
 pub const DATA_PLANE_HOST: &str = "https://localhost:8090";
@@ -46,6 +46,7 @@ pub struct PolicyStatus {
 #[rtype("()")]
 pub enum PolicyResponse {
     Connect(u32, Option<DPID>, Label, String, String), // (PID, name, http hash, tcp hash)
+    CPOnboardingProxy(HashMap<std::net::IpAddr, Labels>), //ip service, labels attached at launch to service
     RequestFailed,
     ShuttingDown,
     Started,
