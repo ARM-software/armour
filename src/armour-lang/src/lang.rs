@@ -14,10 +14,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 use std::iter::FromIterator;
 
-//FIXME duplicated with interpreter
-//type Headers = headers::Headers<parser::Typ, types::Typ>;
-//type DPExpr = expressions::Expr<types::FlatTyp, literals::DPFlatLiteral>;
-
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Default)]
 pub struct Code<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(pub BTreeMap<String, Expr<FlatTyp, FlatLiteral>>);
 pub type DPCode = Code<types::FlatTyp, literals::FlatLiteral>;
@@ -326,7 +322,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  Program<FlatTyp, Flat
                         }
                     };
 
-                    module.call_graph.graph.add_edge(*own_idx, *call_idx, lexer::Loc::dummy()); //FIXME dummy loc
+                    module.call_graph.graph.add_edge(*own_idx, *call_idx, lexer::Loc::dummy()); 
                 }
                 Ok(())
             },

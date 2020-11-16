@@ -1,4 +1,7 @@
 /// onboarding policy interpreter
+use actix::prelude::*;
+use async_trait::async_trait;
+use armour_api::control;
 use armour_lang::expressions::{Block, CPExpr, Error, Expr};
 use armour_lang::externals::{Call};
 use armour_lang::headers::{CPHeaders, THeaders};
@@ -14,16 +17,12 @@ use armour_lang::literals::{
 use armour_lang::policies::{GlobalPolicies, DPPolicies};
 use armour_lang::parser::{Infix, Iter};
 use armour_api::control::{global_policy_label};
-use super::specialize;
-use armour_lang::types::{CPFlatTyp};
-use actix::prelude::*;
-use futures::future::{BoxFuture, FutureExt};
-use std::collections::BTreeMap;
-use armour_api::control;
-use super::rest_api::{collection, POLICIES_COL, SERVICES_COL};
-use super::State;
-use async_trait::async_trait;
 use bson::doc;
+use futures::future::{BoxFuture, FutureExt};
+use super::rest_api::{collection, POLICIES_COL, SERVICES_COL};
+use super::specialize;
+use super::State;
+use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -151,6 +150,7 @@ async fn helper_onboarded(state: Arc<State>, obd: &OnboardingData) ->  Result<CP
 }
 
 /// Assumption: (obd.service, obd.host) is unique
+#[allow(non_snake_case)]
 fn new_ID(obd: &OnboardingData) -> Label {
     let mut service_id = Label::concat(&obd.host(), &obd.service());
     service_id.prefix("ServiceID".to_string());                    

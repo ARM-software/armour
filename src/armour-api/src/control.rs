@@ -93,7 +93,7 @@ impl OnboardingUpdateRequest {
     pub fn unpack(pol: CPPolicyUpdateRequest) -> Self {
         OnboardingUpdateRequest{
             label: pol.label.clone(),
-            policy: pol.policy.policy(policies::Protocol::HTTP).unwrap().clone(),//FIXME unwrap dangerous
+            policy: pol.policy.policy(policies::Protocol::HTTP).unwrap().clone(),
             labels: pol.labels
         }
     }

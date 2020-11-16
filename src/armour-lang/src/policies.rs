@@ -777,25 +777,14 @@ impl<'de> Deserialize<'de> for GlobalPolicies {
 pub const ONBOARDING_SERVICES: &str = "onboarding_policy";
 
 pub type OnboardingPolicy = GlobalPolicy;
-//#[derive(Serialize, Deserialize, Clone, Debug)]
-//pub struct OnboardingPolicy {
-//    //From ProtocolPolicy struct
-//    pub name : String,//FIXME usefull ???
-//    sig : CPSignature,//FIXME only one ??
-//
-//    //From Policy struct
-//    program: CPProgram,
-//    //fn_policies: FnPolicies,
-//}
 
+//FIXME ensure correct signature, sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
 impl OnboardingPolicy {
     pub fn program<'a>(&'a self) -> &'a lang::CPProgram {
         &self.program
     }
     fn inner_from(pre_prog: lang::CPPreProgram) -> Result<Self, expressions::Error> {
         Ok(OnboardingPolicy {
-            //name: ONBOARDING_SERVICES.to_string(),
-            //sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
             fn_policies: FnPolicies::default(),
             program: pre_prog.program(&vec![ONBOARDING_SERVICES.to_string()][..]),
         })
@@ -810,8 +799,6 @@ impl OnboardingPolicy {
     
     pub fn onboard_from(p: lang::CPProgram) -> Self {
         OnboardingPolicy {
-            //name: ONBOARDING_SERVICES.to_string(),
-            //sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
             fn_policies: FnPolicies::default(),
             program: p,
         }
@@ -819,13 +806,8 @@ impl OnboardingPolicy {
 }
 
 
-//TODO create types : OnboardingData +  OnboardingResult
-//FIXME : for now use protocoloPolicy instead of a dedicated OnboardingPolicy
-//TODO: only one object Onboarding policiy is need at least for now
 lazy_static! {
     static ref ONBOARDING_SERVICES_POLICY: OnboardingPolicy = OnboardingPolicy {
-        //name: ONBOARDING_SERVICES.to_string(),
-        //sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
         fn_policies: FnPolicies::default(),
         program: lang::CPProgram::default(),
     };

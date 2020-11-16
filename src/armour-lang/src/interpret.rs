@@ -2,7 +2,7 @@
 // NOTE: no optimization
 use super::expressions::{Block, Error, Expr, Pattern};
 use super::externals::{Call, ExternalActor};
-use super::headers::{self, THeaders};
+use super::headers::{Headers, THeaders};
 use super::labels::Label;
 use super::lang::{Code, Program};
 use super::literals::{
@@ -21,23 +21,25 @@ use async_trait::async_trait;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::str::FromStr;
 
-//FIXME duplicated with lang and ? 
-//type Expr = expressions::Expr<types::FlatTyp, literals::DPFlatLiteral>;
-type Headers = headers::Headers<types::FlatTyp>;
-
 #[derive(Clone)]
-pub struct Env<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>
-where FlatTyp: 'static + std::marker::Send, FlatLiteral: 'static + std::marker::Send { //it means the type does not contain any non-static references
+pub struct Env<FlatTyp, FlatLiteral>
+where 
+    FlatTyp: 'static + std::marker::Send + TFlatTyp,
+    FlatLiteral: 'static + std::marker::Send + TFlatLiteral<FlatTyp>
+{
     pub internal: Arc<Code<FlatTyp, FlatLiteral>>,
-    pub external: Addr<ExternalActor>,//FIXME not yet generic -> having generic actor is pain full....
+    pub external: Addr<ExternalActor>,
     pub meta: Addr<IngressEgress>,
 }
 
 pub type DPEnv = Env<types::FlatTyp, literals::DPFlatLiteral>;
 pub type CPEnv = Env<CPFlatTyp, literals::CPFlatLiteral>;
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Env<FlatTyp, FlatLiteral>
-where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send { //it means the type does not contain any non-static references
+impl<FlatTyp, FlatLiteral> Env<FlatTyp, FlatLiteral>
+where
+    FlatTyp: std::marker::Send + TFlatTyp,
+    FlatLiteral: std::marker::Send + TFlatLiteral<FlatTyp>
+{
     pub fn new(prog: &Program<FlatTyp, FlatLiteral>) -> Self {
         Env {
             internal: Arc::new(prog.code.clone()),
@@ -57,7 +59,11 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send { //it means th
 }
 
 #[async_trait]
-pub trait TInterpret<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  {
+pub trait TInterpret<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn eval_prefix(&self, p: &Prefix<FlatTyp>) -> Option<Literal<FlatTyp, FlatLiteral>>;
     fn eval_infix(&self, op: &Infix<FlatTyp>, other: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
     fn eval_call0(f: &str) -> Option<Literal<FlatTyp, FlatLiteral>>;
@@ -1202,9 +1208,9 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                                     r = r.apply(&a)?
                                 }
                                 r.evaluate(env).await
-                            } else if Headers::is_builtin(&function) {
+                            } else if Headers::<FlatTyp>::is_builtin(&function) {
                                 Expr::eval_call(function.as_str(), args)
-                            } else if let Some((external, method)) = Headers::split(&function) {
+                            } else if let Some((external, method)) = Headers::<FlatTyp>::split(&function) {
                                 // external function (RPC) or "Ingress/Egress" metadata
                                 let args = Self::literal_vector(args)?;
                                 let call = Call::new(external, method, args);

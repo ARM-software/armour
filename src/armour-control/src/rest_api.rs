@@ -198,8 +198,8 @@ pub mod service {
         let label = request.service.clone();
         match helper_on_board(&state, request.into_inner()).await? {
             Ok((service_id, ingress_req, egress_req)) =>{
-                match label.get_string(0) {
-                    Some(s) if s == "EgressIngress".to_string() => { //FIXME rewrite this matching
+
+                if Label::from_str("EgressIngress::**").unwrap().matches_with(&label) {
                         let merged_request = control::PolicyUpdateRequest{
                             label: service_id.clone(),
                             policy: ingress_req.policy.merge(&egress_req.policy), 
@@ -211,9 +211,8 @@ pub mod service {
                         Ok(HttpResponse::Ok().json(control::OnboardServiceResponse{
                             service_id: service_id,
                         }))
-
-                    },
-                    _ => Ok(internal(format!("this neither an ingress nor an egress proxy")))
+                } else {
+                    Ok(internal(format!("this not an ingress/egress proxy")))
                 }
             }, 
             Err(s)=> Ok(internal(s))  
@@ -490,14 +489,14 @@ pub mod policy {
                         Arc::new(state.clone()), 
                         global_policy.clone(), 
                         policies::ALLOW_REST_RESPONSE, //TODO only one main function is supported...
-                        &service.service_id //FIXME service_id has no port inside since remove before storing in DB due to bson error
+                        &service.service_id
                     ).await.map_err(|e| internal(e.to_string()))?;
 
                     let local_ingress_pol = compile_ingress(
                         Arc::new(state.clone()), 
                         global_policy.clone(), 
                         policies::ALLOW_REST_REQUEST, //TODO only one main function is supported...
-                        &service.service_id //FIXME service_id has no port inside since remove before storing in DB due to bson error
+                        &service.service_id
                     ).await.map_err(|e| internal(e.to_string()))?;
 
                     helper_update(

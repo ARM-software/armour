@@ -1,6 +1,5 @@
 use super::expressions::{Block, Expr, Pattern};
-use super::headers::{THeaders};
-use super::{headers, types, literals};
+use super::headers::{Headers, THeaders};
 use super::lang::Program;
 use super::literals::{Literal, CPFlatLiteral, DPFlatLiteral, TFlatLiteral};
 use super::parser::{As, Assoc, Infix, Pat, PolicyRegex, Precedence};
@@ -8,9 +7,6 @@ use super::types::{Typ, TFlatTyp, TTyp};
 use pretty::termcolor::{Color, ColorChoice, ColorSpec, StandardStream};
 use pretty::RcDoc;
 use std::fmt;
-
-//FIXME duplicated with interpreter
-type Headers = headers::Headers<types::FlatTyp>;
 
 fn bracket(doc: RcDoc<'_, ColorSpec>) -> RcDoc<'_, ColorSpec> {
     RcDoc::text("(").append(doc.nest(1)).append(")")
@@ -60,7 +56,7 @@ fn key<'a, 'b>(data: &'a str) -> RcDoc<'b, ColorSpec> {
     }
 }
 
-impl<FlatTyp:types::TFlatTyp, FlatLiteral:literals::TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> {
     fn vec_str_to_doc<'a, 'b>(l: &'b [String]) -> RcDoc<'a, ColorSpec> {
         if l.len() == 1 {
             RcDoc::as_string(l.get(0).unwrap())
@@ -323,7 +319,7 @@ impl<FlatTyp:types::TFlatTyp, FlatLiteral:literals::TFlatLiteral<FlatTyp>> Expr<
                 } else {
                     RcDoc::nil()
                 };
-                if let Some(method) = Headers::method(&function) {
+                if let Some(method) = Headers::<FlatTyp>::method(&function) {
                     let mut args = arguments.iter();
                     doc.append(args.next().unwrap().to_doc())
                         .append(".")
@@ -338,7 +334,7 @@ impl<FlatTyp:types::TFlatTyp, FlatLiteral:literals::TFlatLiteral<FlatTyp>> Expr<
                 } else {
                     let f = if function == "option::Some" {
                         RcDoc::text("Some")
-                    } else if let Some((module, name)) = Headers::split(&function) {
+                    } else if let Some((module, name)) = Headers::<FlatTyp>::split(&function) {
                         RcDoc::as_string(module)
                             .append("::")
                             .append(Self::method(name))
@@ -372,7 +368,7 @@ impl<FlatTyp:types::TFlatTyp, FlatLiteral:literals::TFlatLiteral<FlatTyp>> Expr<
     }
 }
 
-impl<FlatTyp:types::TFlatTyp, FlatLiteral:literals::TFlatLiteral<FlatTyp>> fmt::Display for Expr<FlatTyp, FlatLiteral> {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Expr<FlatTyp, FlatLiteral> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_pretty(80))
     }
@@ -502,8 +498,8 @@ impl Pattern {
 }
 
 impl<FlatTyp, FlatLiteral> TPrettyLit for  Literal<FlatTyp, FlatLiteral> where 
-    FlatTyp: types::TFlatTyp,
-    FlatLiteral: literals::TFlatLiteral<FlatTyp> {
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp> {
 
     fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         match self {
@@ -618,7 +614,7 @@ impl<FlatTyp:TFlatTyp> Typ<FlatTyp> {
     }
 }
 
-impl<FlatTyp:types::TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Program<FlatTyp, FlatLiteral> {
+impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Program<FlatTyp, FlatLiteral> {
     fn decl_to_doc<'a>(&self, name: &'a str, e: &'a Expr<FlatTyp, FlatLiteral>) -> RcDoc<'a, ColorSpec> {
         let mut args = Vec::new();
         e.closure_vars(&mut args);
