@@ -441,7 +441,7 @@ impl Handler<PolicyRequest> for PolicyActor {
                     self.uds_framed.write(PolicyResponse::Stopped)
                 }
             }
-            PolicyRequest::Stop(Protocol::Phantom(_)) => { unimplemented!() }
+            PolicyRequest::Stop(Protocol::Phantom(_)) => { unreachable!() }
             PolicyRequest::StartHttp(config) => {
                 let port = config.port();
                 if let Some(current_port) = self.http.port() {

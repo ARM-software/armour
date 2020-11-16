@@ -143,7 +143,7 @@ async fn main() -> Result<(), Error> {
             Err(err) => println!("{}", err),
         }
     }
-    else if let Some(query_matches) = matches.subcommand_matches("query-global") {
+    else if let Some(_) = matches.subcommand_matches("query-global") {
         let query_payload = control::PolicyQueryRequest {
             label: control::global_policy_label(),
         };
@@ -167,7 +167,7 @@ async fn main() -> Result<(), Error> {
             Err(err) => println!("{}", err),
         }
     }
-    else if let Some(query_matches) = matches.subcommand_matches("query-onboarding") {
+    else if let Some(_) = matches.subcommand_matches("query-onboarding") {
         let query_payload = control::PolicyQueryRequest {
             label: control::onboarding_policy_label(),
         };
@@ -206,7 +206,7 @@ async fn main() -> Result<(), Error> {
             Err(err) => println!("{}", err),
         }
     }
-    else if let Some(drop_matches) = matches.subcommand_matches("drop-global") {
+    else if let Some(_) = matches.subcommand_matches("drop-global") {
         let drop_payload = control::PolicyQueryRequest {
             label: control::global_policy_label(),
         };
@@ -219,7 +219,7 @@ async fn main() -> Result<(), Error> {
             Err(err) => println!("{}", err),
         }
     }
-    else if let Some(drop_matches) = matches.subcommand_matches("drop-onboarding") {
+    else if let Some(_) = matches.subcommand_matches("drop-onboarding") {
         let drop_payload = control::PolicyQueryRequest {
             label: control::onboarding_policy_label(),
         };

@@ -241,7 +241,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  std::str::FromStr for
                                 println!("WARNING: external \"{}\" already existed", ename)
                             }
                         },
-                        parser::Decl::Phantom(_) => unimplemented!()
+                        parser::Decl::Phantom(_) => unreachable!()
                     }
                 }
                 // process declarations

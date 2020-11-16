@@ -277,7 +277,7 @@ impl TSExprPEval for CPExpr {
                                 Err(err) => Err(err),
                             },
                             None if !flag => Ok((false, Expr::Iter(op, vs, Box::new(Expr::LitExpr(Literal::List(lits))), e2))),
-                            _ => unimplemented!("Could not happen in classical logic")
+                            _ => unreachable!("Could not happen in classical logic")
                         }
                     }
                     _ => Err(Error::new("peval, map-expression")),
@@ -502,10 +502,10 @@ impl TSExprPEval for CPExpr {
                                 })) 
                             }
                         },
-                        _ => unimplemented!("Could not happen in classical logic")
+                        _ => unreachable!("Could not happen in classical logic")
                     }
                 },
-                Expr::Phantom(_) => unimplemented!()
+                Expr::Phantom(_) => unreachable!()
             }
         }.boxed()
     }

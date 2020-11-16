@@ -354,7 +354,7 @@ impl<FlatTyp:types::TFlatTyp, FlatLiteral:literals::TFlatLiteral<FlatTyp>> Expr<
                     ))
                 }
             },
-            Expr::Phantom(_) => unimplemented!()
+            Expr::Phantom(_) => unreachable!()
         }
     }
     pub fn to_pretty(&self, width: usize) -> String {
@@ -399,7 +399,7 @@ impl<FlatTyp:TFlatTyp> Infix<FlatTyp> {
             Infix::Module => (Precedence::PModule, Assoc::Right),
             Infix::In => (Precedence::PIn, Assoc::Left),
             Infix::Dot => (Precedence::PDot, Assoc::Left),
-            Infix::Phantom(_) => unimplemented!()
+            Infix::Phantom(_) => unreachable!()
         }
     }
 }
@@ -529,7 +529,7 @@ impl<FlatTyp, FlatLiteral> TPrettyLit for  Literal<FlatTyp, FlatLiteral> where
                     .group(),
                 ),
             },
-            Literal::Phantom(_) => unimplemented!()
+            Literal::Phantom(_) => unreachable!()
         }
     }
 }

@@ -177,7 +177,7 @@ impl TExternals<types::FlatTyp, literals::DPFlatLiteral> for literals::DPFlatLit
                     Externals::build_value(list.reborrow().get(i as u32), t)
                 }
             },
-            Literal::Phantom(_) => unimplemented!()
+            Literal::Phantom(_) => unreachable!()
         }
     }
 }
@@ -214,7 +214,7 @@ impl TExternals<types::CPFlatTyp, literals::CPFlatLiteral> for literals::CPFlatL
                     Externals::build_value(list.reborrow().get(i as u32), t)
                 }
             },
-            Literal::Phantom(_) => unimplemented!()
+            Literal::Phantom(_) => unreachable!()
         }
     }
 }

@@ -866,7 +866,7 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
     fn get_bool(&self) -> bool{
         match self {
             Self::Bool(l) => l.clone(),
-            _ => unimplemented!() 
+            _ => panic!() 
         }
     }
     fn connection( c:Connection<FlatTyp, Self> ) -> Self {
@@ -890,7 +890,7 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
     fn get_data(&self) -> Vec<u8> { 
         match self { 
             FlatLiteral::Data(d) => d.clone(),
-            _ => unimplemented!()
+            _ => panic!()
         }
     }
     fn float( f:f64 ) -> Self { Self::Float(f) }
@@ -914,7 +914,7 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
     fn get_label<'a>(&'a self) -> &'a labels::Label{
         match self {
             Self::Label(l) => l,
-            _ => unimplemented!() 
+            _ => panic!() 
         }
     }
 
@@ -930,7 +930,7 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
     fn get_str<'a>(&'a self) -> &'a str{
         match self {
             Self::Str(l) => l,
-            _ => unimplemented!() 
+            _ => panic!() 
         }
     }
 
@@ -987,7 +987,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Literal<FlatTyp, FlatL
     pub fn get_bool(&self) -> bool{
         match self {
             Self::FlatLiteral(fl) => fl.get_bool(),
-            _ => unimplemented!() 
+            _ => panic!() 
         }
     }
     pub fn connection( c:Connection<FlatTyp, FlatLiteral> ) -> Self {
@@ -1003,7 +1003,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Literal<FlatTyp, FlatL
     pub fn get_data(&self) -> Vec<u8> { 
         match self { 
             Self::FlatLiteral(fl) => fl.get_data(),
-            _ => unimplemented!()
+            _ => panic!()
         }
     }
     pub fn float( f:f64 ) -> Self { Self::FlatLiteral(FlatLiteral::float(f)) }
@@ -1050,7 +1050,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Literal<FlatTyp, FlatL
             Literal::FlatLiteral(fl) => Typ::FlatTyp(fl.typ()),
             Literal::List(l) => l.get(0).map(|t| t.typ()).unwrap_or(Typ::rreturn()),
             Literal::Tuple(l) => Typ::Tuple((*l).iter().map(|t: &Self| t.typ()).collect()),
-            Literal::Phantom(_) => unimplemented!()
+            Literal::Phantom(_) => unreachable!()
         }
     }
     pub fn dest_some(&self) -> Option<Self> {
@@ -1132,7 +1132,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Liter
                     write!(f, "[{}]", s)
                 }
             },
-            Literal::Phantom(_) => unimplemented!()
+            Literal::Phantom(_) => unreachable!()
         }
     }
 }
@@ -1177,7 +1177,10 @@ impl From<CPFlatLiteral> for DPFlatLiteral {
             CPFlatLiteral::Regex(r) => Self::Regex(r),
             CPFlatLiteral::Str(s) => Self::Str(s),
             CPFlatLiteral::Unit => Self::Unit,
-            _ => unimplemented!()
+            
+            CPFlatLiteral::OnboardingData(_) => panic!("OnboardingData can not be converted to a DPFlatLiteral"),
+            CPFlatLiteral::OnboardingResult(_) => panic!("OnboardingResult  can not be converted to a DPFlatLiteral"),
+            CPFlatLiteral::Policy(_) => panic!("Policy can not be converted to a DPFlatLiteral"),
         }
     }
 }
@@ -1196,11 +1199,12 @@ impl From<CPLiteral> for DPLiteral {
 impl CPFlatLiteral {
     pub fn typ(&self) -> CPTyp {
         match self {
-            //CPFlatLiteral(dpft) => CPTyp::from(dpft.typ())
             CPFlatLiteral::OnboardingData(_) => CPTyp::onboarding_data(),
             CPFlatLiteral::OnboardingResult(_) => CPTyp::onboarding_result(),
             CPFlatLiteral::Policy(_) => CPTyp::policy(),
-            _=> unimplemented!()
+            dpft => CPTyp::FlatTyp(CPFlatTyp::DPFlatTyp(
+                DPFlatLiteral::from(dpft.clone()).typ()
+            )),
         }
     }
 }
@@ -1253,7 +1257,7 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
     fn get_bool(&self) -> bool{
         match self {
             Self::Bool(l) => l.clone(),
-            _ => unimplemented!() 
+            _ => unreachable!() 
         }
     }
     fn connection( c:Connection<CPFlatTyp, Self> ) -> Self {
@@ -1278,7 +1282,7 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
     fn get_data(&self) -> Vec<u8> { 
         match self {
             Self::Data(d) => d.clone(),
-            _ => unimplemented!()
+            _ => unreachable!()
         }
     }
     fn float( f:f64 ) -> Self { Self::Float(f) }
@@ -1302,7 +1306,7 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
     fn get_label<'a>(&'a self) -> &'a labels::Label{
         match self {
             Self::Label(l) => l,
-            _ => unimplemented!() 
+            _ => unreachable!() 
         }
     }
     fn regex( pr:parser::PolicyRegex) -> Self { Self::Regex(pr) }
@@ -1317,7 +1321,7 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
     fn get_str<'a>(&'a self) -> &'a str{
         match self {
             Self::Str(l) => l,
-            _ => unimplemented!() 
+            _ => unreachable!() 
         }
     }
 

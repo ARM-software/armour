@@ -366,7 +366,7 @@ impl<FlatTyp:TFlatTyp> Prefix<FlatTyp> {
         let (t1, t2) = match self {
             Prefix::Not => (FlatTyp::bool(), FlatTyp::bool()),
             Prefix::Minus => (FlatTyp::i64(), FlatTyp::i64()),
-            Prefix::Phantom(_) => unimplemented!()
+            Prefix::Phantom(_) => unreachable!()
         };
         (Typ::FlatTyp(t1), Typ::FlatTyp(t2))
     }
@@ -392,7 +392,7 @@ impl<FlatTyp:TFlatTyp> Infix<FlatTyp> {
             | Infix::LessThan
             | Infix::LessThanEqual => (Typ::i64(), Typ::i64(), Typ::bool()),
             Infix::Module | Infix::Dot => panic!(),
-            Infix::Phantom(_) => unimplemented!()
+            Infix::Phantom(_) => unreachable!()
         }
     }
 }
@@ -404,11 +404,11 @@ impl parser::Param {
 }
 
 impl<FlatTyp:TFlatTyp> parser::Pattern<FlatTyp> {
-    pub fn typ(&self) -> Typ<FlatTyp> {//Can not return & anymore, i think the borrowchecker is lost since fct call + generic
+    pub fn typ(&self) -> Typ<FlatTyp> {//FIXME Can not return & anymore, i think the borrowchecker is lost since fct call + generic
         match self {
             parser::Pattern::Regex(_) => Typ::str(),
             parser::Pattern::Label(_) => Typ::label(),
-            parser::Pattern::Phantom(_) => unimplemented!()
+            parser::Pattern::Phantom(_) => unreachable!()
         }
     }
 }
@@ -521,12 +521,12 @@ impl From<Typ<FlatTyp>> for CPTyp {
     }
 }
 impl From<CPFlatTyp> for FlatTyp {
-    fn from(ty: CPFlatTyp) -> Self {
+    fn from(ty: CPFlatTyp) -> FlatTyp {
         match ty {
             CPFlatTyp::DPFlatTyp(dty) => dty,
-            CPFlatTyp::OnboardingData => unimplemented!(),
-            CPFlatTyp::OnboardingResult => unimplemented!(),
-            CPFlatTyp::Policy => unimplemented!(),
+            CPFlatTyp::OnboardingData => panic!("OnboardingData type can not be converted to DPFlatTyp".to_string()),
+            CPFlatTyp::OnboardingResult => panic!("OnboardingResult type can not be converted to DPFlatTyp".to_string()),
+            CPFlatTyp::Policy => panic!("Policy type can not be converted to DPFlatTyp".to_string()),
         }
     }
 }

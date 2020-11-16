@@ -10,7 +10,6 @@ pub mod external_capnp {
 
 /// Language AST
 pub mod expressions;
-pub mod expressions_cp;
 /// Make calls to external security services
 ///
 /// For example, external services can be used for logging and session management

@@ -532,7 +532,6 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             "IpAddr::localhost" => Some(Literal::ip_addr(std::net::IpAddr::V4(
                 std::net::Ipv4Addr::new(127, 0, 0, 1),
             ))),
-            "OnboardingData::declaredDomain" => unimplemented!(),
             "System::getCurrentTime" => {
                 let start = SystemTime::now();
                 let since_the_epoch = start
@@ -1236,7 +1235,7 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                         }
                     }
                 },
-                Expr::Phantom(_) => unimplemented!()
+                Expr::Phantom(_) => unreachable!()
             }
         }
         .boxed()

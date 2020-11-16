@@ -158,7 +158,7 @@ fn raw_onboard1() -> &'static str {
         let ep = obd.host();
         let service = obd.service();
 
-        if let Some(id) = ControlPlane::onboarded(ep, service) {
+        if let Some(id) = ControlPlane::onboarded(obd) {
             OnboardingResult::Err(\"Endpoint already onboarded\",
                                 id,
                                 compile_ingress(\"allow_rest_request\", id),

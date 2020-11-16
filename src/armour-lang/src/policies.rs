@@ -231,11 +231,8 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Eq for Protocol<FlatTy
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Ord for Protocol<FlatTyp, FlatLiteral> {
     fn cmp(&self, other: &Self) -> Ordering {
-        match self.partial_cmp(other) {
-            Some(x) => x,
-            _ => unimplemented!(), //Should never happen, PhantomData
-
-        }
+        //can not panic cf. partial_cmp implementation
+        self.partial_cmp(other).unwrap()
     }
 }
 
@@ -261,7 +258,7 @@ impl TProtocol<FlatTyp, Self> for literals::FlatLiteral {
         match p {
             Protocol::HTTP => &*HTTP_POLICY,
             Protocol::TCP => &*TCP_POLICY,
-            Protocol::Phantom(_) => unimplemented!(), 
+            Protocol::Phantom(_) => unreachable!(), 
         }
     }
 }
@@ -270,7 +267,7 @@ impl TProtocol<types::CPFlatTyp, Self> for literals::CPFlatLiteral {
         match p {
             Protocol::HTTP => &*CP_HTTP_POLICY,
             Protocol::TCP => &*CP_TCP_POLICY,
-            Protocol::Phantom(_) => unimplemented!(), 
+            Protocol::Phantom(_) => unreachable!(), 
         }
     }
 }
@@ -288,7 +285,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Proto
         match self {
             Protocol::HTTP => write!(f, "http"),
             Protocol::TCP => write!(f, "tcp"),
-            Protocol::Phantom(_) => unimplemented!()
+            Protocol::Phantom(_) => unreachable!()
         }
     }
 }

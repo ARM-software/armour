@@ -156,7 +156,7 @@ impl StreamHandler<Result<PolicyResponse, std::io::Error>> for ArmourDataInstanc
                     match protocol {
                         Protocol::HTTP => self.host.do_send(RegisterHttpHash(self.id, hash)),
                         Protocol::TCP => self.host.do_send(RegisterTcpHash(self.id, hash)),
-                        Protocol::Phantom(_) => unimplemented!()
+                        Protocol::Phantom(_) => unreachable!()
                     }
                 }
                 PolicyResponse::RequestFailed => info!("{}: request failed", self.id),

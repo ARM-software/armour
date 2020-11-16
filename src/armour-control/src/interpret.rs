@@ -8,6 +8,7 @@ use armour_lang::literals::{
     self, Literal,
     CPLiteral, CPID,
     CPFlatLiteral,
+    OnboardingData,
     TFlatLiteral
 };
 use armour_lang::policies::{GlobalPolicies, DPPolicies};
@@ -55,7 +56,6 @@ pub trait TSLitInterpret {
     async fn seval_call2(&self, state: Arc<State>, f: &str, other: &Self) -> Result<Option<CPLiteral>, self::Error>;
     async fn seval_call3(&self, state: Arc<State>, f: &str, l1: &Self, l2: &Self) -> Result<Option<CPLiteral>, self::Error>;
     async fn seval_call4(&self, state: Arc<State>, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Result<Option<CPLiteral>, self::Error>;
-    async fn helper_sevalexpr(state: Arc<State>, e : Expr<CPFlatTyp, CPFlatLiteral>, env: CPEnv) -> Result<CPExpr, self::Error>;
 }
 
 #[async_trait]
@@ -133,13 +133,12 @@ async fn helper_compile_egress(
         )))
 }
 
-async fn helper_onboarded(state: State, service: &Label, host: &Label) ->  Result<CPLiteral, self::Error>  {
-    let col = collection(&state, SERVICES_COL);
+async fn helper_onboarded(state: Arc<State>, obd: &OnboardingData) ->  Result<CPLiteral, self::Error>  {
+    let col = collection(&*state, SERVICES_COL);
+    let mock_service_id = new_ID(obd);
 
-    //FIXME we assume that (service, host) is unique
-    //Can't we use ServiceID:: here ?
     if let Ok(Some(doc)) = col
-        .find_one(Some(doc! { "service" : to_bson(&service)?, "host" : to_bson(&host)? }), None)
+        .find_one(Some(doc! { "service_id.labels" : to_bson(&mock_service_id)? }), None)
         .await
     {
         let request =
@@ -149,6 +148,13 @@ async fn helper_onboarded(state: State, service: &Label, host: &Label) ->  Resul
     } else {
         Ok(Literal::none())
     }
+}
+
+/// Assumption: (obd.service, obd.host) is unique
+fn new_ID(obd: &OnboardingData) -> Label {
+    let mut service_id = Label::concat(&obd.host(), &obd.service());
+    service_id.prefix("ServiceID".to_string());                    
+    service_id
 }
 
 async fn helper_onboard(state: Arc<State>, id: &CPID) ->  Result<CPLiteral, self::Error>  {
@@ -233,9 +239,11 @@ impl TSLitInterpret for CPLiteral {
             ( "ControlPlane::onboard", cplit!(ID(service_id)) ) => { 
                 Ok(Some(helper_onboard(state, service_id).await?))
             },
+            ( "ControlPlane::onboarded", cplit!(OnboardingData(obd)) ) => { 
+                Ok(Some(helper_onboarded(state, obd).await?))
+            }
             ( "ControlPlane::newID", cplit!(OnboardingData(obd)) ) => { 
-                let mut service_id = Label::concat(&obd.host(), &obd.service());
-                service_id.prefix("ServiceID".to_string());                    
+                let service_id = new_ID(obd);
                 let mut service = obd.service();
                 service.prefix("Service".to_string());
                 let mut host = obd.host();
@@ -262,13 +270,6 @@ impl TSLitInterpret for CPLiteral {
             ("compile_egress", cplit!(Str(function)), cplit!(ID(id))) =>  {
                 Ok(Some(helper_compile_egress(state, function, id).await?))
             },
-            (
-                "ControlPlane::onboarded", 
-                cplit!(Label(service)), 
-                cplit!(Label(host))
-            ) => { 
-                Ok(Some(helper_onboarded((*state).clone(), service, host).await?))
-            },
             _ => Ok(self.eval_call2(f, other)),
         }
     }
@@ -283,30 +284,6 @@ impl TSLitInterpret for CPLiteral {
     async fn seval_call4(&self, _state:Arc<State>, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, l1, l2, l3) {
             _ => Ok(self.eval_call4(f, l1, l2, l3)),
-        }
-    }
-
-    async fn helper_sevalexpr(state: Arc<State>, e : Expr<CPFlatTyp, CPFlatLiteral>, env: CPEnv) -> Result<CPExpr, self::Error>{
-        match e {
-            // short circuit for &&
-            Expr::InfixExpr(Infix::And, e1, e2) => match e1.seval(state.clone(), env.clone()).await? {
-                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(false))) => Ok(r),
-                Expr::LitExpr(cplit!(Bool(true))) => match e2.seval(state, env).await? {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok(r),
-                    _ => Err(Error::new("eval, infix")),
-                },
-                _ => Err(Error::new("eval, infix")),
-            },
-            // short circuit for ||
-            Expr::InfixExpr(Infix::Or, e1, e2) => match e1.seval(state.clone(), env.clone()).await? {
-                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(true))) => Ok(r),
-                Expr::LitExpr(cplit!(Bool(false))) => match e2.seval(state, env).await? {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok(r),
-                    _ => Err(Error::new("eval, infix")),
-                },
-                _ => Err(Error::new("eval, infix")),
-            },
-            _ => unimplemented!()
         }
     }
 }
@@ -362,9 +339,23 @@ impl TSExprInterpret for CPExpr {
                     _ => Err(Error::new("seval, prefix")),
                 },
                 // short circuit for &&
-                Expr::InfixExpr(Infix::And, _, _) => CPLiteral::helper_sevalexpr(state.clone(), self, env).await, 
+                Expr::InfixExpr(Infix::And, e1, e2) => match e1.seval(state.clone(), env.clone()).await? {
+                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(false))) => Ok(r),
+                    Expr::LitExpr(cplit!(Bool(true))) => match e2.seval(state, env).await? {
+                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok(r),
+                        _ => Err(Error::new("eval, infix")),
+                    },
+                    _ => Err(Error::new("eval, infix")),
+                },
                 // short circuit for ||
-                Expr::InfixExpr(Infix::Or, _, _) => CPLiteral::helper_sevalexpr(state.clone(), self, env).await,
+                Expr::InfixExpr(Infix::Or, e1, e2) => match e1.seval(state.clone(), env.clone()).await? {
+                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(true))) => Ok(r),
+                    Expr::LitExpr(cplit!(Bool(false))) => match e2.seval(state, env).await? {
+                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok(r),
+                        _ => Err(Error::new("eval, infix")),
+                    },
+                    _ => Err(Error::new("eval, infix")),
+                },
                 Expr::InfixExpr(op, e1, e2) => {
                     let r1 = e1.seval(state.clone(), env.clone()).await?;
                     match (r1, e2.seval(state, env).await?) {
@@ -647,7 +638,7 @@ impl TSExprInterpret for CPExpr {
                         }
                     }
                 },
-                Expr::Phantom(_) => unimplemented!()
+                Expr::Phantom(_) => unreachable!()
             }
         }
         .boxed()

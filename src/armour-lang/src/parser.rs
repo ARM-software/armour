@@ -541,7 +541,7 @@ impl<FlatTyp:TFlatTyp> std::fmt::Display for Prefix<FlatTyp>{
         match self {
             Prefix::Minus => write!(f, "-"),
             Prefix::Not => write!(f, "!"),
-            Prefix::Phantom(_) => unimplemented!()
+            Prefix::Phantom(_) => unreachable!()
         }
     }
 }
@@ -591,7 +591,7 @@ impl<FlatTyp:TFlatTyp> std::fmt::Display for Infix<FlatTyp> {
             Infix::Module => write!(f, "::"),
             Infix::In => write!(f, "in"),
             Infix::Dot => write!(f, "."),
-            Infix::Phantom(_) => unimplemented!()
+            Infix::Phantom(_) => unreachable!()
         }
     }
 }
@@ -1417,7 +1417,6 @@ pub trait TParser<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
                     LocExprOrMatches::Expr(expr) => Expr::IfExpr { cond: Box::new(expr), consequence, alternative },
                     LocExprOrMatches::Matches(matches) => Expr::IfMatchExpr { matches, consequence, alternative },
                     LocExprOrMatches::SomeMatch(var, expr) => Expr::IfSomeMatchExpr { var, expr: Box::new(expr), consequence, alternative },
-                    //LocExprOrMatches::Phantom(_) => unimplemented!()
                 }
             ))
         )

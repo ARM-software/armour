@@ -549,7 +549,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
                     arguments: arguments.into_iter().map(|a| a.shift(i, d)).collect(),
                     is_async,
                 },
-                Self::Phantom(_) => unimplemented!()
+                Self::Phantom(_) => unreachable!()
             }
         }
     }
@@ -641,7 +641,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
                 arguments: arguments.into_iter().map(|a| a.subst(i, u)).collect(),
                 is_async,
             },
-            Self::Phantom(_) => unimplemented!()
+            Self::Phantom(_) => unreachable!()
         }
     }
     pub fn apply(self, u: &Self) -> Result<Self, self::Error> {
@@ -724,7 +724,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
                 arguments: arguments.into_iter().map(|a| a.abs(i, v)).collect(),
                 is_async,
             },
-            Self::Phantom(_) => unimplemented!()
+            Self::Phantom(_) => unreachable!()
         }
     }
     fn closure_expr(self, v: &str) -> Self {
@@ -993,7 +993,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
                             }
                             Ok(Pattern::Label(l.clone()))
                         },
-                        parser::Pattern::Phantom(_) => unimplemented!()
+                        parser::Pattern::Phantom(_) => unreachable!()
                     })
                     .collect();
                 let matches = matches?;
