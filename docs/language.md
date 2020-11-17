@@ -1,41 +1,44 @@
 Armour Policy Language
 ======================
 
-- [Read-Eval-Print-Loop](#repl)
-- [Types](#types)
-	- [Primitive](#primitive-types)
-	- [Composite](#composite-types)
-- [Expressions, blocks and statements](#expressions)
-	- [Comments](#comments)
-	- [Literals](#literals)
-	- [Variables](#variables)
-	- [Prefixes](#prefixes)
-	- [Infixes](#infixes)
-	- [Function call](#function-call)
-	- [Return](#return)
-	- [Sequences](#sequences)
-	- [Iteration](#iteration)
-	- Conditionals
-		- [if](#if)
-		- [if matches](#if-matches)
-		- [if let](#if-let)
-	- [Regular expressions](#regular-expressions)
-- [Function declaration](#functions)
-- Primitive functions
-	- [Connection](#connection)
-	- [Data](#data)
-	- [Egress](#egress)
-	- [HttpResponse](#http-response)
-	- [HttpRequest](#http-request)
-	- [i64](#i64)
-	- [ID](#id)
-	- [Ingress](#ingress)
-	- [IpAddr](#ipaddr)
-	- [Label](#label)
-	- [List](#list)
-	- [Option](#option)
-	- [regex](#regex)
-	- [str](#str)
+- [Armour Policy Language](#armour-policy-language)
+  - [Read-Eval-Print-Loop (REPL)](#read-eval-print-loop-repl)
+  - [Types](#types)
+    - [Primitive](#primitive)
+    - [Composite](#composite)
+  - [Expressions, blocks and statements](#expressions-blocks-and-statements)
+    - [Comments](#comments)
+    - [Literals](#literals)
+    - [Variables](#variables)
+    - [Prefixes](#prefixes)
+    - [Infixes](#infixes)
+    - [Function call](#function-call)
+    - [Return (early exit)](#return-early-exit)
+    - [Sequences and immutable assignment (`;` and `let`)](#sequences-and-immutable-assignment--and-let)
+    - [Iteration](#iteration)
+    - [Conditionals](#conditionals)
+      - [`if`](#if)
+      - [`if .. matches ..`](#if--matches-)
+      - [`if let`](#if-let)
+    - [Regular expressions](#regular-expressions)
+  - [Function declaration](#function-declaration)
+    - [Internal](#internal)
+    - [External](#external)
+  - [Primitive functions](#primitive-functions)
+    - [Connection::](#connection)
+    - [data::](#data)
+    - [Egress::](#egress)
+    - [HttpResponse::](#httpresponse)
+    - [HttpRequest::](#httprequest)
+    - [i64::](#i64)
+    - [ID::](#id)
+    - [Ingress::](#ingress)
+    - [IpAddr::](#ipaddr)
+    - [Label::](#label)
+    - [list::](#list)
+    - [option::](#option)
+    - [regex::](#regex)
+    - [str::](#str)
 
 <a name="repl"></a>
 Read-Eval-Print-Loop (REPL)
@@ -178,7 +181,7 @@ Expressions, blocks and statements
 <a name="iteration"></a>
 ### Iteration
 
-`all`, `any`, `filter`, `filter_map`, `foreach` and `map`
+`all`, `any`, `filter`, `filter_map`, `fold`, `foreach` and `map`
 
 ```
 > all [1 < 2, 2 < 4]
@@ -198,6 +201,9 @@ Expressions, blocks and statements
 
 > filter x in [("x", 1"), ("y", 2), ("x", 3)] { x.0 == "x" }
 : [("x", 1), ("x", 3)]
+
+> fold x in in [1, 2, 3] { acc += x } 0
+: 6 
 
 > map x in [1, 2, 3] { x % 2 == 0 }
 : [false, true, false]
