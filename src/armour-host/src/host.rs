@@ -224,17 +224,17 @@ impl Handler<CPOnboardProxy> for ArmourDataHost {
                 Some(meta) => {
                     let label = meta.label.clone();
 
-                    //FIXME assume only one µservice per proxy
+                    if msg.1.len() > 1 {
+                        log::warn!("Information propagation from proxy to CP assumes there is only one µservice per proxy");
+                    }
                     //TODO maybe can be just borrow as mutable without the ServiceGlobalID notification/event
-                    assert_eq!(msg.1.len(), 1);
                     let mut tmp_dpid = meta.tmp_dpid.clone().unwrap_or(DPID::default());
                     for (ip, labels) in msg.1 {
-                        log::warn!("preparing onboarding of service {:?} {:?}", label, labels);
                         let mut ips = BTreeSet::new();
                         ips.insert(ip);
                         tmp_dpid.ips = ips;
                         tmp_dpid.labels = labels;
-                        break;
+                        break;//FIXME assume only one µservice per proxy
                     }
 
                     let instance = InstanceSelector::Label(label.clone());
@@ -353,17 +353,15 @@ pub struct Launch {
     label: Label,
     log: log::Level,
     timeout: Option<u8>,
-    ip_labels: Vec<(std::net::Ipv4Addr, Labels)>
 }
 
 impl Launch {
-    pub fn new(label: Label, force: bool, log: log::Level, timeout: Option<u8>, ip_labels: Vec<(std::net::Ipv4Addr, Labels)>) -> Self {
+    pub fn new(label: Label, force: bool, log: log::Level, timeout: Option<u8>) -> Self {
         Launch {
             force,
             label,
             log,
             timeout,
-            ip_labels
         }
     }
 }
@@ -517,3 +515,4 @@ impl Handler<PolicyCommand> for ArmourDataHost {
         }
     }
 }
+

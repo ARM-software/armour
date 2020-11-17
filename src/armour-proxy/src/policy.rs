@@ -409,9 +409,9 @@ impl Handler<PolicyRequest> for PolicyActor {
 
     fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) -> Self::Result {
         match msg {
-            PolicyRequest::CPOnboard => {
+            PolicyRequest::CPOnboard(ip_labels) => {
                 log::info!("Starting CP onboarding");
-                self.uds_framed.write(PolicyResponse::CPOnboardingProxy(self.identity.ip_labels.clone()));
+                self.uds_framed.write(PolicyResponse::CPOnboardingProxy(ip_labels.clone()));
             }
             PolicyRequest::Label(op) =>{
                 self.handle_label_op(op);
@@ -592,3 +592,4 @@ impl PolicyActor {
         log::info!("installed TCP policy")
     }
 }
+

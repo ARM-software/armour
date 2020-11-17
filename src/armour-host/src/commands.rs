@@ -140,7 +140,7 @@ fn host_command(host: &Addr<ArmourDataHost>, caps: regex::Captures) -> bool {
             } else {
                 log::Level::Warn
             };
-            host.do_send(Launch::new(label, true, log, None, Vec::default()))
+            host.do_send(Launch::new(label, true, log, None))
         }
         (_, Some("shutdown"), None) => {
             log::info!("sending shudown");
@@ -318,3 +318,4 @@ fn pathbuf(s: &str) -> std::path::PathBuf {
         })
         .collect()
 }
+

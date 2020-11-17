@@ -5,6 +5,7 @@ use armour_lang::{labels, policies};
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use tokio_util::codec::{Decoder, Encoder};
+use std::collections::{HashMap};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum LabelOp {
@@ -40,7 +41,7 @@ impl HttpConfig {
 #[derive(Serialize, Deserialize, Message, Clone)]
 #[rtype("()")]
 pub enum PolicyRequest {
-    CPOnboard,
+    CPOnboard(HashMap<std::net::IpAddr, labels::Labels>),
     Label(LabelOp),
     SetPolicy(policies::DPPolicies),
     Shutdown,
@@ -71,3 +72,4 @@ impl Encoder<host::PolicyResponse> for PolicyCodec {
         self.serialize_encode(msg, dst)
     }
 }
+

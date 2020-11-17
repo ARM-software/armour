@@ -7,9 +7,9 @@ pub mod service {
 	use armour_api::host::{OnboardInformation, Proxies, Proxy};
 	use armour_api::proxy::{HttpConfig, LabelOp, PolicyRequest};
 	use armour_lang::labels::{Label, Labels};
+	use std::collections::{BTreeSet, HashMap};
 	use std::str::FromStr;
 
-	#[derive(Debug)]
 	struct MailboxError;
 
 	impl std::fmt::Display for MailboxError {
@@ -29,18 +29,14 @@ pub mod service {
 		}
 	}
 
-	async fn launch_proxy(host: &super::Host, proxy: &Proxy, ip_labels: Vec<(std::net::Ipv4Addr, Labels)>) -> Result<(), actix_web::Error> {
+	async fn launch_proxy(host: &super::Host, proxy: &Proxy) -> Result<(), actix_web::Error> {
 		// start a proxy (without forcing/duplication)
-		host.send(Launch::new(
-			proxy.label.clone(),
-			false,
 			if proxy.debug {
 				log::Level::Debug
 			} else {
 				log::Level::Info
 			},
 			proxy.timeout,
-			ip_labels
 		))
 		.await?;
 		Ok(())
@@ -63,11 +59,24 @@ pub mod service {
 	async fn start_onboarding(
 		host: &super::Host,
 		instance: InstanceSelector,
+		ip_labels: &[(std::net::Ipv4Addr, Labels)],
 	) -> Result<(), actix_web::Error> {
+		let mut ip_labels_h : HashMap<std::net::IpAddr, Labels>= HashMap::new();
+
+		for (ip, labels) in ip_labels {
+			if let Some(labels2) = ip_labels_h.get_mut(&std::net::IpAddr::from(ip.clone())) {
+				labels2.extend(labels.clone());
+			} else {
+				ip_labels_h.insert(std::net::IpAddr::from(ip.clone()), labels.clone());
+			}
+		}
+
 		host.send(PolicyCommand::new_with_retry(
 			// retry needed in case proxy process is slow to start up
 			instance,
-			PolicyRequest::CPOnboard,
+			PolicyRequest::CPOnboard(
+				ip_labels_h
+			),
 		))
 		.await?;
 		Ok(())
@@ -99,13 +108,13 @@ pub mod service {
 			proxy.label = Label::concat(&Label::from_str("EgressIngress").unwrap(), &proxy.label);
 
 			// launch proxies (if not already launched)
-			launch_proxy(&host, &proxy, information.labels.clone()).await?;
+			launch_proxy(&host, &proxy).await?;
 			let instance = InstanceSelector::Label(proxy.label.clone());
 			
 			// add service labels
 			add_ip_labels(&host, &instance, &information.labels).await?;
 			let config = proxy.config(port);
-			start_onboarding(&host, instance.clone()).await?;
+			start_onboarding(&host, instance.clone(), &information.labels).await?;
 			start_proxy(&host, instance, config).await?
 		}
 		log::info!("onboarded");
@@ -189,3 +198,4 @@ pub mod policy {
 		}
 	}
 }
+
