@@ -409,9 +409,12 @@ impl Handler<PolicyRequest> for PolicyActor {
 
     fn handle(&mut self, msg: PolicyRequest, ctx: &mut Context<Self>) -> Self::Result {
         match msg {
+            PolicyRequest::CPOnboard => {
+                log::info!("Starting CP onboarding");
+                self.uds_framed.write(PolicyResponse::CPOnboardingProxy(self.identity.ip_labels.clone()));
+            }
             PolicyRequest::Label(op) =>{
                 self.handle_label_op(op);
-                self.uds_framed.write(PolicyResponse::CPOnboardingProxy(self.identity.ip_labels.clone()));
             },
             PolicyRequest::Timeout(secs) => {
                 self.http.set_timeout(secs);

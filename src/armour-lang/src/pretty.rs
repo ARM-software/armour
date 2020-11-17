@@ -153,22 +153,28 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
                     .append(right)
                     .group()
             }
-            Expr::Iter(op, vs, e, b) => RcDoc::as_string(op)
-                .annotate(ColorSpec::new().set_fg(Some(Color::Cyan)).clone())
-                .append(
-                    RcDoc::space()
-                        .append(Self::vec_str_to_doc(&vs))
-                        .append(RcDoc::space())
-                        .append(key("in"))
-                        .nest(2),
-                )
-                .append(RcDoc::space().append(e.to_doc()).nest(4))
-                .append(RcDoc::space())
-                .append("{")
-                .append(RcDoc::line().append(b.closure_body().to_doc()).nest(2))
-                .append(RcDoc::line())
-                .append("}")
-                .group(),
+            Expr::Iter(op, vs, e, b, acc_opt) => {
+                let tmp = RcDoc::as_string(op)
+                    .annotate(ColorSpec::new().set_fg(Some(Color::Cyan)).clone())
+                    .append(
+                        RcDoc::space()
+                            .append(Self::vec_str_to_doc(&vs))
+                            .append(RcDoc::space())
+                            .append(key("in"))
+                            .nest(2),
+                    )
+                    .append(RcDoc::space().append(e.to_doc()).nest(4))
+                    .append(RcDoc::space())
+                    .append("{")
+                    .append(RcDoc::line().append(b.closure_body().to_doc()).nest(2))
+                    .append(RcDoc::line())
+                    .append("}");
+
+                match acc_opt {
+                    Some(acc) =>tmp.append(RcDoc::space().append(acc.to_doc()).nest(4)) ,
+                    None =>tmp 
+                }.group()
+            },
             Expr::BlockExpr(Block::Block, es) => RcDoc::intersperse(
                 es.iter().map(|e| e.to_doc()),
                 RcDoc::text(";").append(RcDoc::line()),

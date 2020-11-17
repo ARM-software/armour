@@ -3,6 +3,7 @@ use actix_web::{web};
 
 use armour_api::control::*;
 
+use armour_control::State;
 use armour_control::interpret::*;
 use armour_control::rest_api::*;
 use armour_control::ControlPlaneState;
@@ -12,20 +13,30 @@ use armour_lang::interpret::{Env, CPEnv, DPEnv};
 use armour_lang::labels::{self, *};
 use armour_lang::literals::{self, *};
 use armour_lang::policies::{self, *};
-use armour_lang::types::{self, *};
+use armour_lang::types::*;
 
 use bson::doc;
 use mongodb::{options::ClientOptions, Client};
 
+use std::path::{PathBuf};
 use std::sync::Arc;
 use std::str::FromStr;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeSet};
 use std::iter::Iterator;
-use futures::{future::BoxFuture, Stream};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 //clear && RUST_MIN_STACK=8388608 cargo test -j 20 -- --nocapture test_seval_onboarding
 //rsync -avz src vagrant@localhost:~/ -e "ssh -p 2222 -i /home/marmotte/armour/examples/.vagrant/machines/default/virtualbox/private_key" --exclude=target/
+
+fn get_policies_path(name: &str) -> PathBuf{ 
+    let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    d.push("tests");
+    d.push("policies");
+    d.push(name);
+    println!("Loading policy from: {}", d.display());
+    d 
+}
+
 async fn mock_state () -> Result<State, Error> {
     let mongo_url = "mongodb://localhost:27017" ;
 
@@ -85,7 +96,7 @@ async fn register_onboarding_policy(
 ) -> Result<bool, expressions::Error> {
     let request = OnboardingUpdateRequest {
         label: onboarding_policy_label(),
-        policy: policies::OnboardingPolicy::from_buf(raw_pol)?,
+        policy: policies::OnboardingPolicy::from_file(raw_pol)?,
         labels: LabelMap::default()
     }.pack();
     let label = &request.label.clone();
@@ -108,21 +119,16 @@ async fn register_onboarding_policy(
     }
 }
 
-
 async fn load_global_policy(
     function: &str,
-    from: CPID,
-    to: CPID,
     raw_pol: &str,
     args: Vec<CPLiteral>
 ) -> Result<CPExpr, expressions::Error> {
     println!("Args built");
-    let policies = policies::Policies::from_buf(raw_pol)?;
+    let policies: Policies<FlatTyp, FlatLiteral> = policies::Policies::from_buf(raw_pol)?;
     println!("{} Policies built", policies.len());
     match policies.policy(policies::Protocol::HTTP) {
         Some(policy) => {
-            let env : CPEnv = Env::new(&policy.program);
-
             let expr : CPExpr = expressions::Expr::call(
                 function, 
                 args.into_iter().map(|x| Expr::LitExpr(x)).collect()
@@ -139,7 +145,7 @@ async fn load_onboarding_policy(
     raw_pol: &str,
     onboarding_data: CPLiteral
 ) -> Result<(CPExpr, CPEnv), expressions::Error> {
-    let policy =  policies::OnboardingPolicy::from_buf(raw_pol)?; 
+    let policy =  policies::OnboardingPolicy::from_file(raw_pol)?; 
     println!("onboarding policy built");
     let env : CPEnv = Env::new(&policy.program);
 
@@ -152,98 +158,24 @@ async fn load_onboarding_policy(
     Ok((expr, env))
 }
 
-fn raw_onboard1() -> &'static str {
-"
-    fn onboarding_policy(obd: OnboardingData) -> OnboardingResult {
-        let ep = obd.host();
-        let service = obd.service();
-
-        if let Some(id) = ControlPlane::onboarded(obd) {
-            OnboardingResult::Err(\"Endpoint already onboarded\",
-                                id,
-                                compile_ingress(\"allow_rest_request\", id),
-                                compile_egress(\"allow_rest_response\", id)
-                            )
-        } else {
-            let id = ControlPlane::newID(obd);
-            let id = id.add_label(Label::new(\"SecureService\"));
-            let id = id.add_label(Label::login_time(System::getCurrentTime()));
-            let pol = (compile_ingress(\"allow_rest_request\", id),compile_egress(\"allow_rest_response\", id));
-            if ControlPlane::onboard(id) {
-                OnboardingResult::Ok(id, pol.0, pol.1)            
-            } else {
-                OnboardingResult::Err(\"Onboard failure\",
-                                id,
-                                pol.0, pol.1)
-
-
-            }
-        }
-    }
-"
-}
-
 async fn onboarding_pol1() ->  Result<(CPExpr, CPEnv),  expressions::Error> {
+    let proposed_labels: BTreeSet<&str> = vec![ 
+        "proposed1",
+    ].into_iter().collect(); 
+
     let ob_data = OnboardingData::new(
         Label::from_str("host").map_err(|x| expressions::Error::from(x)).unwrap(),
         Label::from_str("service").map_err(|x| expressions::Error::from(x)).unwrap(),
         Some(80),
+        proposed_labels.into_iter()
+        .map(|x| Label::from_str(x).map_err(|x| expressions::Error::from(x)).unwrap() )
+        .collect(),
+        BTreeSet::default()
     );
-
-    //let raw_pol = "
-    //    fn onboardingPolicy(od: OnboardingData) -> OnboardingResult {
-    //        let ep = od.endpoint();
-    //        match od.declaredDomain() {
-    //            \"SecureServices\" => {
-    //                if let Some(token) = verifyCredentials(ob.credentials(),
-    //                                                    MyPolicyConstants::SecureCredentials) {
-    //                    if let Some(id) = ControlPlane::onboarded(ep) {
-    //                        OnboardingResultFail(\"Endpoint already onboarded\",
-    //                                            id,
-    //                                            getPolicy(id))
-    //                    } else {
-    //                        let id = ControlPlane::newID(ep);
-    //                        ControlPlane::onboard(id);
-    //                        id.set_label(MyPolicy::SecureService);
-    //                        id.set_label(Token : token);
-    //                        id.set_label(LoginTime : System.getCurrentTime());
-    //                        OnboardingResultOk(id, getPolicy(id))
-    //                    }
-    //                }
-    //                else {
-    //                    OnboardingResultFail(\"Failed to authenticate\", Armour::Policies::DenyAll)
-    //                }
-    //            }
-    //            _ => {
-    //                if let Some(id) = ControlPlane::onboarded(ep) {
-    //                    OnboardingResultFail(\"Endpoint already onboarded\",
-    //                                        id,
-    //                                        getPolicy(id))
-    //                } else {
-    //                    id = ControlPlane::newID(ep);
-    //                    ControlPlane::onboard(id);
-    //                    id.set_label(MyPolicy::UntrustedService);
-    //                    id.set_label(LoginTime : System.getCurrentTime());
-    //                    OnboardingResultOk(id, getPolicy(id))
-    //                }
-    //            }
-    //        }
-    //    }
-
-    //    fn getPolicy(id: ControlPlane::Id) -> Policy {
-    //        let ing = compile_ingress(allow_rest_request, to = id); // These are Armour primitives
-    //        let egr = compile_egress(allow_rest_request, from = id);
-    //        Policy(ing, egr)
-    //    }
-    //        ControlPlane::onboard(id);
-    //        id.set_label(\"MyPolicy::SecureService\");
-    //        id.set_label(LoginTime(getCurrentTime()));
-    //";
-    let raw_pol = raw_onboard1();
 
     let (pol, env) = load_onboarding_policy(
         mock_state().await.map_err(|x| expressions::Error::from(x.to_string()))?,
-        raw_pol,
+        get_policies_path("onboard1.policy").to_str().unwrap(),
         Literal::FlatLiteral(CPFlatLiteral::OnboardingData(Box::new(ob_data)))
     ).await?;
     println!("## Policy expr built");            
@@ -353,7 +285,7 @@ fn get_from_to() -> Result<(DPID, DPID), expressions::Error> {
 async fn global_pol1() ->  Result<CPExpr,  expressions::Error> {
     let function = "allow_rest_request";
 
-    let mut from_labels: BTreeSet<&str> = vec![ 
+    let from_labels: BTreeSet<&str> = vec![ 
         "allowed",
     ].into_iter().collect(); 
 
@@ -403,7 +335,7 @@ async fn global_pol1() ->  Result<CPExpr,  expressions::Error> {
         //Literal::data(Vec::new()) 
     ];
 
-    let res = load_global_policy(function, from, to, raw_pol, args).await?;
+    let res = load_global_policy(function, raw_pol, args).await?;
     println!("## Expr after eval");            
     res.print_debug();
     Ok(res)
@@ -465,7 +397,7 @@ mod tests_control {
     #[actix_rt::test]
     async fn test_seval_onboarding() -> Result<(),  expressions::Error> {
         let state = mock_state().await.map_err(|x|expressions::Error::from(format!("{:?}", x)))?;
-        state.db_con.database("armour").drop(None).await;
+        state.db_con.database("armour").drop(None).await.unwrap();
         register_policy(&state, raw_pol1()).await?;
 
         if let Ok(Some(doc)) = collection(&state.clone(), POLICIES_COL)
@@ -534,9 +466,9 @@ mod tests_control {
     #[actix_rt::test]
     async fn test_onboard() -> Result<(),  actix_web::Error> {
         let state = mock_state().await.unwrap();
-        state.db_con.database("armour").drop(None).await;
+        state.db_con.database("armour").drop(None).await.unwrap();
         register_policy(&state, raw_pol1()).await.unwrap();
-        register_onboarding_policy(&state, raw_onboard1()).await.unwrap();
+        register_onboarding_policy(&state, get_policies_path("onboard1.policy").to_str().unwrap()).await.unwrap();
 
         let request = OnboardServiceRequest{
             service: labels::Label::from_str("Service21::ingress").unwrap(),
@@ -571,7 +503,7 @@ mod tests_control {
         let state = mock_state().await.unwrap();
         state.db_con.database("armour").drop(None).await.unwrap();
         register_policy(&state, raw_pol3()).await.unwrap();
-        register_onboarding_policy(&state, raw_onboard1()).await.unwrap();
+        register_onboarding_policy(&state, get_policies_path("onboard1.policy").to_str().unwrap()).await.unwrap();
 
         let request = OnboardServiceRequest{
             service: labels::Label::from_str("Service21::ingress").unwrap(),

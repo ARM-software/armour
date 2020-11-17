@@ -40,6 +40,7 @@ impl HttpConfig {
 #[derive(Serialize, Deserialize, Message, Clone)]
 #[rtype("()")]
 pub enum PolicyRequest {
+    CPOnboard,
     Label(LabelOp),
     SetPolicy(policies::DPPolicies),
     Shutdown,

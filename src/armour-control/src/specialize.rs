@@ -203,25 +203,66 @@ impl TSExprPEval for CPExpr {
                         }
                     }
                 },
-                Expr::Iter(op, vs, e1, e2) => match e1.peval(state.clone(), env.clone()).await? {
+                Expr::Iter(op, vs, e1, e2, acc_opt) => match e1.peval(state.clone(), env.clone()).await? {
                     (_, r @ Expr::ReturnExpr(_)) => Ok((true, r)),
                     (false, e1) => {
                         let (_, e2) = e2.peval(state.clone(), env.clone()).await?;
-                        Ok((false, Expr::Iter(op, vs, Box::new(e1), Box::new(e2))))
+                        let acc_opt = match acc_opt{
+                            Some(acc) => Some(Box::new(acc.peval(state.clone(), env.clone()).await?.1)),
+                            None => None
+                        }; 
+
+                        Ok((false, Expr::Iter(op, vs, Box::new(e1), Box::new(e2), acc_opt)))
                     }
                     (true, Expr::LitExpr(Literal::List(lits))) => {
                         let mut res = Vec::new();
+                        let mut acc_opt = match acc_opt {
+                            Some(e) =>{
+                                match e.peval(state.clone(), env.clone()).await? {
+                                    (true, acc) => Some((true, acc)), 
+                                    (false, acc) => 
+                                        //Fold can not be applied if acc is not a value
+                                        return Ok((
+                                            false, 
+                                            Expr::Iter(
+                                                op, 
+                                                vs, 
+                                                Box::new(Expr::LitExpr(Literal::List(lits))), 
+                                                e2, 
+                                                Some(Box::new(acc))
+                                            )
+                                        )
+                                    )
+                                }
+                            },
+                            _=> None
+                        };
                         for l in lits.iter() {
                             match l {
                                 Literal::Tuple(ref ts) if vs.len() != 1 => {
                                     if vs.len() == ts.len() {
                                         let mut e = *e2.clone();
+                                        
+                                        //Apply the accumulator if any
+                                        if acc_opt.is_some() { //FIXME Duplicated
+                                            let acc = acc_opt.clone().unwrap().1;
+                                            e = e.apply(&acc)?;
+                                        }
+
                                         for (v, lit) in vs.iter().zip(ts) {
                                             if v != "_" {
                                                 e = e.apply(&Expr::LitExpr(lit.clone()))?
                                             }
                                         }
-                                        res.push(e.peval(state.clone(), env.clone()).await?)
+                                        
+                                        //Update the acc if any
+                                        if acc_opt.is_some() { //FIXME Duplicated
+                                            let tmp = e.peval(state.clone(), env.clone()).await?;
+                                            acc_opt = Some(tmp.clone());
+                                            res.push(tmp)    
+                                        } else {
+                                            res.push(e.peval(state.clone(), env.clone()).await?)
+                                        }
                                     } else {
                                         return Err(Error::new(
                                             "peval, iter-expression (tuple length mismatch)",
@@ -231,10 +272,25 @@ impl TSExprPEval for CPExpr {
                                 _ => {
                                     if vs.len() == 1 {
                                         let mut e = *e2.clone();
+                                        
+                                        //Apply the accumulator if any
+                                        if acc_opt.is_some() { //FIXME Duplicated
+                                            let acc = acc_opt.clone().unwrap().1;
+                                            e = e.apply(&acc)?;
+                                        }
+
                                         if vs[0] != "_" {
                                             e = e.clone().apply(&Expr::LitExpr(l.clone()))?
                                         }
-                                        res.push(e.peval(state.clone(), env.clone()).await?)
+
+                                        //Update the acc if any
+                                        if acc_opt.is_some() { //FIXME Duplicated
+                                            let tmp = e.peval(state.clone(), env.clone()).await?;
+                                            acc_opt = Some(tmp.clone());
+                                            res.push(tmp)    
+                                        } else {
+                                            res.push(e.peval(state.clone(), env.clone()).await?)
+                                        }  
                                     } else {
                                         return Err(Error::new(
                                             "peval, iter-expression (not a tuple list)",
@@ -249,6 +305,9 @@ impl TSExprPEval for CPExpr {
 
                         match res.find(|r| r.is_return()) {
                             Some(r) => Ok((flag, r.clone())),
+                            None if op == Iter::Fold => {
+                                Ok(acc_opt.unwrap())
+                            }
                             None if flag => match Self::literal_vector(res.collect()) {
                                 Ok(iter_lits) => Ok((flag, match op {
                                     Iter::Map => Literal::List(iter_lits).into(),
@@ -270,13 +329,13 @@ impl TSExprPEval for CPExpr {
                                             .collect();
                                         Literal::List(filtered_lits).into()
                                     }
-
+                                    Iter::Fold => unreachable!(),
                                     Iter::All => iter_lits.iter().all(|l| l.get_bool()).into(),
                                     Iter::Any => iter_lits.iter().any(|l| l.get_bool()).into(),
                                 })),
                                 Err(err) => Err(err),
                             },
-                            None if !flag => Ok((false, Expr::Iter(op, vs, Box::new(Expr::LitExpr(Literal::List(lits))), e2))),
+                            None if !flag => Ok((false, Expr::Iter(op, vs, Box::new(Expr::LitExpr(Literal::List(lits))), e2, acc_opt.map(|x| Box::new(x.1))))),
                             _ => unreachable!("Could not happen in classical logic")
                         }
                     }

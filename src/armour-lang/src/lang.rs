@@ -284,7 +284,17 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  Program<FlatTyp, Flat
         match e {
             Expr::Var(_) | Expr::BVar(_, _) | Expr::LitExpr(_) => Ok(()),
             Expr::ReturnExpr(e) | Expr::PrefixExpr(_, e) |Expr::Closure(_, e) => Self::aux_deadcode_elim(module, e, own_idx),
-            Expr::InfixExpr(_, e1, e2) | Expr::Let(_, e1, e2) | Expr::Iter(_, _, e1, e2)=> {Self::aux_deadcode_elim(module, e1, own_idx)?; Self::aux_deadcode_elim(module, e2, own_idx)},
+            Expr::InfixExpr(_, e1, e2) | Expr::Let(_, e1, e2) => {
+                Self::aux_deadcode_elim(module, e1, own_idx)?; 
+                Self::aux_deadcode_elim(module, e2, own_idx)},
+            Expr::Iter(_, _, e1, e2, acc_opt)=> {
+                Self::aux_deadcode_elim(module, e1, own_idx)?;
+                Self::aux_deadcode_elim(module, e2, own_idx)?;
+                match acc_opt {
+                    Some(acc) => Self::aux_deadcode_elim(module, acc, own_idx),
+                    _ => Ok(())
+                }
+            },
             Expr::BlockExpr(_, xs) => {xs.iter().map(|e| Self::aux_deadcode_elim(module, e, own_idx)).for_each(drop); Ok(())},
             Expr::IfExpr { cond, consequence, alternative} => {
                 Self::aux_deadcode_elim(module, cond, own_idx)?;

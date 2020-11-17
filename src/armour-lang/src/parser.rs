@@ -277,6 +277,7 @@ pub enum Iter {
     Filter,
     FilterMap,
     ForEach,
+    Fold,
     Map,
 }
 
@@ -289,6 +290,7 @@ impl std::fmt::Display for Iter {
             Iter::FilterMap => write!(f, "filter_map"),
             Iter::Map => write!(f, "map"),
             Iter::ForEach => write!(f, "foreach"),
+            Iter::Fold => write!(f, "fold"),
         }
     }
 }
@@ -306,6 +308,7 @@ pub enum Expr<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
         idents: Vec<LocIdent>,
         expr: Box<LocExpr<FlatTyp, FlatLiteral>>,
         body: BlockStmt<FlatTyp, FlatLiteral>,
+        accumulator: Option<Box<LocExpr<FlatTyp, FlatLiteral>>>
     },
     IfExpr {
         cond: Box<LocExpr<FlatTyp, FlatLiteral>>,
@@ -1129,12 +1132,14 @@ pub trait TParser<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
                 tag_token!(Token::Filter) |
                 tag_token!(Token::FilterMap) |
                 tag_token!(Token::ForEach) |
+                tag_token!(Token::Fold) |
                 tag_token!(Token::Map)
             ) >>
             idents: parse_idents >>
             tag_token!(Token::In) >>
             expr: call_mm!(Self::parse_expr) >>
             body: call_mm!(Self::parse_block_stmt) >>
+            accumulator: opt!(call_mm!(Self::parse_expr)) >>
             (LocExpr(
                 t.loc(),
                 Expr::IterExpr {
@@ -1144,12 +1149,14 @@ pub trait TParser<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
                         Token::Filter => Iter::Filter,
                         Token::FilterMap => Iter::FilterMap,
                         Token::ForEach => Iter::ForEach,
+                        Token::Fold => Iter::Fold,
                         Token::Map => Iter::Map,
                         _ => unreachable!(),
                     },
                     idents,
                     expr: Box::new(expr),
-                    body
+                    body,
+                    accumulator: accumulator.map(|x| Box::new(x))
                 }
             ))
         )
@@ -1173,6 +1180,7 @@ pub trait TParser<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
                     idents: vec![LocIdent(Loc::default(), Ident::from("x"))],
                     expr: Box::new(expr),
                     body: BlockStmt::from(LocExpr(Loc::default(), Expr::IdentExpr(Ident::from("x")))),
+                    accumulator: None
                 }
             ))
         )

@@ -432,21 +432,41 @@ impl TSExprInterpret for CPExpr {
                     }
                     _ => Err(Error::new("seval, let-expression")),
                 },
-                Expr::Iter(op, vs, e1, e2) => match e1.seval(state.clone(), env.clone()).await? {
+                Expr::Iter(op, vs, e1, e2, acc_opt) => match e1.seval(state.clone(), env.clone()).await? {
                     r @ Expr::ReturnExpr(_) => Ok(r),
                     Expr::LitExpr(Literal::List(lits)) => {
+                        println!("Coucou {:#?}", e2);
                         let mut res = Vec::new();
+                        let mut acc_opt = match acc_opt {
+                            Some(e) => Some(e.seval(state.clone(), env.clone()).await?),
+                            _=> None
+                        };
                         for l in lits.iter() {
                             match l {
                                 Literal::Tuple(ref ts) if vs.len() != 1 => {
                                     if vs.len() == ts.len() {
                                         let mut e = *e2.clone();
+
+                                        //Apply the accumulator if any
+                                        if acc_opt.is_some() { //FIXME Duplicated
+                                            let acc = acc_opt.clone().unwrap();
+                                            e = e.apply(&acc)?;
+                                        }
+
                                         for (v, lit) in vs.iter().zip(ts) {
                                             if v != "_" {
                                                 e = e.apply(&Expr::LitExpr(lit.clone()))?
                                             }
                                         }
-                                        res.push(e.seval(state.clone(), env.clone()).await?)
+
+                                        //Update the acc if any
+                                        if acc_opt.is_some() { //FIXME Duplicated
+                                            let tmp = e.seval(state.clone(), env.clone()).await?;
+                                            acc_opt = Some(tmp.clone());
+                                            res.push(tmp)    
+                                        } else {
+                                            res.push(e.seval(state.clone(), env.clone()).await?)
+                                        }
                                     } else {
                                         return Err(Error::new(
                                             "seval, iter-expression (tuple length mismatch)",
@@ -456,10 +476,25 @@ impl TSExprInterpret for CPExpr {
                                 _ => {
                                     if vs.len() == 1 {
                                         let mut e = *e2.clone();
+                                        
+                                        //Apply the accumulator if any
+                                        if acc_opt.is_some() { //FIXME Duplicated
+                                            let acc = acc_opt.clone().unwrap();
+                                            e = e.apply(&acc)?;
+                                        }
+
                                         if vs[0] != "_" {
                                             e = e.clone().apply(&Expr::LitExpr(l.clone()))?
                                         }
-                                        res.push(e.seval(state.clone(), env.clone()).await?)
+                                        
+                                        //Update the acc if any
+                                        if acc_opt.is_some() { //FIXME Duplicated
+                                            let tmp = e.seval(state.clone(), env.clone()).await?;
+                                            acc_opt = Some(tmp.clone());
+                                            res.push(tmp)    
+                                        } else {
+                                            res.push(e.seval(state.clone(), env.clone()).await?)
+                                        }  
                                     } else {
                                         return Err(Error::new(
                                             "seval, iter-expression (not a tuple list)",
@@ -470,6 +505,12 @@ impl TSExprInterpret for CPExpr {
                         }
                         match res.iter().find(|r| r.is_return()) {
                             Some(r) => Ok(r.clone()),
+                            None if op == Iter::Fold => {
+                                match acc_opt.unwrap() {
+                                    Expr::LitExpr(l) => Ok(l.into()),
+                                    _ => Err(Error::new("arg is not a literal")),
+                                }
+                            }
                             None => match Self::literal_vector(res) {
                                 Ok(iter_lits) => match op {
                                     Iter::Map => Ok(Literal::List(iter_lits).into()),
@@ -491,6 +532,7 @@ impl TSExprInterpret for CPExpr {
                                             .collect();
                                         Ok(Literal::List(filtered_lits).into())
                                     }
+                                    Iter::Fold => unreachable!(),
                                     Iter::All => Ok(iter_lits.iter().all(|l| l.get_bool()).into()),
                                     Iter::Any => Ok(iter_lits.iter().any(|l| l.get_bool()).into()),
                                 },

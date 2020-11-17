@@ -706,13 +706,15 @@ pub struct OnboardingData {
     //service description
     service: labels::Label,                  
     port: Option<u16>,
+    
     //TODO
 
     //authentification description
     //TODO
 
-    //exported labels
-    //TODO
+    //exported labels by the proxy, i.e, from the armour-compose file
+    proposed_labels: labels::Labels,
+    ips: BTreeSet<std::net::IpAddr>
 }
 
 impl OnboardingData {
@@ -720,11 +722,15 @@ impl OnboardingData {
         host: labels::Label,
         service: labels::Label,
         port: Option<u16>,
+        proposed_labels: labels::Labels,
+        ips: BTreeSet<std::net::IpAddr>
     ) -> Self {
         OnboardingData {
             host,
             service,
-            port
+            port,
+            proposed_labels,
+            ips
         }
     }
     pub fn service(&self) -> labels::Label {
@@ -735,6 +741,22 @@ impl OnboardingData {
     }
     pub fn port(&self) -> Option<u16> {
         self.port.clone()
+    }
+    pub fn proposed_labels(&self) -> CPLiteral {
+        Literal::List(
+            self.proposed_labels.clone().into_iter()
+                .map(|x| Literal::label(x) )
+                .collect()
+        )
+    }
+    pub fn has_proposed_label(&self, label: &labels::Label) -> bool {
+        self.proposed_labels.iter().any(|x| label.matches_with(x))
+    }
+    pub fn find_proposed_label(&self, label: &labels::Label) -> Option<&labels::Label> {
+        self.proposed_labels.iter().find(|x| label.matches_with(x))
+    }
+    pub fn has_ip(&self, ip: &std::net::IpAddr) -> bool {
+        self.ips.iter().any(|x| x == ip)
     }
     pub fn service_lit(&self) -> CPLiteral {
         CPLiteral::FlatLiteral(CPFlatLiteral::Label(self.service.clone()))

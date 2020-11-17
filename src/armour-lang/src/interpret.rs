@@ -630,6 +630,8 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
                 })
             },
             ("OnboardingData::host", cpflatlit!(OnboardingData(obd))) => Some(obd.host_lit()),
+            ("OnboardingData::proposed_labels", cpflatlit!(OnboardingData(obd))) => 
+                Some(obd.proposed_labels()),
             ("OnboardingData::service", cpflatlit!(OnboardingData(obd))) => Some(obd.service_lit()),
             ("OnboardingResult::ErrStr",  cpflatlit!(Str(err))) => {
                 Some(OnboardingResult::new_err_str_lit(err.clone()))
@@ -731,6 +733,10 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             ("Label::is_match", cpflatlit!(Label(i)), cpflatlit!(Label(j))) => {
                 Some(i.matches_with(j).into())
             }
+            ("OnboardingData::has_proposed_label", cpflatlit!(OnboardingData(obd)), cpflatlit!(Label(l))) => 
+                Some(obd.has_proposed_label(l).into()),
+            ("OnboardingData::has_ip", cpflatlit!(OnboardingData(obd)), cpflatlit!(IpAddr(i))) => 
+                Some(obd.has_ip(i).into()),
             _ => None,
         }
     }
@@ -1035,21 +1041,41 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                     }
                     _ => Err(Error::new("eval, let-expression")),
                 },
-                Expr::Iter(op, vs, e1, e2) => match e1.eval(env.clone()).await? {
+                Expr::Iter(op, vs, e1, e2, acc_opt) => match e1.eval(env.clone()).await? {
                     r @ Expr::ReturnExpr(_) => Ok(r),
                     Expr::LitExpr(Literal::List(lits)) => {
                         let mut res = Vec::new();
+                        let mut acc_opt = match acc_opt {
+                            Some(e) => Some(e.eval(env.clone()).await?),
+                            _=> None
+                        };
+
                         for l in lits.iter() {
                             match l {
                                 Literal::Tuple(ref ts) if vs.len() != 1 => {
                                     if vs.len() == ts.len() {
                                         let mut e = *e2.clone();
+
+                                        //Apply the accumulator if any
+                                        if acc_opt.is_some() { //FIXME Duplicated
+                                            let acc = acc_opt.clone().unwrap();
+                                            e = e.apply(&acc)?;
+                                        }
+
                                         for (v, lit) in vs.iter().zip(ts) {
                                             if v != "_" {
                                                 e = e.apply(&Expr::LitExpr(lit.clone()))?
                                             }
                                         }
-                                        res.push(e.eval(env.clone()).await?)
+                                        
+                                        //Update the acc if any
+                                        if acc_opt.is_some() { //FIXME Duplicated
+                                            let tmp = e.eval(env.clone()).await?;
+                                            acc_opt = Some(tmp.clone());
+                                            res.push(tmp)    
+                                        } else {
+                                            res.push(e.eval(env.clone()).await?)
+                                        }
                                     } else {
                                         return Err(Error::new(
                                             "eval, iter-expression (tuple length mismatch)",
@@ -1059,10 +1085,25 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                                 _ => {
                                     if vs.len() == 1 {
                                         let mut e = *e2.clone();
+                                        
+                                        //Apply the accumulator if any
+                                        if acc_opt.is_some() { //FIXME Duplicated
+                                            let acc = acc_opt.clone().unwrap();
+                                            e = e.apply(&acc)?;
+                                        }
+
                                         if vs[0] != "_" {
                                             e = e.clone().apply(&Expr::LitExpr(l.clone()))?
                                         }
-                                        res.push(e.eval(env.clone()).await?)
+                                        
+                                        //Update the acc if any
+                                        if acc_opt.is_some() { //FIXME Duplicated
+                                            let tmp = e.eval(env.clone()).await?;
+                                            acc_opt = Some(tmp.clone());
+                                            res.push(tmp)    
+                                        } else {
+                                            res.push(e.eval(env.clone()).await?)
+                                        }  
                                     } else {
                                         return Err(Error::new(
                                             "eval, iter-expression (not a tuple list)",
@@ -1073,6 +1114,12 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                         }
                         match res.iter().find(|r| r.is_return()) {
                             Some(r) => Ok(r.clone()),
+                            None if op == Iter::Fold => {
+                                match acc_opt.unwrap() {
+                                    Expr::LitExpr(l) => Ok(l.into()),
+                                    _ => Err(Error::new("arg is not a literal")),
+                                }
+                            }
                             None => match Self::literal_vector(res) {
                                 Ok(iter_lits) => match op {
                                     Iter::Map => Ok(Literal::List(iter_lits).into()),
@@ -1094,6 +1141,7 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                                             .collect();
                                         Ok(Literal::List(filtered_lits).into())
                                     }
+                                    Iter::Fold => unreachable!(),
                                     Iter::All => Ok(iter_lits.iter().all(|l| l.get_bool()).into()),
                                     Iter::Any => Ok(iter_lits.iter().any(|l| l.get_bool()).into()),
                                 },

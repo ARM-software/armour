@@ -7,12 +7,13 @@ use armour_api::control::{
 use armour_api::host::PolicyUpdate;
 use armour_lang::{
     expressions,
-    labels::Label, 
+    labels::{Label, Labels}, 
     literals,
     policies::{self, DPPolicies}, 
     literals::OnboardingResult
 };
 use bson::doc;
+use std::collections::BTreeSet;
 use std::str::FromStr;
 use std::sync::Arc;
 use super::policy::OnboardingPolicy;
@@ -157,7 +158,9 @@ pub mod service {
                 Box::new(literals::OnboardingData::new(
                     request.host.clone(),
                     request.service.clone(),
-                    match request.tmp_dpid { Some(x) => x.port(), _ => None}
+                    match request.tmp_dpid { Some(ref x) => x.port(), _ => None},
+                    match request.tmp_dpid { Some(ref x) => x.labels.clone(), _=> Labels::default()},
+                    match request.tmp_dpid { Some(ref x) => x.ips.clone(), _=> BTreeSet::default()},
             ))))
         );            
 

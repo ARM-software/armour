@@ -193,7 +193,7 @@ pub enum Expr<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     InfixExpr(Infix<FlatTyp>, Box<Expr<FlatTyp, FlatLiteral>>, Box<Expr<FlatTyp, FlatLiteral>>),
     BlockExpr(Block, Vec<Expr<FlatTyp, FlatLiteral>>),
     Let(Vec<String>, Box<Expr<FlatTyp, FlatLiteral>>, Box<Expr<FlatTyp, FlatLiteral>>),
-    Iter(parser::Iter, Vec<String>, Box<Expr<FlatTyp, FlatLiteral>>, Box<Expr<FlatTyp, FlatLiteral>>),
+    Iter(parser::Iter, Vec<String>, Box<Expr<FlatTyp, FlatLiteral>>, Box<Expr<FlatTyp, FlatLiteral>>, Option<Box<Expr<FlatTyp, FlatLiteral>>>),
     Closure(parser::Ident, Box<Expr<FlatTyp, FlatLiteral>>),
     IfExpr {
         cond: Box<Expr<FlatTyp, FlatLiteral>>,
@@ -304,7 +304,7 @@ impl From<CPExpr> for DPExpr {
             CPExpr::InfixExpr(inf, e1, e2) => DPExpr::InfixExpr(DPInfix::from(inf), Box::new(DPExpr::from(*e1)), Box::new(DPExpr::from(*e2))),
             CPExpr::BlockExpr(b, es) => DPExpr::BlockExpr(b, es.into_iter().map(|e| DPExpr::from(e)).collect()),
             CPExpr::Let(vs, e1, e2) => DPExpr::Let(vs, Box::new(DPExpr::from(*e1)), Box::new(DPExpr::from(*e2))),
-            CPExpr::Iter(it, vs, e1, e2) => DPExpr::Iter(it, vs, Box::new(DPExpr::from(*e1)), Box::new(DPExpr::from(*e2))),
+            CPExpr::Iter(it, vs, e1, e2, acc) => DPExpr::Iter(it, vs, Box::new(DPExpr::from(*e1)), Box::new(DPExpr::from(*e2)), acc.map(|x| Box::new(DPExpr::from(*x)))),
             CPExpr::Closure(ident, e) => DPExpr::Closure(ident, Box::new(DPExpr::from(*e))),
             CPExpr::IfExpr {
                 cond,
@@ -385,7 +385,8 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
             Expr::LitExpr(_) => true,
             Expr::Closure(_, e) => e.is_free(u+1),
             Expr::ReturnExpr(e) | Expr::PrefixExpr(_, e) => e.is_free(u),  
-            Expr::InfixExpr(_, e1, e2) | Expr::Let(_, e1, e2) | Expr::Iter(_, _, e1, e2) => e1.is_free(u) && e2.is_free(u), 
+            Expr::InfixExpr(_, e1, e2) | Expr::Let(_, e1, e2) => e1.is_free(u) && e2.is_free(u), 
+            Expr::Iter(_, _, e1, e2, acc_opt) => e1.is_free(u) && e2.is_free(u) && match acc_opt {Some(acc)=> acc.is_free(u), None => true}, 
             Expr::BlockExpr(_, es) => es.iter().fold(true, |acc, x| acc && x.is_free(u)),
             Expr::IfExpr {
                 cond,
@@ -469,16 +470,23 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
             )
         }
     }
-    fn iter_expr(self, op: &parser::Iter, v: Vec<&str>, e: Self) -> Self {
+    fn iter_expr(self, op: &parser::Iter, v: Vec<&str>, e: Self, acc: Option<Self>) -> Self {
         let mut c = self;
+
         for s in v.iter().rev() {
             c = c.closure_expr(s)
         }
+
+        if acc.is_some() {
+            c = c.closure_expr("acc");
+        }
+
         Self::Iter(
             op.clone(),
             v.iter().map(|s| (*s).to_string()).collect(),
             Box::new(e),
             Box::new(c),
+            match acc { None => None, Some(x) => Some(Box::new(x)) }
         )
     }
     fn shift(self, i: usize, d: usize) -> Self {
@@ -497,8 +505,15 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
                 Self::Let(l, e1, e2) => {
                     Self::Let(l, Box::new(e1.shift(i, d)), Box::new(e2.shift(i, d)))
                 }
-                Self::Iter(op, l, e1, e2) => {
-                    Self::Iter(op, l, Box::new(e1.shift(i, d)), Box::new(e2.shift(i, d)))
+                Self::Iter(op, l, e1, e2, acc_opt) => {
+                    Self::Iter(op, l, 
+                        Box::new(e1.shift(i, d)), 
+                        Box::new(e2.shift(i, d)),
+                        match acc_opt {
+                            Some(acc) => Some(Box::new(acc.shift(i,d))),
+                            None => None
+                        } 
+                    )
                 }
                 Self::Closure(v, e) => Self::Closure(v, Box::new(e.shift(i, d + 1))),
                 Self::ReturnExpr(e) => Self::return_expr(e.shift(i, d)),
@@ -589,8 +604,12 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
             Self::Let(l, e1, e2) => {
                 Self::Let(l, Box::new(e1.subst(i, u)), Box::new(e2.subst(i, u)))
             }
-            Self::Iter(op, l, e1, e2) => {
-                Self::Iter(op, l, Box::new(e1.subst(i, u)), Box::new(e2.subst(i, u)))
+            Self::Iter(op, l, e1, e2, acc_opt) => {
+                Self::Iter(op, l, 
+                    Box::new(e1.subst(i, u)), 
+                    Box::new(e2.subst(i, u)),
+                    acc_opt.map(|acc| Box::new(acc.subst(i,u)))
+                )
             }
             Self::Closure(v, e) => Self::Closure(v, Box::new(e.subst(i + 1, u))),
             Self::ReturnExpr(e) => Self::return_expr(e.subst(i, u)),
@@ -675,8 +694,12 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
                 }
             }
             Self::Let(l, e1, e2) => Self::Let(l, Box::new(e1.abs(i, v)), Box::new(e2.abs(i, v))),
-            Self::Iter(op, l, e1, e2) => {
-                Self::Iter(op, l, Box::new(e1.abs(i, v)), Box::new(e2.abs(i, v)))
+            Self::Iter(op, l, e1, e2, acc_opt) => {
+                Self::Iter(op, l, 
+                    Box::new(e1.abs(i, v)), 
+                    Box::new(e2.abs(i, v)),
+                    acc_opt.map(|acc| Box::new(acc.abs(i, v)))
+                )
             }
             Self::Closure(v2, e) => Self::Closure(v2, Box::new(e.abs(i + 1, v))),
             Self::ReturnExpr(e) => Self::return_expr(e.abs(i, v)),
@@ -1063,6 +1086,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
                 idents,
                 expr,
                 body,
+                accumulator
             } => {
                 let (expr1, calls1, typ1) = Self::from_loc_expr(expr, headers, ret, ctxt)?.split();
                 let (vs, iter_vars) = match typ1 {
@@ -1102,6 +1126,16 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
                         )))
                     }
                 };
+                
+                //Adding a acc var inside the body block
+                let iter_vars = &match accumulator { 
+                    Some(acc) if *op == parser::Iter::Fold => {
+                        let (_, _, acc_typ) = Self::from_loc_expr(acc, headers, ret, ctxt)?.split();
+                        iter_vars.add_var("acc", &acc_typ.clone())
+                    }
+                    _ => iter_vars.clone(),
+                };
+
                 let (expr2, calls2, typ2) =
                     Self::from_block_stmt(body.as_ref(), headers, ret, &iter_vars)?.split();
                 if *op == parser::Iter::FilterMap {
@@ -1110,25 +1144,56 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
                         vec![(Some(body.loc(e.loc())), typ2.clone())],
                         vec![(None, Typ::any_option())],
                     )?
-                } else if *op != parser::Iter::Map && *op != parser::Iter::ForEach {
+                } 
+                else if *op != parser::Iter::Map && *op != parser::Iter::ForEach && *op != parser::Iter::Fold{
                     Typ::type_check(
                         "all/any/filter-expression",
                         vec![(Some(body.loc(e.loc())), typ2.clone())],
                         vec![(None, Typ::bool())],
                     )?
                 }
-                Ok(ExprAndMeta::new(
-                    expr2.iter_expr(op, vs, expr1),
-                    match op {
-                        parser::Iter::All | parser::Iter::Any => Typ::bool(),
-                        parser::Iter::Filter => typ1,
-                        // type check above will ensure unwrap is successful
-                        parser::Iter::FilterMap => Typ::List(Box::new(typ2.dest_option().unwrap())),
-                        parser::Iter::ForEach => Typ::unit(),
-                        parser::Iter::Map => Typ::List(Box::new(typ2)),
+
+                match accumulator {
+                    None => {
+                        Ok(ExprAndMeta::new(
+                            expr2.iter_expr(op, vs, expr1, None),
+                            match op {
+                                parser::Iter::All | parser::Iter::Any => Typ::bool(),
+                                parser::Iter::Filter => typ1,
+                                // type check above will ensure unwrap is successful
+                                parser::Iter::FilterMap => Typ::List(Box::new(typ2.dest_option().unwrap())),
+                                parser::Iter::ForEach => Typ::unit(),
+                                parser::Iter::Fold =>{
+                                    return Err(Error::from(format!(
+                                        "{} can not be defined without an accumulator at {} ",
+                                        op,
+                                        e.loc()
+                                    )))
+                                },
+                                parser::Iter::Map => Typ::List(Box::new(typ2)),
+                            },
+                            vec![calls1, calls2],
+                        ))
                     },
-                    vec![calls1, calls2],
-                ))
+                    Some(acc) if *op == parser::Iter::Fold => {
+                        let (acc, acc_calls, acc_typ) = Self::from_loc_expr(acc, headers, ret, ctxt)?.split();
+                        Typ::type_check(
+                            "fold-expression",
+                            vec![(Some(body.loc(e.loc())), typ2.clone())],
+                            vec![(None, acc_typ.clone())],
+                        )?;
+                        Ok(ExprAndMeta::new(
+                            expr2.iter_expr(op, vs, expr1, Some(acc)),
+                            acc_typ,
+                            vec![calls1, calls2, acc_calls],
+                        ))
+                    },
+                    _ => return Err(Error::from(format!(
+                        "{} can have an accumulator at {} ",
+                        op,
+                        e.loc()
+                    )))
+                }
             }
             parser::Expr::CallExpr {
                 function,

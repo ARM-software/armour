@@ -373,6 +373,9 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
             "ControlPlane::newID" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::id()),
             "Label::new" => sig(vec![CPTyp::str()], CPTyp::label()),
             "Label::login_time" => sig(vec![CPTyp::i64()], CPTyp::label()),
+            "OnboardingData::proposed_labels" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::List(Box::new(CPTyp::label()))),
+            "OnboardingData::has_proposed_label" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData), CPTyp::label()], CPTyp::bool()),
+            "OnboardingData::has_ip" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData), CPTyp::ip_addr()], CPTyp::bool()),
             "OnboardingData::host" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::label()),
             "OnboardingData::service" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::label()),
             "OnboardingResult::Ok" => sig(

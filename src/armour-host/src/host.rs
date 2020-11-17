@@ -224,11 +224,12 @@ impl Handler<CPOnboardProxy> for ArmourDataHost {
                 Some(meta) => {
                     let label = meta.label.clone();
 
-                    //assume only one µservice per proxy
+                    //FIXME assume only one µservice per proxy
                     //TODO maybe can be just borrow as mutable without the ServiceGlobalID notification/event
-                    assert_eq!(msg.1.len(), 0);
+                    assert_eq!(msg.1.len(), 1);
                     let mut tmp_dpid = meta.tmp_dpid.clone().unwrap_or(DPID::default());
                     for (ip, labels) in msg.1 {
+                        log::warn!("preparing onboarding of service {:?} {:?}", label, labels);
                         let mut ips = BTreeSet::new();
                         ips.insert(ip);
                         tmp_dpid.ips = ips;

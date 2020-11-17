@@ -60,6 +60,18 @@ pub mod service {
 		Ok(())
 	}
 
+	async fn start_onboarding(
+		host: &super::Host,
+		instance: InstanceSelector,
+	) -> Result<(), actix_web::Error> {
+		host.send(PolicyCommand::new_with_retry(
+			// retry needed in case proxy process is slow to start up
+			instance,
+			PolicyRequest::CPOnboard,
+		))
+		.await?;
+		Ok(())
+	}
 	async fn start_proxy(
 		host: &super::Host,
 		instance: InstanceSelector,
@@ -93,6 +105,7 @@ pub mod service {
 			// add service labels
 			add_ip_labels(&host, &instance, &information.labels).await?;
 			let config = proxy.config(port);
+			start_onboarding(&host, instance.clone()).await?;
 			start_proxy(&host, instance, config).await?
 		}
 		log::info!("onboarded");
