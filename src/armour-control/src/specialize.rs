@@ -581,17 +581,31 @@ pub async fn compile_ingress(state: Arc<State>, global_pol: policies::GlobalPoli
         let env = CPEnv::new(&pol.program);        
 
         //FIXME check correct type of http_rest_request
-        //let sig = Typ::Signature(Some(vec![
-        //    Typ::FlatTyp(FlatTyp::connection()), 
-        //    Typ::FlatTyp(FlatTyp::i64()),
-        //    Typ::FlatTyp(FlatTyp::i64())
-        //]));
+        let expected_sig = Signature::new(
+            vec![
+                Typ::id(), 
+                Typ::id(),
+                Typ::http_request(),
+                Typ::data()
+            ], 
+            Typ::bool()
+        );
 
-        //Typ::type_check (sig, pol.pprogram.code.get ()) 
-        //FIXME how to do the type conversion from fexpr to typ
-        //or just check that there is four argument
+        match pol.program.headers.get(function) {
+            None => 
+                return Err(Error::from(format!("compile_ingress, {} is undefined in global policy", function))), //FIXME duplicated
+            Some(sig) if *sig != expected_sig => 
+                return Err(Error::from(format!(
+                    "compile_ingress, {} has a wrong signature\n{}\nexpected\n{}",
+                    function,
+                    sig,
+                    expected_sig
+                ))),
+            _ => ()
+        };
+
         match pol.program.code.get(function.to_string()) {
-            None => return Err(Error::from(format!("compile_ingress, {} not define in global policy", function))), 
+            None => return Err(Error::from(format!("compile_ingress, {} is undefined in global policy", function))), 
             Some(ref fexpr) => {    
                 let fexpr = fexpr.clone().propagate_subst(2, 1, &Expr::LitExpr(Literal::id(to.clone()))); 
                 let body = match fexpr.at_depth(3) {
@@ -655,15 +669,28 @@ pub async fn compile_egress(state: Arc<State>, global_pol: policies::GlobalPolic
         let env = CPEnv::new(&pol.program);        
 
         //FIXME check correct type of http_rest_request
-        //let sig = Typ::Signature(Some(vec![
-        //    Typ::FlatTyp(FlatTyp::connection()), 
-        //    Typ::FlatTyp(FlatTyp::i64()),
-        //    Typ::FlatTyp(FlatTyp::i64())
-        //]));
+        let expected_sig = Signature::new(
+            vec![
+                Typ::id(), 
+                Typ::id(),
+                Typ::http_response(),
+                Typ::data()
+            ], 
+            Typ::bool()
+        );
 
-        //Typ::type_check (sig, pol.pprogram.code.get ()) 
-        //FIXME how to do the type conversion from fexpr to typ
-        //or just check that there is four argument
+        match pol.program.headers.get(function) {
+            None => 
+                return Err(Error::from(format!("compile_egress, {} is undefined in global policy", function))), //FIXME duplicated
+            Some(sig) if *sig != expected_sig => 
+                return Err(Error::from(format!(
+                    "compile_egress, {} has a wrong signature\n{}\nexpected\n{}",
+                    function,
+                    sig,
+                    expected_sig
+                ))),
+            _ => ()
+        };
 
         match pol.program.code.get(function.to_string()) {
             None => return Err(Error::from(format!("compile_egress, {} not define in global policy", function))), 
