@@ -548,6 +548,17 @@ macro_rules! cpflatlit (
         CPFlatLiteral::$i($($args)*)
     );
 );
+//FIXME duplicated
+macro_rules! cpdplit (
+  ($i: ident ($($args:tt)*) ) => (
+      Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*)))
+  );
+);
+macro_rules! cpdpflatlit (
+  ($i: ident ($($args:tt)*) ) => (
+        CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*))
+  );
+);
 impl TPrettyLit for DPFlatLiteral{
     fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         match self {
@@ -572,20 +583,20 @@ impl TPrettyLit for DPFlatLiteral{
 impl TPrettyLit for CPFlatLiteral{
     fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         match self {
-            cpflatlit!(Bool(b)) => key(&b.to_string()),
-            cpflatlit!(Data(d)) => {
+            cpdpflatlit!(Bool(b)) => key(&b.to_string()),
+            cpdpflatlit!(Data(d)) => {
                 if std::str::from_utf8(d).is_ok() {
                     self.literal()
                 } else {
                     self.non_parse_literal()
                 }
             }
-            cpflatlit!(Regex(r)) => RcDoc::text("Regex(").append(r.to_doc()).append(")"),
-            CPFlatLiteral::Unit => RcDoc::text("()"),
-            cpflatlit!(HttpRequest(_))
-            | cpflatlit!(ID(_))
-            | cpflatlit!(Connection(_))
-            | cpflatlit!(IpAddr(_)) => self.non_parse_literal(),
+            cpdpflatlit!(Regex(r)) => RcDoc::text("Regex(").append(r.to_doc()).append(")"),
+            CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::Unit) => RcDoc::text("()"),
+            cpdpflatlit!(HttpRequest(_))
+            | cpdpflatlit!(ID(_))
+            | cpdpflatlit!(Connection(_))
+            | cpdpflatlit!(IpAddr(_)) => self.non_parse_literal(),
             _ => self.literal(),
         }
     }

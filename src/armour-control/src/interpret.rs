@@ -10,7 +10,7 @@ use armour_lang::labels::Label;
 use armour_lang::literals::{
     self, Literal,
     CPLiteral, CPID,
-    CPFlatLiteral,
+    CPFlatLiteral, DPFlatLiteral,
     OnboardingData,
     TFlatLiteral
 };
@@ -67,6 +67,12 @@ pub trait TSExprInterpret : Sized{
 macro_rules! cplit (
   ($i: ident ($($args:tt)*) ) => (
       Literal::FlatLiteral(CPFlatLiteral::$i($($args)*))
+  );
+);
+//FIXME duplicated
+macro_rules! cpdplit (
+  ($i: ident ($($args:tt)*) ) => (
+      Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*)))
   );
 );
 
@@ -143,7 +149,7 @@ async fn helper_onboarded(state: Arc<State>, obd: &OnboardingData) ->  Result<CP
         let request =
             bson::from_bson::<control::POnboardServiceRequest>(bson::Bson::Document(doc))
                 .on_err("Bson conversion error")?;
-        Ok(cplit!(ID(request.service_id)).some())
+        Ok(cpdplit!(ID(request.service_id.into())).some())
     } else {
         Ok(Literal::none())
     }
@@ -184,17 +190,17 @@ async fn helper_onboard(state: Arc<State>, id: &CPID) ->  Result<CPLiteral, self
     
     // Check if the service is already there
     if present(&col, doc! { "service_id" : to_bson(&service_id)? }).await? {
-        Ok(cplit!(Bool(true)))
+        Ok(cpdplit!(Bool(true)))
 
     } else if let bson::Bson::Document(document) = to_bson(&request)? {
         // Insert into a MongoDB collection
         col.insert_one(document, None) 
             .await
             .on_err("error inserting in MongoDB")?;
-        Ok(cplit!(Bool(true)))
+        Ok(cpdplit!(Bool(true)))
 
     } else {
-        Ok(cplit!(Bool(false)))
+        Ok(cpdplit!(Bool(false)))
     }
 }
 
@@ -236,8 +242,8 @@ impl TSLitInterpret for CPLiteral {
     }
     async fn seval_call1(&self, state: Arc<State>, f: &str) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self) {
-            ( "ControlPlane::onboard", cplit!(ID(service_id)) ) => { 
-                Ok(Some(helper_onboard(state, service_id).await?))
+            ( "ControlPlane::onboard", cpdplit!(ID(service_id)) ) => { 
+                Ok(Some(helper_onboard(state, &service_id.clone().into()).await?))
             },
             ( "ControlPlane::onboarded", cplit!(OnboardingData(obd)) ) => { 
                 Ok(Some(helper_onboarded(state, obd).await?))
@@ -257,18 +263,18 @@ impl TSLitInterpret for CPLiteral {
                 let id = id.add_label(&service);
                 let id = id.add_label(&host);
 
-                Ok(Some(cplit!(ID(id))))
+                Ok(Some(cpdplit!(ID(id.into()))))
             }
             _ => Ok(self.eval_call1(f)),
         }
     }
     async fn seval_call2(&self, state: Arc<State>, f: &str, other: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, other) {
-            ("compile_ingress", cplit!(Str(function)), cplit!(ID(id))) => {
-                Ok(Some(helper_compile_ingress(state, function, id).await?))
+            ("compile_ingress", cpdplit!(Str(function)), cpdplit!(ID(id))) => {
+                Ok(Some(helper_compile_ingress(state, function, &id.clone().into()).await?))
             },
-            ("compile_egress", cplit!(Str(function)), cplit!(ID(id))) =>  {
-                Ok(Some(helper_compile_egress(state, function, id).await?))
+            ("compile_egress", cpdplit!(Str(function)), cpdplit!(ID(id))) =>  {
+                Ok(Some(helper_compile_egress(state, function, &id.clone().into()).await?))
             },
             _ => Ok(self.eval_call2(f, other)),
         }
@@ -340,18 +346,18 @@ impl TSExprInterpret for CPExpr {
                 },
                 // short circuit for &&
                 Expr::InfixExpr(Infix::And, e1, e2) => match e1.seval(state.clone(), env.clone()).await? {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(false))) => Ok(r),
-                    Expr::LitExpr(cplit!(Bool(true))) => match e2.seval(state, env).await? {
-                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok(r),
+                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(false))) => Ok(r),
+                    Expr::LitExpr(cpdplit!(Bool(true))) => match e2.seval(state, env).await? {
+                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(_))) => Ok(r),
                         _ => Err(Error::new("eval, infix")),
                     },
                     _ => Err(Error::new("eval, infix")),
                 },
                 // short circuit for ||
                 Expr::InfixExpr(Infix::Or, e1, e2) => match e1.seval(state.clone(), env.clone()).await? {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(true))) => Ok(r),
-                    Expr::LitExpr(cplit!(Bool(false))) => match e2.seval(state, env).await? {
-                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(_))) => Ok(r),
+                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(true))) => Ok(r),
+                    Expr::LitExpr(cpdplit!(Bool(false))) => match e2.seval(state, env).await? {
+                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(_))) => Ok(r),
                         _ => Err(Error::new("eval, infix")),
                     },
                     _ => Err(Error::new("eval, infix")),

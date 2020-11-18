@@ -186,22 +186,11 @@ impl TExternals<types::CPFlatTyp, literals::CPFlatLiteral> for literals::CPFlatL
     /// Build a Cap'n Proto literal from an Armour literal
     fn build_value(mut v: external::value::Builder<'_>, lit: &CPLiteral) {
         match lit {
-            cpflatlit!(Bool(b)) => v.set_bool(*b),
-            cpflatlit!(Connection(conn)) => Externals::build_value(v, &CPLiteral::from(conn)),
-            cpflatlit!(Data(d)) => v.set_data(d),
-            cpflatlit!(Float(f)) => v.set_float64(*f),
-            cpflatlit!(HttpRequest(req)) => Externals::build_value(v, &CPLiteral::from(&**req)),
-            cpflatlit!(HttpResponse(res)) => Externals::build_value(v, &CPLiteral::from(&**res)),
-            cpflatlit!(ID(id)) => Externals::build_value(v, &CPLiteral::from(id)),
-            cpflatlit!(Int(i)) => v.set_int64(*i),
-            cpflatlit!(IpAddr(ip)) => Externals::build_value(v, &CPLiteral::from(ip)),
-            cpflatlit!(Label(label)) => v.set_text(&label.to_string()),
+            Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(dpfl)) =>
+                literals::DPFlatLiteral::build_value(v, &Literal::FlatLiteral(dpfl.clone())),
             cpflatlit!(OnboardingData(data)) => Externals::build_value(v, &CPLiteral::from(&**data)),
             cpflatlit!(OnboardingResult(res)) => Externals::build_value(v, &CPLiteral::from(&**res)),
             cpflatlit!(Policy(pol)) => Externals::build_value(v, &CPLiteral::from(&**pol)),
-            cpflatlit!(Regex(r)) => v.set_text(&r.to_string()),
-            cpflatlit!(Str(s)) => v.set_text(s),
-            cpflatlit!(Unit) => v.set_unit(()),
             CPLiteral::Tuple(ts) => {
                 let mut tuple = v.init_tuple(ts.len() as u32);
                 for (i, t) in ts.iter().enumerate() {

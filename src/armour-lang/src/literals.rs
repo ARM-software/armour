@@ -183,6 +183,29 @@ pub struct ID<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
 pub type DPID = ID<FlatTyp, FlatLiteral>;
 pub type CPID = ID<CPFlatTyp, CPFlatLiteral>;
 
+impl From<CPID> for DPID {
+    fn from(cpid: CPID) -> Self {
+        DPID{
+            hosts: cpid.hosts,
+            ips: cpid.ips,
+            port: cpid.port,
+            labels: cpid.labels,
+            phantom: PhantomData
+        }
+    }
+}
+impl From<DPID> for CPID {
+    fn from(dpid: DPID) -> Self {
+        CPID{
+            hosts: dpid.hosts,
+            ips: dpid.ips,
+            port: dpid.port,
+            labels: dpid.labels,
+            phantom: PhantomData
+        }
+    }
+}
+
 mod port_serde {
     use serde::{self, de, Serializer, Deserializer};
     use std::fmt;
@@ -224,18 +247,6 @@ mod port_serde {
         match *x {
             Some(p) => bson::compat::u2f::serialize(&p, s),
             None => s.serialize_none()
-        }
-    }
-}
-
-impl From<CPID> for DPID {
-    fn from(cpid: CPID) -> Self {
-        DPID {
-            hosts: cpid.hosts,
-            ips: cpid.ips,
-            port: cpid.port,
-            labels: cpid.labels,
-            phantom: PhantomData
         }
     }
 }
@@ -717,6 +728,12 @@ pub struct OnboardingData {
     ips: BTreeSet<std::net::IpAddr>
 }
 
+//FIXME duplicated
+macro_rules! cpdplit (
+  ($i: ident ($($args:tt)*) ) => (
+      Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*)))
+  );
+);
 impl OnboardingData {
     pub fn new(
         host: labels::Label,
@@ -759,10 +776,10 @@ impl OnboardingData {
         self.ips.iter().any(|x| x == ip)
     }
     pub fn service_lit(&self) -> CPLiteral {
-        CPLiteral::FlatLiteral(CPFlatLiteral::Label(self.service.clone()))
+        cpdplit!(Label(self.service.clone()))
     }
     pub fn host_lit(&self) -> CPLiteral {
-        CPLiteral::FlatLiteral(CPFlatLiteral::Label(self.host.clone()))
+        cpdplit!(Label(self.host.clone()))
     }
 }
 
@@ -872,28 +889,35 @@ impl Default for FlatLiteral {
     fn default() -> Self { Self::Unit }
 }
 impl Default for CPFlatLiteral {
-    fn default() -> Self { Self::Unit }
+    fn default() -> Self {
+        Self::DPFlatLiteral(FlatLiteral::default())
+    }
 }
 
 pub type DPFlatLiteral = FlatLiteral;
 impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
-    fn bool( b:bool ) -> Self { Self::Bool(b) }
-    fn is_bool(&self) -> bool{
+    fn bool( b:bool ) -> Self {
+        Self::Bool(b) 
+    }
+    
+    fn is_bool(&self) -> bool {
         match self {
             Self::Bool(_) => true,
             _ => false
         }
     }
 
-    fn get_bool(&self) -> bool{
+    fn get_bool(&self) -> bool {
         match self {
             Self::Bool(l) => l.clone(),
             _ => panic!() 
         }
     }
+
     fn connection( c:Connection<FlatTyp, Self> ) -> Self {
         Self::Connection(c)
     }
+    
     fn connection_from(from: &ID<FlatTyp, Self>, to: &ID<FlatTyp, Self>, number: i64) -> Self {
         Self::Connection(Connection {
             from: from.clone(),
@@ -902,30 +926,53 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
             phantom: PhantomData
         })
     }
-    fn data( v:Vec<u8> ) -> Self { Self::Data(v) }
+
+    fn data( v:Vec<u8> ) -> Self { 
+        Self::Data(v) 
+    }
+
     fn is_data(&self) -> bool { 
         match self { 
             FlatLiteral::Data(_) => true, 
             _ => false 
         }
     }
+
     fn get_data(&self) -> Vec<u8> { 
         match self { 
             FlatLiteral::Data(d) => d.clone(),
             _ => panic!()
         }
     }
-    fn float( f:f64 ) -> Self { Self::Float(f) }
-    fn http_request( r:Box<HttpRequest<FlatTyp, Self>>) -> Self {
+
+    fn float(f: f64) -> Self { 
+        Self::Float(f) 
+    }
+
+    fn http_request(r: Box<HttpRequest<FlatTyp, Self>>) -> Self {
         Self::HttpRequest(r)
     }
-    fn http_response( r:Box<HttpResponse<FlatTyp, Self>>) -> Self {
+
+    fn http_response(r: Box<HttpResponse<FlatTyp, Self>>) -> Self {
         Self::HttpResponse(r)
     }
-    fn id( i:ID<FlatTyp, FlatLiteral> ) -> Self { Self::ID(i) }
-    fn int( i:i64) -> Self { Self::Int(i) }
-    fn ip_addr( i:std::net::IpAddr) -> Self { Self::IpAddr(i) }
-    fn label( l:labels::Label) -> Self { Self::Label(l) }
+
+    fn id(i: ID<FlatTyp, FlatLiteral> ) -> Self {
+        Self::ID(i) 
+    }
+
+    fn int(i: i64) -> Self {
+        Self::Int(i) 
+    }
+
+    fn ip_addr(i: std::net::IpAddr) -> Self {
+        Self::IpAddr(i)
+    }
+
+    fn label(l: labels::Label) -> Self {
+        Self::Label(l) 
+    }
+
     fn is_label(&self) -> bool{
         match self {
             Self::Label(_) => true,
@@ -940,8 +987,14 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
         }
     }
 
-    fn regex( pr:parser::PolicyRegex) -> Self { Self::Regex(pr) }
-    fn str( s:String ) -> Self { Self::Str(s) }
+    fn regex(pr: parser::PolicyRegex) -> Self {
+        Self::Regex(pr) 
+    }
+
+    fn str(s: String ) -> Self {
+        Self::Str(s) 
+    }
+
     fn is_str(&self) -> bool {
         match self {
             Self::Str(_) => true,
@@ -956,9 +1009,11 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
         }
     }
 
-    fn unit() -> Self { FlatLiteral::Unit }
-    fn is_unit(&self) -> bool { *self == FlatLiteral::Unit }
+    fn unit() -> Self {
+        FlatLiteral::Unit
+    }
 
+    fn is_unit(&self) -> bool { *self == FlatLiteral::Unit }
 
     fn is_tuple(&self) -> bool { false }
 
@@ -981,11 +1036,8 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
     }
     
     fn dest_some(&self) -> Option<Self> {
-        match self {
-            _ => None,
-        }
+        None
     }
-    
 }
 
 
@@ -1059,7 +1111,6 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Literal<FlatTyp, FlatL
             _ => false
         }
     }
-
 
     pub fn is_tuple(&self) -> bool {
         match self {
@@ -1162,21 +1213,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Liter
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum CPFlatLiteral {
-    //Duplication is better for enumeration rather than CPLiteral(DPLiteral)
-    Bool(bool),
-    Connection(Connection<CPFlatTyp, CPFlatLiteral>),
-    Data(Vec<u8>),
-    Float(f64),
-    HttpRequest(Box<HttpRequest<CPFlatTyp, CPFlatLiteral>>),
-    HttpResponse(Box<HttpResponse<CPFlatTyp, CPFlatLiteral>>),
-    ID(ID<CPFlatTyp, CPFlatLiteral>),
-    Int(i64),
-    IpAddr(std::net::IpAddr),
-    Label(labels::Label),
-    Regex(parser::PolicyRegex),
-    Str(String),
-    Unit,
-
+    DPFlatLiteral(DPFlatLiteral),
     OnboardingData(Box<OnboardingData>),
     OnboardingResult(Box<OnboardingResult>),
     Policy(Box<Policy>),
@@ -1186,20 +1223,7 @@ pub enum CPFlatLiteral {
 impl From<CPFlatLiteral> for DPFlatLiteral {
     fn from(cl: CPFlatLiteral) -> Self {
         match cl {
-            CPFlatLiteral::Bool(b) => Self::Bool(b),
-            CPFlatLiteral::Connection(c) => Self::Connection(DPConnection::from(c)),
-            CPFlatLiteral::Data(d) => Self::Data(d),
-            CPFlatLiteral::Float(f) => Self::Float(f),
-            CPFlatLiteral::HttpRequest(req) => Self::HttpRequest(Box::new(DPHttpRequest::from(*req))),
-            CPFlatLiteral::HttpResponse(res) => Self::HttpResponse(Box::new(DPHttpResponse::from(*res))),
-            CPFlatLiteral::ID(id) => Self::ID(DPID::from(id)),
-            CPFlatLiteral::Int(i) => Self::Int(i),
-            CPFlatLiteral::IpAddr(ip) => Self::IpAddr(ip),
-            CPFlatLiteral::Label(l) => Self::Label(l),
-            CPFlatLiteral::Regex(r) => Self::Regex(r),
-            CPFlatLiteral::Str(s) => Self::Str(s),
-            CPFlatLiteral::Unit => Self::Unit,
-            
+            CPFlatLiteral::DPFlatLiteral(l) => l,
             CPFlatLiteral::OnboardingData(_) => panic!("OnboardingData can not be converted to a DPFlatLiteral"),
             CPFlatLiteral::OnboardingResult(_) => panic!("OnboardingResult  can not be converted to a DPFlatLiteral"),
             CPFlatLiteral::Policy(_) => panic!("Policy can not be converted to a DPFlatLiteral"),
@@ -1207,6 +1231,16 @@ impl From<CPFlatLiteral> for DPFlatLiteral {
     }
 }
 
+impl From<DPLiteral> for CPLiteral {
+    fn from(lit: DPLiteral) -> Self {
+        match lit {
+            DPLiteral::FlatLiteral(fl) => Self::FlatLiteral(CPFlatLiteral::DPFlatLiteral(fl)),
+            DPLiteral::List(lits) => Self::List(lits.into_iter().map(|l| Self::from(l)).collect()),
+            DPLiteral::Tuple(lits) => Self::Tuple(lits.into_iter().map(|l| Self::from(l)).collect()),
+            DPLiteral::Phantom(_) => Self::Phantom(PhantomData)
+        }
+    }
+}
 impl From<CPLiteral> for DPLiteral {
     fn from(lit: CPLiteral) -> DPLiteral {
         match lit {
@@ -1234,33 +1268,7 @@ impl CPFlatLiteral {
 impl fmt::Display for CPFlatLiteral {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            CPFlatLiteral::Bool(b) => write!(f, "{}", b),
-            CPFlatLiteral::Connection(c) => write!(f, "{:?}", c),
-            CPFlatLiteral::Data(d) => {
-                if let Ok(s) = std::str::from_utf8(d) {
-                    write!(f, r#"b"{}""#, s)
-                } else {
-                    write!(f, "{:x?}", d)
-                }
-            }
-            CPFlatLiteral::Float(d) => {
-                if 8 < d.abs().log10() as usize {
-                    write!(f, "{:e}", d)
-                } else if (d.trunc() - *d).abs() < std::f64::EPSILON {
-                    write!(f, "{:.1}", d)
-                } else {
-                    write!(f, "{}", d)
-                }
-            }
-            CPFlatLiteral::HttpRequest(r) => write!(f, "{:?}", r),
-            CPFlatLiteral::HttpResponse(r) => write!(f, "{:?}", r),
-            CPFlatLiteral::ID(id) => write!(f, "{:?}", id),
-            CPFlatLiteral::Int(i) => write!(f, "{}", i),
-            CPFlatLiteral::IpAddr(ip) => write!(f, "{}", ip),
-            CPFlatLiteral::Label(label) => write!(f, "'{}'", label),
-            CPFlatLiteral::Regex(r) => write!(f, "{:?}", r),
-            CPFlatLiteral::Str(s) => write!(f, r#""{}""#, s),
-            CPFlatLiteral::Unit => write!(f, "()"),
+            CPFlatLiteral::DPFlatLiteral(dpfl) => DPFlatLiteral::fmt(dpfl, f),
             CPFlatLiteral::OnboardingData(d) => write!(f, "{:?}", d),
             CPFlatLiteral::OnboardingResult(r) => write!(f, "{:?}", r),
             CPFlatLiteral::Policy(p) => write!(f, "{:?}", p),
@@ -1268,105 +1276,130 @@ impl fmt::Display for CPFlatLiteral {
     }
 }
 impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
-    fn bool( b:bool ) -> Self { Self::Bool(b) }
+    fn bool( b:bool ) -> Self {
+        Self::DPFlatLiteral(DPFlatLiteral::bool(b))
+    }
+
     fn is_bool(&self) -> bool{
         match self {
-            Self::Bool(_) => true,
+            Self::DPFlatLiteral(DPFlatLiteral::Bool(_)) => true,
             _ => false
         }
     }
 
     fn get_bool(&self) -> bool{
         match self {
-            Self::Bool(l) => l.clone(),
+            Self::DPFlatLiteral(DPFlatLiteral::Bool(l)) => l.clone(),
             _ => unreachable!() 
         }
     }
+
     fn connection( c:Connection<CPFlatTyp, Self> ) -> Self {
-        Self::Connection(c)
+        Self::DPFlatLiteral(DPFlatLiteral::connection(c.into()))
     }
+
     fn connection_from(from: &ID<CPFlatTyp, Self>, to: &ID<CPFlatTyp, Self>, number: i64) -> Self {
-        Self::Connection(Connection {
-            from: from.clone(),
-            to: to.clone(),
+        Self::DPFlatLiteral(DPFlatLiteral::connection_from(
+            &DPID::from(from.clone()),
+            &DPID::from(to.clone()),
             number,
-            phantom: PhantomData
-        })
+        ))
     }
     
-    fn data( v:Vec<u8> ) -> Self { Self::Data(v) }
+    fn data( v:Vec<u8> ) -> Self {
+        Self::DPFlatLiteral(DPFlatLiteral::data(v))
+    }
+
     fn is_data(&self) -> bool {
         match self {
-            Self::Data(_) => true,
+            Self::DPFlatLiteral(DPFlatLiteral::Data(_)) => true,
             _ => false
         }
     }
+
     fn get_data(&self) -> Vec<u8> { 
         match self {
-            Self::Data(d) => d.clone(),
+            Self::DPFlatLiteral(DPFlatLiteral::Data(d)) => d.clone(),
             _ => unreachable!()
         }
     }
-    fn float( f:f64 ) -> Self { Self::Float(f) }
-    fn http_request( r:Box<HttpRequest<CPFlatTyp, Self>>) -> Self {
-        Self::HttpRequest(r)
+
+    fn float(f: f64) -> Self { 
+        Self::DPFlatLiteral(DPFlatLiteral::float(f)) 
     }
-    fn http_response( r:Box<HttpResponse<CPFlatTyp, Self>>) -> Self {
-        Self::HttpResponse(r)
+
+    fn http_request( r: Box<HttpRequest<CPFlatTyp, Self>>) -> Self {
+        Self::DPFlatLiteral(DPFlatLiteral::http_request(Box::new((*r).into())))
     }
-    fn id( i:ID<CPFlatTyp, Self> ) -> Self { Self::ID(i) }
-    fn int( i:i64) -> Self { Self::Int(i) }
-    fn ip_addr( i:std::net::IpAddr) -> Self { Self::IpAddr(i) }
-    fn label( l:labels::Label) -> Self { Self::Label(l) }
+
+    fn http_response(r: Box<HttpResponse<CPFlatTyp, Self>>) -> Self {
+        Self::DPFlatLiteral(DPFlatLiteral::http_response(Box::new((*r).into())))
+    }
+
+    fn id(i: ID<CPFlatTyp, Self>) -> Self {
+        Self::DPFlatLiteral(DPFlatLiteral::id(i.into()))
+    }
+
+    fn int(i: i64) -> Self { 
+        Self::DPFlatLiteral(DPFlatLiteral::int(i))
+    }
+
+    fn ip_addr(i: std::net::IpAddr) -> Self { 
+        Self::DPFlatLiteral(DPFlatLiteral::ip_addr(i)) 
+    }
+
+    fn label(l: labels::Label) -> Self {
+        Self::DPFlatLiteral(DPFlatLiteral::label(l)) 
+    }
+
     fn is_label(&self) -> bool{
         match self {
-            Self::Label(_) => true,
+            Self::DPFlatLiteral(DPFlatLiteral::Label(_)) => true,
             _ => false
         }
     }
 
     fn get_label<'a>(&'a self) -> &'a labels::Label{
         match self {
-            Self::Label(l) => l,
+            Self::DPFlatLiteral(DPFlatLiteral::Label(l)) => l,
             _ => unreachable!() 
         }
     }
-    fn regex( pr:parser::PolicyRegex) -> Self { Self::Regex(pr) }
-    fn str( s:String ) -> Self { Self::Str(s) }
+    fn regex(pr: parser::PolicyRegex) -> Self {
+        Self::DPFlatLiteral(DPFlatLiteral::regex(pr)) 
+    }
+
+    fn str(s: String) -> Self {
+        Self::DPFlatLiteral(DPFlatLiteral::str(s)) 
+    }
+
     fn is_str(&self) -> bool{
         match self {
-            Self::Str(_) => true,
+            Self::DPFlatLiteral(DPFlatLiteral::Str(_)) => true,
             _ => false
         }
     }
 
     fn get_str<'a>(&'a self) -> &'a str{
         match self {
-            Self::Str(l) => l,
+            Self::DPFlatLiteral(DPFlatLiteral::Str(l)) => l,
             _ => unreachable!() 
         }
     }
 
-    fn unit() -> Self { Self::Unit }
-    fn is_unit(&self) -> bool { *self == Self::Unit }
+    fn unit() -> Self {
+        Self::DPFlatLiteral(DPFlatLiteral::Unit)
+    }
+
+    fn is_unit(&self) -> bool { 
+        *self == Self::DPFlatLiteral(DPFlatLiteral::Unit)
+    }
 
     fn is_tuple(&self) -> bool { false }
 
     fn typ(&self) -> CPFlatTyp {
         match self {
-            CPFlatLiteral::Bool(_) => CPFlatTyp::bool(),
-            CPFlatLiteral::Connection(_) => CPFlatTyp::connection(),
-            CPFlatLiteral::Data(_) => CPFlatTyp::data(),
-            CPFlatLiteral::Float(_) => CPFlatTyp::f64(),
-            CPFlatLiteral::HttpRequest(_) => CPFlatTyp::http_request(),
-            CPFlatLiteral::HttpResponse(_) => CPFlatTyp::http_response(),
-            CPFlatLiteral::ID(_) => CPFlatTyp::id(),
-            CPFlatLiteral::Int(_) => CPFlatTyp::i64(),
-            CPFlatLiteral::IpAddr(_) => CPFlatTyp::ip_addr(),
-            CPFlatLiteral::Label(_) => CPFlatTyp::label(),
-            CPFlatLiteral::Regex(_) => CPFlatTyp::regex(),
-            CPFlatLiteral::Str(_) => CPFlatTyp::str(),
-            CPFlatLiteral::Unit => CPFlatTyp::unit(),
+            CPFlatLiteral::DPFlatLiteral(dpfl) => CPFlatTyp::from(dpfl.typ()),
             CPFlatLiteral::OnboardingData(_) => CPFlatTyp::OnboardingData,
             CPFlatLiteral::OnboardingResult(_) => CPFlatTyp::OnboardingData,
             CPFlatLiteral::Policy(_) => CPFlatTyp::Policy,
@@ -1374,9 +1407,7 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
     }
     
     fn dest_some(&self) -> Option<Self> {
-        match self {
-            _ => None,
-        }
+        None
     }
 }
 

@@ -7,7 +7,7 @@ use armour_lang::interpret::{CPEnv, TInterpret};
 use armour_lang::literals::{
     Literal,
     CPID,
-    CPFlatLiteral,
+    CPFlatLiteral, DPFlatLiteral,
     TFlatLiteral 
 };
 use armour_lang::parser::{Ident, Infix, Iter};
@@ -23,6 +23,12 @@ use super::State;
 macro_rules! cplit (
   ($i: ident ($($args:tt)*) ) => (
       Literal::FlatLiteral(CPFlatLiteral::$i($($args)*))
+  );
+);
+//FIXME duplicated
+macro_rules! cpdplit (
+  ($i: ident ($($args:tt)*) ) => (
+      Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*)))
   );
 );
 
@@ -68,11 +74,11 @@ impl TSExprPEval for CPExpr {
                     let (b2, n_e2) = e2.peval(state, env).await?;
 
                     match n_e1 {
-                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(false))) => Ok((b1, r)),
-                        Expr::LitExpr(cplit!(Bool(true))) => Ok((b2, n_e2)),
+                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(false))) => Ok((b1, r)),
+                        Expr::LitExpr(cpdplit!(Bool(true))) => Ok((b2, n_e2)),
                         _ if !b1 =>  match n_e2 {
-                            r2 @ Expr::ReturnExpr(_) | r2 @ Expr::LitExpr(cplit!(Bool(false))) => Ok((b2, r2)),
-                            Expr::LitExpr(cplit!(Bool(true))) => Ok((b1, n_e1)),
+                            r2 @ Expr::ReturnExpr(_) | r2 @ Expr::LitExpr(cpdplit!(Bool(false))) => Ok((b2, r2)),
+                            Expr::LitExpr(cpdplit!(Bool(true))) => Ok((b1, n_e1)),
                             _ => Ok((b1 || b2, Expr::InfixExpr(Infix::And, Box::new(n_e1), Box::new(n_e2)))),
                         },
                         _ => Err(Error::new("peval, && infix")),
@@ -84,11 +90,11 @@ impl TSExprPEval for CPExpr {
                     let (b2, n_e2) = e2.peval(state, env).await?;
 
                     match n_e1 {
-                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cplit!(Bool(true))) => Ok((b1, r)),
-                        Expr::LitExpr(cplit!(Bool(false))) => Ok((b2, n_e2)),
+                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(true))) => Ok((b1, r)),
+                        Expr::LitExpr(cpdplit!(Bool(false))) => Ok((b2, n_e2)),
                         _ if !b1 => match n_e2 {
-                            Expr::LitExpr(cplit!(Bool(false))) => Ok((b1, n_e1)),
-                            r2 @ Expr::ReturnExpr(_) | r2 @ Expr::LitExpr(cplit!(Bool(true))) => Ok((b2, r2)),
+                            Expr::LitExpr(cpdplit!(Bool(false))) => Ok((b1, n_e1)),
+                            r2 @ Expr::ReturnExpr(_) | r2 @ Expr::LitExpr(cpdplit!(Bool(true))) => Ok((b2, r2)),
                             _ => Ok((b1 || b2, Expr::InfixExpr(Infix::Or, Box::new(n_e1), Box::new(n_e2)))),
                         },
                         _ => Err(Error::new("peval, infix")),

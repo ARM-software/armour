@@ -2,7 +2,7 @@
 use super::lexer::{Loc, Token, Tokens};
 use super::literals::{Literal, DPFlatLiteral, CPFlatLiteral, TFlatLiteral};
 use super::{types};
-use super::types::{TFlatTyp};
+use super::types::{CPFlatTyp, FlatTyp, TFlatTyp};
 use nom::error::ErrorKind;
 use nom::{self,*};
 use regex::Regex;
@@ -538,7 +538,6 @@ pub enum Prefix<FlatTyp:TFlatTyp> {
     Phantom(PhantomData<FlatTyp>)
 }
 
-
 impl<FlatTyp:TFlatTyp> std::fmt::Display for Prefix<FlatTyp>{
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -571,7 +570,6 @@ pub enum Infix<FlatTyp:TFlatTyp> {
     Dot,
     Phantom(PhantomData<FlatTyp>)
 }
-
 
 impl<FlatTyp:TFlatTyp> std::fmt::Display for Infix<FlatTyp> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
