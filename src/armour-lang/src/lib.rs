@@ -8,6 +8,9 @@ pub mod external_capnp {
     include!(concat!(env!("OUT_DIR"), "/external_capnp.rs"));
 }
 
+/// Armour primitive types
+#[macro_use]
+pub mod literals;
 /// Language AST
 pub mod expressions;
 /// Make calls to external security services
@@ -22,8 +25,6 @@ pub mod interpret;
 pub mod lang;
 /// Lexer implemented using [nom](../nom/index.html)
 pub mod lexer;
-/// Armour primitive types
-pub mod literals;
 /// Metadata actor
 pub mod meta;
 /// Parser implemented using [nom](../nom/index.html)
@@ -41,14 +42,15 @@ pub mod labels;
 #[cfg(test)]
 mod tests {
     use super::labels::Label;
+    use std::str::FromStr;
 
     #[test]
     fn match_with() {
         let pat: Label = "a::<a>::<a>::<b>".parse().unwrap();
         let lab: Label = "a::<b>::<b>::<b>".parse().unwrap();
         if let Some(m) = pat.match_with(&lab) {
-            assert_eq!(m.get("a"), None);
-            assert_eq!(m.get("b"), None)
+            assert_eq!(m.get_label("a"), Some(&Label::from_str("<b>").unwrap()));
+            assert_eq!(m.get_label("b"), Some(&Label::from_str("<b>").unwrap()))
         // println!("match: {}", m)
         } else {
             panic!("mismatch")
