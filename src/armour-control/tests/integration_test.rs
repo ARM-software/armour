@@ -27,13 +27,15 @@ use std::iter::Iterator;
 type Error = Box<dyn std::error::Error + Send + Sync>;
 //clear && RUST_MIN_STACK=8388608 cargo test -j 20 -- --nocapture test_seval_onboarding
 //rsync -avz src vagrant@localhost:~/ -e "ssh -p 2222 -i /home/marmotte/armour/examples/.vagrant/machines/default/virtualbox/private_key" --exclude=target/
+//rsync -avz /home/marmotte/armour/src/armour-proxy/src/policy.rs vagrant@localhost:~/src/armour-proxy/src/policy.rs -e "ssh -p 2222 -i /home/marmotte/armour/examples/.vagrant/machines/default/virtualbox/private_key" 
+
 
 fn get_policies_path(name: &str) -> PathBuf{ 
     let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     d.push("tests");
     d.push("policies");
     d.push(name);
-    println!("Loading policy from: {}", d.display());
+    //println!("Loading policy from: {}", d.display());
     d 
 }
 
@@ -64,12 +66,12 @@ async fn register_policy(
 ) -> Result<bool, expressions::Error> {
     let request = CPPolicyUpdateRequest {
         label: global_policy_label(),
-        policy: policies::Policies::from_buf(raw_pol)?,
+        policy: policies::Policies::from_file(raw_pol)?,
         labels: LabelMap::default(),
         selector: None 
     };
     let label = &request.label.clone();
-    println!(r#"updating policy for label "{}""#, label);
+    //println!(r#"updating policy for label "{}""#, label);
 
 
     if let bson::Bson::Document(document) = to_bson(&request).map_err(|x|expressions::Error::from(format!("{:?}", x)))? {
@@ -100,7 +102,7 @@ async fn register_onboarding_policy(
         labels: LabelMap::default()
     }.pack();
     let label = &request.label.clone();
-    println!(r#"updating policy for label "{}""#, label);
+    //println!(r#"updating policy for label "{}""#, label);
 
     if let bson::Bson::Document(document) = to_bson(&request).map_err(|x|expressions::Error::from(format!("{:?}", x)))? {
         // update policy in database
@@ -124,16 +126,16 @@ async fn load_global_policy(
     raw_pol: &str,
     args: Vec<CPLiteral>
 ) -> Result<CPExpr, expressions::Error> {
-    println!("Args built");
-    let policies: Policies<FlatTyp, FlatLiteral> = policies::Policies::from_buf(raw_pol)?;
-    println!("{} Policies built", policies.len());
+    //println!("Args built");
+    let policies: Policies<FlatTyp, FlatLiteral> = policies::Policies::from_file(raw_pol)?;
+    //println!("{} Policies built", policies.len());
     match policies.policy(policies::Protocol::HTTP) {
         Some(policy) => {
             let expr : CPExpr = expressions::Expr::call(
                 function, 
                 args.into_iter().map(|x| Expr::LitExpr(x)).collect()
             );
-            println!("Expr built");
+            //println!("Expr built");
             expr.print_debug();                    
             Ok(expr)
         },
@@ -146,14 +148,14 @@ async fn load_onboarding_policy(
     onboarding_data: CPLiteral
 ) -> Result<(CPExpr, CPEnv), expressions::Error> {
     let policy =  policies::OnboardingPolicy::from_file(raw_pol)?; 
-    println!("onboarding policy built");
+    //println!("onboarding policy built");
     let env : CPEnv = Env::new(&policy.program);
 
     let expr : CPExpr = expressions::Expr::call(
         ONBOARDING_SERVICES, 
         vec![Expr::LitExpr(onboarding_data)]
     );
-    println!("Expr built");
+    //println!("Expr built");
     expr.print_debug();                    
     Ok((expr, env))
 }
@@ -178,78 +180,10 @@ async fn onboarding_pol1() ->  Result<(CPExpr, CPEnv),  expressions::Error> {
         get_policies_path("onboard1.policy").to_str().unwrap(),
         Literal::FlatLiteral(CPFlatLiteral::OnboardingData(Box::new(ob_data)))
     ).await?;
-    println!("## Policy expr built");            
+    //println!("## Policy expr built");            
     pol.print_debug();
     Ok((pol, env))
 }
-
-fn raw_pol1() -> &'static str {
-    "
-        fn allow_rest_response(from: ID, to: ID, req: HttpResponse, payload: data) -> bool {
-            true
-        }
-
-        fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {
-            match_to_from(from, to, req) &&
-            server_ok(to) &&
-                req.method() == \"GET\"
-        }
-    
-        fn match_to_from(from: ID, to: ID, req: HttpRequest) -> bool {
-            let (rfrom, rto) = req.from_to();
-            true
-            //rfrom in from.hosts() && rto in to.hosts(), hosts should be ID not string ??
-        }
-
-        fn server_ok(id: ID) -> bool {
-            \"server\" in id.hosts() &&
-                if let Some(port) = id.port() {
-                    port == 80
-                } else {
-                    // default is port 80
-                    true
-                }
-        }
-
-    "
-}
-
-fn raw_pol2() -> &'static str {
-    "
-        fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {
-            req.method() == \"GET\" && to.has_label(Label::new(\"SecureService\")) 
-        }
-    "
-}
-
-fn raw_pol3() -> &'static str {
-    "
-fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {
-    match_to_from(from, to, req) &&
-        server_ok(to) &&
-        req.method() == \"GET\"
-}
-
-fn server_ok(id: ID) -> bool {
-        if let Some(port) = id.port() {
-            port == 80
-        } else {
-            // default is port 80
-            true
-        }
-}
-
-fn match_to_from(from: ID, to: ID, req: HttpRequest) -> bool {
-    let (rfrom, rto) = req.from_to();
-    true
-}
-
-fn allow_rest_response(from: ID, to: ID, req: HttpResponse, payload: data) -> bool {
-    true
-}
-    "
-}
-
 
 fn get_from_to() -> Result<(DPID, DPID), expressions::Error> {
     let mut from_labels: BTreeSet<&str> = vec![ 
@@ -321,8 +255,6 @@ async fn global_pol1() ->  Result<CPExpr,  expressions::Error> {
 //                        payload.len() == 0
 //                    }
 //                }
-    let raw_pol = raw_pol1();
-
     let args = vec![
         Literal::http_request(Box::new(HttpRequest::new(
             "method",
@@ -335,8 +267,8 @@ async fn global_pol1() ->  Result<CPExpr,  expressions::Error> {
         //Literal::data(Vec::new()) 
     ];
 
-    let res = load_global_policy(function, raw_pol, args).await?;
-    println!("## Expr after eval");            
+    let res = load_global_policy(function, get_policies_path("global1.policy").to_str().unwrap(), args).await?;
+    //println!("## Expr after eval");            
     res.print_debug();
     Ok(res)
 }
@@ -359,7 +291,7 @@ mod tests_control {
     async fn test_helper_compile_ingress() -> Result<(),  expressions::Error> {
         let state = mock_state().await.map_err(|x|expressions::Error::from(format!("{:?}", x)))?;
         state.db_con.database("armour").drop(None).await;
-        register_policy(&state, raw_pol1()).await?;
+        register_policy(&state, get_policies_path("global1.policy").to_str().unwrap()).await?;
         
         if let Ok(Some(doc)) = collection(&state.clone(), POLICIES_COL)
             .find_one(Some(doc! {"label" : to_bson(&global_policy_label()).unwrap()}), None)
@@ -398,7 +330,7 @@ mod tests_control {
     async fn test_seval_onboarding() -> Result<(),  expressions::Error> {
         let state = mock_state().await.map_err(|x|expressions::Error::from(format!("{:?}", x)))?;
         state.db_con.database("armour").drop(None).await.unwrap();
-        register_policy(&state, raw_pol1()).await?;
+        register_policy(&state, get_policies_path("global1.policy").to_str().unwrap()).await?;
 
         if let Ok(Some(doc)) = collection(&state.clone(), POLICIES_COL)
             .find_one(Some(doc! {"label" : to_bson(&global_policy_label()).unwrap()}), None)
@@ -414,7 +346,7 @@ mod tests_control {
         
         match res_seval {
             Expr::LitExpr(Literal::FlatLiteral(r @ CPFlatLiteral::OnboardingResult(_))) =>{
-                println!("OnboardingResult\n{:#?}", r );
+                //println!("OnboardingResult\n{:#?}", r );
                 assert!(true)
             },
             _ => assert!(false)
@@ -467,7 +399,7 @@ mod tests_control {
     async fn test_onboard() -> Result<(),  actix_web::Error> {
         let state = mock_state().await.unwrap();
         state.db_con.database("armour").drop(None).await.unwrap();
-        register_policy(&state, raw_pol1()).await.unwrap();
+        register_policy(&state, get_policies_path("global1.policy").to_str().unwrap()).await.unwrap();
         register_onboarding_policy(&state, get_policies_path("onboard1.policy").to_str().unwrap()).await.unwrap();
 
         let request = OnboardServiceRequest{
@@ -492,7 +424,7 @@ mod tests_control {
                 assert_eq!(fn_ingress, Some(&FnPolicy::Args(2)));
                 assert_eq!(fn_egress_m, Some(&FnPolicy::Args(2)));
                 assert_eq!(fn_ingress_m, Some(&FnPolicy::Args(2)));
-                println!("Updating policy for label {}\n{}", ingress_req.label, ingress_req.policy)
+                //println!("Updating policy for label {}\n{}", ingress_req.label, ingress_req.policy)
             },
             Err(res) => panic!(res)
         })
@@ -502,7 +434,7 @@ mod tests_control {
     async fn test_eval_specialize() -> Result<(),  actix_web::Error> {
         let state = mock_state().await.unwrap();
         state.db_con.database("armour").drop(None).await.unwrap();
-        register_policy(&state, raw_pol3()).await.unwrap();
+        register_policy(&state, get_policies_path("global1.policy").to_str().unwrap()).await.unwrap();
         register_onboarding_policy(&state, get_policies_path("onboard1.policy").to_str().unwrap()).await.unwrap();
 
         let request = OnboardServiceRequest{
@@ -518,7 +450,7 @@ mod tests_control {
 
         Ok(match service::helper_on_board(&state, request).await? {
             Ok((service_id, ingress_req, egress_req)) =>{
-                println!("Updating policy for label {}\n{:#?}", ingress_req.label, ingress_req.policy);
+                //println!("Updating policy for label {}\n{:#?}", ingress_req.label, ingress_req.policy);
                 let (from, to) = get_from_to().unwrap();
                 let req =  literals::HttpRequest::new("GET", "1", "/", "", Vec::new(), Connection::new(&from, &to, 10));
                 let args : Vec<DPExpr> = vec![
@@ -530,7 +462,7 @@ mod tests_control {
                 let result = expressions::Expr::call("allow_rest_request", args)
                 .evaluate(env.clone())
                 .await;
-                println!{"{:#?}", result};
+                //println!{"{:#?}", result};
             },
             Err(res) => panic!(res)
         })

@@ -201,22 +201,17 @@ pub mod service {
         let label = request.service.clone();
         match helper_on_board(&state, request.into_inner()).await? {
             Ok((service_id, ingress_req, egress_req)) =>{
+                let merged_request = control::PolicyUpdateRequest{
+                    label: service_id.clone(),
+                    policy: ingress_req.policy.merge(&egress_req.policy), 
+                    labels: ingress_req.labels.into_iter().chain(egress_req.labels.into_iter()).collect()
+                };
 
-                if Label::from_str("EgressIngress::**").unwrap().matches_with(&label) {
-                        let merged_request = control::PolicyUpdateRequest{
-                            label: service_id.clone(),
-                            policy: ingress_req.policy.merge(&egress_req.policy), 
-                            labels: ingress_req.labels.into_iter().chain(egress_req.labels.into_iter()).collect()
-                        };
+                policy::save_policy(state.clone(), merged_request).await?;
 
-                        policy::save_policy(state.clone(), merged_request).await?;
-
-                        Ok(HttpResponse::Ok().json(control::OnboardServiceResponse{
-                            service_id: service_id,
-                        }))
-                } else {
-                    Ok(internal(format!("this not an ingress/egress proxy")))
-                }
+                Ok(HttpResponse::Ok().json(control::OnboardServiceResponse{
+                    service_id: service_id,
+                }))
             }, 
             Err(s)=> Ok(internal(s))  
         }
@@ -481,40 +476,35 @@ pub mod policy {
             let services = services_full(&state).await?.into_iter().filter(|service|
                 service.service_id.has_label(&selector)
             );
-            let egress_ingress_selector = Label::from_str("Service::EgressIngress::**").unwrap();
             let global_policy = request.policy.clone();
             for service in services {
                 let local_label = get_local_service_label(&state, &service.service).await?;
 
-                if service.service_id.has_label(&egress_ingress_selector) {                        
-                    log::info!("updating egressIngress policy for {}", service.service);
-                    let local_egress_pol = compile_egress(
-                        Arc::new(state.clone()), 
-                        global_policy.clone(), 
-                        policies::ALLOW_REST_RESPONSE, //TODO only one main function is supported...
-                        &service.service_id
-                    ).await.map_err(|e| internal(e.to_string()))?;
+                log::info!("updating policy for {}", service.service);
+                let local_egress_pol = compile_egress(
+                    Arc::new(state.clone()), 
+                    global_policy.clone(), 
+                    policies::ALLOW_REST_RESPONSE, //TODO only one main function is supported...
+                    &service.service_id
+                ).await.map_err(|e| internal(e.to_string()))?;
 
-                    let local_ingress_pol = compile_ingress(
-                        Arc::new(state.clone()), 
-                        global_policy.clone(), 
-                        policies::ALLOW_REST_REQUEST, //TODO only one main function is supported...
-                        &service.service_id
-                    ).await.map_err(|e| internal(e.to_string()))?;
+                let local_ingress_pol = compile_ingress(
+                    Arc::new(state.clone()), 
+                    global_policy.clone(), 
+                    policies::ALLOW_REST_REQUEST, //TODO only one main function is supported...
+                    &service.service_id
+                ).await.map_err(|e| internal(e.to_string()))?;
 
-                    helper_update(
-                        client.clone(),
-                        state.clone(),
-                        &local_label,
-                        control::PolicyUpdateRequest{
-                            label: service.service.clone(),
-                            policy: local_ingress_pol.merge(&local_egress_pol),
-                            labels: request.labels.clone(),
-                        }
-                    ).await?;
-                } else {
-                    log::info!("global policy update not propagated to proxy {}: it is neither an ingress nor an egress proxy", service.service);
-                }
+                helper_update(
+                    client.clone(),
+                    state.clone(),
+                    &local_label,
+                    control::PolicyUpdateRequest{
+                        label: service.service.clone(),
+                        policy: local_ingress_pol.merge(&local_egress_pol),
+                        labels: request.labels.clone(),
+                    }
+                ).await?;
             }
             Ok(HttpResponse::Ok().finish())
         } else {
@@ -528,7 +518,7 @@ pub mod policy {
         state: State,
         request: Json<control::OnboardingUpdateRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
-        let mut request = request.into_inner().pack();//FIXME Some issue with bson encoding, get ride of this with pack/unpack, issues with private/public ? /kind of scope
+        let mut request = request.into_inner().pack();
         request.label = onboarding_policy_label();
         let label = &request.label.clone();
 

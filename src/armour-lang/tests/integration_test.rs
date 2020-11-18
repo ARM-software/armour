@@ -178,13 +178,6 @@ mod tests_dplang {
         assert_eq!(id_pol1::<FlatTyp, FlatLiteral>().await?, Expr::LitExpr(Literal::bool(false)));
         Ok(())
     }
-
-    //#[actix_rt::test]
-    //async fn test_eval_external() -> Result<(),  expressions::Error> {
-    //    //FIXME Err, since log_sock does not exists
-    //    assert_eq!(log_pol1::<FlatTyp, FlatLiteral>().await?, Expr::LitExpr(Literal::bool(true)));
-    //    Ok(())
-    //}
 }
 
 mod tests_cplang {
@@ -195,11 +188,4 @@ mod tests_cplang {
         assert_eq!(id_pol1::<CPFlatTyp, CPFlatLiteral>().await?, Expr::LitExpr(Literal::bool(false)));
         Ok(())
     }
-
-    //#[actix_rt::test]
-    //async fn test_eval_external() -> Result<(),  expressions::Error> {
-    //    //FIXME Err, since log_sock does not exists
-    //    assert_eq!(log_pol1::<CPFlatTyp, CPFlatLiteral>().await?, Expr::LitExpr(Literal::bool(true)));//false, since log_sock does not exists
-    //    Ok(())
-    //}
 }

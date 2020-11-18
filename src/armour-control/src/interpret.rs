@@ -435,7 +435,6 @@ impl TSExprInterpret for CPExpr {
                 Expr::Iter(op, vs, e1, e2, acc_opt) => match e1.seval(state.clone(), env.clone()).await? {
                     r @ Expr::ReturnExpr(_) => Ok(r),
                     Expr::LitExpr(Literal::List(lits)) => {
-                        println!("Coucou {:#?}", e2);
                         let mut res = Vec::new();
                         let mut acc_opt = match acc_opt {
                             Some(e) => Some(e.seval(state.clone(), env.clone()).await?),

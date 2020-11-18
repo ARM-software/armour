@@ -4,7 +4,7 @@ use super::{
     headers::THeaders,
     lang,
     literals::{self, TFlatLiteral},
-    types::{self, Signature, FlatTyp, Typ, TFlatTyp, TTyp},
+    types::{self, CPSignature, Signature, FlatTyp, Typ, TFlatTyp, TTyp},
 };
 use lazy_static::lazy_static;
 use serde::{
@@ -775,18 +775,44 @@ impl<'de> Deserialize<'de> for GlobalPolicies {
 }
 
 pub const ONBOARDING_SERVICES: &str = "onboarding_policy";
-
+lazy_static! {
+    static ref ONBOARDING_SIG: CPSignature = Signature::new(
+        vec![Typ::onboarding_data()], 
+        Typ::onboarding_result()
+    );
+}
 pub type OnboardingPolicy = GlobalPolicy;
 
-//FIXME ensure correct signature, sig: Signature::new(vec![CPTyp::onboardingData()], CPTyp::onboardingResult()),
 impl OnboardingPolicy {
     pub fn program<'a>(&'a self) -> &'a lang::CPProgram {
         &self.program
     }
+
+    fn check_header(prog: &lang::CPProgram) ->Result<(), expressions::Error>  {
+        match prog.headers.get(ONBOARDING_SERVICES) {
+            None => Err(expressions::Error::from(
+                "onboarding_policy has no signature".to_string(),
+            )),
+            Some(sig) => {
+                if Self::type_check(ONBOARDING_SERVICES, &sig, &*ONBOARDING_SIG){
+                    Ok(())
+                } else {
+                    Err(expressions::Error::from(format!(
+                        "onboarding_policy has a wrong signature\n{}\nexpected\n{}",
+                        sig,
+                        *ONBOARDING_SIG
+                    )))
+                }
+            }
+        }
+    }
+
     fn inner_from(pre_prog: lang::CPPreProgram) -> Result<Self, expressions::Error> {
+        let prog = pre_prog.program(&vec![ONBOARDING_SERVICES.to_string()][..]);
+        Self::check_header(&prog)?;
         Ok(OnboardingPolicy {
             fn_policies: FnPolicies::default(),
-            program: pre_prog.program(&vec![ONBOARDING_SERVICES.to_string()][..]),
+            program: prog,
         })
     }
 
@@ -797,11 +823,12 @@ impl OnboardingPolicy {
         Self::inner_from(lang::PreProgram::from_file(path)?)
     }
     
-    pub fn onboard_from(p: lang::CPProgram) -> Self {
-        OnboardingPolicy {
+    pub fn onboard_from(p: lang::CPProgram) -> Result<Self, expressions::Error> {
+        Self::check_header(&p)?;
+        Ok(OnboardingPolicy {
             fn_policies: FnPolicies::default(),
             program: p,
-        }
+        })
     }
 }
 

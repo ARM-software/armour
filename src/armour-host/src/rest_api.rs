@@ -104,9 +104,6 @@ pub mod service {
 		let port = information.top_port();			
 
 		for mut proxy in information.proxies {
-			//FIXME: add labels ProxyType::EgressIngress and not change main proxy labels
-			proxy.label = Label::concat(&Label::from_str("EgressIngress").unwrap(), &proxy.label);
-
 			// launch proxies (if not already launched)
 			launch_proxy(&host, &proxy).await?;
 			let instance = InstanceSelector::Label(proxy.label.clone());

@@ -575,38 +575,19 @@ impl TSExprPEval for CPExpr {
     }
 }
 
+//FIXME can only process allow_http_response
 pub async fn compile_ingress(state: Arc<State>, global_pol: policies::GlobalPolicies, function: &str, to: &CPID) -> Result<policies::DPPolicies, self::Error> {
     let mut new_gpol = policies::GlobalPolicies::default();
     for (proto, pol)  in (&global_pol).policies() {
         let env = CPEnv::new(&pol.program);        
 
-        //FIXME check correct type of http_rest_request
-        let expected_sig = Signature::new(
-            vec![
-                Typ::id(), 
-                Typ::id(),
-                Typ::http_request(),
-                Typ::data()
-            ], 
-            Typ::bool()
-        );
-
-        match pol.program.headers.get(function) {
-            None => 
-                return Err(Error::from(format!("compile_ingress, {} is undefined in global policy", function))), //FIXME duplicated
-            Some(sig) if *sig != expected_sig => 
-                return Err(Error::from(format!(
-                    "compile_ingress, {} has a wrong signature\n{}\nexpected\n{}",
-                    function,
-                    sig,
-                    expected_sig
-                ))),
-            _ => ()
-        };
-
         match pol.program.code.get(function.to_string()) {
             None => return Err(Error::from(format!("compile_ingress, {} is undefined in global policy", function))), 
             Some(ref fexpr) => {    
+                //Checking header type
+                check_header(pol, function)?;
+
+                //Replacing the "from" variable by the ID of the µservice
                 let fexpr = fexpr.clone().propagate_subst(2, 1, &Expr::LitExpr(Literal::id(to.clone()))); 
                 let body = match fexpr.at_depth(3) {
                    Some(e) => e,
@@ -645,6 +626,46 @@ pub async fn compile_ingress(state: Arc<State>, global_pol: policies::GlobalPoli
     Ok(policies::DPPolicies::from(new_gpol))
 }
 
+
+fn check_header(
+    pol: &policies::GlobalPolicy, 
+    function: &str, 
+) -> Result<(), self::Error> {
+        let expected_sig = match function {
+            policies::ALLOW_REST_REQUEST => Signature::new(
+            vec![
+                Typ::id(), 
+                Typ::id(),
+                Typ::http_request(),
+                Typ::data()
+            ], 
+            Typ::bool()
+            ),
+            policies::ALLOW_REST_RESPONSE => Signature::new(
+            vec![
+                Typ::id(), 
+                Typ::id(),
+                Typ::http_response(),
+                Typ::data()
+            ], 
+            Typ::bool()
+            ),
+            _ => unimplemented!("TCP not yet implemented")
+        };
+        match pol.program.headers.get(function) {
+            None => 
+                Err(Error::from(format!("specialization  checking headers, {} is undefined in global policy", function))), 
+            Some(sig) if *sig != expected_sig => 
+                Err(Error::from(format!(
+                    "specialization  checking headers, {} has a wrong signature\n{}\nexpected\n{}",
+                    function,
+                    sig,
+                    expected_sig
+                ))),
+            _ => Ok(())
+        }
+}
+
 fn compile_helper(
     pol: &policies::GlobalPolicy, 
     function: &str, 
@@ -663,38 +684,19 @@ fn compile_helper(
     Ok(n_pol)
 }
 
+//FIXME can only process allow_http_request
 pub async fn compile_egress(state: Arc<State>, global_pol: policies::GlobalPolicies, function: &str, from: &CPID) -> Result<policies::DPPolicies, self::Error> {
     let mut new_gpol = policies::GlobalPolicies::default();
     for (proto, pol)  in (&global_pol).policies() {
         let env = CPEnv::new(&pol.program);        
 
-        //FIXME check correct type of http_rest_request
-        let expected_sig = Signature::new(
-            vec![
-                Typ::id(), 
-                Typ::id(),
-                Typ::http_response(),
-                Typ::data()
-            ], 
-            Typ::bool()
-        );
-
-        match pol.program.headers.get(function) {
-            None => 
-                return Err(Error::from(format!("compile_egress, {} is undefined in global policy", function))), //FIXME duplicated
-            Some(sig) if *sig != expected_sig => 
-                return Err(Error::from(format!(
-                    "compile_egress, {} has a wrong signature\n{}\nexpected\n{}",
-                    function,
-                    sig,
-                    expected_sig
-                ))),
-            _ => ()
-        };
-
         match pol.program.code.get(function.to_string()) {
             None => return Err(Error::from(format!("compile_egress, {} not define in global policy", function))), 
             Some(ref fexpr) => {    
+                //Checking header type
+                check_header(pol, function)?;
+                
+                //Replacing the "to" variable by the ID of the µservice
                 let fexpr = fexpr.clone().propagate_subst(3, 0, &Expr::LitExpr(Literal::id(from.clone()))); 
                 let body = match fexpr.at_depth(3) {
                    Some(e) => e,
@@ -713,7 +715,7 @@ pub async fn compile_egress(state: Arc<State>, global_pol: policies::GlobalPolic
                             ))
                         ));
 
-                        let mut e = e.apply(&Expr::call("HttpRequest::to", vec![Expr::bvar("req", 1)]))?;
+                        let mut e = e.apply(&Expr::call("HttpResponse::to", vec![Expr::bvar("req", 1)]))?;
                         e = e.apply(&Expr::bvar("req", 1))?;
                         e = e.apply(&Expr::bvar("payload", 0))?;
 
