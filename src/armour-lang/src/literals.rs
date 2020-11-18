@@ -12,6 +12,57 @@ use std::fmt::{self, Display};
 use std::str::FromStr;
 use std::marker::PhantomData;
 
+//Helpers to build patterns
+//Defined here since macros can only be used after they have been defined
+#[macro_export]
+macro_rules! dpflatlit (
+    ($i: ident ) => (
+        DPFlatLiteral::$i
+    );
+    ($i: ident ($($args:tt)*) ) => (
+        DPFlatLiteral::$i($($args)*)
+    );
+);
+
+
+#[macro_export]
+macro_rules! cpflatlit (
+    ($i: ident ) => (
+        CPFlatLiteral::$i
+    );
+    ($i: ident ($($args:tt)*) ) => (
+        CPFlatLiteral::$i($($args)*)
+    );
+);
+
+#[macro_export]
+macro_rules! cpdpflatlit (
+    ($i: ident ($($args:tt)*) ) => (
+        CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*))
+    );
+);
+#[macro_export]
+macro_rules! dplit (
+    ($i: ident) => (
+        Literal::FlatLiteral(DPFlatLiteral::$i)
+    );
+    ($i: ident ($($args:tt)*) ) => (
+        Literal::FlatLiteral(DPFlatLiteral::$i($($args)*))
+    );
+);
+#[macro_export]
+macro_rules! cplit (
+    ($i: ident ($($args:tt)*) ) => (
+        Literal::FlatLiteral(CPFlatLiteral::$i($($args)*))
+    );
+);
+
+#[macro_export]
+macro_rules! cpdplit (
+    ($i: ident ($($args:tt)*) ) => (
+        Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*)))
+    );
+);
 
 #[derive( PartialEq, Debug, Display, Clone, Serialize, Deserialize)]
 pub enum Method {
@@ -729,11 +780,6 @@ pub struct OnboardingData {
 }
 
 //FIXME duplicated
-macro_rules! cpdplit (
-  ($i: ident ($($args:tt)*) ) => (
-      Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*)))
-  );
-);
 impl OnboardingData {
     pub fn new(
         host: labels::Label,
@@ -1687,3 +1733,5 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> std::convert::TryFrom<
         }
     }
 }
+
+

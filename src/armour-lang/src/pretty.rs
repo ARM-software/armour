@@ -536,29 +536,6 @@ impl<FlatTyp, FlatLiteral> TPrettyLit for  Literal<FlatTyp, FlatLiteral> where
     }
 }
 
-
-
-macro_rules! dpflatlit (
-    ($i: ident ($($args:tt)*) ) => (
-        DPFlatLiteral::$i($($args)*)
-    );
-);
-macro_rules! cpflatlit (
-    ($i: ident ($($args:tt)*) ) => (
-        CPFlatLiteral::$i($($args)*)
-    );
-);
-//FIXME duplicated
-macro_rules! cpdplit (
-  ($i: ident ($($args:tt)*) ) => (
-      Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*)))
-  );
-);
-macro_rules! cpdpflatlit (
-  ($i: ident ($($args:tt)*) ) => (
-        CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*))
-  );
-);
 impl TPrettyLit for DPFlatLiteral{
     fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         match self {

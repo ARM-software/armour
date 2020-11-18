@@ -30,22 +30,6 @@ pub struct Call<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'sta
     phantom: PhantomData<(FlatTyp, FlatLiteral)>
 }
 
-macro_rules! dpflatlit (
-  ($i: ident ) => (
-        Literal::FlatLiteral(DPFlatLiteral::$i)
-  );
-  ($i: ident ($($args:tt)*) ) => (
-        Literal::FlatLiteral(DPFlatLiteral::$i($($args)*))
-  );
-);
-macro_rules! cpflatlit (
-  ($i: ident ) => (
-        Literal::FlatLiteral(CPFlatLiteral::$i)
-  );
-  ($i: ident ($($args:tt)*) ) => (
-        Literal::FlatLiteral(CPFlatLiteral::$i($($args)*))
-  );
-);
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Call<FlatTyp, FlatLiteral> {
     pub fn new(external: &str, method: &str, args: Vec<Literal<FlatTyp, FlatLiteral>>) -> Self {
         Call {
@@ -152,19 +136,19 @@ impl TExternals<types::FlatTyp, literals::DPFlatLiteral> for literals::DPFlatLit
     /// Build a Cap'n Proto literal from an Armour literal
     fn build_value(mut v: external::value::Builder<'_>, lit: &DPLiteral) {
         match lit {
-            dpflatlit!(Bool(b)) => v.set_bool(*b),
-            dpflatlit!(Connection(conn)) => Externals::build_value(v, &DPLiteral::from(conn)),
-            dpflatlit!(Data(d)) => v.set_data(d),
-            dpflatlit!(Float(f)) => v.set_float64(*f),
-            dpflatlit!(HttpRequest(req)) => Externals::build_value(v, &DPLiteral::from(&**req)),
-            dpflatlit!(HttpResponse(res)) => Externals::build_value(v, &DPLiteral::from(&**res)),
-            dpflatlit!(ID(id)) => Externals::build_value(v, &DPLiteral::from(id)),
-            dpflatlit!(Int(i)) => v.set_int64(*i),
-            dpflatlit!(IpAddr(ip)) => Externals::build_value(v, &DPLiteral::from(ip)),
-            dpflatlit!(Label(label)) => v.set_text(&label.to_string()),
-            dpflatlit!(Regex(r)) => v.set_text(&r.to_string()),
-            dpflatlit!(Str(s)) => v.set_text(s),
-            dpflatlit!(Unit) => v.set_unit(()),
+            dplit!(Bool(b)) => v.set_bool(*b),
+            dplit!(Connection(conn)) => Externals::build_value(v, &DPLiteral::from(conn)),
+            dplit!(Data(d)) => v.set_data(d),
+            dplit!(Float(f)) => v.set_float64(*f),
+            dplit!(HttpRequest(req)) => Externals::build_value(v, &DPLiteral::from(&**req)),
+            dplit!(HttpResponse(res)) => Externals::build_value(v, &DPLiteral::from(&**res)),
+            dplit!(ID(id)) => Externals::build_value(v, &DPLiteral::from(id)),
+            dplit!(Int(i)) => v.set_int64(*i),
+            dplit!(IpAddr(ip)) => Externals::build_value(v, &DPLiteral::from(ip)),
+            dplit!(Label(label)) => v.set_text(&label.to_string()),
+            dplit!(Regex(r)) => v.set_text(&r.to_string()),
+            dplit!(Str(s)) => v.set_text(s),
+            dplit!(Unit) => v.set_unit(()),
             DPLiteral::Tuple(ts) => {
                 let mut tuple = v.init_tuple(ts.len() as u32);
                 for (i, t) in ts.iter().enumerate() {
@@ -188,9 +172,9 @@ impl TExternals<types::CPFlatTyp, literals::CPFlatLiteral> for literals::CPFlatL
         match lit {
             Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(dpfl)) =>
                 literals::DPFlatLiteral::build_value(v, &Literal::FlatLiteral(dpfl.clone())),
-            cpflatlit!(OnboardingData(data)) => Externals::build_value(v, &CPLiteral::from(&**data)),
-            cpflatlit!(OnboardingResult(res)) => Externals::build_value(v, &CPLiteral::from(&**res)),
-            cpflatlit!(Policy(pol)) => Externals::build_value(v, &CPLiteral::from(&**pol)),
+            cplit!(OnboardingData(data)) => Externals::build_value(v, &CPLiteral::from(&**data)),
+            cplit!(OnboardingResult(res)) => Externals::build_value(v, &CPLiteral::from(&**res)),
+            cplit!(Policy(pol)) => Externals::build_value(v, &CPLiteral::from(&**pol)),
             CPLiteral::Tuple(ts) => {
                 let mut tuple = v.init_tuple(ts.len() as u32);
                 for (i, t) in ts.iter().enumerate() {

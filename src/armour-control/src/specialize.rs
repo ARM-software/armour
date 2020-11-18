@@ -1,5 +1,6 @@
 // Specialize global policy
 use actix::prelude::*;
+use armour_lang::{cplit, cpdplit};
 use armour_lang::expressions::{Block, CPExpr, Error, Expr};
 use armour_lang::externals::{Call};
 use armour_lang::headers::{CPHeaders, THeaders};
@@ -19,18 +20,6 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use super::interpret::{TSExprInterpret, CPExprWrapper};
 use super::State;
-
-macro_rules! cplit (
-  ($i: ident ($($args:tt)*) ) => (
-      Literal::FlatLiteral(CPFlatLiteral::$i($($args)*))
-  );
-);
-//FIXME duplicated
-macro_rules! cpdplit (
-  ($i: ident ($($args:tt)*) ) => (
-      Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*)))
-  );
-);
 
 #[async_trait]
 pub trait TSExprPEval : Sized{

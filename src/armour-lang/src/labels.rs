@@ -278,9 +278,7 @@ impl Label {
         if pattern.0.len() != l.0.len() {
             return None;
         };
-
         let mut map = Match(BTreeMap::new());
-
         for (pat, node) in pattern.0.iter().zip(l.0.iter()) {
             match pat.match_with(node) {
                 MatchNode::Map(l, r) => {

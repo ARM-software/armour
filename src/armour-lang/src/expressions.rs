@@ -10,13 +10,6 @@ use std::fmt;
 use std::marker::PhantomData;
 use types::{CPFlatTyp, Typ, TTyp, FlatTyp, TFlatTyp};
 
-//FIXME duplicated
-macro_rules! cpdplit (
-  ($i: ident ($($args:tt)*) ) => (
-      Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*)))
-  );
-);
-
 #[derive(Debug, Clone)]
 pub struct Error(String);
 

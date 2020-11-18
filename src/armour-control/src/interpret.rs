@@ -12,8 +12,9 @@ use armour_lang::literals::{
     CPLiteral, CPID,
     CPFlatLiteral, DPFlatLiteral,
     OnboardingData,
-    TFlatLiteral
+    TFlatLiteral,
 };
+use armour_lang::{cplit, cpdplit};
 use armour_lang::policies::{GlobalPolicies, DPPolicies};
 use armour_lang::parser::{Infix, Iter};
 use armour_lang::types::{CPFlatTyp};

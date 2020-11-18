@@ -9,7 +9,7 @@ use super::lang::{Code, Program};
 use super::literals::{
     self, Connection, CPLiteral, DPLiteral, HttpRequest, HttpResponse, Literal,
     DPFlatLiteral, CPFlatLiteral, Method,
-    OnboardingResult, TFlatLiteral, VecSet
+    OnboardingResult, TFlatLiteral, VecSet,
 };
 use super::meta::{Egress, IngressEgress, Meta};
 use super::parser::{As, Infix, Iter, Pat, PolicyRegex, Prefix};
@@ -73,37 +73,6 @@ where
     fn eval_call4(&self, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
 }
 
-macro_rules! dpflatlit (
-  ($i: ident ($($args:tt)*) ) => (
-        DPFlatLiteral::$i($($args)*)
-  );
-);
-macro_rules! cpflatlit (
-  ($i: ident ($($args:tt)*) ) => (
-        CPFlatLiteral::$i($($args)*)
-  );
-);
-macro_rules! cpdpflatlit (
-  ($i: ident ($($args:tt)*) ) => (
-        CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*))
-  );
-);
-macro_rules! dplit (
-  ($i: ident ($($args:tt)*) ) => (
-      Literal::FlatLiteral(DPFlatLiteral::$i($($args)*))
-  );
-);
-macro_rules! cplit (
-  ($i: ident ($($args:tt)*) ) => (
-      Literal::FlatLiteral(CPFlatLiteral::$i($($args)*))
-  );
-);
-
-macro_rules! cpdplit (
-  ($i: ident ($($args:tt)*) ) => (
-      Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*)))
-  );
-);
 
 #[async_trait]
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>+TInterpret<FlatTyp, FlatLiteral>> TInterpret<FlatTyp, FlatLiteral> for Literal<FlatTyp, FlatLiteral> {
@@ -712,7 +681,7 @@ where
     FlatTyp: 'static + TFlatTyp + std::marker::Send, 
     FlatLiteral: 'static + TFlatLiteral<FlatTyp> + std::marker::Send + TInterpret<FlatTyp, FlatLiteral>
 {
-    async fn eval_call(state: Arc<State>, function: &str, args: Vec<Expr<FlatTyp, FlatLiteral>>) -> Result<Expr<FlatTyp, FlatLiteral>, self::Error> {
+    async fn eval_call(_state: Arc<State>, function: &str, args: Vec<Expr<FlatTyp, FlatLiteral>>) -> Result<Expr<FlatTyp, FlatLiteral>, self::Error> {
         // builtin function
         match args.as_slice() {
             [] => match Literal::eval_call0(function) {
