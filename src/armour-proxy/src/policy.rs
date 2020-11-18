@@ -6,7 +6,7 @@ use armour_api::host::{PolicyResponse, Status};
 use armour_api::proxy::{LabelOp, PolicyCodec, PolicyRequest};
 use armour_lang::{
     expressions,
-    interpret::DPEnv,
+    interpret::{DPEnv, TExprInterpreter},
     labels, literals,
     meta::{IngressEgress, Meta},
     policies::{self, Protocol},
@@ -40,9 +40,11 @@ pub trait Policy<P> {
         let mut env = self.env().clone();
         env.set_meta(meta);
         async move {
-            let result = expressions::Expr::call(function, args)
-                .evaluate(env.clone())
-                .await?;
+            let result = expressions::Expr::evaluate(
+                expressions::Expr::call(function, args),
+                Arc::new(()),
+                env.clone()
+            ) .await?;
             let meta = env.egress().await;
             log::debug!("result ({:?}): {}", now.elapsed(), result);
             if let expressions::Expr::LitExpr(lit) = result {

@@ -2,7 +2,7 @@
 use actix::prelude::*;
 use armour_lang::{
     expressions, 
-    interpret::{Env}, 
+    interpret::{Env, TExprInterpreter}, 
     lang, 
     literals::{self, TFlatLiteral}, 
     policies, 
@@ -11,6 +11,7 @@ use armour_lang::{
 use clap::{crate_version, App, Arg, SubCommand, ArgMatches};
 use rustyline::{error::ReadlineError, Editor};
 use std::io;
+use std::sync::Arc;
 use std::time::Duration;
 
 struct Eval<FlatTyp: TFlatTyp+'static, FlatLiteral: TFlatLiteral<FlatTyp>+'static> {
@@ -40,7 +41,7 @@ impl<FlatTyp: TFlatTyp+'static, FlatLiteral: TFlatLiteral<FlatTyp>+'static> Mess
 impl<FlatTyp: TFlatTyp+'static, FlatLiteral: TFlatLiteral<FlatTyp>+'static> Handler<Evaluate<FlatTyp, FlatLiteral>> for Eval<FlatTyp, FlatLiteral> {
     type Result = ResponseFuture<Result<expressions::Expr<FlatTyp, FlatLiteral>, expressions::Error>>;
     fn handle(&mut self, msg: Evaluate<FlatTyp, FlatLiteral>, _ctx: &mut Context<Self>) -> Self::Result {
-        Box::pin(msg.0.evaluate(self.env.clone()))
+        Box::pin(expressions::Expr::evaluate(msg.0, Arc::new(()), self.env.clone()))
     }
 }
 

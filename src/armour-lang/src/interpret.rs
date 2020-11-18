@@ -1,5 +1,6 @@
 /// policy language interpreter
 // NOTE: no optimization
+use async_trait::async_trait;
 use super::expressions::{Block, Error, Expr, Pattern, CPPrefix, DPPrefix};
 use super::externals::{Call, ExternalActor};
 use super::headers::{Headers, THeaders};
@@ -17,7 +18,6 @@ use actix::prelude::*;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use async_trait::async_trait;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::str::FromStr;
 
@@ -71,7 +71,6 @@ where
     fn eval_call2(&self, f: &str, other: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
     fn eval_call3(&self, f: &str, l1: &Self, l2: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
     fn eval_call4(&self, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Option<Literal<FlatTyp, FlatLiteral>>;
-    async fn helper_evalexpr(e : Expr<FlatTyp, FlatLiteral>, env: Env<FlatTyp, FlatLiteral>) -> Result<Expr<FlatTyp, FlatLiteral>, self::Error>;
 }
 
 macro_rules! dpflatlit (
@@ -195,10 +194,6 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>+TInterpret<FlatTyp, Fla
             (Literal::FlatLiteral(fl), Literal::FlatLiteral(l1), Literal::FlatLiteral(l2), Literal::FlatLiteral(l3)) => fl.eval_call4(f, l1, l2, l3),
             _ => None
         }
-    }
-
-    async fn helper_evalexpr(e : Expr<FlatTyp, FlatLiteral>, env: Env<FlatTyp, FlatLiteral>) -> Result<Expr<FlatTyp, FlatLiteral>, self::Error>{
-       FlatLiteral::helper_evalexpr(e, env).await 
     }
 }
 
@@ -473,30 +468,6 @@ impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
             _ => None,
         }
     }
-
-    async fn helper_evalexpr(e : Expr<types::FlatTyp, DPFlatLiteral>, env: Env<types::FlatTyp, DPFlatLiteral>) -> Result<Expr<types::FlatTyp, DPFlatLiteral>, self::Error>{
-        match e {
-            // short circuit for &&
-            Expr::InfixExpr(Infix::And, e1, e2) => match e1.eval(env.clone()).await? {
-                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dplit!(Bool(false))) => Ok(r),
-                Expr::LitExpr(dplit!(Bool(true))) => match e2.eval(env).await? {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dplit!(Bool(_))) => Ok(r),
-                    _ => Err(Error::new("eval, infix")),
-                },
-                _ => Err(Error::new("eval, infix")),
-            },
-            // short circuit for ||
-            Expr::InfixExpr(Infix::Or, e1, e2) => match e1.eval(env.clone()).await? {
-                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dplit!(Bool(true))) => Ok(r),
-                Expr::LitExpr(dplit!(Bool(false))) => match e2.eval(env).await? {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(dplit!(Bool(_))) => Ok(r),
-                    _ => Err(Error::new("eval, infix")),
-                },
-                _ => Err(Error::new("eval, infix")),
-            },
-            _ => unimplemented!()
-        }
-    }
 }
 
 #[async_trait]
@@ -621,29 +592,6 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             _ => None,
         }
     }
-    async fn helper_evalexpr(e : Expr<CPFlatTyp, CPFlatLiteral>, env: Env<CPFlatTyp, CPFlatLiteral>) -> Result<Expr<CPFlatTyp, CPFlatLiteral>, self::Error>{
-        match e {
-            // short circuit for &&
-            Expr::InfixExpr(Infix::And, e1, e2) => match e1.eval(env.clone()).await? {
-                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(false))) => Ok(r),
-                Expr::LitExpr(cpdplit!(Bool(true))) => match e2.eval(env).await? {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(_))) => Ok(r),
-                    _ => Err(Error::new("eval, infix")),
-                },
-                _ => Err(Error::new("eval, infix")),
-            },
-            // short circuit for ||
-            Expr::InfixExpr(Infix::Or, e1, e2) => match e1.eval(env.clone()).await? {
-                r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(true))) => Ok(r),
-                Expr::LitExpr(cpdplit!(Bool(false))) => match e2.eval(env).await? {
-                    r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(_))) => Ok(r),
-                    _ => Err(Error::new("eval, infix")),
-                },
-                _ => Err(Error::new("eval, infix")),
-            },
-            _ => unimplemented!()
-        }
-    }
 }
 
 impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> 
@@ -755,7 +703,16 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
             _ => None,
         }
     }
-    fn eval_call(function: &str, args: Vec<Self>) -> Result<Self, self::Error> {
+}
+
+#[async_trait]
+pub trait TExprInterpreter<State, FlatTyp, FlatLiteral>: std::marker::Send
+where 
+    State: 'static + std::marker::Send + std::marker::Sync,//FIXME 'static should be replace by 'async_trait
+    FlatTyp: 'static + TFlatTyp + std::marker::Send, 
+    FlatLiteral: 'static + TFlatLiteral<FlatTyp> + std::marker::Send + TInterpret<FlatTyp, FlatLiteral>
+{
+    async fn eval_call(state: Arc<State>, function: &str, args: Vec<Expr<FlatTyp, FlatLiteral>>) -> Result<Expr<FlatTyp, FlatLiteral>, self::Error> {
         // builtin function
         match args.as_slice() {
             [] => match Literal::eval_call0(function) {
@@ -785,15 +742,17 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
             x => Err(Error::from(format!("eval, call ({}): {}: {:?}", x.len(), function, x))),
         }
     }
+
     #[allow(clippy::cognitive_complexity)]
-    fn eval(self, env: Env<FlatTyp, FlatLiteral>) -> BoxFuture<'static, Result<Self, self::Error>> {
+    fn eval(e: Expr<FlatTyp, FlatLiteral>, state: Arc<State>, env: Env<FlatTyp, FlatLiteral>) -> BoxFuture<'static, Result<Expr<FlatTyp, FlatLiteral>, self::Error>> {
         async {
-            match self {
+            match e {
                 Expr::Var(_) | Expr::BVar(_, _) => Err(Error::new("eval variable")),
-                Expr::LitExpr(_) => Ok(self),
+                Expr::LitExpr(_) => Ok(e),
                 Expr::Closure(_, _) => Err(Error::new("eval, closure")),
-                Expr::ReturnExpr(e) => Ok(Expr::return_expr(e.eval(env).await?)),
-                Expr::PrefixExpr(p, e) => match e.eval(env).await? {
+
+                Expr::ReturnExpr(e) => Ok(Expr::return_expr(Self::eval(*e, state, env).await?)),
+                Expr::PrefixExpr(p, e) => match Self::eval(*e, state, env).await? {
                     r @ Expr::ReturnExpr(_) => Ok(r),
                     Expr::LitExpr(l) => match l.eval_prefix(&p) {
                         Some(r) => Ok(r.into()),
@@ -802,12 +761,30 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                     _ => Err(Error::new("eval, prefix")),
                 },
                 // short circuit for &&
-                Expr::InfixExpr(Infix::And, _, _) => FlatLiteral::helper_evalexpr(self, env).await, 
+                Expr::InfixExpr(Infix::And, e1, e2) => match Self::eval(*e1, state.clone(), env.clone()).await? {
+                    r @ Expr::ReturnExpr(_) => Ok(r),
+                    Expr::LitExpr(l) if l.is_bool() && !l.get_bool() => Ok(Expr::LitExpr(l)),
+                    Expr::LitExpr(l) if l.is_bool() && l.get_bool() => match Self::eval(*e2, state, env).await? {
+                        r @ Expr::ReturnExpr(_) => Ok(r),
+                        Expr::LitExpr(l) if l.is_bool() => Ok(Expr::LitExpr(l)),
+                        _ => Err(Error::new("eval, infix")),
+                    },
+                    _ => Err(Error::new("eval, infix")),
+                },
                 // short circuit for ||
-                Expr::InfixExpr(Infix::Or, _, _) => FlatLiteral::helper_evalexpr(self, env).await,
+                Expr::InfixExpr(Infix::Or, e1, e2) => match Self::eval(*e1, state.clone(), env.clone()).await? {
+                    r @ Expr::ReturnExpr(_) => Ok(r),
+                    Expr::LitExpr(l) if l.is_bool() && l.get_bool() => Ok(Expr::LitExpr(l)),
+                    Expr::LitExpr(l) if l.is_bool() && !l.get_bool()=> match Self::eval(*e2, state, env).await? {
+                        r @ Expr::ReturnExpr(_) => Ok(r),
+                        Expr::LitExpr(l) if l.is_bool() => Ok(Expr::LitExpr(l)),
+                        _ => Err(Error::new("eval, infix")),
+                    },
+                    _ => Err(Error::new("eval, infix")),
+                },
                 Expr::InfixExpr(op, e1, e2) => {
-                    let r1 = e1.eval(env.clone()).await?;
-                    match (r1, e2.eval(env).await?) {
+                    let r1 = Self::eval(*e1, state.clone(), env.clone()).await?;
+                    match (r1, Self::eval(*e2, state, env).await?) {
                         (r @ Expr::ReturnExpr(_), _) => Ok(r),
                         (_, r @ Expr::ReturnExpr(_)) => Ok(r),
                         (Expr::LitExpr(l1), Expr::LitExpr(l2)) => match l1.eval_infix(&op, &l2) {
@@ -826,21 +803,21 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                         }))
                     } else if b == Block::Block {
                         let e = es.remove(0);
-                        let res = e.eval(env.clone()).await?;
+                        let res = Self::eval(e, state.clone(), env.clone()).await?;
                         if res.is_return() || es.is_empty() {
                             Ok(res)
                         } else {
-                            Expr::BlockExpr(b, es).eval(env).await
+                            Self::eval(Expr::BlockExpr(b, es), state, env).await
                         }
                     } else {
                         // list or tuple
                         let mut rs = Vec::new();
                         for e in es.into_iter() {
-                            rs.push(e.eval(env.clone()).await?)
+                            rs.push(Self::eval(e, state.clone(), env.clone()).await?)
                         }
                         match rs.iter().find(|r| r.is_return()) {
                             Some(r) => Ok(r.clone()),
-                            _ => match Self::literal_vector(rs) {
+                            _ => match Expr::literal_vector(rs) {
                                 Ok(lits) => Ok((if b == Block::List {
                                     Literal::List(lits)
                                 } else {
@@ -852,7 +829,7 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                         }
                     }
                 }
-                Expr::Let(vs, e1, e2) => match e1.eval(env.clone()).await? {
+                Expr::Let(vs, e1, e2) => match Self::eval(*e1, state.clone(), env.clone()).await? {
                     r @ Expr::ReturnExpr(_) => Ok(r),
                     Expr::LitExpr(Literal::Tuple(lits)) => {
                         let lits_len = lits.len();
@@ -863,33 +840,32 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                                     e2a = e2a.apply(&Expr::LitExpr(lit))?
                                 }
                             }
-                            e2a.eval(env).await
+                            Self::eval(e2a, state, env).await
                         } else if vs.len() == 1 {
-                            e2.apply(&Expr::LitExpr(Literal::Tuple(lits)))?
-                                .eval(env)
-                                .await
+                            let e2a = e2.apply(&Expr::LitExpr(Literal::Tuple(lits)))?;
+                            Self::eval(e2a, state, env).await
                         } else {
                             Err(Error::new("eval, let-expression (tuple length mismatch)"))
                         }
                     }
                     l @ Expr::LitExpr(_) => {
                         if vs.len() == 1 {
-                            e2.apply(&l)?.eval(env).await
+                            let e2a = e2.apply(&l)?;
+                            Self::eval(e2a, state, env).await
                         } else {
                             Err(Error::new("eval, let-expression (literal not a tuple)"))
                         }
                     }
                     _ => Err(Error::new("eval, let-expression")),
                 },
-                Expr::Iter(op, vs, e1, e2, acc_opt) => match e1.eval(env.clone()).await? {
+                Expr::Iter(op, vs, e1, e2, acc_opt) => match Self::eval(*e1, state.clone(), env.clone()).await? {
                     r @ Expr::ReturnExpr(_) => Ok(r),
                     Expr::LitExpr(Literal::List(lits)) => {
                         let mut res = Vec::new();
                         let mut acc_opt = match acc_opt {
-                            Some(e) => Some(e.eval(env.clone()).await?),
+                            Some(e) => Some(Self::eval(*e, state.clone(), env.clone()).await?),
                             _=> None
                         };
-
                         for l in lits.iter() {
                             match l {
                                 Literal::Tuple(ref ts) if vs.len() != 1 => {
@@ -907,14 +883,14 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                                                 e = e.apply(&Expr::LitExpr(lit.clone()))?
                                             }
                                         }
-                                        
+
                                         //Update the acc if any
                                         if acc_opt.is_some() { //FIXME Duplicated
-                                            let tmp = e.eval(env.clone()).await?;
+                                            let tmp = Self::eval(e, state.clone(), env.clone()).await?;
                                             acc_opt = Some(tmp.clone());
                                             res.push(tmp)    
                                         } else {
-                                            res.push(e.eval(env.clone()).await?)
+                                            res.push(Self::eval(e, state.clone(), env.clone()).await?)
                                         }
                                     } else {
                                         return Err(Error::new(
@@ -938,11 +914,11 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                                         
                                         //Update the acc if any
                                         if acc_opt.is_some() { //FIXME Duplicated
-                                            let tmp = e.eval(env.clone()).await?;
+                                            let tmp = Self::eval(e, state.clone(), env.clone()).await?;
                                             acc_opt = Some(tmp.clone());
                                             res.push(tmp)    
                                         } else {
-                                            res.push(e.eval(env.clone()).await?)
+                                            res.push(Self::eval(e, state.clone(), env.clone()).await?)
                                         }  
                                     } else {
                                         return Err(Error::new(
@@ -960,7 +936,7 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                                     _ => Err(Error::new("arg is not a literal")),
                                 }
                             }
-                            None => match Self::literal_vector(res) {
+                            None => match Expr::literal_vector(res) {
                                 Ok(iter_lits) => match op {
                                     Iter::Map => Ok(Literal::List(iter_lits).into()),
                                     Iter::ForEach => Ok(Expr::from(())),
@@ -995,11 +971,11 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                     cond,
                     consequence,
                     alternative,
-                } => match cond.eval(env.clone()).await? {
+                } => match Self::eval(*cond, state.clone(), env.clone()).await? {
                     r @ Expr::ReturnExpr(_) => Ok(r),
-                    Expr::LitExpr(Literal::FlatLiteral(fl)) if fl.is_bool() && fl.get_bool() => consequence.eval(env).await,
+                    Expr::LitExpr(Literal::FlatLiteral(fl)) if fl.is_bool() && fl.get_bool() => Self::eval(*consequence, state, env).await,
                     Expr::LitExpr(Literal::FlatLiteral(fl)) if fl.is_bool() && !fl.get_bool() => match alternative {
-                        Some(alt) => alt.eval(env).await,
+                        Some(alt) => Self::eval(*alt, state, env).await,
                         None => Ok(Expr::from(())),
                     },
                     _ => Err(Error::new("eval, if-expression")),
@@ -1008,17 +984,17 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                     expr,
                     consequence,
                     alternative,
-                } => match expr.eval(env.clone()).await? {
+                } => match Self::eval(*expr, state.clone(), env.clone()).await? {
                     r @ Expr::ReturnExpr(_) => Ok(r),
                     Expr::LitExpr(Literal::Tuple(t)) => {
                         if t.len() == 1 {
                             match consequence.apply(&Expr::LitExpr(t[0].clone())) {
-                                Ok(consequence_apply) => consequence_apply.eval(env).await,
+                                Ok(consequence_apply) => Self::eval(consequence_apply, state, env).await,
                                 Err(e) => Err(e),
                             }
                         } else {
                             match alternative {
-                                Some(alt) => alt.eval(env).await,
+                                Some(alt) => Self::eval(*alt, state, env).await,
                                 None => Ok(Expr::from(())),
                             }
                         }
@@ -1033,7 +1009,7 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                 } => {
                     let mut rs = Vec::new();
                     for (e, re) in matches.into_iter() {
-                        if let Some(r) = e.eval(env.clone()).await?.perform_match(re) {
+                        if let Some(r) = Self::eval(e, state.clone(), env.clone()).await?.perform_match(re) {
                             rs.push(r)
                         } else {
                             return Err(Error::new("eval, if-match-expression: type error"));
@@ -1047,14 +1023,14 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                                 // failed match
                                 match alternative {
                                     None => Ok(Expr::from(())),
-                                    Some(alt) => match alt.eval(env).await? {
+                                    Some(alt) => match Self::eval(*alt, state, env).await? {
                                         r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => Ok(r),
                                         _ => Err(Error::new("eval, if-match-expression")),
                                     },
                                 }
                             } else {
                                 // match
-                                let mut all_captures: BTreeMap<String, Self> = BTreeMap::new();
+                                let mut all_captures: BTreeMap<String, Expr<FlatTyp, FlatLiteral>> = BTreeMap::new();
                                 for (_r, captures) in rs {
                                     if let Some(caps) = captures {
                                         all_captures.extend(caps)
@@ -1070,7 +1046,7 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                                         ));
                                     }
                                 }
-                                match c.eval(env).await? {
+                                match Self::eval(c, state, env).await? {
                                     r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(_) => Ok(r),
                                     _ => Err(Error::new("eval, if-match-expression")),
                                 }
@@ -1085,7 +1061,7 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                 } => {
                     let mut args = Vec::new();
                     for e in arguments.into_iter() {
-                        args.push(e.eval(env.clone()).await?)
+                        args.push(Self::eval(e, state.clone(), env.clone()).await?)
                     }
                     match args.iter().find(|r| r.is_return()) {
                         Some(r) => Ok(r.clone()),
@@ -1095,12 +1071,12 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
                                 for a in args {
                                     r = r.apply(&a)?
                                 }
-                                r.evaluate(env).await
+                                Self::evaluate(r, state, env).await
                             } else if Headers::<FlatTyp>::is_builtin(&function) {
-                                Expr::eval_call(function.as_str(), args)
+                                Self::eval_call(state, function.as_str(), args).await
                             } else if let Some((external, method)) = Headers::<FlatTyp>::split(&function) {
                                 // external function (RPC) or "Ingress/Egress" metadata
-                                let args = Self::literal_vector(args)?;
+                                let args = Expr::literal_vector(args)?;
                                 let call = Call::new(external, method, args);
                                 if external == "Ingress" || external == "Egress" {
                                     env.meta
@@ -1134,7 +1110,14 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
         }
         .boxed()
     }
-    pub async fn evaluate(self, env: Env<FlatTyp, FlatLiteral>) -> Result<Self, self::Error> {
-        Ok(self.eval(env).await?.strip_return())
+    async fn evaluate(e: Expr<FlatTyp, FlatLiteral>, state: Arc<State>, env: Env<FlatTyp, FlatLiteral>) -> Result<Expr<FlatTyp, FlatLiteral>, self::Error> {
+        Ok(Self::eval(e, state.clone(), env).await?.strip_return())
     }
+} 
+
+impl<FlatTyp, FlatLiteral> TExprInterpreter<(), FlatTyp, FlatLiteral> for Expr<FlatTyp, FlatLiteral> 
+where 
+    FlatTyp: 'static + TFlatTyp + std::marker::Send, 
+    FlatLiteral: 'static + TFlatLiteral<FlatTyp> + std::marker::Send + TInterpret<FlatTyp, FlatLiteral>
+{
 }

@@ -9,7 +9,7 @@ use armour_control::rest_api::*;
 use armour_control::ControlPlaneState;
 
 use armour_lang::expressions::{self, *};
-use armour_lang::interpret::{Env, CPEnv, DPEnv};
+use armour_lang::interpret::{Env, CPEnv, DPEnv, TExprInterpreter};
 use armour_lang::labels::{self, *};
 use armour_lang::literals::{self, *};
 use armour_lang::policies::{self, *};
@@ -342,7 +342,7 @@ mod tests_control {
         }
 
         let (expr, env) = onboarding_pol1().await?;
-        let res_seval = expr.sevaluate(Arc::new(state), env.clone()).await?;
+        let res_seval = CPExprWrapper::evaluate(expr, Arc::new(state), env.clone()).await?;
         
         match res_seval {
             Expr::LitExpr(Literal::FlatLiteral(r @ CPFlatLiteral::OnboardingResult(_))) =>{
@@ -459,9 +459,11 @@ mod tests_control {
                 ];
 
                 let env : DPEnv = Env::new(&ingress_req.policy.policy(policies::Protocol::HTTP).unwrap().program);
-                let result = expressions::Expr::call("allow_rest_request", args)
-                .evaluate(env.clone())
-                .await;
+                let result = Expr::evaluate(
+                    expressions::Expr::call("allow_rest_request", args),
+                    Arc::new(()),
+                    env.clone()
+                ).await;
                 //println!{"{:#?}", result};
             },
             Err(res) => panic!(res)

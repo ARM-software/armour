@@ -1,6 +1,6 @@
 use armour_lang::{
     expressions,
-    interpret::CPEnv,
+    interpret::{CPEnv, TExprInterpreter},
     literals::{self, CPFlatLiteral, CPLiteral},
     policies::{self, ONBOARDING_SERVICES},
 };
@@ -41,8 +41,10 @@ impl OnboardingPolicy{
         let env =self.env.clone(); 
 
         async move {
-            let result = expressions::Expr::call(ONBOARDING_SERVICES, vec!(onboarding_data))
-                .sevaluate(Arc::new(state), env.clone())
+            let result = CPExprWrapper::evaluate(
+                    expressions::Expr::call(ONBOARDING_SERVICES, vec!(onboarding_data)),
+                    Arc::new(state), 
+                    env.clone())
                 .await?;
 
             log::debug!("result ({:?}): {}", now.elapsed(), result);

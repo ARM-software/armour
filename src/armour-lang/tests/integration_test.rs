@@ -5,9 +5,9 @@ use armour_lang::labels::{self, *};
 use armour_lang::literals::{self, *};
 use armour_lang::policies;
 use armour_lang::types::{self, *};
-
-use std::str::FromStr;
 use std::collections::{BTreeMap, BTreeSet};
+use std::str::FromStr;
+use std::sync::Arc;
 
 async fn load_policy<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'static>(
     function: &str,
@@ -31,7 +31,7 @@ async fn load_policy<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>
             expr.print_debug();                    
             println!();
             println!("Evaluating the expression");
-            Ok(expr.evaluate(env.clone()).await?)
+            Ok(Expr::evaluate(expr, Arc::new(()), env.clone()).await?)
         },
         _ => Err(expressions::Error::from(format!("interpreter tests, policy loading")))
     }
