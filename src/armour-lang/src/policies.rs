@@ -163,7 +163,7 @@ fn http_policy<FlatTyp:TFlatTyp>() -> ProtocolPolicy<FlatTyp> {
     policy.insert_bool(
         ALLOW_REST_REQUEST,
         vec![
-            vec![Typ::id(), Typ::id(), Typ::http_request(), Typ::data()],
+            vec![Typ::id(), Typ::id(), Typ::http_request(), Typ::data()],//TODO should only be valid for global policy
             vec![Typ::http_request(), Typ::data()],
             vec![Typ::http_request()],
             Vec::new(),
@@ -172,9 +172,9 @@ fn http_policy<FlatTyp:TFlatTyp>() -> ProtocolPolicy<FlatTyp> {
     policy.insert_bool(
         ALLOW_REST_RESPONSE,
         vec![
-            vec![Typ::id(), Typ::id(), Typ::http_response(), Typ::data()],
-            vec![Typ::FlatTyp(FlatTyp::http_response()), Typ::FlatTyp(FlatTyp::data())],
-            vec![Typ::FlatTyp(FlatTyp::http_response())],
+            vec![Typ::id(), Typ::id(), Typ::http_response(), Typ::data()],//TODO should only be valid for global policy
+            vec![Typ::http_response(), Typ::data()],
+            vec![Typ::http_response()],
             Vec::new(),
         ],
     );
@@ -185,17 +185,28 @@ fn tcp_policy<FlatTyp:TFlatTyp>() -> ProtocolPolicy<FlatTyp> {
     let mut policy = ProtocolPolicy::default();
     policy.insert_bool(
         ALLOW_TCP_CONNECTION,
-        vec![vec![Typ::FlatTyp(FlatTyp::connection())], Vec::new()],
+        vec![
+            vec![Typ::id(), Typ::id(), Typ::connection()],//TODO should only be valid for global policy
+            vec![Typ::connection()],
+            Vec::new()
+        ],
     );
     policy.insert_unit(
         ON_TCP_DISCONNECT,
         vec![
-            vec![
-                Typ::FlatTyp(FlatTyp::connection()), 
-                Typ::FlatTyp(FlatTyp::i64()), 
-                Typ::FlatTyp(FlatTyp::i64())
+            vec![//TODO should only be valid for global policy
+                Typ::id(),
+                Typ::id(),
+                Typ::connection(), 
+                Typ::i64(), 
+                Typ::i64()
             ],
-            vec![Typ::FlatTyp(FlatTyp::connection())],
+            vec![
+                Typ::connection(), 
+                Typ::i64(), 
+                Typ::i64()
+            ],
+            vec![Typ::connection()],
             Vec::new(),
         ],
     );

@@ -287,7 +287,7 @@ impl TSExprPEval for CPExpr {
                             }
 
                             //Update the acc if any
-                            if acc_opt.is_some() { //FIXME Duplicated
+                            if acc_opt.is_some() {
                                 let tmp = e.peval(state.clone(), env.clone()).await?;
                                 acc_opt = Some(tmp.clone());
                                 res.push(tmp)    
@@ -584,97 +584,31 @@ impl TSExprPEval for CPExpr {
     }
 }
 
-//FIXME can only process allow_http_response
-pub async fn compile_ingress(
-    state: Arc<State>, 
-    global_pol: policies::GlobalPolicies, 
-    function: &str, 
-    to: &CPID
-) -> Result<policies::DPPolicies, self::Error> {
-    let mut new_gpol = policies::GlobalPolicies::default();
-    for (proto, pol)  in (&global_pol).policies() {
-        let env = CPEnv::new(&pol.program);        
-
-        match pol.program.code.get(function.to_string()) {
-            None => return Err(Error::from(format!(
-                "compile_ingress, {} is undefined in global policy", 
-                function
-            ))), 
-            Some(ref fexpr) => {    
-                //Checking header type
-                check_header(pol, function)?;
-
-                //Replacing the "from" variable by the ID of the µservice
-                let fexpr = fexpr.clone().propagate_subst(
-                    2, 
-                    1, 
-                    &Expr::LitExpr(Literal::id(to.clone()))
-                ); 
-                let body = match fexpr.at_depth(3) {
-                   Some(e) => e,
-                    _ => return Err(Error::from(format!(
-                        "compile_ingress, {} wrong argument number (from, to, request, payload) are expected",
-                        function
-                    ))),
-                };
-
-                match body.pevaluate(state.clone(), env).await {                        
-                    Ok((_, e)) =>{ 
-                        let mut n_pol = policies::GlobalPolicy::default();
-                        let e = Expr::Closure(
-                            Ident("from".to_string()),
-                            Box::new(Expr::Closure(
-                                Ident("req".to_string()),
-                                Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e))
-                            ))
-                        ));
-
-                        let mut e = e.apply(&Expr::call("HttpRequest::from", vec![Expr::bvar("req", 1)]))?;
-                        e = e.apply(&Expr::bvar("req", 1))?;
-                        e = e.apply(&Expr::bvar("payload", 0))?;
-
-                        e = Expr::Closure(Ident("req".to_string()), Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e))));
-
-                        n_pol.program.code.insert(function.to_string(), e.clone()); 
-                        
-                        new_gpol.insert(
-                            proto.clone(), 
-                            compile_helper(pol, function, n_pol)?
-                        );
-                    },
-                    Err(err) => return Err(err)
-                }
-            }
-        }
-    }
-    Ok(policies::DPPolicies::from(new_gpol))
-}
-
-
 fn check_header(
     pol: &policies::GlobalPolicy, 
     function: &str, 
-) -> Result<(), self::Error> {
+) -> Result<usize, self::Error> {
         let expected_sig = match function {
             policies::ALLOW_REST_REQUEST => Signature::new(
-            vec![
-                Typ::id(), 
-                Typ::id(),
-                Typ::http_request(),
-                Typ::data()
-            ], 
-            Typ::bool()
+                vec![ Typ::id(), Typ::id(), Typ::http_request(), Typ::data() ], 
+                Typ::bool()
             ),
             policies::ALLOW_REST_RESPONSE => Signature::new(
-            vec![
-                Typ::id(), 
-                Typ::id(),
-                Typ::http_response(),
-                Typ::data()
-            ], 
-            Typ::bool()
+                vec![ Typ::id(), Typ::id(), Typ::http_response(), Typ::data() ], 
+                Typ::bool()
             ),
-            _ => unimplemented!("TCP not yet implemented")
+            policies::ALLOW_TCP_CONNECTION => Signature::new(
+                vec![Typ::id(), Typ::id(), Typ::connection()],
+                Typ::bool()
+            ),
+            policies::ON_TCP_DISCONNECT => Signature::new(
+                vec![ Typ::id(), Typ::id(), Typ::connection(), Typ::i64(), Typ::i64() ],
+                Typ::bool()
+            ),
+            _ => return Err(Error::from(format!(
+                "unknown main function to specialize: {}", 
+                function
+            )))
         };
         match pol.program.headers.get(function) {
             None => 
@@ -689,7 +623,7 @@ fn check_header(
                     sig,
                     expected_sig
                 ))),
-            _ => Ok(())
+            _ => Ok(expected_sig.args().unwrap().len())
         }
 }
 
@@ -711,62 +645,97 @@ fn compile_helper(
     n_pol.program = n_pol.program.deadcode_elim(&vec![function.to_string()][..])?;
     Ok(n_pol)
 }
-
-//FIXME can only process allow_http_request
-pub async fn compile_egress(
+async fn compile_egress_ingress(
+    f_egress: bool, //true => compile_egress, false => compile_ingress
     state: Arc<State>, 
     global_pol: policies::GlobalPolicies, 
     function: &str, 
-    from: &CPID
+    to: &CPID
 ) -> Result<policies::DPPolicies, self::Error> {
     let mut new_gpol = policies::GlobalPolicies::default();
     for (proto, pol)  in (&global_pol).policies() {
         let env = CPEnv::new(&pol.program);        
 
         match pol.program.code.get(function.to_string()) {
-            None => return Err(Error::from(format!(
-                "compile_egress, {} not define in global policy", 
+            None =>  return Err(Error::from(format!(
+                "compile_{}, {} is undefined in global policy", 
+                if f_egress {"egress"} else {"ingress"},
                 function
             ))), 
             Some(ref fexpr) => {    
                 //Checking header type
-                check_header(pol, function)?;
-                
-                //Replacing the "to" variable by the ID of the µservice
+                let n_args = check_header(pol, function)?;
+
+                //Replacing the "from" variable by the ID of the µservice
                 let fexpr = fexpr.clone().propagate_subst(
-                    3, 
-                    0, 
-                    &Expr::LitExpr(Literal::id(from.clone()))
+                    if f_egress {n_args-1} else {n_args-2}, 
+                    if f_egress {0} else {1}, 
+                    &Expr::LitExpr(Literal::id(to.clone()))
                 ); 
-                let body = match fexpr.at_depth(3) {
+
+
+                let body = match fexpr.at_depth(n_args-1) {
                    Some(e) => e,
-                    _ => return Err(Error::from(format!(
-                        "compile_ingress, {} wrong argument number (from, to, request, payload) are expected", 
-                        function
-                    ))),
+                    _ => unreachable!("check_header prevent this from happening"),
                 };
 
                 match body.pevaluate(state.clone(), env).await {                        
                     Ok((_, e)) =>{ 
-                        let mut n_pol = policies::GlobalPolicy::default();
+                        let mut n_pol = policies::GlobalPolicy::default();                            
 
-                        let e = Expr::Closure(
-                            Ident("to".to_string()),
-                            Box::new(Expr::Closure(
-                                Ident("req".to_string()),
-                                Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e))
-                            ))
-                        ));
+                        //FIXME the following can be shared
+                        let e = match function {
+                            policies::ALLOW_REST_REQUEST | policies::ALLOW_REST_RESPONSE => {
+                                let get_from_name = if function == policies::ALLOW_REST_REQUEST {
+                                    "HttpRequest::from"
+                                } else {
+                                    "HttpResponse::from"
+                                };
 
-                        let mut e = e.apply(&Expr::call("HttpResponse::to", vec![Expr::bvar("req", 1)]))?;
-                        e = e.apply(&Expr::bvar("req", 1))?;
-                        e = e.apply(&Expr::bvar("payload", 0))?;
+                                let mut e = e.subst(0, &Expr::call(get_from_name, vec![Expr::bvar("req", 1)]));
+                                e = e.subst(0, &Expr::bvar("req", 1));
+                                e = e.subst(0, &Expr::bvar("payload", 0));
 
-                        e = Expr::Closure(
-                            Ident("req".to_string()), 
-                            Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e)))
-                        );
-                        
+                                Expr::Closure(
+                                    Ident("req".to_string()), 
+                                    Box::new(Expr::Closure(
+                                        Ident("payload".to_string()), 
+                                        Box::new(e)
+                                    ))
+                                )
+                            },
+                            policies::ALLOW_TCP_CONNECTION => {                                    
+                                let mut e = e.subst(0, &Expr::call("Connection::from", vec![Expr::bvar("conn", 0)]));
+                                e = e.subst(0, &Expr::bvar("conn", 0));
+
+                                Expr::Closure(
+                                    Ident("con".to_string()), 
+                                    Box::new(e)
+                                )
+                            }, 
+                            policies::ON_TCP_DISCONNECT => {                                    
+                                let mut e = e.subst(0, &Expr::call("Connection::from", vec![Expr::bvar("conn", 2)]));
+                                e = e.subst(0, &Expr::bvar("conn", 2));
+                                e = e.subst(0, &Expr::bvar("i", 1));
+                                e = e.subst(0, &Expr::bvar("j", 0));
+
+                                Expr::Closure(
+                                    Ident("conn".to_string()), 
+                                    Box::new(Expr::Closure(
+                                        Ident("i".to_string()), 
+                                        Box::new(Expr::Closure(
+                                            Ident("j".to_string()),
+                                            Box::new(e)
+                                        ))
+                                    ))
+                                )
+                            } 
+                            _ => return Err(Error::from(format!(
+                                "unknown main function to specialize: {}", 
+                                function
+                            )))
+                        };
+
                         n_pol.program.code.insert(function.to_string(), e.clone()); 
                         
                         new_gpol.insert(
@@ -779,6 +748,23 @@ pub async fn compile_egress(
             }
         }
     }
-    println!("compile egress\n{:#?}", new_gpol);
     Ok(policies::DPPolicies::from(new_gpol))
+}
+
+pub async fn compile_egress(
+    state: Arc<State>, 
+    global_pol: policies::GlobalPolicies, 
+    function: &str, 
+    from: &CPID
+) -> Result<policies::DPPolicies, self::Error> {
+    compile_egress_ingress(true, state, global_pol, function, from).await
+}
+
+pub async fn compile_ingress(
+    state: Arc<State>, 
+    global_pol: policies::GlobalPolicies, 
+    function: &str, 
+    to: &CPID
+) -> Result<policies::DPPolicies, self::Error> {
+    compile_egress_ingress(false, state, global_pol, function, to).await
 }

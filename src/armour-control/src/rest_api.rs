@@ -469,8 +469,8 @@ pub mod policy {
                 .await
                 .on_err("error inserting new policy")?;
 
-            log::info!("global policy has been updated");
-            //by default all onboarding services are concerned
+            
+            //by default, all onboarded services are concerned
             let selector = &request.selector.unwrap_or(Label::from_str("ServiceID::**").unwrap());
             log::info!("propagating to proxies according to selector: {}", selector);    
             let services = services_full(&state).await?.into_iter().filter(|service|
@@ -481,30 +481,58 @@ pub mod policy {
                 let local_label = get_local_service_label(&state, &service.service).await?;
 
                 log::info!("updating policy for {}", service.service);
-                let local_egress_pol = compile_egress(
-                    Arc::new(state.clone()), 
-                    global_policy.clone(), 
-                    policies::ALLOW_REST_RESPONSE, //TODO only one main function is supported...
-                    &service.service_id
-                ).await.map_err(|e| internal(e.to_string()))?;
+                let mut local_pol : Option<DPPolicies> = None;
+                let arc_state = Arc::new(state.clone()); 
+                for function in vec![
+                    policies::ALLOW_REST_REQUEST,
+                    policies::ALLOW_REST_RESPONSE,
+                    policies::ALLOW_TCP_CONNECTION,
+                    policies::ON_TCP_DISCONNECT,
+                ]{ 
+                    let tmp_egress_pol = compile_egress(
+                        arc_state.clone(), 
+                        global_policy.clone(), 
+                        function,
+                        &service.service_id
+                    ).await.map_err(|e| internal(e.to_string()))?;
+                    
+                    //NB map_or can not be use, it implies one clone
+                    local_pol = match local_pol {
+                        None => Some(tmp_egress_pol), 
+                        Some(pol) => Some(pol.merge(&tmp_egress_pol))
+                    };
 
-                let local_ingress_pol = compile_ingress(
-                    Arc::new(state.clone()), 
-                    global_policy.clone(), 
-                    policies::ALLOW_REST_REQUEST, //TODO only one main function is supported...
-                    &service.service_id
-                ).await.map_err(|e| internal(e.to_string()))?;
+                    let tmp_ingress_pol = compile_ingress(
+                        arc_state.clone(), 
+                        global_policy.clone(), 
+                        function,
+                        &service.service_id
+                    ).await.map_err(|e| internal(e.to_string()))?;
 
-                helper_update(
-                    client.clone(),
-                    state.clone(),
-                    &local_label,
-                    control::PolicyUpdateRequest{
-                        label: service.service.clone(),
-                        policy: local_ingress_pol.merge(&local_egress_pol),
-                        labels: request.labels.clone(),
+                    local_pol = match local_pol {
+                        None => Some(tmp_ingress_pol), 
+                        Some(pol) => Some(pol.merge(&tmp_ingress_pol))
+                    };
+                }
+                match local_pol {
+                    None =>{ 
+                        log::warn!("error no main function in global policy");
+                        return Ok(internal("error updating policy of selected services"))
                     }
-                ).await?;
+                    Some(local_pol) =>{
+                        helper_update(
+                            client.clone(),
+                            state.clone(),
+                            &local_label,
+                            control::PolicyUpdateRequest{
+                                label: service.service.clone(),
+                                policy: local_pol,
+                                labels: request.labels.clone(),
+                            }
+                        ).await?;
+
+                    } 
+                }
             }
             Ok(HttpResponse::Ok().finish())
         } else {
