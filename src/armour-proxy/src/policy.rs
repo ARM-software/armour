@@ -485,12 +485,16 @@ impl Handler<PolicyRequest> for PolicyActor {
                 tcp_proxy::start_proxy(port, ctx.address())
                     .into_actor(self)
                     .then(move |server, act, _ctx| {
-                        if let Ok(server) = server {
-                            act.tcp.start(server, port);
-                            act.uds_framed.write(PolicyResponse::Started)
-                        } else {
-                            // TODO: show error and port
-                            log::warn!("failed to start TCP proxy")
+                        match server {
+                            Ok(server) => {
+                                act.tcp.start(server, port);
+                                act.uds_framed.write(PolicyResponse::Started)
+                            }
+                            Err(err) => log::warn!(
+                                "failed to start TCP proxy, port {}\n\t{}", 
+                                port, 
+                                err
+                            )
                         };
                         async {}.into_actor(act)
                     })

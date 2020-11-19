@@ -219,7 +219,7 @@ impl Handler<CPOnboardProxy> for ArmourDataHost {
         }
         // if host on-boarded then notify control plane
         if let Some(instance) = self.instances.0.get_mut(&msg.0) {
-            match &instance.meta {
+            match &mut instance.meta {
                 None => log::warn!("RegisterProxy should be processed before CPOnboardingProxy"),
                 Some(meta) => {
                     let label = meta.label.clone();
@@ -227,7 +227,7 @@ impl Handler<CPOnboardProxy> for ArmourDataHost {
                     if msg.1.len() > 1 {
                         log::warn!("Information propagation from proxy to CP assumes there is only one µservice per proxy");
                     }
-                    //TODO maybe can be just borrow as mutable without the ServiceGlobalID notification/event
+                    
                     let mut tmp_dpid = meta.tmp_dpid.clone().unwrap_or(DPID::default());
                     for (ip, labels) in msg.1 {
                         let mut ips = BTreeSet::new();

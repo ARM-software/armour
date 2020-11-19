@@ -81,7 +81,7 @@ impl<FlatTyp:TFlatTyp> fmt::Display for Typ<FlatTyp> {
     }
 }
 
-pub type LocType<FlatTyp> = (Option<Loc>, Typ<FlatTyp>);//FIXME: i use value not ref because i can not create a fct &Typ -> &CPTyp due to lifetime (fct=fromres)
+pub type LocType<FlatTyp> = (Option<Loc>, Typ<FlatTyp>);
 pub type LocTypes<FlatTyp> = Vec<LocType<FlatTyp>>;
 
 //TBuiltin is a work around since specialization is unsable 
@@ -410,7 +410,7 @@ impl parser::Param {
 }
 
 impl<FlatTyp:TFlatTyp> parser::Pattern<FlatTyp> {
-    pub fn typ(&self) -> Typ<FlatTyp> {//FIXME Can not return & anymore, i think the borrowchecker is lost since fct call + generic
+    pub fn typ(&self) -> Typ<FlatTyp> {
         match self {
             parser::Pattern::Regex(_) => Typ::str(),
             parser::Pattern::Label(_) => Typ::label(),
@@ -630,7 +630,7 @@ impl From<DPError> for CPError{
             Error::Mismatch(s, (ol1, t1), (ol2, t2)) =>{
                 let t1=CPTyp::from(t1.clone());
                 let t2=CPTyp::from(t2.clone());
-                Error::Mismatch(s, (ol1, t1), (ol2, t2))//FIXME can not return &CPTyp think created in the fct
+                Error::Mismatch(s, (ol1, t1), (ol2, t2))
             },
             Error::Args(x, y, z) => Error::Args(x, y, z),
             Error::Parse(x) => Error::Parse(x),

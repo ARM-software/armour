@@ -245,8 +245,6 @@ impl TSLitInterpret for CPLiteral {
                 let mut host = obd.host();
                 host.prefix("Host".to_string());
 
-                //TODO refine newid with service information
-
                 let mut id = CPID::default();
                 id.port = obd.port();
                 let id = id.add_label(&service_id);

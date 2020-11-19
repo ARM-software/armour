@@ -263,7 +263,7 @@ impl Label {
         self.match_with(l).is_some()
     }
     pub fn match_with(&self, l: &Label) -> Option<Match> {
-        // TODO support R::**::Test::*
+        //FIXME **/<<>> can only be define at the end of a pattern, ...::**
         let pattern = match self.0.last() {
             Some(Node::RecAny(y)) =>{
                 let mut p = self.clone();
