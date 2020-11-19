@@ -90,8 +90,10 @@ pub trait TBuiltin<FlatTyp:TFlatTyp>{
     fn internal_service(_f: &str) -> Option<Signature<FlatTyp>> {None}
 }
 
-pub trait TFlatTyp : fmt::Display + std::fmt::Debug + Sized + Serialize + Clone + PartialEq + TBuiltin<Self> + Unpin + std::marker::Send + Default + std::marker::Sync {
-    //fn type_check(s: &str, v1: LocTypes<Self>, v2: LocTypes<Self>) -> Result<(), Error<Self>>; 
+pub trait TFlatTyp : 
+    fmt::Display + std::fmt::Debug + std::marker::Send + std::marker::Sync +
+    Clone + Default + PartialEq + Sized + Serialize + TBuiltin<Self> + Unpin 
+{
     
     fn rreturn() -> Self; 
     fn unit() -> Self;
@@ -251,7 +253,11 @@ impl<FlatTyp:TFlatTyp> Typ<FlatTyp> {
         }
     }
 
-    pub fn type_check(s: &str, v1: LocTypes<FlatTyp>, v2: LocTypes<FlatTyp>) -> Result<(), Error<FlatTyp>> {
+    pub fn type_check(
+        s: &str, 
+        v1: LocTypes<FlatTyp>, 
+        v2: LocTypes<FlatTyp>
+    ) -> Result<(), Error<FlatTyp>> {
         let len1 = v1.len();
         let len2 = v2.len();
         if len1 == len2 {
@@ -464,7 +470,11 @@ impl<FlatTyp: TFlatTyp> fmt::Display for Signature<FlatTyp> {
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> parser::FnDecl<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> parser::FnDecl<FlatTyp, FlatLiteral> 
+where 
+    FlatTyp:TFlatTyp, 
+    FlatLiteral:TFlatLiteral<FlatTyp>
+{
     // TODO: report location of errors
     pub fn typ(&self) -> Result<Signature<FlatTyp>, Error<FlatTyp>> {
         let ty = match self.typ_id() {
@@ -515,7 +525,11 @@ impl From<Typ<FlatTyp>> for CPTyp {
     fn from(ty: Typ<FlatTyp>) -> CPTyp{
        match ty {
             Typ::FlatTyp(fty) => Typ::FlatTyp(CPFlatTyp::from(fty)),
-            Typ::Tuple(tys) => Typ::Tuple(tys.into_iter().map(|ty| -> Typ<CPFlatTyp> { CPTyp::from(ty) }).collect()),
+            Typ::Tuple(tys) => Typ::Tuple(
+                tys.into_iter().map(
+                    |ty| -> Typ<CPFlatTyp> { CPTyp::from(ty) }
+                ).collect()
+            ),
             Typ::List(bty) => Typ::List(Box::new(CPTyp::from(*bty))),
        } 
     }
@@ -524,9 +538,15 @@ impl From<CPFlatTyp> for FlatTyp {
     fn from(ty: CPFlatTyp) -> FlatTyp {
         match ty {
             CPFlatTyp::DPFlatTyp(dty) => dty,
-            CPFlatTyp::OnboardingData => panic!("OnboardingData type can not be converted to DPFlatTyp".to_string()),
-            CPFlatTyp::OnboardingResult => panic!("OnboardingResult type can not be converted to DPFlatTyp".to_string()),
-            CPFlatTyp::Policy => panic!("Policy type can not be converted to DPFlatTyp".to_string()),
+            CPFlatTyp::OnboardingData => panic!(
+                "OnboardingData type can not be converted to DPFlatTyp".to_string()
+            ),
+            CPFlatTyp::OnboardingResult => panic!(
+                "OnboardingResult type can not be converted to DPFlatTyp".to_string()
+            ),
+            CPFlatTyp::Policy => panic!(
+                "Policy type can not be converted to DPFlatTyp".to_string()
+            ),
         }
     }
 }
@@ -534,7 +554,11 @@ impl From<CPTyp> for DPTyp {
     fn from(ty: CPTyp) -> Self {
        match ty {
             Typ::FlatTyp(fty) => Typ::FlatTyp(FlatTyp::from(fty)),
-            Typ::Tuple(tys) => Typ::Tuple(tys.into_iter().map(|ty| -> Typ<FlatTyp> { DPTyp::from(ty) }).collect()),
+            Typ::Tuple(tys) => Typ::Tuple(
+                tys.into_iter().map(
+                    |ty| -> Typ<FlatTyp> { DPTyp::from(ty) }
+                ).collect()
+            ),
             Typ::List(bty) => Typ::List(Box::new(DPTyp::from(*bty))),
        } 
     }
@@ -606,7 +630,7 @@ impl From<DPError> for CPError{
             Error::Mismatch(s, (ol1, t1), (ol2, t2)) =>{
                 let t1=CPTyp::from(t1.clone());
                 let t2=CPTyp::from(t2.clone());
-                Error::Mismatch(s, (ol1, t1), (ol2, t2))//can not return &CPTyp think created in the fct
+                Error::Mismatch(s, (ol1, t1), (ol2, t2))//FIXME can not return &CPTyp think created in the fct
             },
             Error::Args(x, y, z) => Error::Args(x, y, z),
             Error::Parse(x) => Error::Parse(x),

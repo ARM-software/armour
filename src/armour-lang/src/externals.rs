@@ -30,7 +30,11 @@ pub struct Call<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'sta
     phantom: PhantomData<(FlatTyp, FlatLiteral)>
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Call<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Call<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     pub fn new(external: &str, method: &str, args: Vec<Literal<FlatTyp, FlatLiteral>>) -> Self {
         Call {
             external: external.to_string(),
@@ -51,7 +55,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Call<FlatTyp, FlatLite
     }
 }
 
-impl<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+TExternals<FlatTyp, FlatLiteral>+'static> Handler<Call<FlatTyp, FlatLiteral>> for ExternalActor {
+impl<FlatTyp, FlatLiteral> Handler<Call<FlatTyp, FlatLiteral>> for ExternalActor 
+where
+    FlatTyp: 'static + TFlatTyp, 
+    FlatLiteral: 'static + TExternals<FlatTyp, FlatLiteral> + TFlatLiteral<FlatTyp>
+{
     type Result = ResponseFuture<Result<Expr<FlatTyp, FlatLiteral>, expressions::Error>>;
     fn handle(&mut self, call: Call<FlatTyp, FlatLiteral>, _ctx: &mut Context<Self>) -> Self::Result {
         Box::pin(Externals::call(self.externals.clone(), call))
@@ -61,7 +69,9 @@ impl<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+TExternals<Flat
 pub type Disconnector = Box<dyn Future<Output = ()> + std::marker::Unpin>;
 
 impl ExternalActor {
-    pub fn new<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(prog: &Program<FlatTyp, FlatLiteral>) -> Self {
+    pub fn new<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(
+        prog: &Program<FlatTyp, FlatLiteral>
+    ) -> Self {
         ExternalActor {
             externals: Arc::new(prog.externals.clone()),
         }
@@ -102,7 +112,6 @@ impl Default for Externals {
 //To specialize buil/read_value
 pub trait TExternals<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>{
     fn build_value(v: external::value::Builder<'_>, lit: &Literal<FlatTyp, FlatLiteral>);
-    //fn read_value(v: external::value::Reader<'_>) -> Result<Literal<FlatTyp, FlatLiteral>, capnp::Error>;
 
     /// Read a Cap'n Proto literal and return an Armour literal
     fn read_value(v: external::value::Reader<'_>) -> Result<Literal<FlatTyp, FlatLiteral>, capnp::Error> {
@@ -132,6 +141,7 @@ pub trait TExternals<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>{
         }
     }
 }
+
 impl TExternals<types::FlatTyp, literals::DPFlatLiteral> for literals::DPFlatLiteral {
     /// Build a Cap'n Proto literal from an Armour literal
     fn build_value(mut v: external::value::Builder<'_>, lit: &DPLiteral) {
@@ -191,6 +201,7 @@ impl TExternals<types::CPFlatTyp, literals::CPFlatLiteral> for literals::CPFlatL
         }
     }
 }
+
 impl Externals {
     pub fn merge(&self, other: &Self) -> Self{
         Externals{

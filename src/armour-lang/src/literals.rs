@@ -60,7 +60,9 @@ macro_rules! cplit (
 #[macro_export]
 macro_rules! cpdplit (
     ($i: ident ($($args:tt)*) ) => (
-        Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*)))
+        Literal::FlatLiteral(
+            CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*))
+        )
     );
 );
 
@@ -142,7 +144,7 @@ impl Default for Version {
 }
 
 #[derive( PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Headers<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+pub struct Headers<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> {
     pub headers: BTreeMap<String, Vec<Vec<u8>>>,
     phantom: PhantomData<(FlatTyp, FlatLiteral)>,
 }
@@ -159,7 +161,11 @@ impl From<CPHeaders> for DPHeaders {
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Headers<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Headers<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     pub fn header(&self, s: &str) -> Literal<FlatTyp, FlatLiteral> {
         match self.headers.get(s) {
             None => Literal::none(),
@@ -205,7 +211,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Headers<FlatTyp, FlatL
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Vec<(&str, &[u8])>> for Headers<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<Vec<(&str, &[u8])>> for Headers<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(h: Vec<(&str, &[u8])>) -> Self {
         let mut headers: BTreeMap<String, Vec<Vec<u8>>> = BTreeMap::new();
         for (k, v) in h.iter() {
@@ -220,7 +230,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Vec<(&str, &[u8])
 }
 
 #[derive( PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
-pub struct ID<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+pub struct ID<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> {
     pub hosts: BTreeSet<String>,
     pub ips: BTreeSet<std::net::IpAddr>,
 
@@ -302,7 +312,7 @@ mod port_serde {
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> ID<FlatTyp, FlatLiteral> {
+impl<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> ID<FlatTyp, FlatLiteral> {
     pub fn new(
         hosts: BTreeSet<String>,
         ips: BTreeSet<std::net::IpAddr>,
@@ -393,7 +403,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> ID<FlatTyp, FlatLitera
 }
 
 #[derive( PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
-pub struct Connection<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+pub struct Connection<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> {
     pub from: ID<FlatTyp, FlatLiteral>,
     pub to: ID<FlatTyp, FlatLiteral>,
     pub number: i64,
@@ -415,8 +425,16 @@ impl From<CPConnection> for DPConnection {
 
 
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Connection<FlatTyp, FlatLiteral> {
-    pub fn new(from: &ID<FlatTyp, FlatLiteral>, to: &ID<FlatTyp, FlatLiteral>, number: i64) -> Self {
+impl<FlatTyp, FlatLiteral> Connection<FlatTyp, FlatLiteral> 
+where 
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
+    pub fn new(
+        from: &ID<FlatTyp, FlatLiteral>, 
+        to: &ID<FlatTyp, FlatLiteral>, 
+        number: i64
+    ) -> Self {
         Connection {
             from: from.clone(),
             to: to.clone(), 
@@ -424,8 +442,12 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Connection<FlatTyp, Fl
             phantom: PhantomData
         }
     }
-    pub fn literal(from: &ID<FlatTyp, FlatLiteral>, to: &ID<FlatTyp, FlatLiteral>, number: i64) -> Literal<FlatTyp, FlatLiteral> {
-        Literal::FlatLiteral(FlatLiteral::connection_from(from, to, number))//Since we can not do overloading, 
+    pub fn literal(
+        from: &ID<FlatTyp, FlatLiteral>, 
+        to: &ID<FlatTyp, FlatLiteral>, 
+        number: i64
+    ) -> Literal<FlatTyp, FlatLiteral> {
+        Literal::FlatLiteral(FlatLiteral::connection_from(from, to, number)) 
         
     }
     pub fn from_to(&self) -> Literal<FlatTyp, FlatLiteral> {
@@ -457,7 +479,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Connection<FlatTyp, Fl
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<(&ID<FlatTyp, FlatLiteral>, &ID<FlatTyp, FlatLiteral>, usize)> for Connection<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<(&ID<FlatTyp, FlatLiteral>, &ID<FlatTyp, FlatLiteral>, usize)> for Connection<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(conn: (&ID<FlatTyp, FlatLiteral>, &ID<FlatTyp, FlatLiteral>, usize)) -> Self {
         let (from, to, number) = conn;
         Connection {
@@ -470,7 +496,7 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<(&ID<FlatTyp, Fla
 }
 
 #[derive( PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
-pub struct HttpRequest<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+pub struct HttpRequest<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> {
     pub method: Method,
     pub version: Version,
     pub path: String,
@@ -495,7 +521,7 @@ impl From<CPHttpRequest> for DPHttpRequest{
     } 
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> HttpRequest<FlatTyp, FlatLiteral> {
+impl<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> HttpRequest<FlatTyp, FlatLiteral> {
     pub fn new(
         method: &str,
         version: &str,
@@ -606,7 +632,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> HttpRequest<FlatTyp, F
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Method> for HttpRequest<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<Method> for HttpRequest<FlatTyp, FlatLiteral> 
+where 
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(method: Method) -> Self {
         let mut new = Self::default();
         new.method = method;
@@ -614,14 +644,18 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Method> for HttpR
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Method> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<Method> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,  
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(method: Method) -> Self {
         Self::http_request(Box::new(method.into()))
     }
 }
 
 #[derive( PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
-pub struct HttpResponse<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  {
+pub struct HttpResponse<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>>  {
     version: Version,
     status: u16,
     headers: Headers<FlatTyp, FlatLiteral>,
@@ -643,7 +677,11 @@ impl From<CPHttpResponse> for DPHttpResponse{
         }
     } 
 }
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> HttpResponse<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> HttpResponse<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     pub fn new(
         version: &str,
         status: u16,
@@ -728,21 +766,33 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> HttpResponse<FlatTyp, 
     }
 }
 
-pub struct VecSet<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+pub struct VecSet<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> {
     phantom: PhantomData<(FlatTyp, FlatLiteral)>,
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> VecSet<FlatTyp, FlatLiteral> {
-    pub fn contains(l: &[Literal<FlatTyp, FlatLiteral>], x: &Literal<FlatTyp, FlatLiteral>) -> Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> VecSet<FlatTyp, FlatLiteral> {
+    pub fn contains(
+        l: &[Literal<FlatTyp, FlatLiteral>], 
+        x: &Literal<FlatTyp, FlatLiteral>
+    ) -> Literal<FlatTyp, FlatLiteral> {
         Literal::bool(l.iter().any(|y| x == y))
     }
-    pub fn is_subset(x: &[Literal<FlatTyp, FlatLiteral>], y: &[Literal<FlatTyp, FlatLiteral>]) -> Literal<FlatTyp, FlatLiteral> {
+    pub fn is_subset(
+        x: &[Literal<FlatTyp, FlatLiteral>], 
+        y: &[Literal<FlatTyp, FlatLiteral>]
+    ) -> Literal<FlatTyp, FlatLiteral> {
         Literal::bool(x.iter().all(|ex| y.iter().any(|ey| ex == ey)))
     }
-    pub fn is_disjoint(x: &[Literal<FlatTyp, FlatLiteral>], y: &[Literal<FlatTyp, FlatLiteral>]) -> Literal<FlatTyp, FlatLiteral> {
+    pub fn is_disjoint(
+        x: &[Literal<FlatTyp, FlatLiteral>], 
+        y: &[Literal<FlatTyp, FlatLiteral>]
+    ) -> Literal<FlatTyp, FlatLiteral> {
         Literal::bool(!x.iter().any(|ex| y.iter().any(|ey| ex == ey)))
     }
-    pub fn difference(x: &[Literal<FlatTyp, FlatLiteral>], y: &[Literal<FlatTyp, FlatLiteral>]) -> Literal<FlatTyp, FlatLiteral> {
+    pub fn difference(
+        x: &[Literal<FlatTyp, FlatLiteral>], 
+        y: &[Literal<FlatTyp, FlatLiteral>]
+    ) -> Literal<FlatTyp, FlatLiteral> {
         Literal::List(
             x.to_owned()
                 .into_iter()
@@ -750,7 +800,10 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> VecSet<FlatTyp, FlatLi
                 .collect(),
         )
     }
-    pub fn intersection(x: &[Literal<FlatTyp, FlatLiteral>], y: &[Literal<FlatTyp, FlatLiteral>]) -> Literal<FlatTyp, FlatLiteral> {
+    pub fn intersection(
+        x: &[Literal<FlatTyp, FlatLiteral>], 
+        y: &[Literal<FlatTyp, FlatLiteral>]
+    ) -> Literal<FlatTyp, FlatLiteral> {
         Literal::List(
             x.to_owned()
                 .into_iter()
@@ -768,18 +821,15 @@ pub struct OnboardingData {
     //service description
     service: labels::Label,                  
     port: Option<u16>,
-    
-    //TODO
-
-    //authentification description
-    //TODO
-
     //exported labels by the proxy, i.e, from the armour-compose file
     proposed_labels: labels::Labels,
     ips: BTreeSet<std::net::IpAddr>
+    
+    //authentification description
+    //TODO
+
 }
 
-//FIXME duplicated
 impl OnboardingData {
     pub fn new(
         host: labels::Label,
@@ -829,7 +879,6 @@ impl OnboardingData {
     }
 }
 
-//TODO find a better structure 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum OnboardingResult {
     Ok(CPID, (Policy, Policy)),//ingress policy, egress policy
@@ -846,6 +895,9 @@ impl OnboardingResult {
     pub fn new_err_str(err: String ) -> Self {
         Self::Err(err, None, None)
     }
+    pub fn new_err_id(err: String, id: CPID) -> Self {
+        Self::Err(err, Some(id), None)
+    }
     pub fn new_ok_lit(id: CPID, p: (Policy, Policy) ) -> CPLiteral {
         Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
             Self::new_ok(id, p)
@@ -861,6 +913,11 @@ impl OnboardingResult {
             Self::new_err_str(err)
         )))
     }
+    pub fn new_err_id_lit(err: String, id: CPID) -> CPLiteral {
+        Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(Box::new(
+            Self::new_err_id(err, id)
+        )))
+    }
 }
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
@@ -870,21 +927,15 @@ pub struct Policy {
 
 use super::externals;
 
-pub trait TFlatLiteral<FlatTyp:TFlatTyp> : std::fmt::Debug + PartialEq + Clone + fmt::Display +
- Unpin + std::marker::Send + Default + externals::TExternals<FlatTyp, Self> + std::marker::Sync 
- + TPrettyLit + TInterpret<FlatTyp, Self> + Serialize + TProtocol<FlatTyp, Self>
-//+ From<bool> + From<Connection> +  From<Vec<u8>>  
-//+ From<f64> + From<labels::Label> +  From<HttpRequest>
-//+ From<HttpResponse> + From<ID<FlatTyp, FlatLiteral>  
-//+ From<usize> + From<i64> + From<std::net::IpAddr>
-//+ From<String> + From<()>
+pub trait TFlatLiteral<FlatTyp: TFlatTyp> : 
+    externals::TExternals<FlatTyp, Self> + fmt::Display + 
+    std::fmt::Debug + std::marker::Send + std::marker::Sync +
+    Clone + Default + PartialEq + TInterpret<FlatTyp, Self> + 
+    TPrettyLit + TProtocol<FlatTyp, Self> + Serialize + Unpin
   {
     fn is_tuple(&self) -> bool; 
     fn typ(&self) -> FlatTyp;
-    //fn none() -> Self; not for flatliteral
-    //fn some(&self) -> Self;
     fn dest_some(&self) -> Option<Self> ;
-
 
     fn bool( b:bool ) -> Self;
     fn is_bool(&self) -> bool;
@@ -964,7 +1015,11 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
         Self::Connection(c)
     }
     
-    fn connection_from(from: &ID<FlatTyp, Self>, to: &ID<FlatTyp, Self>, number: i64) -> Self {
+    fn connection_from(
+        from: &ID<FlatTyp, Self>, 
+        to: &ID<FlatTyp, Self>, 
+        number: i64
+    ) -> Self {
         Self::Connection(Connection {
             from: from.clone(),
             to: to.clone(),
@@ -1088,15 +1143,18 @@ impl TFlatLiteral<FlatTyp> for DPFlatLiteral {
 
 
 #[derive( PartialEq, Debug, Clone, Serialize, Deserialize)]
-pub enum Literal<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
+pub enum Literal<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> {
     FlatLiteral(FlatLiteral),
     List(Vec<Literal<FlatTyp, FlatLiteral>>),
     Tuple(Vec<Literal<FlatTyp, FlatLiteral>>),
     Phantom(PhantomData<FlatTyp>)
 }
 
-//impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> TFlatLiteral<FlatTyp> for Literal<FlatTyp, FlatLiteral> {
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Literal<FlatTyp, FlatLiteral> 
+where 
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     pub fn bool( b:bool ) -> Self { Self::FlatLiteral(FlatLiteral::bool(b)) }
     pub fn is_bool(&self) -> bool{
         match self {
@@ -1231,7 +1289,11 @@ impl fmt::Display for FlatLiteral {
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> fmt::Display for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Literal::FlatLiteral(fl) => fmt::Display::fmt(fl, f),
@@ -1270,9 +1332,15 @@ impl From<CPFlatLiteral> for DPFlatLiteral {
     fn from(cl: CPFlatLiteral) -> Self {
         match cl {
             CPFlatLiteral::DPFlatLiteral(l) => l,
-            CPFlatLiteral::OnboardingData(_) => panic!("OnboardingData can not be converted to a DPFlatLiteral"),
-            CPFlatLiteral::OnboardingResult(_) => panic!("OnboardingResult  can not be converted to a DPFlatLiteral"),
-            CPFlatLiteral::Policy(_) => panic!("Policy can not be converted to a DPFlatLiteral"),
+            CPFlatLiteral::OnboardingData(_) => panic!(
+                "OnboardingData can not be converted to a DPFlatLiteral"
+            ),
+            CPFlatLiteral::OnboardingResult(_) => panic!(
+                "OnboardingResult  can not be converted to a DPFlatLiteral"
+            ),
+            CPFlatLiteral::Policy(_) => panic!(
+                "Policy can not be converted to a DPFlatLiteral"
+            ),
         }
     }
 }
@@ -1280,9 +1348,15 @@ impl From<CPFlatLiteral> for DPFlatLiteral {
 impl From<DPLiteral> for CPLiteral {
     fn from(lit: DPLiteral) -> Self {
         match lit {
-            DPLiteral::FlatLiteral(fl) => Self::FlatLiteral(CPFlatLiteral::DPFlatLiteral(fl)),
-            DPLiteral::List(lits) => Self::List(lits.into_iter().map(|l| Self::from(l)).collect()),
-            DPLiteral::Tuple(lits) => Self::Tuple(lits.into_iter().map(|l| Self::from(l)).collect()),
+            DPLiteral::FlatLiteral(fl) => Self::FlatLiteral(
+                CPFlatLiteral::DPFlatLiteral(fl)
+            ),
+            DPLiteral::List(lits) => Self::List(
+                lits.into_iter().map(|l| Self::from(l)).collect()
+            ),
+            DPLiteral::Tuple(lits) => Self::Tuple(
+                lits.into_iter().map(|l| Self::from(l)).collect()
+            ),
             DPLiteral::Phantom(_) => Self::Phantom(PhantomData)
         }
     }
@@ -1290,9 +1364,15 @@ impl From<DPLiteral> for CPLiteral {
 impl From<CPLiteral> for DPLiteral {
     fn from(lit: CPLiteral) -> DPLiteral {
         match lit {
-            CPLiteral::FlatLiteral(fl) => Self::FlatLiteral(FlatLiteral::from(fl)),
-            CPLiteral::List(lits) => Self::List(lits.into_iter().map(|l| Self::from(l)).collect()),
-            CPLiteral::Tuple(lits) => Self::Tuple(lits.into_iter().map(|l| Self::from(l)).collect()),
+            CPLiteral::FlatLiteral(fl) => Self::FlatLiteral(
+                FlatLiteral::from(fl)
+            ),
+            CPLiteral::List(lits) => Self::List(
+                lits.into_iter().map(|l| Self::from(l)).collect()
+            ),
+            CPLiteral::Tuple(lits) => Self::Tuple(
+                lits.into_iter().map(|l| Self::from(l)).collect()
+            ),
             CPLiteral::Phantom(_) => Self::Phantom(PhantomData)
         }
     }
@@ -1344,7 +1424,11 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
         Self::DPFlatLiteral(DPFlatLiteral::connection(c.into()))
     }
 
-    fn connection_from(from: &ID<CPFlatTyp, Self>, to: &ID<CPFlatTyp, Self>, number: i64) -> Self {
+    fn connection_from(
+        from: &ID<CPFlatTyp, Self>, 
+        to: &ID<CPFlatTyp, Self>, 
+        number: i64
+    ) -> Self {
         Self::DPFlatLiteral(DPFlatLiteral::connection_from(
             &DPID::from(from.clone()),
             &DPID::from(to.clone()),
@@ -1461,18 +1545,30 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
 
 pub type CPLiteral = Literal<CPFlatTyp, CPFlatLiteral>;
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<bool> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<bool> for Literal<FlatTyp, FlatLiteral> 
+where 
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(b: bool) -> Self {
         Self::bool(b)
     }
 }
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Connection<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<Connection<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(conn: Connection<FlatTyp, FlatLiteral>) -> Self {
         Literal::connection(conn)
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&Connection<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<&Connection<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(conn: &Connection<FlatTyp, FlatLiteral>) -> Self {
         Literal::Tuple(vec![
             (&conn.from).into(),
@@ -1482,31 +1578,51 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&Connection<FlatT
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Vec<u8>> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<Vec<u8>> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(d: Vec<u8>) -> Self {
         Literal::data(d)
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&[u8]> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<&[u8]> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(d: &[u8]) -> Self {
         Literal::data(d.to_vec())
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<f64> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<f64> for Literal<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(n: f64) -> Self {
         Literal::float(n)
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<labels::Label> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<labels::Label> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(l: labels::Label) -> Self {
         Literal::label(l)
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&labels::Label> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<&labels::Label> for Literal<FlatTyp, FlatLiteral> 
+where 
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(l: &labels::Label) -> Self {
         l.clone().into()
     }
@@ -1550,13 +1666,21 @@ impl From<&Policy> for CPLiteral {
         Literal::FlatLiteral(CPFlatLiteral::Policy(Box::new(pol.clone())))
     }
 }
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<HttpRequest<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<HttpRequest<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(r: HttpRequest<FlatTyp, FlatLiteral>) -> Self {
         Literal::http_request(Box::new(r))
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&HttpRequest<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<&HttpRequest<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(req: &HttpRequest<FlatTyp, FlatLiteral>) -> Self {
         Literal::Tuple(vec![
             req.method(),
@@ -1569,13 +1693,21 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&HttpRequest<Flat
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<HttpResponse<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<HttpResponse<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> 
+where 
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(r: HttpResponse<FlatTyp, FlatLiteral>) -> Self {
         Literal::http_response(Box::new(r))
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&HttpResponse<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<&HttpResponse<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(res: &HttpResponse<FlatTyp, FlatLiteral>) -> Self {
         Literal::Tuple(vec![
             res.version(),
@@ -1586,43 +1718,60 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&HttpResponse<Fla
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<ID<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<ID<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(id: ID<FlatTyp, FlatLiteral>) -> Self {
         Literal::id(id)
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&ID<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<&ID<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp, 
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(id: &ID<FlatTyp, FlatLiteral>) -> Self {
         Literal::Tuple(vec![id.hosts(), id.ips(), id.port_lit(), id.labels()])
     }
 }
 
-// impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<(std::net::SocketAddr, Option<&BTreeSet<labels::Label>>)> for Literal<FlatTyp, FlatLiteral> {
-//     fn from(s: (std::net::SocketAddr, Option<&BTreeSet<labels::Label>>)) -> Self {
-//         Literal::ID(s.into())
-//     }
-// }
-
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<usize> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<usize> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(n: usize) -> Self {
         Literal::int(n as i64)
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<i64> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<i64> for Literal<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(n: i64) -> Self {
         Literal::int(n)
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<std::net::IpAddr> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<std::net::IpAddr> for Literal<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(ip: std::net::IpAddr) -> Self {
         Literal::ip_addr(ip)
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&std::net::IpAddr> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<&std::net::IpAddr> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(ip: &std::net::IpAddr) -> Self {
         match ip {
             std::net::IpAddr::V4(ip) => {
@@ -1646,45 +1795,63 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&std::net::IpAddr
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&str> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<&str> for Literal<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(s: &str) -> Self {
         Literal::str(s.to_string())
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<String> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<String> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(s: String) -> Self {
         s.as_str().into()
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<()> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<()> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(_: ()) -> Self {
         Literal::unit()
     }
 }
 
-impl<T, FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Vec<T>> for Literal<FlatTyp, FlatLiteral>
+impl<T, FlatTyp, FlatLiteral> From<Vec<T>> for Literal<FlatTyp, FlatLiteral>
 where
     T: Into<Literal<FlatTyp, FlatLiteral>>,
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
 {
     fn from(x: Vec<T>) -> Self {
         Literal::List(x.into_iter().map(|x| x.into()).collect())
     }
 }
 
-impl<T, FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<BTreeSet<T>> for Literal<FlatTyp, FlatLiteral>
+impl<T, FlatTyp, FlatLiteral> From<BTreeSet<T>> for Literal<FlatTyp, FlatLiteral>
 where
     T: Into<Literal<FlatTyp, FlatLiteral>>,
+    FlatTyp:TFlatTyp,
+    FlatLiteral:TFlatLiteral<FlatTyp>
 {
     fn from(x: BTreeSet<T>) -> Self {
         Literal::List(x.into_iter().map(|x| x.into()).collect())
     }
 }
 
-impl<T, FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<Option<T>> for Literal<FlatTyp, FlatLiteral>
+impl<T, FlatTyp, FlatLiteral> From<Option<T>> for Literal<FlatTyp, FlatLiteral>
 where
     T: Into<Literal<FlatTyp, FlatLiteral>>,
+    FlatTyp:TFlatTyp,
+    FlatLiteral:TFlatLiteral<FlatTyp>
 {
     fn from(x: Option<T>) -> Self {
         if let Some(v) = x {
@@ -1695,7 +1862,11 @@ where
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&labels::Match> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<&labels::Match> for Literal<FlatTyp, FlatLiteral>
+where
+    FlatTyp:TFlatTyp,
+    FlatLiteral:TFlatLiteral<FlatTyp>
+{
     fn from(m: &labels::Match) -> Self {
         let v: Vec<(String, String)> = m.into();
         Literal::List(
@@ -1706,13 +1877,21 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<&labels::Match> f
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<labels::Match> for Literal<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<labels::Match> for Literal<FlatTyp, FlatLiteral>
+where
+    FlatTyp:TFlatTyp,
+    FlatLiteral:TFlatLiteral<FlatTyp>
+{
     fn from(m: labels::Match) -> Self {
         (&m).into()
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> std::convert::TryFrom<Literal<FlatTyp, FlatLiteral>> for bool {
+impl<FlatTyp, FlatLiteral> std::convert::TryFrom<Literal<FlatTyp, FlatLiteral>> for bool 
+where
+    FlatTyp:TFlatTyp,
+    FlatLiteral:TFlatLiteral<FlatTyp>
+{
     type Error = ();
     fn try_from(l: Literal<FlatTyp, FlatLiteral>) -> Result<bool, Self::Error> {
         if l.is_bool() {
@@ -1723,7 +1902,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> std::convert::TryFrom<
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> std::convert::TryFrom<Literal<FlatTyp, FlatLiteral>> for () {
+impl<FlatTyp, FlatLiteral> std::convert::TryFrom<Literal<FlatTyp, FlatLiteral>> for () 
+where
+    FlatTyp:TFlatTyp,
+    FlatLiteral:TFlatLiteral<FlatTyp>
+{
     type Error = ();
     fn try_from(l: Literal<FlatTyp, FlatLiteral>) -> Result<(), Self::Error> {
         if l.is_unit() {

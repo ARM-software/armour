@@ -25,7 +25,11 @@ impl From<CPCode> for DPCode {
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Code<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Code<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn cut(&mut self, set: &[String]) {
         for s in set.iter() {
             self.0.remove(s);
@@ -109,7 +113,11 @@ impl From<CPProgram> for DPProgram {
     }
 }
 
-impl< FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Program<FlatTyp, FlatLiteral> {
+impl< FlatTyp, FlatLiteral> Program<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     pub fn set_timeout(&mut self, t: std::time::Duration) {
         self.externals.set_timeout(t)
     }
@@ -150,7 +158,11 @@ pub struct PreProgram<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
 }
 pub type CPPreProgram = PreProgram<CPFlatTyp, CPFlatLiteral>;
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> PreProgram<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> PreProgram<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn add_decl(&mut self, decl: &parser::FnDecl<FlatTyp, FlatLiteral>) -> Result<(), Error> {
         // println!("{:#?}", decl);
         let (name, e, calls) = Expr::from_decl(decl, &self.program.headers)?;
@@ -192,7 +204,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> PreProgram<FlatTyp, Fl
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  std::str::FromStr for PreProgram<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral>  std::str::FromStr for PreProgram<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     type Err = Error;
 
     fn from_str(buf: &str) -> Result<Self, Self::Err> {
@@ -275,7 +291,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  std::str::FromStr for
 }
 
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  Program<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Program<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn aux_deadcode_elim(
         module: &mut PreProgram<FlatTyp, FlatLiteral>,
         e: &Expr<FlatTyp, FlatLiteral>, 

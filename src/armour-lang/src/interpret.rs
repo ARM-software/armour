@@ -1,13 +1,13 @@
 /// policy language interpreter
 // NOTE: no optimization
 use async_trait::async_trait;
-use super::expressions::{Block, Error, Expr, Pattern, CPPrefix, DPPrefix};
+use super::expressions::{Block, Error, Expr, Pattern};
 use super::externals::{Call, ExternalActor};
 use super::headers::{Headers, THeaders};
 use super::labels::Label;
 use super::lang::{Code, Program};
 use super::literals::{
-    self, Connection, CPLiteral, DPLiteral, HttpRequest, HttpResponse, Literal,
+    self, Connection, CPLiteral, HttpRequest, HttpResponse, Literal,
     DPFlatLiteral, CPFlatLiteral, Method,
     OnboardingResult, TFlatLiteral, VecSet,
 };
@@ -43,7 +43,7 @@ where
     pub fn new(prog: &Program<FlatTyp, FlatLiteral>) -> Self {
         Env {
             internal: Arc::new(prog.code.clone()),
-            external: ExternalActor::new(prog).start(), //TODO
+            external: ExternalActor::new(prog).start(),
             meta: IngressEgress::start_default(),
         }
     }
@@ -75,14 +75,25 @@ where
 
 
 #[async_trait]
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>+TInterpret<FlatTyp, FlatLiteral>> TInterpret<FlatTyp, FlatLiteral> for Literal<FlatTyp, FlatLiteral> {
-    fn eval_prefix(&self, p: &Prefix<FlatTyp>) -> Option<Literal<FlatTyp, FlatLiteral>> {
+impl<FlatTyp, FlatLiteral> TInterpret<FlatTyp, FlatLiteral> for Literal<FlatTyp, FlatLiteral> 
+where
+    FlatTyp:TFlatTyp,
+    FlatLiteral:TFlatLiteral<FlatTyp>+TInterpret<FlatTyp, FlatLiteral>
+{
+    fn eval_prefix(
+        &self, 
+        p: &Prefix<FlatTyp>
+    ) -> Option<Literal<FlatTyp, FlatLiteral>> {
         match self {
             Literal::FlatLiteral(fl) => fl.eval_prefix(p),
             _ => None,
         }
     }
-    fn eval_infix(&self, op: &Infix<FlatTyp>, other: &Self) -> Option<Literal<FlatTyp, FlatLiteral>> {
+    fn eval_infix(
+        &self, 
+        op: &Infix<FlatTyp>, 
+        other: &Self
+    ) -> Option<Literal<FlatTyp, FlatLiteral>> {
         match (self, other) {
             (Literal::FlatLiteral(fl), Literal::FlatLiteral(other))  => fl.eval_infix(op, other),
             _ => match (op, self, other) {
@@ -105,9 +116,15 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>+TInterpret<FlatTyp, Fla
         match self {
             Literal::FlatLiteral(fl) => fl.eval_call1(f),
             _ => match (f, self) {
-                ("option::is_none", Literal::Tuple(t)) => Some(Literal::bool(t.is_empty())),
-                ("option::is_some", Literal::Tuple(t)) => Some(Literal::bool(t.len() == 1)),
-                ("list::len", Literal::List(l)) => Some(Literal::int(l.len() as i64)),
+                ("option::is_none", Literal::Tuple(t)) => Some(
+                    Literal::bool(t.is_empty())
+                ),
+                ("option::is_some", Literal::Tuple(t)) => Some(
+                    Literal::bool(t.len() == 1)
+                ),
+                ("list::len", Literal::List(l)) => Some(
+                    Literal::int(l.len() as i64)
+                ),
                 ("list::reduce", Literal::List(l)) => {
                     if let Some(v) = l.get(0) {
                         if l.iter().all(|w| v == w) {
@@ -153,30 +170,45 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>+TInterpret<FlatTyp, Fla
     }
     fn eval_call3(&self, f: &str, l1: &Self, l2: &Self) -> Option<Self> {
         match (self, l1, l2) {
-            (Literal::FlatLiteral(fl), Literal::FlatLiteral(l1), Literal::FlatLiteral(l2)) => fl.eval_call3(f, l1, l2),
+            (
+                Literal::FlatLiteral(fl), 
+                Literal::FlatLiteral(l1), 
+                Literal::FlatLiteral(l2)
+            ) => fl.eval_call3(f, l1, l2),
             _ => None
         }
     }
     #[allow(clippy::many_single_char_names)]
     fn eval_call4(&self, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Option<Self> {
         match (self, l1, l2, l3) {
-            (Literal::FlatLiteral(fl), Literal::FlatLiteral(l1), Literal::FlatLiteral(l2), Literal::FlatLiteral(l3)) => fl.eval_call4(f, l1, l2, l3),
+            (
+                Literal::FlatLiteral(fl), 
+                Literal::FlatLiteral(l1), 
+                Literal::FlatLiteral(l2), 
+                Literal::FlatLiteral(l3)
+            ) => fl.eval_call4(f, l1, l2, l3),
             _ => None
         }
     }
 }
 
-//TODO factorize using same structure as in types.rs
 #[async_trait]
 impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
-    fn eval_prefix(&self, p: &Prefix<types::FlatTyp>) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
+    fn eval_prefix(
+        &self, 
+        p: &Prefix<types::FlatTyp>
+    ) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
         match (p, self) {
             (Prefix::Not, dpflatlit!(Bool(b))) => Some(dplit!(Bool(b.clone()))),
             (Prefix::Minus, dpflatlit!(Int(i))) => Some(dplit!(Int(-i))),
             _ => None,
         }
     }
-    fn eval_infix(&self, op: &Infix<types::FlatTyp>, other: &Self) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
+    fn eval_infix(
+        &self, 
+        op: &Infix<types::FlatTyp>, 
+        other: &Self
+    ) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
         match (op, self, other) {
             (Infix::Equal, _, _) => Some(dplit!(Bool(self == other))),
             (Infix::NotEqual, _, _) => Some(dplit!(Bool(self != other))),
@@ -304,9 +336,17 @@ impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
             _ => None,
         }
     }
-    fn eval_call2(&self, f: &str, other: &Self) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
+    fn eval_call2(
+        &self, 
+        f: &str, 
+        other: &Self
+    ) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
         match (f, self, other) {
-            ("i64::pow", dpflatlit!(Int(i)), dpflatlit!(Int(j))) => Some(dplit!(Int(i.pow(*j as u32)))),
+            ( 
+                "i64::pow", 
+                dpflatlit!(Int(i)), 
+                dpflatlit!(Int(j))
+            ) => Some(dplit!(Int(i.pow(*j as u32)))),
             ("i64::min", dpflatlit!(Int(i)), dpflatlit!(Int(j))) => {
                 Some(dplit!(Int(std::cmp::min(*i, *j))))
             }
@@ -326,34 +366,74 @@ impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
             ("str::contains", dpflatlit!(Str(i)), dpflatlit!(Str(j))) => {
                 Some(dplit!(Bool(i.contains(j))))
             }
-            ("HttpRequest::set_path", dpflatlit!(HttpRequest(req)), dpflatlit!(Str(q))) => {
+            (
+                "HttpRequest::set_path", 
+                dpflatlit!(HttpRequest(req)), 
+                dpflatlit!(Str(q))
+            ) => {
                 Some(req.set_path(q).into())
             }
-            ("HttpRequest::set_query", dpflatlit!(HttpRequest(req)), dpflatlit!(Str(q))) => {
+            (
+                "HttpRequest::set_query", 
+                dpflatlit!(HttpRequest(req)), 
+                dpflatlit!(Str(q))
+            ) => {
                 Some(req.set_query(q).into())
             }
-            ("HttpRequest::header", dpflatlit!(HttpRequest(req)), dpflatlit!(Str(h))) => {
+            (
+                "HttpRequest::header", 
+                dpflatlit!(HttpRequest(req)), 
+                dpflatlit!(Str(h))
+            ) => {
                 Some(req.header(&h))
             }
-            ("HttpRequest::unique_header", dpflatlit!(HttpRequest(req)), dpflatlit!(Str(h))) => {
+            (
+                "HttpRequest::unique_header", 
+                dpflatlit!(HttpRequest(req)), 
+                dpflatlit!(Str(h))
+            ) => {
                 Some(req.unique_header(&h))
             }
-            ("HttpRequest::set_connection", dpflatlit!(HttpRequest(req)), dpflatlit!(Connection(c))) => {
+            (
+                "HttpRequest::set_connection", 
+                dpflatlit!(HttpRequest(req)), 
+                dpflatlit!(Connection(c))
+            ) => {
                 Some(req.set_connection(c).into())
             }
-            ("HttpRequest::set_from", dpflatlit!(HttpRequest(req)), dpflatlit!(ID(f))) => {
+            (
+                "HttpRequest::set_from", 
+                dpflatlit!(HttpRequest(req)), 
+                dpflatlit!(ID(f))
+            ) => {
                 Some(req.set_from(f).into())
             }
-            ("HttpRequest::set_to", dpflatlit!(HttpRequest(req)), dpflatlit!(ID(f))) => {
+            (
+                "HttpRequest::set_to", 
+                dpflatlit!(HttpRequest(req)), 
+                dpflatlit!(ID(f))
+            ) => {
                 Some(req.set_to(f).into())
             }
-            ("HttpResponse::header", dpflatlit!(HttpResponse(res)), dpflatlit!(Str(h))) => {
+            (
+                "HttpResponse::header", 
+                dpflatlit!(HttpResponse(res)), 
+                dpflatlit!(Str(h))
+            ) => {
                 Some(res.header(&h))
             }
-            ("HttpResponse::unique_header", dpflatlit!(HttpResponse(res)), dpflatlit!(Str(h))) => {
+            (
+                "HttpResponse::unique_header", 
+                dpflatlit!(HttpResponse(res)), 
+                dpflatlit!(Str(h))
+            ) => {
                 Some(res.unique_header(&h))
             }
-            ("HttpResponse::set_reason", dpflatlit!(HttpResponse(res)), dpflatlit!(Str(q))) => {
+            (
+                "HttpResponse::set_reason", 
+                dpflatlit!(HttpResponse(res)), 
+                dpflatlit!(Str(q))
+            ) => {
                 Some(res.set_reason(q).into())
             }
             (
@@ -402,7 +482,12 @@ impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
             _ => None,
         }
     }
-    fn eval_call3(&self, f: &str, l1: &Self, l2: &Self) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
+    fn eval_call3(
+        &self, 
+        f: &str, 
+        l1: &Self, 
+        l2: &Self
+    ) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
         match (f, self, l1, l2) {
             (
                 "HttpRequest::set_header",
@@ -416,14 +501,25 @@ impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
                 dpflatlit!(Str(h)),
                 dpflatlit!(Data(v)),
             ) => Some(res.set_header(h, v).into()),
-            ("Connection::new", dpflatlit!(ID(from)), dpflatlit!(ID(to)), dpflatlit!(Int(number))) => {
+            (
+                "Connection::new", 
+                dpflatlit!(ID(from)), 
+                dpflatlit!(ID(to)), 
+                dpflatlit!(Int(number))
+            ) => {
                 Some(Connection::literal(from, to, *number))
             }
             _ => None,
         }
     }
     #[allow(clippy::many_single_char_names)]
-    fn eval_call4(&self, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
+    fn eval_call4(
+        &self, 
+        f: &str, 
+        l1: &Self, 
+        l2: &Self, 
+        l3: &Self
+    ) -> Option<Literal<types::FlatTyp, DPFlatLiteral>> {
         match (f, self, l1, l2, l3) {
             (
                 "IpAddr::from",
@@ -441,7 +537,10 @@ impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
 
 #[async_trait]
 impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
-    fn eval_prefix(&self, p: &Prefix<CPFlatTyp>) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
+    fn eval_prefix(
+        &self, 
+        p: &Prefix<CPFlatTyp>
+    ) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
         match (p, self) {
             (_, CPFlatLiteral::DPFlatLiteral(dpfl)) => 
                 dpfl.eval_prefix( &p.clone().into()).map(CPLiteral::from),
@@ -449,7 +548,11 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
         }
     }
 
-    fn eval_infix(&self, op: &Infix<CPFlatTyp>, other: &Self) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
+    fn eval_infix(
+        &self, 
+        op: &Infix<CPFlatTyp>, 
+        other: &Self
+    ) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
         match (op, self, other) {
             (Infix::Equal, _, _) => Some(Literal::bool(self == other)),
             (Infix::NotEqual, _, _) => Some(Literal::bool(self != other)),
@@ -484,7 +587,7 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
                 Some(obd.proposed_labels()),
             ("OnboardingData::service", cpflatlit!(OnboardingData(obd))) => 
                 Some(obd.service_lit()),
-            ("OnboardingResult::ErrStr",  cpdpflatlit!(Str(err))) => {
+            ( "OnboardingResult::ErrStr",  cpdpflatlit!(Str(err))) => {
                 Some(OnboardingResult::new_err_str_lit(err.clone()))
             },
             (_, CPFlatLiteral::DPFlatLiteral(dpfl)) => dpfl.eval_call1(f).map(CPLiteral::from),
@@ -506,6 +609,16 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             ) => 
                 Some(obd.has_ip(i).into()),
             (
+                "OnboardingResult::ErrID",  
+                cpdpflatlit!(Str(err)),
+                cpdpflatlit!(ID(id))
+            ) => {
+                Some(OnboardingResult::new_err_id_lit(
+                    err.clone(), 
+                    id.clone().into()
+                ))
+            },
+            (
                 _, 
                 CPFlatLiteral::DPFlatLiteral(dpfl1), 
                 CPFlatLiteral::DPFlatLiteral(dpfl2)
@@ -514,7 +627,12 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
             _ => None,
         }
     }
-    fn eval_call3(&self, f: &str, l1: &Self, l2: &Self) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
+    fn eval_call3(
+        &self, 
+        f: &str, 
+        l1: &Self, 
+        l2: &Self
+    ) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
         match (f, self, l1, l2) {
             (  
                 "OnboardingResult::Ok", 
@@ -522,7 +640,10 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
                 cpflatlit!(Policy(p1)),
                 cpflatlit!(Policy(p2))
             ) =>{
-                Some(OnboardingResult::new_ok_lit(id.clone().into(), (*p1.clone(), *p2.clone())))
+                Some(OnboardingResult::new_ok_lit(
+                    id.clone().into(), 
+                    (*p1.clone(), *p2.clone())
+                ))
             },
             (
                 _, 
@@ -535,7 +656,13 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
         }
     }
     #[allow(clippy::many_single_char_names)]
-    fn eval_call4(&self, f: &str, l1: &Self, l2: &Self, l3: &Self) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
+    fn eval_call4(
+        &self, 
+        f: &str, 
+        l1: &Self, 
+        l2: &Self, 
+        l3: &Self
+    ) -> Option<Literal<CPFlatTyp, CPFlatLiteral>> {
         match (f, self, l1, l2, l3) {
             (   
                 "OnboardingResult::Err", 
@@ -563,15 +690,20 @@ impl TInterpret<CPFlatTyp, CPFlatLiteral> for CPFlatLiteral {
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> 
-where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<FlatTyp, FlatLiteral>{ //it means the type does not contain any non-static references
+impl<FlatTyp, FlatLiteral> Expr<FlatTyp, FlatLiteral> 
+where 
+    FlatTyp: std::marker::Send + TFlatTyp, 
+    FlatLiteral: std::marker::Send + TFlatLiteral<FlatTyp> + TInterpret<FlatTyp, FlatLiteral>
+{
     pub fn is_return(&self) -> bool {
         match self {
             Expr::ReturnExpr(_) => true,
             _ => false,
         }
     }
-    pub fn literal_vector(args: Vec<Self>) -> Result<Vec<Literal<FlatTyp, FlatLiteral>>, Error> {
+    pub fn literal_vector(
+        args: Vec<Self>
+    ) -> Result<Vec<Literal<FlatTyp, FlatLiteral>>, Error> {
         let mut v = Vec::new();
         for a in args {
             match a {
@@ -587,13 +719,19 @@ where FlatTyp: std::marker::Send, FlatLiteral: std::marker::Send + TInterpret<Fl
             _ => self,
         }
     }
-    pub fn perform_match(self, pat: Pattern) -> Option<(Self, Option<BTreeMap<String, Self>>)> {
+    pub fn perform_match(
+        self, 
+        pat: Pattern
+    ) -> Option<(Self, Option<BTreeMap<String, Self>>)> {
         match pat {
             Pattern::Regex(re) => self.perform_regex_match(re),
             Pattern::Label(label) => self.perform_label_match(label),
         }
     }
-    fn perform_label_match(self, label: Label) -> Option<(Self, Option<BTreeMap<String, Self>>)> {
+    fn perform_label_match(
+        self, 
+        label: Label
+    ) -> Option<(Self, Option<BTreeMap<String, Self>>)> {
         match self {
             Expr::ReturnExpr(_) => Some((self, None)),
             Expr::LitExpr(Literal::FlatLiteral(ref fl)) if fl.is_label() => {
@@ -681,7 +819,11 @@ where
     FlatTyp: 'static + TFlatTyp + std::marker::Send, 
     FlatLiteral: 'static + TFlatLiteral<FlatTyp> + std::marker::Send + TInterpret<FlatTyp, FlatLiteral>
 {
-    async fn eval_call(_state: Arc<State>, function: &str, args: Vec<Expr<FlatTyp, FlatLiteral>>) -> Result<Expr<FlatTyp, FlatLiteral>, self::Error> {
+    async fn eval_call(
+        _state: Arc<State>, 
+        function: &str, 
+        args: Vec<Expr<FlatTyp, FlatLiteral>>
+    ) -> Result<Expr<FlatTyp, FlatLiteral>, self::Error> {
         // builtin function
         match args.as_slice() {
             [] => match Literal::eval_call0(function) {
@@ -713,7 +855,11 @@ where
     }
 
     #[allow(clippy::cognitive_complexity)]
-    fn eval(e: Expr<FlatTyp, FlatLiteral>, state: Arc<State>, env: Env<FlatTyp, FlatLiteral>) -> BoxFuture<'static, Result<Expr<FlatTyp, FlatLiteral>, self::Error>> {
+    fn eval(
+        e: Expr<FlatTyp, FlatLiteral>, 
+        state: Arc<State>, 
+        env: Env<FlatTyp, FlatLiteral>
+    ) -> BoxFuture<'static, Result<Expr<FlatTyp, FlatLiteral>, self::Error>> {
         async {
             match e {
                 Expr::Var(_) | Expr::BVar(_, _) => Err(Error::new("eval variable")),
@@ -836,30 +982,22 @@ where
                             _=> None
                         };
                         for l in lits.iter() {
+                            let mut e = *e2.clone();
+
+                            //Apply the accumulator if any
+                            if acc_opt.is_some() { 
+                                let acc = acc_opt.clone().unwrap();
+                                e = e.apply(&acc)?;
+                            }
+
+                            //Apply l to e
                             match l {
                                 Literal::Tuple(ref ts) if vs.len() != 1 => {
                                     if vs.len() == ts.len() {
-                                        let mut e = *e2.clone();
-
-                                        //Apply the accumulator if any
-                                        if acc_opt.is_some() { //FIXME Duplicated
-                                            let acc = acc_opt.clone().unwrap();
-                                            e = e.apply(&acc)?;
-                                        }
-
                                         for (v, lit) in vs.iter().zip(ts) {
                                             if v != "_" {
                                                 e = e.apply(&Expr::LitExpr(lit.clone()))?
                                             }
-                                        }
-
-                                        //Update the acc if any
-                                        if acc_opt.is_some() { //FIXME Duplicated
-                                            let tmp = Self::eval(e, state.clone(), env.clone()).await?;
-                                            acc_opt = Some(tmp.clone());
-                                            res.push(tmp)    
-                                        } else {
-                                            res.push(Self::eval(e, state.clone(), env.clone()).await?)
                                         }
                                     } else {
                                         return Err(Error::new(
@@ -869,33 +1007,25 @@ where
                                 }
                                 _ => {
                                     if vs.len() == 1 {
-                                        let mut e = *e2.clone();
-                                        
-                                        //Apply the accumulator if any
-                                        if acc_opt.is_some() { //FIXME Duplicated
-                                            let acc = acc_opt.clone().unwrap();
-                                            e = e.apply(&acc)?;
-                                        }
-
                                         if vs[0] != "_" {
                                             e = e.clone().apply(&Expr::LitExpr(l.clone()))?
                                         }
-                                        
-                                        //Update the acc if any
-                                        if acc_opt.is_some() { //FIXME Duplicated
-                                            let tmp = Self::eval(e, state.clone(), env.clone()).await?;
-                                            acc_opt = Some(tmp.clone());
-                                            res.push(tmp)    
-                                        } else {
-                                            res.push(Self::eval(e, state.clone(), env.clone()).await?)
-                                        }  
                                     } else {
                                         return Err(Error::new(
                                             "eval, iter-expression (not a tuple list)",
                                         ));
                                     }
                                 }
-                            }
+                            };
+
+                            //Update the acc if any
+                            if acc_opt.is_some() {
+                                let tmp = Self::eval(e, state.clone(), env.clone()).await?;
+                                acc_opt = Some(tmp.clone());
+                                res.push(tmp)    
+                            } else {
+                                res.push(Self::eval(e, state.clone(), env.clone()).await?)
+                            }  
                         }
                         match res.iter().find(|r| r.is_return()) {
                             Some(r) => Ok(r.clone()),
@@ -1079,7 +1209,11 @@ where
         }
         .boxed()
     }
-    async fn evaluate(e: Expr<FlatTyp, FlatLiteral>, state: Arc<State>, env: Env<FlatTyp, FlatLiteral>) -> Result<Expr<FlatTyp, FlatLiteral>, self::Error> {
+    async fn evaluate(
+        e: Expr<FlatTyp, FlatLiteral>, 
+        state: Arc<State>, 
+        env: Env<FlatTyp, FlatLiteral>
+    ) -> Result<Expr<FlatTyp, FlatLiteral>, self::Error> {
         Ok(Self::eval(e, state.clone(), env).await?.strip_return())
     }
 } 

@@ -101,7 +101,11 @@ impl TryFrom<&str> for Meta {
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Handler<Call<FlatTyp, FlatLiteral>> for IngressEgress {
+impl<FlatTyp, FlatLiteral> Handler<Call<FlatTyp, FlatLiteral>> for IngressEgress
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     type Result = Result<Expr<FlatTyp, FlatLiteral>, Error>;
     fn handle(&mut self, call: Call<FlatTyp, FlatLiteral>, _ctx: &mut Context<Self>) -> Self::Result {
         let (module, method, args) = call.split();

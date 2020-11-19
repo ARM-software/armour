@@ -52,13 +52,7 @@ pub trait TPTyp : Clone + PartialEq {}
 impl TPTyp for Typ {}
 
 
-//#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-//pub enum CPTyp {
-//    DPTyp(Typ),
-//}
 pub type CPTyp = DPTyp;
-
-//impl TPTyp for CPTyp {}
 
 pub struct Head {
     id: LocIdent,
@@ -145,7 +139,11 @@ pub enum Stmt<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
 #[derive(Debug, Clone)]
 pub struct LocStmt<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(Loc, Stmt<FlatTyp, FlatLiteral>);
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> LocStmt<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> LocStmt<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn let_stmt(l: Loc, i: Vec<LocIdent>, e: LocExpr<FlatTyp, FlatLiteral>) -> LocStmt<FlatTyp, FlatLiteral> {
         LocStmt(l, Stmt::LetStmt(i, e))
     }
@@ -170,39 +168,6 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> LocStmt<FlatTyp, FlatL
     }
 }
 
-//impl From<&Expr> for CPExpr{
-//    fn from(e : &Expr) -> Self {
-//        CPExpr::DPExpr(e.clone()) 
-//    }
-//}
-//
-//impl From<CPExpr> for Expr{
-//    fn from(e : CPExpr) -> Self {
-//        match e {
-//            CPExpr::DPExpr(e) => e
-//        }
-//    }
-//}
-//
-//impl<'a> From<Stmt<CPExpr>> for Stmt{
-//    fn from(stmt : Stmt<CPExpr>) -> Self {
-//        match stmt {
-//            Stmt::LetStmt(v, le) => Stmt::LetStmt(v, LocExpr::from(le)),
-//            Stmt::ReturnStmt(le) => Stmt::ReturnStmt(LocExpr::from(le)),
-//            Stmt::ExprStmt{exp, async_tag, semi} => Stmt::ExprStmt{
-//                exp: Expr::from(exp),
-//                async_tag: async_tag,
-//                semi: semi}
-//        }
-//    }
-//}
-//
-//impl<'a> From<LocStmt<CPExpr>> for LocStmt{
-//    fn from(stmt : LocStmt<CPExpr>) -> Self {
-//        LocStmt(stmt.loc(), Stmt::from(stmt.stmt().clone()) )
-//    }
-//}
-
 #[derive(Debug, Clone)]
 pub struct BlockStmt<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     pub statements: Vec<LocStmt<FlatTyp, FlatLiteral>>,
@@ -221,7 +186,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> BlockStmt<FlatTyp, Fla
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> From<LocExpr<FlatTyp, FlatLiteral>> for BlockStmt<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> From<LocExpr<FlatTyp, FlatLiteral>> for BlockStmt<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(e: LocExpr<FlatTyp, FlatLiteral>) -> BlockStmt<FlatTyp, FlatLiteral> {
         BlockStmt {
             statements: vec![LocStmt::expr_stmt(e, false, false)],
@@ -236,7 +205,11 @@ pub struct BlockStmtRef<'a, FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>
     async_tag: bool,
 }
 
-impl<'a, FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  BlockStmtRef<'a, FlatTyp, FlatLiteral> {
+impl<'a, FlatTyp, FlatLiteral>  BlockStmtRef<'a, FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     pub fn split_first(&self) -> Option<(&LocStmt<FlatTyp, FlatLiteral>, BlockStmtRef<FlatTyp, FlatLiteral>)> {
         if let Some((first, statements)) = self.statements.split_first() {
             Some((
@@ -257,18 +230,6 @@ impl<'a, FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>  BlockStmtRef<'a, 
         self.async_tag
     }
 }
-
-//impl<'a> From<BlockStmtRef<'a>> for BlockStmtRef<'a>{
-//    fn from(block : BlockStmtRef) -> Self {
-//        BlockStmtRef{
-//            statements: if block.is_empty() {Vec::new()} 
-//                        else {(&block.statements).into_iter().map(|ls| LocStmt::from(ls.clone())).collect()},
-//            async_tag: block.async_tag()
-//        }
-//    }
-//}
-            
-            
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum Iter {
@@ -302,7 +263,11 @@ pub enum Expr<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     ListExpr(Vec<LocExpr<FlatTyp, FlatLiteral>>),
     TupleExpr(Vec<LocExpr<FlatTyp, FlatLiteral>>),
     PrefixExpr(Prefix<FlatTyp>, Box<LocExpr<FlatTyp, FlatLiteral>>),
-    InfixExpr(Infix<FlatTyp>, Box<LocExpr<FlatTyp, FlatLiteral>>, Box<LocExpr<FlatTyp, FlatLiteral>>),
+    InfixExpr(
+        Infix<FlatTyp>, 
+        Box<LocExpr<FlatTyp, FlatLiteral>>, 
+        Box<LocExpr<FlatTyp, FlatLiteral>>
+    ),
     IterExpr {
         op: Iter,
         idents: Vec<LocIdent>,
@@ -334,7 +299,11 @@ pub enum Expr<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
 }
 
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Expr<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn eval_call_function(&self) -> Option<String> {
         match self {
             Expr::IdentExpr(id) => Some(id.0.to_string()),
@@ -356,7 +325,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
 #[derive(Debug, Clone)]
 pub struct LocExpr<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>>(Loc, Expr<FlatTyp, FlatLiteral>);
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> LocExpr<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> LocExpr<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     pub fn new(l: &Loc, e: &Expr<FlatTyp, FlatLiteral>) -> Self {
         LocExpr(l.clone(), e.clone())
     }
@@ -491,7 +464,6 @@ enum LocExprOrMatches<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     Expr(LocExpr<FlatTyp, FlatLiteral>),
     Matches(Vec<(LocExpr<FlatTyp, FlatLiteral>, Pattern<FlatTyp>)>),
     SomeMatch(LocIdent, LocExpr<FlatTyp, FlatLiteral>),
-    //Phantom(PhantomData<(FlatTyp, FlatLiteral)>),
 }
 
 #[derive(Debug, Clone)]

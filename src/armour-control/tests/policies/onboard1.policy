@@ -3,11 +3,7 @@ fn onboarding_policy(obd: OnboardingData) -> OnboardingResult {
     let service = obd.service();
 
     if let Some(id) = ControlPlane::onboarded(obd) {
-        OnboardingResult::Err("Endpoint already onboarded",
-                            id,
-                            compile_ingress("allow_rest_request", id),
-                            compile_egress("allow_rest_response", id)
-                        )
+        OnboardingResult::ErrID("Endpoint already onboarded", id)
     } else {
         let id = ControlPlane::newID(obd);
         let id = id.add_label(Label::new("SecureService"));
@@ -28,8 +24,6 @@ fn onboarding_policy(obd: OnboardingData) -> OnboardingResult {
             OnboardingResult::Err("Onboard failure",
                             id,
                             pol.0, pol.1)
-
-
         }
     }
 }

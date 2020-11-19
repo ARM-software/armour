@@ -23,14 +23,26 @@ use super::State;
 
 #[async_trait]
 pub trait TSExprPEval : Sized{
-    fn peval(self, state: Arc<State>, env: CPEnv) -> BoxFuture<'static, Result<(bool, Self), self::Error>>; 
-    async fn pevaluate(self, state: Arc<State>, env: CPEnv) -> Result<(bool, Self), self::Error>; 
+    fn peval(
+        self, 
+        state: Arc<State>, 
+        env: CPEnv
+    ) -> BoxFuture<'static, Result<(bool, Self), self::Error>>; 
+
+    async fn pevaluate(
+        self, 
+        state: Arc<State>, 
+        env: CPEnv
+    ) -> Result<(bool, Self), self::Error>; 
 }
 
 #[async_trait]
 impl TSExprPEval for CPExpr {
 
-    fn peval(self, state: Arc<State>, env: CPEnv) -> BoxFuture<'static, Result<(bool, Self), self::Error>> {
+    fn peval(self, 
+        state: Arc<State>, 
+        env: CPEnv
+    ) -> BoxFuture<'static, Result<(bool, Self), self::Error>> {
         async { 
             match self {
                 Expr::Var(_) | Expr::BVar(_, _) => Ok((false, self)),
@@ -93,7 +105,9 @@ impl TSExprPEval for CPExpr {
                     let r1 = e1.peval(state.clone(), env.clone()).await?;
                     let r2 = e2.peval(state, env).await?;
                     match (r1, r2) {
-                        ((false, x), (_, y)) | ((_,x), (false, y)) => Ok((false, Expr::InfixExpr(op, Box::new(x), Box::new(y)))),
+                        ((false, x), (_, y)) | ((_,x), (false, y)) => Ok(
+                            (false, Expr::InfixExpr(op, Box::new(x), Box::new(y)))
+                        ),
                         ((true, x), (true, y)) => {
                             match (x, y) {
                                 (r @ Expr::ReturnExpr(_), _) => Ok((true, r)),
@@ -193,7 +207,10 @@ impl TSExprPEval for CPExpr {
                                     Err(Error::new("peval, let-expression (literal not a tuple)"))
                                 }
                             },
-                            (false, ee1) =>  Ok((false, Expr::Let(vs, Box::new(ee1), Box::new(e2.peval(state, env).await?.1)))),
+                            (false, ee1) =>  Ok((
+                                false, 
+                                Expr::Let(vs, Box::new(ee1), Box::new(e2.peval(state, env).await?.1))
+                            )),
                             _ => Err(Error::new("peval, let-expression")),
                         }
                     }
@@ -233,30 +250,22 @@ impl TSExprPEval for CPExpr {
                             _=> None
                         };
                         for l in lits.iter() {
+                            let mut e = *e2.clone();
+                            
+                            //Apply the accumulator if any
+                            if acc_opt.is_some() {
+                                let acc = acc_opt.clone().unwrap().1;
+                                e = e.apply(&acc)?;
+                            }
+
+                            //Apply l to e
                             match l {
                                 Literal::Tuple(ref ts) if vs.len() != 1 => {
                                     if vs.len() == ts.len() {
-                                        let mut e = *e2.clone();
-                                        
-                                        //Apply the accumulator if any
-                                        if acc_opt.is_some() { //FIXME Duplicated
-                                            let acc = acc_opt.clone().unwrap().1;
-                                            e = e.apply(&acc)?;
-                                        }
-
                                         for (v, lit) in vs.iter().zip(ts) {
                                             if v != "_" {
                                                 e = e.apply(&Expr::LitExpr(lit.clone()))?
                                             }
-                                        }
-                                        
-                                        //Update the acc if any
-                                        if acc_opt.is_some() { //FIXME Duplicated
-                                            let tmp = e.peval(state.clone(), env.clone()).await?;
-                                            acc_opt = Some(tmp.clone());
-                                            res.push(tmp)    
-                                        } else {
-                                            res.push(e.peval(state.clone(), env.clone()).await?)
                                         }
                                     } else {
                                         return Err(Error::new(
@@ -266,32 +275,24 @@ impl TSExprPEval for CPExpr {
                                 }
                                 _ => {
                                     if vs.len() == 1 {
-                                        let mut e = *e2.clone();
-                                        
-                                        //Apply the accumulator if any
-                                        if acc_opt.is_some() { //FIXME Duplicated
-                                            let acc = acc_opt.clone().unwrap().1;
-                                            e = e.apply(&acc)?;
-                                        }
-
                                         if vs[0] != "_" {
                                             e = e.clone().apply(&Expr::LitExpr(l.clone()))?
                                         }
-
-                                        //Update the acc if any
-                                        if acc_opt.is_some() { //FIXME Duplicated
-                                            let tmp = e.peval(state.clone(), env.clone()).await?;
-                                            acc_opt = Some(tmp.clone());
-                                            res.push(tmp)    
-                                        } else {
-                                            res.push(e.peval(state.clone(), env.clone()).await?)
-                                        }  
                                     } else {
                                         return Err(Error::new(
                                             "peval, iter-expression (not a tuple list)",
                                         ));
                                     }
                                 }
+                            }
+
+                            //Update the acc if any
+                            if acc_opt.is_some() { //FIXME Duplicated
+                                let tmp = e.peval(state.clone(), env.clone()).await?;
+                                acc_opt = Some(tmp.clone());
+                                res.push(tmp)    
+                            } else {
+                                res.push(e.peval(state.clone(), env.clone()).await?)
                             }
                         }
                         
@@ -330,7 +331,16 @@ impl TSExprPEval for CPExpr {
                                 })),
                                 Err(err) => Err(err),
                             },
-                            None if !flag => Ok((false, Expr::Iter(op, vs, Box::new(Expr::LitExpr(Literal::List(lits))), e2, acc_opt.map(|x| Box::new(x.1))))),
+                            None if !flag => Ok((
+                                false, 
+                                Expr::Iter(
+                                    op,
+                                    vs, 
+                                    Box::new(Expr::LitExpr(Literal::List(lits))), 
+                                    e2, 
+                                    acc_opt.map(|x| Box::new(x.1))
+                                )
+                            )),
                             _ => unreachable!("Could not happen in classical logic")
                         }
                     }
@@ -564,29 +574,48 @@ impl TSExprPEval for CPExpr {
         }.boxed()
     }
 
-    async fn pevaluate(self, state: Arc<State>, env: CPEnv) -> Result<(bool, Self), self::Error> {
+    async fn pevaluate(
+        self, 
+        state: Arc<State>, 
+        env: CPEnv
+    ) -> Result<(bool, Self), self::Error> {
         let (b, e) = self.peval(state.clone(), env).await?;
         Ok((b,e.strip_return()))
     }
 }
 
 //FIXME can only process allow_http_response
-pub async fn compile_ingress(state: Arc<State>, global_pol: policies::GlobalPolicies, function: &str, to: &CPID) -> Result<policies::DPPolicies, self::Error> {
+pub async fn compile_ingress(
+    state: Arc<State>, 
+    global_pol: policies::GlobalPolicies, 
+    function: &str, 
+    to: &CPID
+) -> Result<policies::DPPolicies, self::Error> {
     let mut new_gpol = policies::GlobalPolicies::default();
     for (proto, pol)  in (&global_pol).policies() {
         let env = CPEnv::new(&pol.program);        
 
         match pol.program.code.get(function.to_string()) {
-            None => return Err(Error::from(format!("compile_ingress, {} is undefined in global policy", function))), 
+            None => return Err(Error::from(format!(
+                "compile_ingress, {} is undefined in global policy", 
+                function
+            ))), 
             Some(ref fexpr) => {    
                 //Checking header type
                 check_header(pol, function)?;
 
                 //Replacing the "from" variable by the ID of the µservice
-                let fexpr = fexpr.clone().propagate_subst(2, 1, &Expr::LitExpr(Literal::id(to.clone()))); 
+                let fexpr = fexpr.clone().propagate_subst(
+                    2, 
+                    1, 
+                    &Expr::LitExpr(Literal::id(to.clone()))
+                ); 
                 let body = match fexpr.at_depth(3) {
                    Some(e) => e,
-                    _ => return Err(Error::from(format!("compile_ingress, {} wrong argument number (from, to, request, payload) are expected", function))),
+                    _ => return Err(Error::from(format!(
+                        "compile_ingress, {} wrong argument number (from, to, request, payload) are expected",
+                        function
+                    ))),
                 };
 
                 match body.pevaluate(state.clone(), env).await {                        
@@ -649,7 +678,10 @@ fn check_header(
         };
         match pol.program.headers.get(function) {
             None => 
-                Err(Error::from(format!("specialization  checking headers, {} is undefined in global policy", function))), 
+                Err(Error::from(format!(
+                    "specialization  checking headers, {} is undefined in global policy", 
+                    function
+                ))), 
             Some(sig) if *sig != expected_sig => 
                 Err(Error::from(format!(
                     "specialization  checking headers, {} has a wrong signature\n{}\nexpected\n{}",
@@ -667,7 +699,8 @@ fn compile_helper(
     mut n_pol: policies::GlobalPolicy
 ) -> Result<policies::GlobalPolicy, self::Error>  {
     //Update headers
-    let ret_typ = pol.program.headers.return_typ(&function.to_string()).unwrap(); //unwrap is safe since we are actually working on existing fct
+    //unwrap is safe since we are actually working on existing fct
+    let ret_typ = pol.program.headers.return_typ(&function.to_string()).unwrap(); 
     let sig = Signature::new(vec![Typ::http_request(), Typ::data()], ret_typ);
     n_pol.program.headers.insert(function.to_string(), sig);
 
@@ -680,22 +713,37 @@ fn compile_helper(
 }
 
 //FIXME can only process allow_http_request
-pub async fn compile_egress(state: Arc<State>, global_pol: policies::GlobalPolicies, function: &str, from: &CPID) -> Result<policies::DPPolicies, self::Error> {
+pub async fn compile_egress(
+    state: Arc<State>, 
+    global_pol: policies::GlobalPolicies, 
+    function: &str, 
+    from: &CPID
+) -> Result<policies::DPPolicies, self::Error> {
     let mut new_gpol = policies::GlobalPolicies::default();
     for (proto, pol)  in (&global_pol).policies() {
         let env = CPEnv::new(&pol.program);        
 
         match pol.program.code.get(function.to_string()) {
-            None => return Err(Error::from(format!("compile_egress, {} not define in global policy", function))), 
+            None => return Err(Error::from(format!(
+                "compile_egress, {} not define in global policy", 
+                function
+            ))), 
             Some(ref fexpr) => {    
                 //Checking header type
                 check_header(pol, function)?;
                 
                 //Replacing the "to" variable by the ID of the µservice
-                let fexpr = fexpr.clone().propagate_subst(3, 0, &Expr::LitExpr(Literal::id(from.clone()))); 
+                let fexpr = fexpr.clone().propagate_subst(
+                    3, 
+                    0, 
+                    &Expr::LitExpr(Literal::id(from.clone()))
+                ); 
                 let body = match fexpr.at_depth(3) {
                    Some(e) => e,
-                    _ => return Err(Error::from(format!("compile_ingress, {} wrong argument number (from, to, request, payload) are expected", function))),
+                    _ => return Err(Error::from(format!(
+                        "compile_ingress, {} wrong argument number (from, to, request, payload) are expected", 
+                        function
+                    ))),
                 };
 
                 match body.pevaluate(state.clone(), env).await {                        
@@ -714,7 +762,10 @@ pub async fn compile_egress(state: Arc<State>, global_pol: policies::GlobalPolic
                         e = e.apply(&Expr::bvar("req", 1))?;
                         e = e.apply(&Expr::bvar("payload", 0))?;
 
-                        e = Expr::Closure(Ident("req".to_string()), Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e))));
+                        e = Expr::Closure(
+                            Ident("req".to_string()), 
+                            Box::new(Expr::Closure(Ident("payload".to_string()), Box::new(e)))
+                        );
                         
                         n_pol.program.code.insert(function.to_string(), e.clone()); 
                         

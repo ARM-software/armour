@@ -130,8 +130,12 @@ pub trait THeaders<FlatTyp:TFlatTyp> {
         }
     }
 }
-impl<FlatTyp:TFlatTyp> THeaders<FlatTyp> for Headers<FlatTyp> {
-    fn insert(&mut self, key: String, value: Signature<FlatTyp>) -> Option<Signature<FlatTyp>>{
+impl<FlatTyp: TFlatTyp> THeaders<FlatTyp> for Headers<FlatTyp> {
+    fn insert(
+        &mut self, 
+        key: String, 
+        value: Signature<FlatTyp>
+    ) -> Option<Signature<FlatTyp>>{
         self.0.insert(key, value)
     }
     fn remove(&mut self, key: &String) -> Option<Signature<FlatTyp>>{
@@ -144,7 +148,12 @@ impl<FlatTyp:TFlatTyp> THeaders<FlatTyp> for Headers<FlatTyp> {
 
 impl TBuiltin<FlatTyp> for FlatTyp {
     fn builtins(f: &str) -> Option<DPSignature> {
-        let sig = |args:Vec<FlatTyp>, ty| Some(Signature::new(args.into_iter().map(|x:FlatTyp| Typ::FlatTyp(x)).collect(), Typ::FlatTyp(ty)));
+        let sig = |args:Vec<FlatTyp>, ty| Some(
+            Signature::new(
+                args.into_iter().map(|x:FlatTyp| Typ::FlatTyp(x)).collect(),
+                Typ::FlatTyp(ty)
+            )
+        );
         match f {
             "option::Some" => sig(vec![FlatTyp::Return], FlatTyp::Return),
             "i64::abs" => sig(vec![FlatTyp::I64], FlatTyp::I64),
@@ -157,16 +166,31 @@ impl TBuiltin<FlatTyp> for FlatTyp {
             "str::as_bytes" => sig(vec![FlatTyp::Str], FlatTyp::Data),
             "str::from_utf8" => sig(vec![FlatTyp::Data], FlatTyp::Str),
             "str::to_base64" => sig(vec![FlatTyp::Str], FlatTyp::Str),
-            "str::is_match" => sig(vec![FlatTyp::Str, FlatTyp::Regex], FlatTyp::Bool),
-            "regex::is_match" => sig(vec![FlatTyp::Regex, FlatTyp::Str], FlatTyp::Bool),
+            "str::is_match" => sig(
+                vec![FlatTyp::Str, FlatTyp::Regex], 
+                FlatTyp::Bool
+            ),
+            "regex::is_match" => sig(
+                vec![FlatTyp::Regex, FlatTyp::Str], 
+                FlatTyp::Bool
+            ),
             "data::to_base64" => sig(vec![FlatTyp::Data], FlatTyp::Str),
             "data::len" => sig(vec![FlatTyp::Data], FlatTyp::I64),
             "i64::pow" => sig(vec![FlatTyp::I64, FlatTyp::I64], FlatTyp::I64),
             "i64::min" => sig(vec![FlatTyp::I64, FlatTyp::I64], FlatTyp::I64),
             "i64::max" => sig(vec![FlatTyp::I64, FlatTyp::I64], FlatTyp::I64),
-            "str::starts_with" => sig(vec![FlatTyp::Str, FlatTyp::Str], FlatTyp::Bool),
-            "str::ends_with" => sig(vec![FlatTyp::Str, FlatTyp::Str], FlatTyp::Bool),
-            "str::contains" => sig(vec![FlatTyp::Str, FlatTyp::Str], FlatTyp::Bool),
+            "str::starts_with" => sig(
+                vec![FlatTyp::Str, FlatTyp::Str], 
+                FlatTyp::Bool
+            ),
+            "str::ends_with" => sig(
+                vec![FlatTyp::Str, FlatTyp::Str], 
+                FlatTyp::Bool
+            ),
+            "str::contains" => sig(
+                vec![FlatTyp::Str, FlatTyp::Str], 
+                FlatTyp::Bool
+            ),
             "HttpRequest::GET" => sig(vec![], FlatTyp::HttpRequest),
             "HttpRequest::POST" => sig(vec![], FlatTyp::HttpRequest),
             "HttpRequest::PUT" => sig(vec![], FlatTyp::HttpRequest),
@@ -176,33 +200,58 @@ impl TBuiltin<FlatTyp> for FlatTyp {
             "HttpRequest::CONNECT" => sig(vec![], FlatTyp::HttpRequest),
             "HttpRequest::PATCH" => sig(vec![], FlatTyp::HttpRequest),
             "HttpRequest::TRACE" => sig(vec![], FlatTyp::HttpRequest),
-            "HttpRequest::connection" => sig(vec![FlatTyp::HttpRequest], FlatTyp::Connection),
+            "HttpRequest::connection" => sig(
+                vec![FlatTyp::HttpRequest], 
+                FlatTyp::Connection
+            ),
             "HttpRequest::from" => sig(vec![FlatTyp::HttpRequest], FlatTyp::ID),
             "HttpRequest::to" => sig(vec![FlatTyp::HttpRequest], FlatTyp::ID),
-            "HttpRequest::set_from" => sig(vec![FlatTyp::HttpRequest, FlatTyp::ID], FlatTyp::HttpRequest),
-            "HttpRequest::set_to" => sig(vec![FlatTyp::HttpRequest, FlatTyp::ID], FlatTyp::HttpRequest),
+            "HttpRequest::set_from" => sig(
+                vec![FlatTyp::HttpRequest, FlatTyp::ID],
+                FlatTyp::HttpRequest
+            ),
+            "HttpRequest::set_to" => sig(
+                vec![FlatTyp::HttpRequest, FlatTyp::ID], 
+                FlatTyp::HttpRequest
+            ),
             "HttpRequest::method" => sig(vec![FlatTyp::HttpRequest], FlatTyp::Str),
             "HttpRequest::version" => sig(vec![FlatTyp::HttpRequest], FlatTyp::Str),
             "HttpRequest::path" => sig(vec![FlatTyp::HttpRequest], FlatTyp::Str),
             "HttpRequest::query" => sig(vec![FlatTyp::HttpRequest], FlatTyp::Str),
-            "HttpRequest::set_path" => sig(vec![FlatTyp::HttpRequest, FlatTyp::Str], FlatTyp::HttpRequest),
-            "HttpRequest::set_query" => sig(vec![FlatTyp::HttpRequest, FlatTyp::Str], FlatTyp::HttpRequest),
+            "HttpRequest::set_path" => sig(
+                vec![FlatTyp::HttpRequest, FlatTyp::Str], 
+                FlatTyp::HttpRequest
+            ),
+            "HttpRequest::set_query" => sig(
+                vec![FlatTyp::HttpRequest, FlatTyp::Str], 
+                FlatTyp::HttpRequest
+            ),
             "HttpRequest::set_header" => sig(
                 vec![FlatTyp::HttpRequest, FlatTyp::Str, FlatTyp::Data],
                 FlatTyp::HttpRequest,
             ),
-            "HttpRequest::set_connection" => {
-                sig(vec![FlatTyp::HttpRequest, FlatTyp::Connection], FlatTyp::HttpRequest)
-            }
+            "HttpRequest::set_connection" => sig(
+                vec![FlatTyp::HttpRequest, FlatTyp::Connection], 
+                FlatTyp::HttpRequest
+            ),
             "HttpResponse::new" => sig(vec![FlatTyp::I64], FlatTyp::HttpResponse),
             "HttpResponse::connection" => sig(vec![FlatTyp::HttpResponse], FlatTyp::Connection),
             "HttpResponse::from" => sig(vec![FlatTyp::HttpResponse], FlatTyp::ID),
             "HttpResponse::to" => sig(vec![FlatTyp::HttpResponse], FlatTyp::ID),
-            "HttpResponse::set_from" => sig(vec![FlatTyp::HttpResponse, FlatTyp::ID], FlatTyp::HttpResponse),
-            "HttpResponse::set_to" => sig(vec![FlatTyp::HttpResponse, FlatTyp::ID], FlatTyp::HttpResponse),
+            "HttpResponse::set_from" => sig(
+                vec![FlatTyp::HttpResponse, FlatTyp::ID], 
+                FlatTyp::HttpResponse
+            ),
+            "HttpResponse::set_to" => sig(
+                vec![FlatTyp::HttpResponse, FlatTyp::ID], 
+                FlatTyp::HttpResponse
+            ),
             "HttpResponse::status" => sig(vec![FlatTyp::HttpResponse], FlatTyp::I64),
             "HttpResponse::version" => sig(vec![FlatTyp::HttpResponse], FlatTyp::Str),
-            "HttpResponse::set_reason" => sig(vec![FlatTyp::HttpResponse, FlatTyp::Str], FlatTyp::HttpResponse),
+            "HttpResponse::set_reason" => sig(
+                vec![FlatTyp::HttpResponse, FlatTyp::Str], 
+                FlatTyp::HttpResponse
+            ),
             "HttpResponse::set_header" => sig(
                 vec![FlatTyp::HttpResponse, FlatTyp::Str, FlatTyp::Data],
                 FlatTyp::HttpResponse,
@@ -211,7 +260,10 @@ impl TBuiltin<FlatTyp> for FlatTyp {
                 sig(vec![FlatTyp::HttpResponse, FlatTyp::Connection], FlatTyp::HttpResponse)
             }
             "IpAddr::localhost" => sig(vec![], FlatTyp::IpAddr),
-            "IpAddr::from" => sig(vec![FlatTyp::I64, FlatTyp::I64, FlatTyp::I64, FlatTyp::I64], FlatTyp::IpAddr),
+            "IpAddr::from" => sig(
+                vec![FlatTyp::I64, FlatTyp::I64, FlatTyp::I64, FlatTyp::I64], 
+                FlatTyp::IpAddr
+            ),
             "ID::default" => sig(vec![], FlatTyp::ID),
             "ID::add_label" => sig(vec![FlatTyp::ID, FlatTyp::Label], FlatTyp::ID),
             "ID::add_host" => sig(vec![FlatTyp::ID, FlatTyp::Str], FlatTyp::ID),
@@ -221,20 +273,40 @@ impl TBuiltin<FlatTyp> for FlatTyp {
             "ID::has_host" => sig(vec![FlatTyp::ID, FlatTyp::Str], FlatTyp::Bool),
             "ID::has_ip" => sig(vec![FlatTyp::ID, FlatTyp::IpAddr], FlatTyp::Bool),
             "Connection::default" => sig(vec![], FlatTyp::Connection),
-            "Connection::new" => sig(vec![FlatTyp::ID, FlatTyp::ID, FlatTyp::I64], FlatTyp::Connection),
+            "Connection::new" => sig(
+                vec![FlatTyp::ID, FlatTyp::ID, FlatTyp::I64], 
+                FlatTyp::Connection
+            ),
             "Connection::from" => sig(vec![FlatTyp::Connection], FlatTyp::ID),
             "Connection::to" => sig(vec![FlatTyp::Connection], FlatTyp::ID),
             "Connection::number" => sig(vec![FlatTyp::Connection], FlatTyp::I64),
-            "Connection::set_from" => sig(vec![FlatTyp::Connection, FlatTyp::ID], FlatTyp::Connection),
-            "Connection::set_to" => sig(vec![FlatTyp::Connection, FlatTyp::ID], FlatTyp::Connection),
-            "Connection::set_number" => sig(vec![FlatTyp::Connection, FlatTyp::I64], FlatTyp::Connection),
-            "Label::is_match" => sig(vec![FlatTyp::Label, FlatTyp::Label], FlatTyp::Bool),
+            "Connection::set_from" => sig(
+                vec![FlatTyp::Connection, FlatTyp::ID], 
+                FlatTyp::Connection
+            ),
+            "Connection::set_to" => sig(
+                vec![FlatTyp::Connection, FlatTyp::ID], 
+                FlatTyp::Connection
+            ),
+            "Connection::set_number" => sig(
+                vec![FlatTyp::Connection, FlatTyp::I64], 
+                FlatTyp::Connection
+            ),
+            "Label::is_match" => sig(
+                vec![FlatTyp::Label, FlatTyp::Label], 
+                FlatTyp::Bool
+            ),
             "System::getCurrentTime" => sig(vec![], FlatTyp::I64), 
             _ => None,
         }
     }
     fn internal_service(f: &str) -> Option<DPSignature> {
-        let sig = |args:Vec<FlatTyp>, ty| Some(Signature::new(args.into_iter().map(|x:FlatTyp| Typ::FlatTyp(x)).collect(), Typ::FlatTyp(ty)));
+        let sig = |args:Vec<FlatTyp>, ty| Some(
+            Signature::new(
+                args.into_iter().map(|x:FlatTyp| Typ::FlatTyp(x)).collect(), 
+                Typ::FlatTyp(ty)
+            )
+        );
         match f {
             "Ingress::has_label" => sig(vec![FlatTyp::Label], FlatTyp::Bool),
             "Egress::set_id" => sig(vec![], FlatTyp::Unit),
@@ -253,8 +325,14 @@ impl<FlatTyp:TFlatTyp> TBuiltin<FlatTyp> for Typ<FlatTyp> {
         match f {
             "option::is_none" => sig(vec![Typ::any_option()], Typ::bool()),
             "option::is_some" => sig(vec![Typ::any_option()], Typ::bool()),
-            "list::len" => sig(vec![Typ::List(Box::new(Typ::rreturn()))], Typ::i64()),
-            "list::reduce" => sig(vec![Typ::List(Box::new(Typ::rreturn()))], Typ::rreturn().option()),
+            "list::len" => sig(
+                vec![Typ::List(Box::new(Typ::rreturn()))], 
+                Typ::i64()
+            ),
+            "list::reduce" => sig(
+                vec![Typ::List(Box::new(Typ::rreturn()))], 
+                Typ::rreturn().option()
+            ),
             "list::is_subset" => sig(
                 vec![
                     Typ::List(Box::new(Typ::rreturn())),
@@ -287,9 +365,10 @@ impl<FlatTyp:TFlatTyp> TBuiltin<FlatTyp> for Typ<FlatTyp> {
                 vec![Typ::FlatTyp(FlatTyp::http_request())],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::str(), Typ::str()]))),
             ),
-            "HttpRequest::from_to" => {
-                sig(vec![Typ::http_request()], Typ::Tuple(vec![Typ::id(), Typ::id()]))
-            }
+            "HttpRequest::from_to" => sig(
+                vec![Typ::http_request()], 
+                Typ::Tuple(vec![Typ::id(), Typ::id()])
+            ),
             "HttpRequest::header" => sig(
                 vec![Typ::FlatTyp(FlatTyp::http_request()), Typ::str()],
                 Typ::List(Box::new(Typ::data())).option(),
@@ -298,26 +377,38 @@ impl<FlatTyp:TFlatTyp> TBuiltin<FlatTyp> for Typ<FlatTyp> {
                 vec![Typ::FlatTyp(FlatTyp::http_request())],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::str(), Typ::data()]))),
             ),
-            "HttpResponse::reason" => sig(vec![Typ::FlatTyp(FlatTyp::http_response())], Typ::str().option()),
-            "HttpRequest::unique_header" => {
-                sig(vec![Typ::FlatTyp(FlatTyp::http_request()), Typ::str()], Typ::data().option())
-            }
-            "HttpResponse::from_to" => {
-                sig(vec![Typ::FlatTyp(FlatTyp::http_response())], Typ::Tuple(vec![Typ::id(), Typ::id()]))
-            }
+            "HttpResponse::reason" => sig(
+                vec![Typ::FlatTyp(FlatTyp::http_response())], 
+                Typ::str().option()
+            ),
+            "HttpRequest::unique_header" => sig(
+                vec![Typ::FlatTyp(FlatTyp::http_request()), 
+                Typ::str()], Typ::data().option()
+            ),
+            "HttpResponse::from_to" => sig(
+                vec![Typ::FlatTyp(FlatTyp::http_response())],
+                Typ::Tuple(vec![Typ::id(), Typ::id()])
+            ),
             "HttpResponse::header" => sig(
                 vec![Typ::FlatTyp(FlatTyp::http_response()), Typ::str()],
                 Typ::List(Box::new(Typ::data())).option(),
             ),
-            "HttpResponse::headers" => sig(vec![Typ::FlatTyp(FlatTyp::http_response())], Typ::List(Box::new(Typ::str()))),
+            "HttpResponse::headers" => sig(
+                vec![Typ::FlatTyp(FlatTyp::http_response())], 
+                Typ::List(Box::new(Typ::str()))
+            ),
             "HttpResponse::header_pairs" => sig(
                 vec![Typ::FlatTyp(FlatTyp::http_response())],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::str(), Typ::data()]))),
             ),
-            "HttpResponse::unique_header" => {
-                sig(vec![Typ::FlatTyp(FlatTyp::http_response()), Typ::str()], Typ::data().option())
-            }
-            "IpAddr::lookup" => sig(vec![Typ::str()], Typ::List(Box::new(Typ::ip_addr())).option()),
+            "HttpResponse::unique_header" => sig(
+                vec![Typ::FlatTyp(FlatTyp::http_response()), 
+                Typ::str()], Typ::data().option()
+            ),
+            "IpAddr::lookup" => sig(
+                vec![Typ::str()], 
+                Typ::List(Box::new(Typ::ip_addr())).option()
+            ),
             "IpAddr::octets" => sig(
                 vec![Typ::ip_addr()],
                 Typ::Tuple(vec![Typ::i64(), Typ::i64(), Typ::i64(), Typ::i64()]),
@@ -330,7 +421,10 @@ impl<FlatTyp:TFlatTyp> TBuiltin<FlatTyp> for Typ<FlatTyp> {
                 vec![Typ::label(), Typ::label()],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::str(), Typ::str()]))).option(),
             ),
-            "Label::parts" => sig(vec![Typ::label()], Typ::List(Box::new(Typ::str())).option()),
+            "Label::parts" => sig(
+                vec![Typ::label()], 
+                Typ::List(Box::new(Typ::str())).option()
+            ),
             f => FlatTyp::builtins(f),
         }
     }
@@ -355,7 +449,12 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
             Some(sig) => { 
                 match sig.split() { 
                     (None, ty) => Some(Signature::new_noargs(CPTyp::from(ty))),
-                    (Some(args), ty) => Some(Signature::new(args.into_iter().map(|ty:DPTyp| CPTyp::from(ty)).collect() , CPTyp::from(ty))) 
+                    (Some(args), ty) => Some(
+                        Signature::new(
+                            args.into_iter().map(|ty:DPTyp| CPTyp::from(ty)).collect(),
+                            CPTyp::from(ty)
+                        )
+                    ) 
                 }
             }
         };
@@ -364,20 +463,47 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
             //Onboarding policy
             "allow_egress" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Policy)),
             "allow_ingress" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Policy)),
-            "compile_egress" => sig(vec![CPTyp::str(), CPTyp::id()], CPTyp::FlatTyp(CPFlatTyp::Policy)),
-            "compile_ingress" => sig(vec![CPTyp::str(), CPTyp::id()], CPTyp::FlatTyp(CPFlatTyp::Policy)),
+            "compile_egress" => sig(
+                vec![CPTyp::str(), CPTyp::id()], 
+                CPTyp::FlatTyp(CPFlatTyp::Policy)
+            ),
+            "compile_ingress" => sig(
+                vec![CPTyp::str(), CPTyp::id()], 
+                CPTyp::FlatTyp(CPFlatTyp::Policy)
+            ),
             "deny_egress" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Policy)),
             "deny_ingress" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Policy)),
             "ControlPlane::onboard" => sig(vec![CPTyp::id()], CPTyp::bool()),
-            "ControlPlane::onboarded" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::id().option()),
-            "ControlPlane::newID" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::id()),
+            "ControlPlane::onboarded" => sig(
+                vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], 
+                CPTyp::id().option()
+            ),
+            "ControlPlane::newID" => sig(
+                vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], 
+                CPTyp::id()
+            ),
             "Label::new" => sig(vec![CPTyp::str()], CPTyp::label()),
             "Label::login_time" => sig(vec![CPTyp::i64()], CPTyp::label()),
-            "OnboardingData::proposed_labels" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::List(Box::new(CPTyp::label()))),
-            "OnboardingData::has_proposed_label" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData), CPTyp::label()], CPTyp::bool()),
-            "OnboardingData::has_ip" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData), CPTyp::ip_addr()], CPTyp::bool()),
-            "OnboardingData::host" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::label()),
-            "OnboardingData::service" => sig(vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], CPTyp::label()),
+            "OnboardingData::proposed_labels" => sig(
+                vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)],
+                CPTyp::List(Box::new(CPTyp::label()))
+            ),
+            "OnboardingData::has_proposed_label" => sig(
+                vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData), CPTyp::label()], 
+                CPTyp::bool()
+            ),
+            "OnboardingData::has_ip" => sig(
+                vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData), CPTyp::ip_addr()], 
+                CPTyp::bool()
+            ),
+            "OnboardingData::host" => sig(
+                vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], 
+                CPTyp::label()
+            ),
+            "OnboardingData::service" => sig(
+                vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], 
+                CPTyp::label()
+            ),
             "OnboardingResult::Ok" => sig(
                 vec![
                     CPTyp::id(), 
@@ -391,6 +517,12 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
                     CPTyp::id(), 
                     CPTyp::FlatTyp(CPFlatTyp::Policy), 
                     CPTyp::FlatTyp(CPFlatTyp::Policy)
+                ],
+                CPTyp::FlatTyp(CPFlatTyp::OnboardingResult)),
+            "OnboardingResult::ErrID" => sig(
+                vec![
+                    CPTyp::str(),
+                    CPTyp::id(), 
                 ],
                 CPTyp::FlatTyp(CPFlatTyp::OnboardingResult)),
             "OnboardingResult::ErrStr" => sig(
@@ -407,7 +539,12 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
             Some(sig) => { 
                 match sig.split() { 
                     (None, ty) => Some(Signature::new_noargs(CPTyp::from(ty))),
-                    (Some(args), ty) => Some(Signature::new(args.into_iter().map(|ty:DPTyp| CPTyp::from(ty)).collect() , CPTyp::from(ty))) 
+                    (Some(args), ty) => Some(
+                        Signature::new(
+                            args.into_iter().map(|ty:DPTyp| CPTyp::from(ty)).collect(),
+                            CPTyp::from(ty)
+                        )
+                    ) 
                 }
             }
         };
@@ -416,38 +553,3 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
         }
     }
 }
-
-//impl TBuiltin<CPFlatTyp> for CPTyp {
-//    fn builtins(f: &str) -> Option<CPSignature> {
-//        let sig = |args, ty| Some(Signature::new(args, ty));
-//        let convertsig = |sigopt| match sigopt {
-//            None => None,
-//            Some(sig) => { 
-//                let (args, ty) = sig.split(); 
-//                Some(Signature::new( args.map(|ty| CPTyp::from(ty)).collect(), CPTyp::from(ty))) 
-//            }
-//        };
-//        match f {
-//            f => match DPTyp::builtins(f) {
-//                None => CPFlatTyp::builtins(f),
-//                Some(sig) => convertsig(sig)
-//            },
-//        }
-//    }
-//    fn internal_service(f: &str) -> Option<CPSignature> {
-//        let sig = |args, ty| Some(Signature::new(args, ty));
-//        let convertsig = |sigopt| match sigopt {
-//            None => None,
-//            Some(sig) => { 
-//                let (args, ty) = sig.split(); 
-//                Some(Signature::new( args.map(|ty| CPTyp::from(ty)).collect(), CPTyp::from(ty))) 
-//            }
-//        };
-//        match f {
-//            f => match DPTyp::internal_service(f) {
-//                None => CPFlatTyp::internal_service(f),
-//                Some(sig) => convertsig(sig)
-//            },
-//        }
-//    }
-//}

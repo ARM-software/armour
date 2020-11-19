@@ -93,22 +93,31 @@ pub struct ExprAndMeta<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     pub expr: Expr<FlatTyp, FlatLiteral>,
     pub calls: Calls,
     pub typ: Typ<FlatTyp>,
-    phantom_typ : PhantomData<FlatTyp>,
-    phantom_lit : PhantomData<FlatLiteral>,
+    phantom : PhantomData<(FlatTyp, FlatLiteral)>,
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> ExprAndMeta<FlatTyp, FlatLiteral> {
-    fn new(expr: Expr<FlatTyp, FlatLiteral>, typ: Typ<FlatTyp>, v: Vec<Calls>) -> ExprAndMeta<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> ExprAndMeta<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
+    fn new(
+        expr: Expr<FlatTyp, FlatLiteral>, 
+        typ: Typ<FlatTyp>, 
+        v: Vec<Calls>
+    ) -> ExprAndMeta<FlatTyp, FlatLiteral> {
         let mut calls = Calls::new();
         for c in v {
             calls.extend(c)
         }
-        ExprAndMeta { expr, typ, calls, phantom_typ: PhantomData, phantom_lit: PhantomData}
+        ExprAndMeta { expr, typ, calls, phantom: PhantomData}
     }
     fn split(self) -> (Expr<FlatTyp, FlatLiteral>, Calls, Typ<FlatTyp>) {
         (self.expr, self.calls, self.typ)
     }
-    fn split_vec(v: Vec<ExprAndMeta<FlatTyp, FlatLiteral>>) -> (Vec<Expr<FlatTyp, FlatLiteral>>, Vec<Calls>, Vec<Typ<FlatTyp>>) {
+    fn split_vec(
+        v: Vec<ExprAndMeta<FlatTyp, FlatLiteral>>
+    ) -> (Vec<Expr<FlatTyp, FlatLiteral>>, Vec<Calls>, Vec<Typ<FlatTyp>>) {
         let mut exprs = Vec::new();
         let mut calls = Vec::new();
         let mut typs = Vec::new();
@@ -193,7 +202,13 @@ pub enum Expr<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     InfixExpr(Infix<FlatTyp>, Box<Expr<FlatTyp, FlatLiteral>>, Box<Expr<FlatTyp, FlatLiteral>>),
     BlockExpr(Block, Vec<Expr<FlatTyp, FlatLiteral>>),
     Let(Vec<String>, Box<Expr<FlatTyp, FlatLiteral>>, Box<Expr<FlatTyp, FlatLiteral>>),
-    Iter(parser::Iter, Vec<String>, Box<Expr<FlatTyp, FlatLiteral>>, Box<Expr<FlatTyp, FlatLiteral>>, Option<Box<Expr<FlatTyp, FlatLiteral>>>),
+    Iter(   
+        parser::Iter, 
+        Vec<String>, 
+        Box<Expr<FlatTyp, FlatLiteral>>,
+        Box<Expr<FlatTyp, FlatLiteral>>, 
+        Option<Box<Expr<FlatTyp, FlatLiteral>>>
+    ),
     Closure(parser::Ident, Box<Expr<FlatTyp, FlatLiteral>>),
     IfExpr {
         cond: Box<Expr<FlatTyp, FlatLiteral>>,
@@ -218,27 +233,23 @@ pub enum Expr<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     },
     Phantom(PhantomData<(FlatTyp, FlatLiteral)>),
 }
-//impl<'de, FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Deserialize<'de> for Box<Expr<FlatTyp, FlatLiteral>> {
-//
-//    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//    where
-//        D: Deserializer<'de>,
-//    {
-//        /* your implementation here */
-//        match Expr::deserialize(deserializer) {
-//            Ok(e) => Ok(Box::new(e)),
-//            err => err
-//        }
-//    }
-//}
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Default for Expr<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Default for Expr<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn default() -> Self {
         Expr::LitExpr(Literal::unit())
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>, T: Into<Literal<FlatTyp, FlatLiteral>>> From<T> for Expr<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral, T> From<T> for Expr<FlatTyp, FlatLiteral>
+where
+    T: Into<Literal<FlatTyp, FlatLiteral>>,
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn from(t: T) -> Self {
         Expr::LitExpr(t.into())
     }
@@ -377,7 +388,11 @@ impl TExpr<types::FlatTyp> for DPExpr {
         }
     }
 }
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Expr<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     pub fn is_free(&self, u: usize) -> bool {
         match self {
             Expr::Var(_) => true,
@@ -1503,7 +1518,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLite
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> std::str::FromStr for Expr<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> std::str::FromStr for Expr<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {

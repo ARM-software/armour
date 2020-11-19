@@ -25,7 +25,6 @@ pub trait TPrettyLit : std::fmt::Display {
     fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec>;
 }
 
-//not in Expr otherwith we have to alwayse specify type parameter for FlatTyp and FlatLiteral : ...
 fn key<'a, 'b>(data: &'a str) -> RcDoc<'b, ColorSpec> {
     enum Class {
         Keyword,
@@ -56,7 +55,11 @@ fn key<'a, 'b>(data: &'a str) -> RcDoc<'b, ColorSpec> {
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Expr<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Expr<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn vec_str_to_doc<'a, 'b>(l: &'b [String]) -> RcDoc<'a, ColorSpec> {
         if l.len() == 1 {
             RcDoc::as_string(l.get(0).unwrap())
@@ -503,10 +506,11 @@ impl Pattern {
     }
 }
 
-impl<FlatTyp, FlatLiteral> TPrettyLit for  Literal<FlatTyp, FlatLiteral> where 
+impl<FlatTyp, FlatLiteral> TPrettyLit for  Literal<FlatTyp, FlatLiteral>
+where 
     FlatTyp: TFlatTyp,
-    FlatLiteral: TFlatLiteral<FlatTyp> {
-
+    FlatLiteral: TFlatLiteral<FlatTyp> 
+{
     fn to_doc<'a>(&self) -> RcDoc<'a, ColorSpec> {
         match self {
             Literal::FlatLiteral(fl) => fl.to_doc(),
@@ -608,7 +612,11 @@ impl<FlatTyp:TFlatTyp> Typ<FlatTyp> {
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Program<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Program<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn decl_to_doc<'a>(&self, name: &'a str, e: &'a Expr<FlatTyp, FlatLiteral>) -> RcDoc<'a, ColorSpec> {
         let mut args = Vec::new();
         e.closure_vars(&mut args);
@@ -660,7 +668,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Program<FlatTyp, FlatL
     }
 }
 
-impl<FlatTyp:TFlatTyp , FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Program<FlatTyp, FlatLiteral> {
+impl<FlatTyp , FlatLiteral> fmt::Display for Program<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         for (name, e) in self.code.0.iter() {
             writeln!(f, "{}", self.pretty(name, e, 80))?;

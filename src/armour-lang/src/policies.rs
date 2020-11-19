@@ -190,7 +190,11 @@ fn tcp_policy<FlatTyp:TFlatTyp>() -> ProtocolPolicy<FlatTyp> {
     policy.insert_unit(
         ON_TCP_DISCONNECT,
         vec![
-            vec![Typ::FlatTyp(FlatTyp::connection()), Typ::FlatTyp(FlatTyp::i64()), Typ::FlatTyp(FlatTyp::i64())],
+            vec![
+                Typ::FlatTyp(FlatTyp::connection()), 
+                Typ::FlatTyp(FlatTyp::i64()), 
+                Typ::FlatTyp(FlatTyp::i64())
+            ],
             vec![Typ::FlatTyp(FlatTyp::connection())],
             Vec::new(),
         ],
@@ -213,7 +217,11 @@ pub enum Protocol<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
     Phantom(PhantomData<(FlatTyp, FlatLiteral)>)
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> PartialOrd for Protocol<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> PartialOrd for Protocol<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
             (Self::HTTP, Self::TCP) => Some(Ordering::Less),
@@ -226,10 +234,18 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> PartialOrd for Protoco
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Eq for Protocol<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Eq for Protocol<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Ord for Protocol<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Ord for Protocol<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn cmp(&self, other: &Self) -> Ordering {
         //can not panic cf. partial_cmp implementation
         self.partial_cmp(other).unwrap()
@@ -271,7 +287,11 @@ impl TProtocol<types::CPFlatTyp, Self> for literals::CPFlatLiteral {
         }
     }
 }
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Protocol<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Protocol<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn functions(&self) -> Vec<String> {
         self.policy().0.keys().cloned().collect()
     }
@@ -280,7 +300,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Protocol<FlatTyp, Flat
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Protocol<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> fmt::Display for Protocol<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Protocol::HTTP => write!(f, "http"),
@@ -290,7 +314,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Proto
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> FromStr for Protocol<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> FromStr for Protocol<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
@@ -318,7 +346,11 @@ impl From<GlobalPolicy> for DPPolicy {
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policy<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Policy<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     pub fn allow_all(p: Protocol<FlatTyp, FlatLiteral>) -> Self {
         let fn_policies = FnPolicies::allow_all(p.policy().functions().as_ref());
         Policy {
@@ -472,7 +504,11 @@ impl GlobalPolicy {
     }
 }
 
-impl<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> fmt::Display for Policy<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> fmt::Display for Policy<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.is_allow_all() {
             write!(f, "allow all")
@@ -519,11 +555,19 @@ impl From<DPPolicies> for literals::Policy {
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Policies<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     pub fn new() -> Self {
         Policies(BTreeMap::new())  
     }
-    pub fn insert(&mut self, p: Protocol<FlatTyp, FlatLiteral>, policy: Policy<FlatTyp, FlatLiteral>) {
+    pub fn insert(
+        &mut self, 
+        p: Protocol<FlatTyp, FlatLiteral>, 
+        policy: Policy<FlatTyp, FlatLiteral>
+    ) {
         self.0.insert(p, policy);
     }
 
@@ -668,7 +712,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Policies<FlatTyp, Flat
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Policies<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> fmt::Display for Policies<FlatTyp, FlatLiteral> 
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "TCP: ")?;
         if let Some(policy) = self.policy(Protocol::TCP) {
@@ -692,7 +740,11 @@ impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> fmt::Display for Polic
     }
 }
 
-impl<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> Serialize for Policies<FlatTyp, FlatLiteral> {
+impl<FlatTyp, FlatLiteral> Serialize for Policies<FlatTyp, FlatLiteral>
+where
+    FlatTyp: TFlatTyp,
+    FlatLiteral: TFlatLiteral<FlatTyp>
+{
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,

@@ -66,18 +66,6 @@ pub trait TSExprInterpret : Sized{
     async fn sevaluate(self, state: Arc<State>, env: CPEnv) -> Result<Self, self::Error>;
 }
 
-macro_rules! cplit (
-  ($i: ident ($($args:tt)*) ) => (
-      Literal::FlatLiteral(CPFlatLiteral::$i($($args)*))
-  );
-);
-//FIXME duplicated
-macro_rules! cpdplit (
-  ($i: ident ($($args:tt)*) ) => (
-      Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(DPFlatLiteral::$i($($args)*)))
-  );
-);
-
 trait OnErr<T, E>
 where
     Self: Into<Result<T, E>>,
