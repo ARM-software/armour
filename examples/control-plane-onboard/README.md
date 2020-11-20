@@ -135,7 +135,7 @@ Perform the following sequence of commands:
 	**Admin [1]**
 	
 	```sh
-   vagrant$ armour-ctl update-global -p policies/global.policy
+   vagrant$ armour-ctl update-global -p policies/global-id.policy
    vagrant$ armour-ctl update-onboarding -p policies/onboarding.policy
    vagrant$ armour-ctl query-onboarding
    vagrant$ armour-ctl query-global 

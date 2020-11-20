@@ -2,20 +2,19 @@ fn onboarding_policy(obd: OnboardingData) -> OnboardingResult {
     let ep = obd.host();
     let service = obd.service();
     if let Some(id) = ControlPlane::onboarded(obd) {
-        OnboardingResult::Err("Endpoint already onboarded",
-                            id,
-                            compile_ingress("allow_rest_request", id),
-                            compile_egress("allow_rest_response", id))
+        OnboardingResult::ErrID("Endpoint already onboarded", id)
     } else {
         let id = ControlPlane::newID(obd);
         let id = id.add_label(Label::new("SecureService"));
         let id = id.add_label(Label::login_time(System::getCurrentTime()));
          
-        if obd.has_proposed_label(Label::new("test")) {
+        let id = if obd.has_proposed_label(Label::new("test")) {
             id.add_label(Label::new("test::passed"))
+        } else {
+            id.add_label(Label::new("test::failed"))
         };
-
-        map x in obd.proposed_labels { id = id.add_label(x) };
+        
+        let id = fold x in obd.proposed_labels() { acc.add_label(x) } id;
 
         let pol = (compile_ingress("allow_rest_request", id),compile_egress("allow_rest_response", id));
 
@@ -25,8 +24,6 @@ fn onboarding_policy(obd: OnboardingData) -> OnboardingResult {
             OnboardingResult::Err("Onboard failure",
                             id,
                             pol.0, pol.1)
-
         }
     }
-        
 }

@@ -1,13 +1,25 @@
 version: "3.0"
 
 proxies:
-  - label: armour
+  - label: armour1
+    port: 6001
+    debug: true
+  - label: armour2
+    port: 6002
+    debug: true
+  - label: armour3
+    port: 6003
     debug: true
 
 services:
   server:
     container_name: server
     hostname: server
+    armour:
+      proxies:
+      - armour1
+      labels:
+      - server
     build:
       context: ..
       dockerfile: Dockerfile
@@ -28,6 +40,8 @@ services:
     armour:
       labels:
       - allowed
+      proxies:
+      - armour2  
     networks:
       cl-net-1:
         ipv4_address: 172.19.0.2
@@ -37,6 +51,11 @@ services:
     hostname: client-2
     image: python
     tty: true
+    armour:
+      labels:
+      - client-2 
+      proxies:
+      - armour3
     networks:
       cl-net-2:
         ipv4_address: 172.20.0.2

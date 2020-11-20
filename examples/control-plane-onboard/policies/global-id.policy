@@ -1,23 +1,15 @@
 fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {
-    match_to_from(from, to, req) &&
-        server_ok(to) &&
-        req.method() == "GET"
+    to.server_ok() && from.has_label('allowed')
 }
 
 fn server_ok(id: ID) -> bool {
-    "server" in id.hosts() &&
+    id.has_label('server') &&
         if let Some(port) = id.port() {
             port == 80
         } else {
             // default is port 80
             true
         }
-}
-
-fn match_to_from(from: ID, to: ID, req: HttpRequest) -> bool {
-    let (rfrom, rto) = req.from_to();
-    true
-    //rfrom in from.hosts() && rto in to.hosts(), hosts should be ID not string ??
 }
 
 fn allow_rest_response(from: ID, to: ID, req: HttpResponse, payload: data) -> bool {
