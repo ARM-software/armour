@@ -1,6 +1,6 @@
 // Specialize global policy
 use actix::prelude::*;
-use armour_lang::{cplit, cpdplit};
+use armour_lang::{cpdplit};
 use armour_lang::expressions::{Block, CPExpr, Error, Expr};
 use armour_lang::externals::{Call};
 use armour_lang::headers::{CPHeaders, THeaders};
@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use super::interpret::{TSExprInterpret, CPExprWrapper};
+use super::interpret::{CPExprWrapper};
 use super::State;
 
 #[async_trait]
@@ -635,11 +635,24 @@ fn compile_helper(
     //Update headers
     //unwrap is safe since we are actually working on existing fct
     let ret_typ = pol.program.headers.return_typ(&function.to_string()).unwrap(); 
-    let sig = Signature::new(vec![Typ::http_request(), Typ::data()], ret_typ);
-    n_pol.program.headers.insert(function.to_string(), sig);
+    let sig = match function {
+        policies::ALLOW_REST_REQUEST =>
+            Signature::new(vec![Typ::http_request(), Typ::data()], ret_typ),
+        policies::ALLOW_REST_RESPONSE =>
+            Signature::new(vec![Typ::http_response(), Typ::data()], ret_typ),
+        policies::ALLOW_TCP_CONNECTION =>
+            Signature::new(vec![Typ::connection()], ret_typ),
+        policies::ON_TCP_DISCONNECT =>
+            Signature::new(vec![Typ::connection(), Typ::i64(), Typ::i64()], ret_typ),
+        _ => return Err(Error::from(format!(
+            "unknown main function to specialize: {}", 
+            function
+        )))
+    };
+    n_pol.program.headers.insert(function.to_string(), sig.clone());
 
     //Update fn_policies
-    n_pol.fn_policies.set_args(function.to_string(), 2);
+    n_pol.fn_policies.set_args(function.to_string(), sig.args().unwrap().len() as u8);
 
     //Deadcode elimination
     n_pol.program = n_pol.program.deadcode_elim(&vec![function.to_string()][..])?;
@@ -666,7 +679,9 @@ async fn compile_egress_ingress(
                 //Checking header type
                 let n_args = check_header(pol, function)?;
 
-                //Replacing the "from" variable by the ID of the µservice
+                //Replacing the "from" (resp "to") variable by the ID of the µservice
+                //http_rest_request: must be true at call time => from is known
+                //http_rest_response: must be true at return time => to is known ??
                 let fexpr = fexpr.clone().propagate_subst(
                     if f_egress {n_args-1} else {n_args-2}, 
                     if f_egress {0} else {1}, 
@@ -687,14 +702,14 @@ async fn compile_egress_ingress(
                         let e = match function {
                             policies::ALLOW_REST_REQUEST | policies::ALLOW_REST_RESPONSE => {
                                 let get_from_name = if function == policies::ALLOW_REST_REQUEST {
-                                    "HttpRequest::from"
+                                    format!("HttpRequest::{}", if f_egress {"to"} else {"from"})
                                 } else {
-                                    "HttpResponse::from"
+                                    format!("HttpResponse::{}", if f_egress {"to"} else {"from"})
                                 };
 
-                                let mut e = e.subst(0, &Expr::call(get_from_name, vec![Expr::bvar("req", 1)]));
-                                e = e.subst(0, &Expr::bvar("req", 1));
-                                e = e.subst(0, &Expr::bvar("payload", 0));
+                                let mut e = e.subst(2, &Expr::call(&get_from_name[..], vec![Expr::bvar("req", 1)]), false);
+                                //e = e.subst(1, &Expr::bvar("req", 1), false);
+                                //e = e.subst(0, &Expr::bvar("payload", 0), false);
 
                                 Expr::Closure(
                                     Ident("req".to_string()), 
@@ -705,8 +720,14 @@ async fn compile_egress_ingress(
                                 )
                             },
                             policies::ALLOW_TCP_CONNECTION => {                                    
-                                let mut e = e.subst(0, &Expr::call("Connection::from", vec![Expr::bvar("conn", 0)]));
-                                e = e.subst(0, &Expr::bvar("conn", 0));
+                                let mut e = e.subst(1,
+                                    &Expr::call(
+                                        &format!("Connection::{}", if f_egress {"to"} else {"from"} )[..],
+                                        vec![Expr::bvar("conn", 0)]
+                                    ),
+                                    false
+                                );
+                                //e = e.subst(0, &Expr::bvar("conn", 0), false);
 
                                 Expr::Closure(
                                     Ident("con".to_string()), 
@@ -714,10 +735,30 @@ async fn compile_egress_ingress(
                                 )
                             }, 
                             policies::ON_TCP_DISCONNECT => {                                    
-                                let mut e = e.subst(0, &Expr::call("Connection::from", vec![Expr::bvar("conn", 2)]));
-                                e = e.subst(0, &Expr::bvar("conn", 2));
-                                e = e.subst(0, &Expr::bvar("i", 1));
-                                e = e.subst(0, &Expr::bvar("j", 0));
+                                let e = Expr::Closure(
+                                    Ident((if f_egress {"to"} else {"from"}).to_string()),
+                                    Box::new(Expr::Closure(
+                                        Ident("req".to_string()),
+                                        Box::new(Expr::Closure(
+                                            Ident("i".to_string()),
+                                            Box::new(Expr::Closure(
+                                                Ident("j".to_string()),
+                                                Box::new(e)
+                                            ))
+                                        ))
+                                    ))
+                                );
+
+                                let mut e = e.subst(3, 
+                                    &Expr::call(
+                                        &format!("Connection::{}", if f_egress {"to"} else {"from"} )[..],
+                                        vec![Expr::bvar("conn", 2)],
+                                    ),
+                                    false
+                                );
+                                //e = e.subst(0, &Expr::bvar("conn", 2), false);
+                                //e = e.subst(0, &Expr::bvar("i", 1), false);
+                                //e = e.subst(0, &Expr::bvar("j", 0), false);
 
                                 Expr::Closure(
                                     Ident("conn".to_string()), 

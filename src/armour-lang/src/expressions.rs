@@ -604,45 +604,45 @@ where
     pub fn psubst(self, i: usize, u: &Self) -> Self {
         match self {
             Self::Closure(v, e) => Self::Closure(v, Box::new(e.psubst(i, u))),
-            _ => self.subst(i, u)
+            _ => self.subst(i, u, true)
         }
     }
 
-    pub fn subst(self, i: usize, u: &Self) -> Self {
+    pub fn subst(self, i: usize, u: &Self, downgrade: bool) -> Self {
         match self {
             Self::Var(_) | Self::LitExpr(_) => self,
             Self::BVar(ref id, j) => match j.cmp(&i) {
                 Ordering::Less => self,
-                Ordering::Equal => u.clone().shift(i, 0),
-                _ => Self::BVar(id.to_owned(), j - 1),
+                Ordering::Equal => if downgrade {u.clone().shift(i, 0)} else {u.clone()},
+                _ => Self::BVar(id.to_owned(), if downgrade {j - 1} else { j } ),
             },
             Self::Let(l, e1, e2) => {
-                Self::Let(l, Box::new(e1.subst(i, u)), Box::new(e2.subst(i, u)))
+                Self::Let(l, Box::new(e1.subst(i, u, downgrade)), Box::new(e2.subst(i, u, downgrade)))
             }
             Self::Iter(op, l, e1, e2, acc_opt) => {
                 Self::Iter(op, l, 
-                    Box::new(e1.subst(i, u)), 
-                    Box::new(e2.subst(i, u)),
-                    acc_opt.map(|acc| Box::new(acc.subst(i,u)))
+                    Box::new(e1.subst(i, u, downgrade)), 
+                    Box::new(e2.subst(i, u, downgrade)),
+                    acc_opt.map(|acc| Box::new(acc.subst(i, u, downgrade)))
                 )
             }
-            Self::Closure(v, e) => Self::Closure(v, Box::new(e.subst(i + 1, u))),
-            Self::ReturnExpr(e) => Self::return_expr(e.subst(i, u)),
-            Self::PrefixExpr(p, e) => Self::prefix_expr(p, e.subst(i, u)),
-            Self::InfixExpr(op, e1, e2) => Self::infix_expr(op, e1.subst(i, u), e2.subst(i, u)),
+            Self::Closure(v, e) => Self::Closure(v, Box::new(e.subst(i + 1, u, downgrade))),
+            Self::ReturnExpr(e) => Self::return_expr(e.subst(i, u, downgrade)),
+            Self::PrefixExpr(p, e) => Self::prefix_expr(p, e.subst(i, u, downgrade)),
+            Self::InfixExpr(op, e1, e2) => Self::infix_expr(op, e1.subst(i, u, downgrade), e2.subst(i, u, downgrade)),
             Self::BlockExpr(b, es) => {
-                Self::BlockExpr(b, es.into_iter().map(|e| e.subst(i, u)).collect())
+                Self::BlockExpr(b, es.into_iter().map(|e| e.subst(i, u, downgrade)).collect())
             }
             Self::IfExpr {
                 cond,
                 consequence,
                 alternative: None,
-            } => Self::if_expr(cond.subst(i, u), consequence.subst(i, u)),
+            } => Self::if_expr(cond.subst(i, u, downgrade), consequence.subst(i, u, downgrade)),
             Self::IfExpr {
                 cond,
                 consequence,
                 alternative: Some(a),
-            } => Self::if_else_expr(cond.subst(i, u), consequence.subst(i, u), a.subst(i, u)),
+            } => Self::if_else_expr(cond.subst(i, u, downgrade), consequence.subst(i, u, downgrade), a.subst(i, u, downgrade)),
             Self::IfMatchExpr {
                 variables,
                 matches,
@@ -652,19 +652,19 @@ where
                 variables,
                 matches: matches
                     .into_iter()
-                    .map(|(e, p)| (e.subst(i, u), p))
+                    .map(|(e, p)| (e.subst(i, u, downgrade), p))
                     .collect(),
-                consequence: Box::new(consequence.subst(i, u)),
-                alternative: alternative.map(|a| Box::new(a.subst(i, u))),
+                consequence: Box::new(consequence.subst(i, u, downgrade)),
+                alternative: alternative.map(|a| Box::new(a.subst(i, u, downgrade))),
             },
             Self::IfSomeMatchExpr {
                 expr,
                 consequence,
                 alternative,
             } => Self::IfSomeMatchExpr {
-                expr: Box::new(expr.subst(i, u)),
-                consequence: Box::new(consequence.subst(i, u)),
-                alternative: alternative.map(|e| Box::new(e.subst(i, u))),
+                expr: Box::new(expr.subst(i, u, downgrade)),
+                consequence: Box::new(consequence.subst(i, u, downgrade)),
+                alternative: alternative.map(|e| Box::new(e.subst(i, u, downgrade))),
             },
             Self::CallExpr {
                 function,
@@ -672,7 +672,7 @@ where
                 is_async,
             } => Self::CallExpr {
                 function,
-                arguments: arguments.into_iter().map(|a| a.subst(i, u)).collect(),
+                arguments: arguments.into_iter().map(|a| a.subst(i, u, downgrade)).collect(),
                 is_async,
             },
             Self::Phantom(_) => unreachable!()
@@ -680,7 +680,7 @@ where
     }
     pub fn apply(self, u: &Self) -> Result<Self, self::Error> {
         match self {
-            Self::Closure(_, e) => Ok(e.subst(0, u)),
+            Self::Closure(_, e) => Ok(e.subst(0, u, true)),
             _ => Err(Error::new("apply: expression is not a closure")),
         }
     }
