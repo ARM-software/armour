@@ -1,5 +1,6 @@
 use armour_api::host::{OnboardInformation, Proxies};
 use armour_compose::{Compose, OnboardInfo};
+use armour_lang::{labels};
 use awc::Client;
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -24,15 +25,15 @@ pub async fn onboard_services<P: AsRef<std::ffi::OsStr>>(
         match client.post(url).send_json(&onboard_info).await {
             Ok(res) => {
                 if res.status().is_success() {
-                    println!("onboarding succeeded");
+                    println!("onboarding succeeded for {:#?}", info);
                     unpause_all(info).await;
                     Ok(())
                 } else {
                     docker_down(out_file)?;
-                    drop_services(client, host_url, info.proxies).await?;
+                    drop_services(client, host_url, info.proxies.clone()).await?;
                     Err(message(res)
                         .await
-                        .unwrap_or_else(|| "onboarding failed".to_string())
+                        .unwrap_or_else(|| format!("onboarding failed for {:#?}", info))
                         .into())
                 }
             }
@@ -132,7 +133,7 @@ pub fn docker_down<P: AsRef<std::ffi::OsStr>>(out_file: P) -> Result<(), Error> 
 pub fn read_armour<P: AsRef<std::path::Path>>(
     in_file: P,
     out_file: P,
-) -> Result<OnboardInfo, Error> {
+) -> Result<Vec<OnboardInfo>, Error> {
     // load armour compose file
     let (compose, info) = Compose::read_armour(in_file)?;
     // save as docker compose file
@@ -233,6 +234,7 @@ fn create_exe(stem: &std::ffi::OsStr, suffix: &str) -> std::io::Result<impl std:
 
 pub fn rules(
     compose: armour_compose::Compose,
+    onboard_info0: Vec<OnboardInfo>,//TODO build only one OnboardInformation with all needed things
     onboard_info: OnboardInformation,
     stem: &std::ffi::OsStr,
 ) -> Result<(), Error> {
@@ -245,15 +247,21 @@ pub fn rules(
         let proxy_port = proxy.port(port);
         port_map.insert(proxy.label, proxy_port);
     }
+    
     // PREROUTING DNAT rules for services
     for (service_name, service) in compose.services {
         if let armour_compose::network::Networks::Dict(dict) = &service.networks {
-            if let Ok(service_label) = service_name.parse() {
+            if let Ok(service_label) = service_name.parse::<labels::Label>() {
                 for (network_name, network) in dict {
                     let proxy_port: Option<&u16> = if port_map.len() == 1 {
                         port_map.values().next()
                     } else {
-                        port_map.get(&service_label)
+                        let proxy_name = onboard_info0.iter()//FIXME simplify
+                            .filter(|x| x.services.get(&service_name).is_some())
+                            .map(|x| x.proxies.iter().nth(0).unwrap() )
+                            .nth(0).unwrap().clone().label;
+                        println!("get port {:#?}", proxy_name);
+                        port_map.get(&proxy_name)
                     };
                     if let Some(proxy_port) = proxy_port {
                         let s = format!("# {}\n", service_name);

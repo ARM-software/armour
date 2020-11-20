@@ -44,6 +44,7 @@ pub struct OnboardInfo {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServiceInfo {
     pub armour_labels: armour_lang::labels::Labels,
+    pub armour_proxies: armour_lang::labels::Labels,
     // pub container_labels: armour_serde::array_dict::ArrayDict,
     // pub network: String,
     pub ipv4_address: Option<std::net::Ipv4Addr>,
@@ -71,12 +72,12 @@ impl Compose {
     }
     pub fn read_armour<P: AsRef<path::Path>>(
         p: P,
-    ) -> Result<(Self, OnboardInfo), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(Self, Vec<OnboardInfo>), Box<dyn std::error::Error + Send + Sync>> {
         let mut compose = Compose::from_path(p)?;
         let info = compose.convert_for_armour()?;
         Ok((compose, info))
     }
-    fn convert_for_armour(&mut self) -> Result<OnboardInfo, String> {
+    fn convert_for_armour(&mut self) -> Result<Vec<OnboardInfo>, String> {
         // iterator for network subnets
         let mut subnets = ipnet::Ipv4Subnets::new(
             "172.18.0.0".parse().unwrap(),
@@ -146,10 +147,18 @@ impl Compose {
                 .collect()
         }
         self.networks = networks;
-        let info = OnboardInfo {
-            proxies: self.proxies.drain(..).collect(),
-            services,
-        };
+
+        //FIXME, temporary fix to be able to spawn multiple proxies 
+        //with their own services in one docker compose file
+        let mut info = Vec::new();
+        for proxy in self.proxies.drain(..).into_iter() {
+            info.push(OnboardInfo{
+                proxies: vec![proxy.clone()],
+                services: services.clone().into_iter().filter(
+                    |(_,val)| val.armour_proxies.iter().any(|l| *l == proxy.label)
+                ).collect()
+            })
+        }
         Ok(info)
     }
     pub fn validate() -> bool {

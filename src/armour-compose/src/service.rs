@@ -202,6 +202,7 @@ impl Service {
     ) -> (ServiceInfo, network::Network, Option<std::net::Ipv4Addr>) {
         let info = ServiceInfo {
             armour_labels: self.armour.labels.clone(),
+            armour_proxies: self.armour.proxies.clone(),
             // container_labels: self.labels.clone(),
             // network: armour_bridge_network.clone(),
             ipv4_address: None,
@@ -262,6 +263,7 @@ impl std::str::FromStr for Build {
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Armour {
     pub labels: armour_lang::labels::Labels,
+    pub proxies: armour_lang::labels::Labels,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]

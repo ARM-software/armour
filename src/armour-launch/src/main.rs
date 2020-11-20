@@ -1,9 +1,11 @@
+use armour_compose::OnboardInfo;
 use armour_launch::{
     already_running, docker_down, docker_up, drop_services, onboard_services, read_armour, rules,
     set_ip_addresses,
 };
 use armour_utils::parse_https_url;
 use clap::{crate_version, App, AppSettings, Arg, SubCommand};
+use std::collections::BTreeMap as Map;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -37,28 +39,39 @@ async fn main() -> Result<(), Error> {
     };
     if let Some(_up) = matches.subcommand_matches("up") {
         // read armour-compose from input file and write docker-compose.yml file
-        let mut info = read_armour(in_file, out_file)?;
-        // check if application is already running
-        if already_running(&info).await {
-            return Err("already running! run armour-lauch `down` first?".into());
-        } else {
-            // try to run `docker-compose up` command
-            docker_up(out_file)?;
-            // try to set IP addresses for containers (leaves containers in paused state)
-            set_ip_addresses(&mut info).await;
-            // notify data plane host - onboarding
-            onboard_services(client()?, host_url, info, out_file).await
+        let mut infos = read_armour(in_file, out_file)?;
+        for mut info in infos.into_iter() {
+            // check if application is already running
+            if already_running(&info).await {
+                return Err("already running! run armour-lauch `down` first?".into());
+            } else {
+                // try to run `docker-compose up` command
+                docker_up(out_file)?;
+                // try to set IP addresses for containers (leaves containers in paused state)
+                set_ip_addresses(&mut info).await;
+                // notify data plane host - onboarding
+                onboard_services(client()?, host_url.clone(), info, out_file).await?;
+            }
         }
+        Ok(())
     } else if let Some(_down) = matches.subcommand_matches("down") {
         // create docker-compose.yml from armour-compose input file
-        let info = read_armour(in_file, out_file)?;
+        let infos = read_armour(in_file, out_file)?;
         // try to run `docker-compose down` command
         docker_down(out_file)?;
-        drop_services(client()?, host_url, info.proxies).await
+        for info in infos.iter() {
+            drop_services(client()?, host_url.clone(), info.proxies.clone()).await?;
+        }
+        Ok(())
     } else if let Some(rules_matches) = matches.subcommand_matches("rules") {
-        let (compose, info) = armour_compose::Compose::read_armour(in_file)?;
+        let (compose, infos) = armour_compose::Compose::read_armour(in_file)?;
         let rules_file = rules_matches.value_of("rules file").unwrap_or("rules");
-        rules(compose, (&info).into(), std::ffi::OsStr::new(rules_file))
+        let info = OnboardInfo {
+            proxies: infos.iter().fold(Vec::new(), |acc, e| [&acc, e.proxies.as_slice()].concat()),
+            services: Map::default(),//Not use in rules
+        };
+        rules(compose, infos, (&info).into(), std::ffi::OsStr::new(rules_file))
+        //rules(compose, (&info).iter().map(|i| i.into()).collect(), std::ffi::OsStr::new(rules_file))
     } else {
         unreachable!()
     }
