@@ -198,7 +198,6 @@ pub mod service {
         state: State,
         request: Json<control::OnboardServiceRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
-        let label = request.service.clone();
         match helper_on_board(&state, request.into_inner()).await? {
             Ok((service_id, ingress_req, egress_req)) =>{
                 let merged_request = control::PolicyUpdateRequest{

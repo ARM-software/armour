@@ -1,10 +1,7 @@
 /// onboarding policy interpreter
-use actix::prelude::*;
 use async_trait::async_trait;
 use armour_api::control;
-use armour_lang::expressions::{Block, CPExpr, Error, Expr};
-use armour_lang::externals::{Call};
-use armour_lang::headers::{CPHeaders, THeaders};
+use armour_lang::expressions::{CPExpr, Error, Expr};
 use armour_lang::interpret::{CPEnv, TExprInterpreter, TInterpret};
 use armour_lang::labels::Label;
 use armour_lang::literals::{
@@ -12,19 +9,16 @@ use armour_lang::literals::{
     CPLiteral, CPID,
     CPFlatLiteral, DPFlatLiteral,
     OnboardingData,
-    TFlatLiteral,
 };
 use armour_lang::{cplit, cpdplit};
 use armour_lang::policies::{GlobalPolicies, DPPolicies};
-use armour_lang::parser::{Infix, Iter};
 use armour_lang::types::{CPFlatTyp};
 use armour_api::control::{global_policy_label};
 use bson::doc;
-use futures::future::{BoxFuture, FutureExt};
+use futures::future::{BoxFuture};
 use super::rest_api::{collection, POLICIES_COL, SERVICES_COL};
 use super::specialize;
 use super::State;
-use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -297,29 +291,29 @@ impl TExprInterpreter<State, CPFlatTyp, CPFlatLiteral> for CPExprWrapper {
         match args.as_slice() {
             [] => match Literal::seval_call0(state, function) {
                 Some(r) => Ok(r.into()),
-                None => Err(Error::new("seval, call(0): type error")),
+                None => Err(Error::new("eval, call(0): type error")),
             },
             [Expr::LitExpr(l1)] => match l1.seval_call1(state, &function).await? {
                 Some(r) => Ok(r.into()),
-                None => Err(Error::new("seval, call(1): type error")),
+                None => Err(Error::new("eval, call(1): type error")),
             },
             [Expr::LitExpr(l1), Expr::LitExpr(l2)] => match l1.seval_call2(state, &function, l2).await? {
                 Some(r) => Ok(r.into()),
-                None => Err(Error::new("seval, call(2): type error")),
+                None => Err(Error::new("eval, call(2): type error")),
             },
             [Expr::LitExpr(l1), Expr::LitExpr(l2), Expr::LitExpr(l3)] => {
                 match l1.seval_call3(state, &function, l2, l3).await? {
                     Some(r) => Ok(r.into()),
-                    None => Err(Error::new("seval, call(3): type error")),
+                    None => Err(Error::new("eval, call(3): type error")),
                 }
             }
             [Expr::LitExpr(l1), Expr::LitExpr(l2), Expr::LitExpr(l3), Expr::LitExpr(l4)] => {
                 match l1.seval_call4(state, &function, l2, l3, l4).await? {
                     Some(r) => Ok(r.into()),
-                    None => Err(Error::new("seval, call(4): type error")),
+                    None => Err(Error::new("eval, call(4): type error")),
                 }
             }
-            x => Err(Error::from(format!("seval, call: {}: {:?}", function, x))),
+            x => Err(Error::from(format!("eval, call: {}: {:?}", function, x))),
         }
     }
 }

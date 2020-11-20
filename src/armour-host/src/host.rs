@@ -197,11 +197,8 @@ pub struct RegisterProxy(pub usize, pub Meta);
 
 impl Handler<RegisterProxy> for ArmourDataHost {
     type Result = ();
-    fn handle(&mut self, msg: RegisterProxy, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: RegisterProxy, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(instance) = self.instances.0.get_mut(&msg.0) {
-            let label = msg.1.label.clone();
-            let tmp_dpid = msg.1.tmp_dpid.clone();
-
             instance.set_meta(msg.1);
         }
     }
@@ -292,8 +289,8 @@ impl Handler<CPOnboardProxy> for ArmourDataHost {
                         }
                         .into_actor(act)
                         .then(|(tmp_dpid, policy_res), act, ctx| {
+                            // log::debug!("got labels: {:?}", policy_res.labels);
                             match policy_res {
-                                // log::debug!("got labels: {:?}", policy_response.labels);
                                 Ok(policy_response) => {
                                     ctx.notify(PolicyCommand::new(
                                         instance.clone(),

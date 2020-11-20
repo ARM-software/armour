@@ -36,7 +36,7 @@ impl OnboardingPolicy{
         state: State,
         onboarding_data: expressions::CPExpr,//onboardingData
     ) -> BoxFuture<'static, Result<Box<literals::OnboardingResult>, expressions::Error>> {
-        log::debug!("evaluting onboarding service policy");
+        log::debug!("evaluating onboarding service policy");
         let now = std::time::Instant::now();
         let env =self.env.clone(); 
 

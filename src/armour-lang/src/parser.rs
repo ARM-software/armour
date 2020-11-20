@@ -2,7 +2,7 @@
 use super::lexer::{Loc, Token, Tokens};
 use super::literals::{Literal, DPFlatLiteral, CPFlatLiteral, TFlatLiteral};
 use super::{types};
-use super::types::{CPFlatTyp, FlatTyp, TFlatTyp};
+use super::types::{TFlatTyp};
 use nom::error::ErrorKind;
 use nom::{self,*};
 use regex::Regex;
