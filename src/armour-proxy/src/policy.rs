@@ -14,7 +14,6 @@ use armour_lang::{
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::WriteHalf;
 use tokio_util::codec::FramedRead;
@@ -35,7 +34,7 @@ pub trait Policy<P> {
         args: Vec<expressions::DPExpr>,
         meta: IngressEgress,
     ) -> BoxFuture<'static, Result<(T, Option<Meta>), expressions::Error>> {
-        log::debug!(r#"evaluting "{}""#, function);
+        log::debug!(r#"evaluating "{}""#, function);
         let now = std::time::Instant::now();
         let mut env = self.env().clone();
         env.set_meta(meta);

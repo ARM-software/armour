@@ -163,6 +163,7 @@ impl Handler<GetHttpPolicy> for PolicyActor {
     type Result = HttpPolicyResponse;
 
     fn handle(&mut self, msg: GetHttpPolicy, _ctx: &mut Context<Self>) -> Self::Result {
+        log::debug!("Handling HTTP request at proxy: {}", self.label);
         let status = self.http.get();
         if status.allow_all {
             HttpPolicyResponse {

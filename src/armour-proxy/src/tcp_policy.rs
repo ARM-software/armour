@@ -93,6 +93,7 @@ impl Handler<GetTcpPolicy> for PolicyActor {
     type Result = ResponseFuture<Result<TcpPolicyStatus, Error>>;
 
     fn handle(&mut self, msg: GetTcpPolicy, _ctx: &mut Context<Self>) -> Self::Result {
+        log::debug!("Handling TCP request at proxy: {}", self.label);
         match self.tcp.connect {
             FnPolicy::Allow => {
                 self.connection_number += 1;
