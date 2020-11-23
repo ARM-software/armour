@@ -483,9 +483,7 @@ pub mod policy {
                 let mut local_pol : Option<DPPolicies> = None;
                 let arc_state = Arc::new(state.clone()); 
                 for function in vec![
-                    policies::ALLOW_REST_REQUEST,
                     policies::ALLOW_REST_RESPONSE,
-                    policies::ALLOW_TCP_CONNECTION,
                     policies::ON_TCP_DISCONNECT,
                 ]{ 
                     let tmp_egress_pol = compile_egress(
@@ -500,7 +498,13 @@ pub mod policy {
                         None => Some(tmp_egress_pol), 
                         Some(pol) => Some(pol.merge(&tmp_egress_pol))
                     };
+                }
 
+                for function in vec![
+                    policies::ALLOW_REST_REQUEST,
+                    policies::ALLOW_TCP_CONNECTION,
+                    policies::ON_TCP_DISCONNECT,
+                ]{ 
                     let tmp_ingress_pol = compile_ingress(
                         arc_state.clone(), 
                         global_policy.clone(), 

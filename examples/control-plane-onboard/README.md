@@ -127,7 +127,7 @@ Perform the following sequence of commands:
 
 	```sh
 	vagrant$ cd examples
-	vagrant$ RUST_MIN_STACK=8388608 armour-control
+	vagrant$ RUST_MIN_STACK=18388608 armour-control
 	```
 
 1. Install `id.policy` and then query the control plane to check if it is installed.
@@ -178,6 +178,9 @@ Perform the following sequence of commands:
 	**Admin [1]**
 	
 	```sh
+   vagrant$ armour-ctl query -s ServiceID::host::armour1
+   vagrant$ armour-ctl query -s ServiceID::host::armour2
+   vagrant$ armour-ctl query -s ServiceID::host::armour3
    vagrant$ armour-ctl update -p policies/log.policy -s armour
    vagrant$ logger ../log_sock
 	```

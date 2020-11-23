@@ -1,9 +1,14 @@
-fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {
-    to.server_ok() && from.has_label('allowed')
+fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool { 
+    if req.to().has_label('not-evaluated') {
+        Egress::add_label('truc');
+        server_ok(req.to())
+    } else {
+        false
+    }
 }
 
 fn server_ok(id: ID) -> bool {
-    id.has_label('server') &&
+    "server" in  id.hosts() && //TODO should be based on some label at least for the topology
         if let Some(port) = id.port() {
             port == 80
         } else {
@@ -13,5 +18,5 @@ fn server_ok(id: ID) -> bool {
 }
 
 fn allow_rest_response(from: ID, to: ID, req: HttpResponse, payload: data) -> bool {
-    true
+    Ingress::has_label('ingress-ok') && from.has_label('allowed')
 }

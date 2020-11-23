@@ -260,7 +260,6 @@ pub fn rules(
                             .filter(|x| x.services.get(&service_name).is_some())
                             .map(|x| x.proxies.iter().nth(0).unwrap() )
                             .nth(0).unwrap().clone().label;
-                        println!("get port {:#?}", proxy_name);
                         port_map.get(&proxy_name)
                     };
                     if let Some(proxy_port) = proxy_port {

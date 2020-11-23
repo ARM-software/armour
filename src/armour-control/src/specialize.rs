@@ -26,13 +26,15 @@ pub trait TSExprPEval : Sized{
     fn peval(
         self, 
         state: Arc<State>, 
-        env: CPEnv
+        env: CPEnv,
+        simplification_only: bool
     ) -> BoxFuture<'static, Result<(bool, Self), self::Error>>; 
 
     async fn pevaluate(
         self, 
         state: Arc<State>, 
-        env: CPEnv
+        env: CPEnv,
+        simplification_only: bool
     ) -> Result<(bool, Self), self::Error>; 
 }
 
@@ -41,14 +43,16 @@ impl TSExprPEval for CPExpr {
 
     fn peval(self, 
         state: Arc<State>, 
-        env: CPEnv
+        env: CPEnv,
+        simplification_only: bool
     ) -> BoxFuture<'static, Result<(bool, Self), self::Error>> {
-        async { 
+        async move { 
+            let simplification_only = simplification_only.clone();
             match self {
                 Expr::Var(_) | Expr::BVar(_, _) => Ok((false, self)),
                 Expr::LitExpr(_) => Ok((true, self)),
                 Expr::Closure(x, e) => {
-                    let (_, e) = e.peval(state, env).await?;
+                    let (_, e) = e.peval(state, env, simplification_only).await?;
                     if e.is_free(0) {
                         Ok((true, e))    
                     } else {
@@ -57,10 +61,10 @@ impl TSExprPEval for CPExpr {
                 },
 
                 Expr::ReturnExpr(e) =>{
-                    let (b, expr) = e.peval(state, env).await?;
+                    let (b, expr) = e.peval(state, env, simplification_only).await?;
                     Ok((b, Expr::return_expr(expr)))
                 },
-                Expr::PrefixExpr(p, e) => match e.peval(state, env).await? {
+                Expr::PrefixExpr(p, e) => match e.peval(state, env, simplification_only).await? {
                     (true, r @ Expr::ReturnExpr(_)) => Ok((true, r)),
                     (true, Expr::LitExpr(l)) => match l.eval_prefix(&p) {
                         Some(r) => Ok((true, r.into())),
@@ -71,8 +75,8 @@ impl TSExprPEval for CPExpr {
                 },
                 // short circuit for &&
                 Expr::InfixExpr(Infix::And, e1, e2) =>{ 
-                    let (b1, n_e1) =  e1.peval(state.clone(), env.clone()).await?;
-                    let (b2, n_e2) = e2.peval(state, env).await?;
+                    let (b1, n_e1) =  e1.peval(state.clone(), env.clone(), simplification_only).await?;
+                    let (b2, n_e2) = e2.peval(state, env, simplification_only).await?;
 
                     match n_e1 {
                         r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(false))) => Ok((b1, r)),
@@ -87,8 +91,8 @@ impl TSExprPEval for CPExpr {
                 },
                 // short circuit for ||
                 Expr::InfixExpr(Infix::Or, e1, e2) => {
-                    let (b1, n_e1) =  e1.peval(state.clone(), env.clone()).await?;
-                    let (b2, n_e2) = e2.peval(state, env).await?;
+                    let (b1, n_e1) =  e1.peval(state.clone(), env.clone(), simplification_only).await?;
+                    let (b2, n_e2) = e2.peval(state, env, simplification_only).await?;
 
                     match n_e1 {
                         r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(true))) => Ok((b1, r)),
@@ -102,8 +106,8 @@ impl TSExprPEval for CPExpr {
                 }
                 },
                 Expr::InfixExpr(op, e1, e2) => {
-                    let r1 = e1.peval(state.clone(), env.clone()).await?;
-                    let r2 = e2.peval(state, env).await?;
+                    let r1 = e1.peval(state.clone(), env.clone(), simplification_only).await?;
+                    let r2 = e2.peval(state, env, simplification_only).await?;
                     match (r1, r2) {
                         ((false, x), (_, y)) | ((_,x), (false, y)) => Ok(
                             (false, Expr::InfixExpr(op, Box::new(x), Box::new(y)))
@@ -121,7 +125,7 @@ impl TSExprPEval for CPExpr {
                         }
                     }
                 }
-                Expr::BlockExpr(b, es) => {
+                Expr::BlockExpr(b, mut es) => {
                     if es.is_empty() {
                         Ok((true, Expr::LitExpr(if b == Block::List {
                             Literal::List(Vec::new())
@@ -129,20 +133,26 @@ impl TSExprPEval for CPExpr {
                             Literal::unit()
                         })))
                     } else if b == Block::Block {
-                        let e = es.clone().remove(0);
-                        match e.peval(state.clone(), env.clone()).await? {
+                        let e = es.remove(0);
+                        match e.peval(state.clone(), env.clone(), simplification_only).await? {
                             (false, res) => {
                                 if res.is_return() || es.is_empty() {
                                     Ok((false, res))
                                 } else {
-                                    Expr::BlockExpr(b, es).peval(state, env).await
+                                    match Expr::BlockExpr(b.clone(), es).peval(state.clone(), env.clone(), true).await?.1 {
+                                        Expr::BlockExpr(_, mut es) => {
+                                            es.insert(0, res);
+                                            Ok((false, Expr::BlockExpr(b, es)))
+                                        }
+                                        e => Ok((false, Expr::BlockExpr(b, vec![res, e]))),
+                                    }
                                 }
                             },
                             (true, res) => {
                                 if res.is_return() || es.is_empty() {
                                     Ok((true, res))
                                 } else {
-                                    Expr::BlockExpr(b, es).peval(state, env).await
+                                    Expr::BlockExpr(b, es).peval(state, env, simplification_only).await
                                 }
                             },
                         }
@@ -151,7 +161,7 @@ impl TSExprPEval for CPExpr {
                         let mut rs = Vec::new();
                         let mut flag = true;
                         for e in es.into_iter() {
-                            let (f, res) = e.peval(state.clone(), env.clone()).await?;
+                            let (f, res) = e.peval(state.clone(), env.clone(), simplification_only).await?;
                             flag = flag && f;
                             rs.push(res);
                         }
@@ -178,9 +188,9 @@ impl TSExprPEval for CPExpr {
                     }
 
                     if flag { //e2 is independant of the let-bindings
-                        e2.peval(state, env).await
+                        e2.peval(state, env, simplification_only).await
                     } else {
-                        match e1.peval(state.clone(), env.clone()).await? {
+                        match e1.peval(state.clone(), env.clone(), simplification_only).await? {
                             (flag, r @ Expr::ReturnExpr(_)) => Ok((flag, r)),
                             (true, Expr::LitExpr(Literal::Tuple(lits))) => {
                                 let lits_len = lits.len();
@@ -191,10 +201,10 @@ impl TSExprPEval for CPExpr {
                                             e2a = e2a.apply(&Expr::LitExpr(lit))?
                                         }
                                     }
-                                    e2a.peval(state, env).await
+                                    e2a.peval(state, env, simplification_only).await
                                 } else if vs.len() == 1 {
                                     e2.apply(&Expr::LitExpr(Literal::Tuple(lits)))?
-                                        .peval(state, env)
+                                        .peval(state, env, simplification_only)
                                         .await
                                 } else {
                                     Err(Error::new("peval, let-expression (tuple length mismatch)"))
@@ -202,25 +212,25 @@ impl TSExprPEval for CPExpr {
                             }
                             (true, l @ Expr::LitExpr(_)) => {
                                 if vs.len() == 1 {
-                                    e2.apply(&l)?.peval(state, env).await
+                                    e2.apply(&l)?.peval(state, env, simplification_only).await
                                 } else {
                                     Err(Error::new("peval, let-expression (literal not a tuple)"))
                                 }
                             },
                             (false, ee1) =>  Ok((
                                 false, 
-                                Expr::Let(vs, Box::new(ee1), Box::new(e2.peval(state, env).await?.1))
+                                Expr::Let(vs, Box::new(ee1), Box::new(e2.peval(state, env, simplification_only).await?.1))
                             )),
                             _ => Err(Error::new("peval, let-expression")),
                         }
                     }
                 },
-                Expr::Iter(op, vs, e1, e2, acc_opt) => match e1.peval(state.clone(), env.clone()).await? {
+                Expr::Iter(op, vs, e1, e2, acc_opt) => match e1.peval(state.clone(), env.clone(), simplification_only).await? {
                     (_, r @ Expr::ReturnExpr(_)) => Ok((true, r)),
                     (false, e1) => {
-                        let (_, e2) = e2.peval(state.clone(), env.clone()).await?;
+                        let (_, e2) = e2.peval(state.clone(), env.clone(), simplification_only).await?;
                         let acc_opt = match acc_opt{
-                            Some(acc) => Some(Box::new(acc.peval(state.clone(), env.clone()).await?.1)),
+                            Some(acc) => Some(Box::new(acc.peval(state.clone(), env.clone(), simplification_only).await?.1)),
                             None => None
                         }; 
 
@@ -230,7 +240,7 @@ impl TSExprPEval for CPExpr {
                         let mut res = Vec::new();
                         let mut acc_opt = match acc_opt {
                             Some(e) =>{
-                                match e.peval(state.clone(), env.clone()).await? {
+                                match e.peval(state.clone(), env.clone(), simplification_only).await? {
                                     (true, acc) => Some((true, acc)), 
                                     (false, acc) => 
                                         //Fold can not be applied if acc is not a value
@@ -288,11 +298,11 @@ impl TSExprPEval for CPExpr {
 
                             //Update the acc if any
                             if acc_opt.is_some() {
-                                let tmp = e.peval(state.clone(), env.clone()).await?;
+                                let tmp = e.peval(state.clone(), env.clone(), simplification_only).await?;
                                 acc_opt = Some(tmp.clone());
                                 res.push(tmp)    
                             } else {
-                                res.push(e.peval(state.clone(), env.clone()).await?)
+                                res.push(e.peval(state.clone(), env.clone(), simplification_only).await?)
                             }
                         }
                         
@@ -350,21 +360,21 @@ impl TSExprPEval for CPExpr {
                     cond,
                     consequence,
                     alternative,
-                } => match cond.peval(state.clone(), env.clone()).await? {
+                } => match cond.peval(state.clone(), env.clone(), simplification_only).await? {
                     (flag, r @ Expr::ReturnExpr(_)) => Ok((flag,r)),
                     (true, conda) => match conda {
-                        Expr::LitExpr(Literal::FlatLiteral(fl)) if fl.is_bool() && fl.get_bool() => consequence.peval(state, env).await,
+                        Expr::LitExpr(Literal::FlatLiteral(fl)) if fl.is_bool() && fl.get_bool() => consequence.peval(state, env, simplification_only).await,
                         Expr::LitExpr(Literal::FlatLiteral(fl)) if fl.is_bool() && !fl.get_bool() => match alternative {
-                            Some(alt) => alt.peval(state, env).await,
+                            Some(alt) => alt.peval(state, env, simplification_only).await,
                             None => Ok((true, Expr::from(()))),
                         },
                         _ => Err(Error::new("peval, if-expression")),
                     },
                     (false, cond1) => {                                                        
-                        let (_, consequence1) = consequence.peval(state.clone(), env.clone()).await?;
+                        let (_, consequence1) = consequence.peval(state.clone(), env.clone(), simplification_only).await?;
                         let alternative = match alternative {
                             Some(alt) =>{
-                                let (_, tmp) = alt.peval(state.clone(), env.clone()).await?;
+                                let (_, tmp) = alt.peval(state.clone(), env.clone(), simplification_only).await?;
                                 Some(Box::new(tmp))
                             },
                             None => None
@@ -380,30 +390,38 @@ impl TSExprPEval for CPExpr {
                     expr,
                     consequence,
                     alternative,
-                } => match expr.peval(state.clone(), env.clone()).await? {
+                } => match expr.peval(state.clone(), env.clone(), simplification_only).await? {
                     (flag, r @ Expr::ReturnExpr(_)) => Ok((flag, r)),
                     (true, Expr::LitExpr(Literal::Tuple(t))) => {
                         if t.len() == 1 {
                             match consequence.apply(&Expr::LitExpr(t[0].clone())) {
-                                Ok(consequence_apply) => consequence_apply.peval(state, env).await,
+                                Ok(consequence_apply) => consequence_apply.peval(state, env, simplification_only).await,
                                 Err(e) => Err(e),
                             }
                         } else {
                             match alternative {
-                                Some(alt) => alt.peval(state, env).await,
+                                Some(alt) => alt.peval(state, env, simplification_only).await,
                                 None => Ok((true, Expr::from(()))),
                             }
                         }
                     },
                     (false, expr1) => {                            
-                        let (_, consequence1) = consequence.peval(state.clone(), env.clone()).await?;
+                        let (c_var, c_body)= match *consequence {
+                            Expr::Closure(c_var, c_body) => (c_var, c_body),
+                            _ => unreachable!()
+                        };
+
+                        let (_, c_body_1) = c_body.peval(state.clone(), env.clone(), simplification_only).await?;
+
                         let alternative = match alternative {
                             Some(alt) =>{
-                                let (_, tmp) = alt.peval(state.clone(), env.clone()).await?;
+                                let (_, tmp) = alt.peval(state.clone(), env.clone(), simplification_only).await?;
                                 Some(Box::new(tmp))
                             },
                             None => None
                         };
+
+                        let consequence1 = Expr::Closure(c_var, Box::new(c_body_1));
                         Ok((false, Expr::IfSomeMatchExpr {
                             expr: Box::new(expr1),
                             consequence: Box::new(consequence1),
@@ -420,8 +438,9 @@ impl TSExprPEval for CPExpr {
                 } => {
                     let mut rs = Vec::new();
                     let mut flag = true;
+
                     for (e, re) in matches.clone().into_iter() {
-                        let (f, tmp) = e.peval(state.clone(), env.clone()).await?; 
+                        let (f, tmp) = e.peval(state.clone(), env.clone(), simplification_only).await?; 
                         flag = flag && f;
                         if let Some(r) = tmp.perform_match(re) {
                             rs.push(r)
@@ -429,6 +448,16 @@ impl TSExprPEval for CPExpr {
                             return Err(Error::new("peval, if-match-expression: type error"));
                         }
                     }
+
+                    if !flag {
+                        return Ok((flag, Expr::IfMatchExpr {
+                            variables,
+                            matches,
+                            consequence,
+                            alternative,
+                        }))
+                    };
+
                     if flag {
                         match rs.iter().find(|(r, _captures)| r.is_return()) {
                             // early exit
@@ -438,7 +467,7 @@ impl TSExprPEval for CPExpr {
                                     // failed match
                                     match alternative {
                                         None => Ok((true, Expr::from(()))),
-                                        Some(alt) => match alt.peval(state, env).await? {
+                                        Some(alt) => match alt.peval(state, env, simplification_only).await? {
                                             (f, r @ Expr::ReturnExpr(_)) | (f, r @ Expr::LitExpr(_)) => Ok((f, r)),
                                             _ => Err(Error::new("peval, if-match-expression")),
                                         },
@@ -461,7 +490,7 @@ impl TSExprPEval for CPExpr {
                                             ));
                                         }
                                     }
-                                    match c.peval(state, env).await? {
+                                    match c.peval(state, env, simplification_only).await? {
                                         (f, r @ Expr::ReturnExpr(_)) | (f, r @ Expr::LitExpr(_)) => Ok((f,r)),
                                         _ => Err(Error::new("peval, if-match-expression")),
                                     }
@@ -469,10 +498,10 @@ impl TSExprPEval for CPExpr {
                             }
                         }
                     } else {
-                        let (_, consequence1) = consequence.peval(state.clone(), env.clone()).await?;
+                        let (_, consequence1) = consequence.peval(state.clone(), env.clone(), simplification_only).await?;
                         let alternative = match alternative {
                             Some(alt) =>{
-                                let (_, tmp) = alt.peval(state.clone(), env.clone()).await?;
+                                let (_, tmp) = alt.peval(state.clone(), env.clone(), simplification_only).await?;
                                 Some(Box::new(tmp))
                             },
                             None => None
@@ -491,70 +520,45 @@ impl TSExprPEval for CPExpr {
                     is_async,
                 } => {
                     let mut args = Vec::new();
-                    for e in arguments.into_iter() {
-                        args.push(e.peval(state.clone(), env.clone()).await?)
+                    for e in arguments.clone().into_iter() {
+                        args.push(e.peval(state.clone(), env.clone(), simplification_only).await?)
                     }                        
                     let flag = args.iter().fold(true, |f, e| f && e.0);
                     match args.iter().find(|r| r.1.is_return()) {
                         Some(r) => Ok((flag, r.1.clone())),
-                        None if flag => {
+                        None if flag && !simplification_only => {
                             if let Some(mut r) = env.get(&function) {
                                 // user defined function
                                 for a in args.into_iter().map(|x| x.1) {
                                     r = r.apply(&a)?
                                 }
-                                r.pevaluate(state, env).await
+                                r.pevaluate(state, env, simplification_only).await
                             } else if CPHeaders::is_builtin(&function) {
                                     Ok((flag, CPExprWrapper::eval_call(
                                         state,
                                         function.as_str(),
                                         args.into_iter().map(|(_, e)| e).collect()
                                     ).await?))
-                            } else if let Some((external, method)) = CPHeaders::split(&function) {
+                            } else if let Some((_, _)) = CPHeaders::split(&function) {
                                 // external function (RPC) or "Ingress/Egress" metadata
-                                let args = Self::literal_vector(args.into_iter().map(|x| x.1).collect())?;
-                                let call = Call::new(external, method, args);
-                                if external == "Ingress" || external == "Egress" {
-                                    match env.meta
-                                        .send(call)
-                                        .await
-                                        .map_err(|_| Error::new("Metadata call error"))?
-                                    {
-                                        Ok(e) => Ok((flag, e)),
-                                        Err(err) => Err(err)
-                                    }
-                                } else if is_async {
-                                    Arbiter::spawn(env.external.send(call).then(|res| {
-                                        match res {
-                                            Ok(Err(e)) => log::warn!("{}", e),
-                                            Err(e) => log::warn!("{}", e),
-                                            _ => (),
-                                        };
-                                        async {}
-                                    }));
-                                    Ok((flag, Expr::from(())))
-                                } else {
-                                    match env.external
-                                        .send(call)
-                                        .await
-                                        .map_err(|_| Error::new("capnp error"))?
-                                    {
-                                        Ok(e) => Ok((flag, e)),
-                                        Err(err) => Err(err)
-                                    }
-                                }
+                                // should be evaluated dynamically 
+                                Ok((false, Expr::CallExpr {
+                                    function,
+                                    arguments,
+                                    is_async,
+                                }))
                             } else {
                                 Err(Error::from(format!("peval, call: {}: {:?}", function, args)))
                             }
                         },
-                        None if !flag => {
+                        None if !flag  || simplification_only => {
                             if let Some(mut r) = env.get(&function) {
                                 //user defined function
                                 //partial evaluation + inlining
                                 for a in args.into_iter().map(|x| x.1) {
                                     r = r.apply(&a)?
                                 }
-                                match r.pevaluate(state, env).await {
+                                match r.pevaluate(state, env, simplification_only).await {
                                     Ok((_, r)) => Ok((false, r)),
                                     err => err
                                 }
@@ -577,9 +581,10 @@ impl TSExprPEval for CPExpr {
     async fn pevaluate(
         self, 
         state: Arc<State>, 
-        env: CPEnv
+        env: CPEnv,
+        simplification_only: bool
     ) -> Result<(bool, Self), self::Error> {
-        let (b, e) = self.peval(state.clone(), env).await?;
+        let (b, e) = self.peval(state.clone(), env, simplification_only).await?;
         Ok((b,e.strip_return()))
     }
 }
@@ -655,7 +660,9 @@ fn compile_helper(
     n_pol.fn_policies.set_args(function.to_string(), sig.args().unwrap().len() as u8);
 
     //Deadcode elimination
+    println!("{:?}\n", n_pol);
     n_pol.program = n_pol.program.deadcode_elim(&vec![function.to_string()][..])?;
+    println!("{:?}\n", n_pol);
     Ok(n_pol)
 }
 async fn compile_egress_ingress(
@@ -668,20 +675,20 @@ async fn compile_egress_ingress(
     let mut new_gpol = policies::GlobalPolicies::default();
     for (proto, pol)  in (&global_pol).policies() {
         let env = CPEnv::new(&pol.program);        
-
+        println!("{:?}", pol.program);
         match pol.program.code.get(function.to_string()) {
-            None =>  return Err(Error::from(format!(
-                "compile_{}, {} is undefined in global policy", 
-                if f_egress {"egress"} else {"ingress"},
-                function
-            ))), 
+            None =>  {
+                log::warn!(
+                    "compile_{}, {} is undefined in global policy", 
+                    if f_egress {"egress"} else {"ingress"},
+                    function
+                );
+            } 
             Some(ref fexpr) => {    
                 //Checking header type
                 let n_args = check_header(pol, function)?;
 
                 //Replacing the "from" (resp "to") variable by the ID of the µservice
-                //http_rest_request: must be true at call time => from is known
-                //http_rest_response: must be true at return time => to is known ??
                 let fexpr = fexpr.clone().propagate_subst(
                     if f_egress {n_args-1} else {n_args-2}, 
                     if f_egress {0} else {1}, 
@@ -694,7 +701,7 @@ async fn compile_egress_ingress(
                     _ => unreachable!("check_header prevent this from happening"),
                 };
 
-                match body.pevaluate(state.clone(), env).await {                        
+                match body.pevaluate(state.clone(), env, false).await {                        
                     Ok((_, e)) =>{ 
                         let mut n_pol = policies::GlobalPolicy::default();                            
 

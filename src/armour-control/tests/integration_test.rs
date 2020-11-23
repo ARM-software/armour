@@ -434,7 +434,7 @@ mod tests_control {
     async fn test_eval_specialize() -> Result<(),  actix_web::Error> {
         let state = mock_state().await.unwrap();
         state.db_con.database("armour").drop(None).await.unwrap();
-        register_policy(&state, get_policies_path("global1.policy").to_str().unwrap()).await.unwrap();
+        register_policy(&state, get_policies_path("global-id.policy").to_str().unwrap()).await.unwrap();
         register_onboarding_policy(&state, get_policies_path("onboard1.policy").to_str().unwrap()).await.unwrap();
 
         let request = OnboardServiceRequest{
@@ -457,14 +457,14 @@ mod tests_control {
                     Expr::LitExpr(DPLiteral::http_request(Box::new(req))),
                     Expr::LitExpr(DPLiteral::data(Vec::new())),
                 ];
-
+                println!("{:?}", ingress_req.policy.policy(policies::Protocol::HTTP).unwrap());
                 let env : DPEnv = Env::new(&ingress_req.policy.policy(policies::Protocol::HTTP).unwrap().program);
                 let result = Expr::evaluate(
                     expressions::Expr::call("allow_rest_request", args),
                     Arc::new(()),
                     env.clone()
                 ).await;
-                //println!{"{:#?}", result};
+                println!{"{:#?}", result};
             },
             Err(res) => panic!(res)
         })
