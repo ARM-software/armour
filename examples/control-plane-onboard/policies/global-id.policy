@@ -1,22 +1,18 @@
-fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool { 
-    if to.has_label('allowed'){
-        Egress::add_label('egress-ok');
-        server_ok(to)
-    } else {
-        false
-    }
+fn allow_rest_request(to: ID, from: ID, req: HttpRequest, payload: data) -> bool { 
+    to.server_ok() && from.has_label('allowed')
 }
 
 fn server_ok(id: ID) -> bool {
-    "server" in  id.hosts() && //TODO should be based on some label at least for the topology
-        if let Some(port) = id.port() {
-            port == 80
-        } else {
-            // default is port 80
-            true
-        }
+    "server" in id.hosts() &&
+    if let Some(port) = id.port() {
+        port == 80
+    } else {
+        // default is port 80
+        true
+    } 
 }
 
 fn allow_rest_response(from: ID, to: ID, req: HttpResponse, payload: data) -> bool {
-    Ingress::has_label('ingress-ok') && from.has_label('allowed')
+    true
 }
+  

@@ -181,7 +181,7 @@ Perform the following sequence of commands:
    vagrant$ armour-ctl query -s ServiceID::host::armour1
    vagrant$ armour-ctl query -s ServiceID::host::armour2
    vagrant$ armour-ctl query -s ServiceID::host::armour3
-   vagrant$ armour-ctl update -p policies/log.policy -s armour
+   vagrant$ armour-ctl update -p policies/log.policy -s ServiceID::host::armour3
    vagrant$ logger ../log_sock
 	```
 
