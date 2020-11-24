@@ -1,0 +1,8 @@
+external logger @ "log_sock" {
+    fn log(_) -> ()
+}
+
+fn allow_rest_request(req: HttpRequest) -> bool {
+    logger::log(req);
+    true
+}

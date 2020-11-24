@@ -39,7 +39,7 @@ async fn main() -> Result<(), Error> {
     };
     if let Some(_up) = matches.subcommand_matches("up") {
         // read armour-compose from input file and write docker-compose.yml file
-        let mut infos = read_armour(in_file, out_file)?;
+        let infos = read_armour(in_file, out_file)?;
         for mut info in infos.into_iter() {
             // check if application is already running
             if already_running(&info).await {

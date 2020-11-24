@@ -1,24 +1,34 @@
 
 use armour_lang::expressions::{self, *};
 use armour_lang::interpret::*;
-use armour_lang::labels::{self, *};
+use armour_lang::labels::{*};
 use armour_lang::literals::{self, *};
 use armour_lang::policies;
-use armour_lang::types::{self, *};
-use std::collections::{BTreeMap, BTreeSet};
+use armour_lang::types::{*};
+
+use std::collections::{BTreeSet};
+use std::path::{PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 
-async fn load_policy<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'static>(
+fn get_policies_path(name: &str) -> PathBuf{ 
+    let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    d.push("tests");
+    d.push("policies");
+    d.push(name);
+    //println!("Loading policy from: {}", d.display());
+    d 
+}
+
+async fn eval_http_policy<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'static>(
     function: &str,
-    from: ID<FlatTyp, FlatLiteral>,
-    to: ID<FlatTyp, FlatLiteral>,
     raw_pol: &str,
     args: Vec<Literal<FlatTyp, FlatLiteral>>
 ) -> Result<Expr<FlatTyp, FlatLiteral>, expressions::Error> {
-    println!("Args built");
-    let policies = policies::Policies::from_buf(raw_pol)?;
-    println!("{} Policies built", policies.len());
+    let policies = policies::Policies::from_file(
+        get_policies_path(raw_pol).to_str().unwrap()
+    )?;
+
     match policies.policy(policies::Protocol::HTTP) {
         Some(policy) => {
             let env : Env<FlatTyp, FlatLiteral> = Env::new(&policy.program);
@@ -41,7 +51,7 @@ async fn id_pol1<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'st
 ) ->  Result<Expr<FlatTyp, FlatLiteral>,  expressions::Error> {
     let function = "allow_rest_request";
 
-    let mut from_labels: BTreeSet<&str> = vec![ 
+    let from_labels: BTreeSet<&str> = vec![ 
         "allowed",
     ].into_iter().collect(); 
 
@@ -69,23 +79,6 @@ async fn id_pol1<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'st
             .collect() 
     );
 
-    let raw_pol = "
-        fn allow_rest_request(req: HttpRequest) -> bool { 
-            let (from, to) = req.from_to(); 
-            to.server_ok() && from.has_label('allowed')
-        }
-
-        fn server_ok(id: ID) -> bool {
-            \"server\" in id.hosts() &&
-            if let Some(port) = id.port() {
-                port == 80
-            } else {
-                // default is port 80
-                true
-            } 
-        }
-    ";
-
     let args = vec![
         Literal::http_request(Box::new(HttpRequest::new(
             "method",
@@ -98,7 +91,7 @@ async fn id_pol1<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'st
         //Literal::data(Vec::new()) 
     ];
 
-    let res = load_policy(function, from, to, raw_pol, args).await?;
+    let res = eval_http_policy(function, "pol1.policy", args).await?;
     println!("## Expr after eval");            
     res.print_debug();
     Ok(res)
@@ -134,17 +127,6 @@ async fn log_pol1<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'s
             .collect() 
     );
 
-    let raw_pol = "
-        external logger @ \"log_sock\" {
-        fn log(_) -> ()
-        }
-
-        fn allow_rest_request(req: HttpRequest) -> bool {
-            logger::log(req);
-            true
-        }
-    ";
-
     let args = vec![
         Literal::http_request(Box::new(HttpRequest::new(
             "method",
@@ -157,7 +139,7 @@ async fn log_pol1<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'s
         //Literal::data(Vec::new()) 
     ];
 
-    let res = load_policy(function, from, to, raw_pol, args).await?;
+    let res = eval_http_policy(function, "pol2.policy", args).await?;
     println!("## Expr after eval");            
     res.print_debug();
     Ok(res)

@@ -251,7 +251,7 @@ pub fn rules(
     // PREROUTING DNAT rules for services
     for (service_name, service) in compose.services {
         if let armour_compose::network::Networks::Dict(dict) = &service.networks {
-            if let Ok(service_label) = service_name.parse::<labels::Label>() {
+            if let Ok(_service_label) = service_name.parse::<labels::Label>() {
                 for (network_name, network) in dict {
                     let proxy_port: Option<&u16> = if port_map.len() == 1 {
                         port_map.values().next()

@@ -13,7 +13,6 @@ use armour_lang::interpret::{Env, CPEnv, DPEnv, TExprInterpreter};
 use armour_lang::labels::{self, *};
 use armour_lang::literals::{self, *};
 use armour_lang::policies::{self, *};
-use armour_lang::types::*;
 
 use bson::doc;
 use mongodb::{options::ClientOptions, Client};
@@ -125,25 +124,26 @@ async fn load_global_policy(
     function: &str,
     raw_pol: &str,
     args: Vec<CPLiteral>
-) -> Result<CPExpr, expressions::Error> {
+) -> Result<(CPExpr, CPEnv), expressions::Error> {
     //println!("Args built");
-    let policies: Policies<FlatTyp, FlatLiteral> = policies::Policies::from_file(raw_pol)?;
+    let policies: GlobalPolicies = policies::GlobalPolicies::from_file(raw_pol)?;
     //println!("{} Policies built", policies.len());
     match policies.policy(policies::Protocol::HTTP) {
         Some(policy) => {
+            let env : CPEnv = Env::new(&policy.program);
+
             let expr : CPExpr = expressions::Expr::call(
                 function, 
                 args.into_iter().map(|x| Expr::LitExpr(x)).collect()
             );
             //println!("Expr built");
             expr.print_debug();                    
-            Ok(expr)
+            Ok((expr, env))
         },
         _ => Err(expressions::Error::from(format!("interpreter tests, policy loading")))
     }
 }
 async fn load_onboarding_policy(
-    mock_state: State,
     raw_pol: &str,
     onboarding_data: CPLiteral
 ) -> Result<(CPExpr, CPEnv), expressions::Error> {
@@ -176,7 +176,6 @@ async fn onboarding_pol1() ->  Result<(CPExpr, CPEnv),  expressions::Error> {
     );
 
     let (pol, env) = load_onboarding_policy(
-        mock_state().await.map_err(|x| expressions::Error::from(x.to_string()))?,
         get_policies_path("onboard1.policy").to_str().unwrap(),
         Literal::FlatLiteral(CPFlatLiteral::OnboardingData(Box::new(ob_data)))
     ).await?;
@@ -186,7 +185,7 @@ async fn onboarding_pol1() ->  Result<(CPExpr, CPEnv),  expressions::Error> {
 }
 
 fn get_from_to() -> Result<(DPID, DPID), expressions::Error> {
-    let mut from_labels: BTreeSet<&str> = vec![ 
+    let from_labels: BTreeSet<&str> = vec![ 
         "allowed",
     ].into_iter().collect(); 
 
@@ -216,7 +215,7 @@ fn get_from_to() -> Result<(DPID, DPID), expressions::Error> {
     Ok((from, to))
 }
 
-async fn global_pol1() ->  Result<CPExpr,  expressions::Error> {
+async fn global_pol1() ->  Result<(CPExpr, CPEnv),  expressions::Error> {
     let function = "allow_rest_request";
 
     let from_labels: BTreeSet<&str> = vec![ 
@@ -267,10 +266,10 @@ async fn global_pol1() ->  Result<CPExpr,  expressions::Error> {
         //Literal::data(Vec::new()) 
     ];
 
-    let res = load_global_policy(function, get_policies_path("global1.policy").to_str().unwrap(), args).await?;
+    let (res, env) = load_global_policy(function, get_policies_path("global1.policy").to_str().unwrap(), args).await?;
     //println!("## Expr after eval");            
     res.print_debug();
-    Ok(res)
+    Ok((res, env))
 }
 mod tests_control {
     use super::*;
@@ -290,7 +289,7 @@ mod tests_control {
     #[actix_rt::test]
     async fn test_helper_compile_ingress() -> Result<(),  expressions::Error> {
         let state = mock_state().await.map_err(|x|expressions::Error::from(format!("{:?}", x)))?;
-        state.db_con.database("armour").drop(None).await;
+        state.db_con.database("armour").drop(None).await.map_err(|x|expressions::Error::from(format!("{:?}", x)))?;
         register_policy(&state, get_policies_path("global1.policy").to_str().unwrap()).await?;
         
         if let Ok(Some(doc)) = collection(&state.clone(), POLICIES_COL)
@@ -302,7 +301,7 @@ mod tests_control {
             assert!(false);
         }
 
-        let mut labels: BTreeSet<&str> = vec![ 
+        let labels: BTreeSet<&str> = vec![ 
             "allowed",
         ].into_iter().collect(); 
 
@@ -321,7 +320,7 @@ mod tests_control {
             &id
         ).await? {
             Literal::FlatLiteral(CPFlatLiteral::Policy(_)) => assert!(true),
-            l => assert!(false)
+            _ => assert!(false)
         }
         Ok(())
     }
@@ -345,7 +344,7 @@ mod tests_control {
         let res_seval = CPExprWrapper::evaluate(expr, Arc::new(state), env.clone()).await?;
         
         match res_seval {
-            Expr::LitExpr(Literal::FlatLiteral(r @ CPFlatLiteral::OnboardingResult(_))) =>{
+            Expr::LitExpr(Literal::FlatLiteral(CPFlatLiteral::OnboardingResult(_))) =>{
                 //println!("OnboardingResult\n{:#?}", r );
                 assert!(true)
             },

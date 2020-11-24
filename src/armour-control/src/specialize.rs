@@ -1,8 +1,6 @@
 // Specialize global policy
-use actix::prelude::*;
 use armour_lang::{cpdplit};
 use armour_lang::expressions::{Block, CPExpr, Error, Expr};
-use armour_lang::externals::{Call};
 use armour_lang::headers::{CPHeaders, THeaders};
 use armour_lang::interpret::{CPEnv, TExprInterpreter, TInterpret};
 use armour_lang::literals::{
@@ -714,9 +712,7 @@ async fn compile_egress_ingress(
                                     format!("HttpResponse::{}", if f_egress {"to"} else {"from"})
                                 };
 
-                                let mut e = e.subst(2, &Expr::call(&get_from_name[..], vec![Expr::bvar("req", 1)]), false);
-                                //e = e.subst(1, &Expr::bvar("req", 1), false);
-                                //e = e.subst(0, &Expr::bvar("payload", 0), false);
+                                let e = e.subst(2, &Expr::call(&get_from_name[..], vec![Expr::bvar("req", 1)]), false);
 
                                 Expr::Closure(
                                     Ident("req".to_string()), 
@@ -727,14 +723,13 @@ async fn compile_egress_ingress(
                                 )
                             },
                             policies::ALLOW_TCP_CONNECTION => {                                    
-                                let mut e = e.subst(1,
+                                let e = e.subst(1,
                                     &Expr::call(
                                         &format!("Connection::{}", if f_egress {"to"} else {"from"} )[..],
                                         vec![Expr::bvar("conn", 0)]
                                     ),
                                     false
                                 );
-                                //e = e.subst(0, &Expr::bvar("conn", 0), false);
 
                                 Expr::Closure(
                                     Ident("con".to_string()), 
@@ -756,16 +751,13 @@ async fn compile_egress_ingress(
                                     ))
                                 );
 
-                                let mut e = e.subst(3, 
+                                let e = e.subst(3, 
                                     &Expr::call(
                                         &format!("Connection::{}", if f_egress {"to"} else {"from"} )[..],
                                         vec![Expr::bvar("conn", 2)],
                                     ),
                                     false
                                 );
-                                //e = e.subst(0, &Expr::bvar("conn", 2), false);
-                                //e = e.subst(0, &Expr::bvar("i", 1), false);
-                                //e = e.subst(0, &Expr::bvar("j", 0), false);
 
                                 Expr::Closure(
                                     Ident("conn".to_string()), 
