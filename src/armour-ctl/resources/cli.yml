@@ -112,6 +112,42 @@ subcommands:
                 - "url"
                 - "label"
             help: Policy labels
+  - specialize:
+      about: Specialize a global policy using the provided information 
+      args:
+        - POLICYFILE:
+            short: p
+            long: policy
+            required: true
+            takes_value: true
+            value_name: "policy filename"
+            help: Input policy file
+        - LABELS:
+            short: l
+            long: label
+            required: false
+            takes_value: true
+            multiple: true
+            value_names: "label"
+            help: Policy labels
+        - HOST:
+            long: host
+            required: true 
+            takes_value: true
+            value_names: "host label"
+            help: Host label 
+        - PROXY:
+            long: proxy 
+            required: true 
+            takes_value: true
+            value_names: "proxy label"
+            help: Proxy label    
+        - SERVICE:
+            long: service 
+            required: true 
+            takes_value: true
+            value_names: "service label"
+            help: Service label    
   - query:
       about: Query a policy
       args:

@@ -234,7 +234,7 @@ fn create_exe(stem: &std::ffi::OsStr, suffix: &str) -> std::io::Result<impl std:
 
 pub fn rules(
     compose: armour_compose::Compose,
-    onboard_info0: Vec<OnboardInfo>,//TODO build only one OnboardInformation with all needed things
+    onboard_info0: Vec<OnboardInfo>,
     onboard_info: OnboardInformation,
     stem: &std::ffi::OsStr,
 ) -> Result<(), Error> {

@@ -1,8 +1,10 @@
 use armour_api::control;
 use armour_lang::labels::Label;
+use armour_lang::literals::CPID;
 use armour_lang::policies;
 use armour_utils::parse_https_url;
 use clap::{crate_version, App};
+use std::collections::{BTreeSet};
 use std::str::FromStr;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -238,6 +240,48 @@ async fn main() -> Result<(), Error> {
             Ok(response) => println!("success: {}", response.status().is_success()),
             Err(err) => println!("{}", err),
         }
+    } 
+    // Display specialization
+    else if let Some(specialize_matches) = matches.subcommand_matches("specialize") {
+        let host = specialize_matches.value_of("HOST").unwrap();
+        let proxy = specialize_matches.value_of("PROXY").unwrap();
+        let service = specialize_matches.value_of("SERVICE").unwrap();
+        let file = specialize_matches.value_of("POLICYFILE").unwrap();
+        let policy = policies::GlobalPolicies::from_file(file)?;
+        let labels = specialize_matches.values_of("LABELS").unwrap().map(|s| s.parse::<Label>().unwrap());
+
+        let specialize_payload = control::SpecializationRequest{
+            host: host.parse()?,
+            proxy: proxy.parse()?,
+            service: service.parse()?,
+            policy: policy,
+            cpid: CPID::new(
+                BTreeSet::default(),
+                BTreeSet::default(),
+                None,
+                labels.into_iter().collect(),
+            )
+        };
+        println!("Specialization request {:?}", specialize_payload);
+
+        match client
+            .post(url("policy/specialize"))
+            .send_json(&specialize_payload)
+            .await
+        {
+            Ok(mut response) => {
+                let body = response.body().await.map_err(|_| "Payload error")?;
+                if response.status().is_success() {
+                    let req: armour_api::control::SpecializationResponse =
+                        serde_json::from_slice(body.as_ref())?;
+                    println!("{}", req.policy);
+                } else {
+                    println!("{}", string_from_bytes(body))
+                }
+            }
+            Err(err) => println!("{}", err),
+        }
+
     }
     if let Some(list_matches) = matches.subcommand_matches("list") {
         let path = match list_matches.value_of("ENTITY").unwrap() {

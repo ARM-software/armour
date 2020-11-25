@@ -694,6 +694,62 @@ pub mod policy {
         }
         Ok(HttpResponse::Ok().body("dropped all policies"))
     }
+    #[post("/specialize")]
+    pub async fn specialize(
+        client: web::Data<client::Client>,
+        state: State,
+        request: Json<control::SpecializationRequest>,
+    ) -> Result<HttpResponse, actix_web::Error> {
+        let mut request = request.into_inner();
+
+        log::info!(r#"Specializing policy"#);
+
+
+        let mut global_label = Label::concat(&request.host, &request.proxy);
+        global_label.prefix("ServiceID".to_string());                    
+        let mut global_id = request.cpid.clone();
+        global_id = global_id.add_label(&global_label);
+
+
+        let global_policy = request.policy;
+        let arc_state = Arc::new(state.clone()); 
+        let mut pol = DPPolicies::default();
+
+        for function in vec![
+            policies::ALLOW_REST_RESPONSE,
+            policies::ON_TCP_DISCONNECT,
+        ]{ 
+            let tmp_egress_pol = compile_egress(
+                arc_state.clone(), 
+                global_policy.clone(), 
+                function,
+                &global_id 
+            ).await.map_err(|e| internal(e.to_string()))?;
+            
+            pol = pol.merge(&tmp_egress_pol);
+        }
+
+        for function in vec![
+            policies::ALLOW_REST_REQUEST,
+            policies::ALLOW_TCP_CONNECTION,
+            policies::ON_TCP_DISCONNECT,
+        ]{ 
+            let tmp_ingress_pol = compile_ingress(
+                arc_state.clone(), 
+                global_policy.clone(), 
+                function,
+                &global_id 
+            ).await.map_err(|e| internal(e.to_string()))?;
+
+            pol = pol.merge(&tmp_ingress_pol);
+        }
+
+        let current = control::SpecializationResponse{
+            policy: pol,
+        };
+
+        Ok(HttpResponse::Ok().json(current))
+    }
 }
 
 pub async fn present(

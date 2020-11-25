@@ -6,6 +6,7 @@ use armour_api::control::*;
 use armour_control::State;
 use armour_control::interpret::*;
 use armour_control::rest_api::*;
+use armour_control::specialize::*;
 use armour_control::ControlPlaneState;
 
 use armour_lang::expressions::{self, *};
@@ -469,4 +470,99 @@ mod tests_control {
         })
     }
 
+
+    //TODO write some helper fct to test only expr simplification
+
+    async fn simplify_expr(s_expr: &str) -> (bool, CPExpr) {
+        let buf = &format!("fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {{ {} }}", s_expr)[..];
+		let policies: GlobalPolicies = policies::GlobalPolicies::from_buf(
+            buf	
+		).unwrap();
+		let policy = policies.policy(policies::Protocol::HTTP).unwrap();
+		let env : CPEnv = Env::new(&policy.program);
+
+		let args = vec![
+			Literal::http_request(Box::new(HttpRequest::new(
+				"method",
+				"HTTP_20",
+				"path",
+				"query", 
+				Vec::new(),
+				literals::Connection::from((&literals::CPID::default(), &literals::CPID::default(), 1)),
+			))),
+			//Literal::data(Vec::new()) 
+		];	
+		let expr : CPExpr = expressions::Expr::call(
+			"allow_rest_request", 
+			args.into_iter().map(|x| Expr::LitExpr(x)).collect()
+		);
+        return expr.pevaluate(Arc::new(mock_state().await.unwrap()), env, true).await.unwrap(); 
+    }
+
+    #[actix_rt::test]
+    async fn let_elimination() {
+        let (flag, res) = simplify_expr("let a = 1; true").await; 
+        //assert!(flag); //FIXME flag should be true ?
+        assert_eq!( format!("{}", res), "true"); //FIXME De Bruijn indices not tested
+
+    }
+    #[actix_rt::test]
+    async fn if_elimination_1() {
+        let (flag, res) = simplify_expr(
+			"if 1 == 2 {
+                false   
+            } else {
+                true
+            } 
+			"
+        ).await; 
+        //assert!(flag); //FIXME flag should be true ?
+        assert_eq!( format!("{}", res), "true"); //FIXME De Bruijn indices not tested
+    }
+    #[actix_rt::test]
+    async fn if_elimination_2() {
+        let (flag, res) = simplify_expr(
+			"if 2 == 2 {
+                false   
+            } else {
+                true
+            } 
+			"
+        ).await; 
+        //assert!(flag); //FIXME flag should be true ?
+        assert_eq!( format!("{}", res), "false"); //FIXME De Bruijn indices not tested
+    }
+    #[actix_rt::test]
+    async fn if_no_elimination() {//FIXME do not pass yet we have a \payload. ... why ? regression 
+        let (flag, res) = simplify_expr(
+			"if req.path() == \"\" { false } else { true }"
+        ).await; 
+        //assert!(flag); //FIXME flag should be true ?
+        assert_eq!( 
+            format!("{}", res), 
+			"if req.path() == \"\" { false } else { true }"
+        ); //FIXME De Bruijn indices not tested
+    }
+    #[actix_rt::test]
+    async fn ifsomematch_elimination_1() {
+        let (flag, res) = simplify_expr(
+            "if let Some(x) = None { false } else { true }"
+        ).await; 
+        //assert!(flag); //FIXME flag should be true ?
+        assert_eq!( format!("{}", res), "true"); //FIXME De Bruijn indices not tested
+    }
+
+    #[actix_rt::test]
+    async fn ifsomematch_elimination_2() {//TODO pass yet, regression
+        let (flag, res) = simplify_expr(
+			"if let Some(x) = Some(1) {
+                false 
+            } else {
+                true
+            } 
+			"
+        ).await; 
+        //assert!(flag); //FIXME flag should be true ?
+        assert_eq!( format!("{}", res), "false"); //FIXME De Bruijn indices not tested
+    }
 }

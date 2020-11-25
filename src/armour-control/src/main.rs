@@ -100,6 +100,7 @@ async fn main() -> Result<(), Error> {
                     .service(rest_api::policy::query_global)
                     .service(rest_api::policy::drop)
                     .service(rest_api::policy::drop_all)
+                    .service(rest_api::policy::specialize)
                     .default_service(web::to(index)),
             )
             .app_data(
