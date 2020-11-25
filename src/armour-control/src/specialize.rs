@@ -11,7 +11,7 @@ use armour_lang::literals::{
 };
 use armour_lang::parser::{Ident, Infix, Iter};
 use armour_lang::policies;
-use armour_lang::types::{Signature, Typ, TTyp};
+use armour_lang::types::{CPFlatTyp, Signature, Typ, TTyp};
 use async_trait::async_trait;
 use futures::future::{BoxFuture, FutureExt};
 use std::collections::BTreeMap;
@@ -36,13 +36,108 @@ pub trait TSExprPEval : Sized{
     ) -> Result<(bool, Self), self::Error>; 
 }
 
+macro_rules! ring_simplification (
+    ($ring: ident, $plus1: ident, $multiply1: ident,  $plus2: ident, $multiply2: ident, $zero: expr, $one: expr) => (
+        |
+            op: Infix<CPFlatTyp>,
+            b1: bool,
+            n_e1: CPExpr, 
+            b2: bool,
+            n_e2: CPExpr
+        | -> Result<(bool, bool, CPExpr), self::Error> {
+            println!("op {:?}", op);
+            println!("infix1 {} {:?}", b1, n_e1);
+            println!("infix2 {} {:?}", b2, n_e2);
+            println!();
+            if op == Infix::$plus1 || op == Infix::$plus2 {
+                match n_e1 {
+                    r @ Expr::ReturnExpr(_) => Ok((true, b1, r)),
+                    Expr::LitExpr(x) if x == cpdplit!($ring($zero)) => Ok((true, b2, n_e2)),
+                    _ => match n_e2 {
+                        r2 @ Expr::ReturnExpr(_) => Ok((true, b2, r2)),
+                        Expr::LitExpr(x) if x == cpdplit!($ring($zero)) => Ok((true, b1, n_e1)),
+                        _ => Ok((false, b1 && b2, Expr::InfixExpr(op, Box::new(n_e1), Box::new(n_e2)))), 
+                    },
+                }
+            }
+            else if op == Infix::$multiply1 || op == Infix::$multiply2 {
+                match n_e1 {
+                    r @ Expr::ReturnExpr(_) => Ok((true, b1, r)),
+                    Expr::LitExpr(x) if x == cpdplit!($ring($zero)) => Ok((true, b1, Expr::LitExpr(x))),
+                    Expr::LitExpr(x) if x == cpdplit!($ring($one)) => Ok((true, b2, n_e2)),
+                    _ => match n_e2 {
+                        r2 @ Expr::ReturnExpr(_) => Ok((true, b2, r2)),
+                        Expr::LitExpr(x) if x == cpdplit!($ring($zero)) => Ok((true, b2, Expr::LitExpr(x))),
+                        Expr::LitExpr(x) if x == cpdplit!($ring($one)) => Ok((true, b1, n_e1)),
+                        _ => Ok((false, b1 && b2, Expr::InfixExpr(op, Box::new(n_e1), Box::new(n_e2)))), 
+                    },
+                }
+            } else {
+                Ok((false, b1 && b2, Expr::InfixExpr(op, Box::new(n_e1), Box::new(n_e2)))) 
+            }
+        }
+    );
+);
+
+fn combine_simplification(
+    simpl1: impl Fn(Infix<CPFlatTyp>, bool, CPExpr, bool, CPExpr) -> Result<(bool, bool, CPExpr), self::Error>,
+    simpl2: impl Fn(Infix<CPFlatTyp>, bool, CPExpr, bool, CPExpr) -> Result<(bool, bool, CPExpr), self::Error>
+) -> impl Fn(Infix<CPFlatTyp>, bool, CPExpr, bool, CPExpr) -> Result<(bool, bool, CPExpr), self::Error>
+{
+    move |op: Infix<CPFlatTyp>,
+    b1: bool,
+    n_e1: CPExpr,
+    b2: bool,
+    n_e2: CPExpr| 
+    -> Result<(bool, bool, CPExpr), self::Error> { 
+        match simpl1(op.clone(), b1.clone(), n_e1.clone(), b2.clone(), n_e2.clone()) {
+            Ok((false, _, _)) => simpl2(op, b1, n_e1, b2, n_e2),
+            r => r
+        }
+    }
+}
+
+fn simplify(
+    op: Infix<CPFlatTyp>,
+    b1: bool,
+    n_e1: CPExpr, 
+    b2: bool,
+    n_e2: CPExpr
+) -> Result<(bool, CPExpr), self::Error> {
+    match (op, n_e2) {
+        (Infix::Divide, Expr::LitExpr(cpdplit!(Int(0)))) => 
+            return Err(Error::new("peval, can not divide by zero")),
+        (Infix::Divide, Expr::LitExpr(x)) if x == cpdplit!(Float(0.)) => 
+            return Err(Error::new("peval, can not divide by zero")),
+        //Syntaxic check for equality    
+        (Infix::Equal, n_e2) if n_e1 == n_e2 => Ok((b1 && b2, Expr::LitExpr(cpdplit!(Bool(true))))), 
+        (Infix::NotEqual, n_e2) if n_e1 != n_e2 => Ok((b1 && b2, Expr::LitExpr(cpdplit!(Bool(true))))),
+        (op, n_e2) => {
+            let t = combine_simplification(
+                ring_simplification!(Bool, Or, And, Or, And, false, true),
+                combine_simplification(
+                    ring_simplification!(Bool, And, Or, And, Or, true, false),
+                    combine_simplification(
+                        ring_simplification!(Int, Plus, Multiply, Minus, Divide, 0, 1),
+                        ring_simplification!(Float, Plus, Multiply, Minus, Divide, 0., 1.)
+                    )
+                )
+            );
+
+            let tmp = t(op, b1, n_e1, b2, n_e2)?;
+            Ok((tmp.1, tmp.2))
+        }
+    }
+}
+
+
 #[async_trait]
 impl TSExprPEval for CPExpr {
 
     fn peval(self, 
         state: Arc<State>, 
         env: CPEnv,
-        simplification_only: bool
+        simplification_only: bool//if true, prevent call evaluation FIXME allow all non side effect call
     ) -> BoxFuture<'static, Result<(bool, Self), self::Error>> {
         async move { 
             let simplification_only = simplification_only.clone();
@@ -71,44 +166,13 @@ impl TSExprPEval for CPExpr {
                     (false, n_e) => Ok((false, Expr::PrefixExpr(p, Box::new(n_e)))),//evaluation delayed
                     _ => Err(Error::new("peval, prefix")),
                 },
-                // short circuit for &&
-                Expr::InfixExpr(Infix::And, e1, e2) =>{ 
-                    let (b1, n_e1) =  e1.peval(state.clone(), env.clone(), simplification_only).await?;
-                    let (b2, n_e2) = e2.peval(state, env, simplification_only).await?;
-
-                    match n_e1 {
-                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(false))) => Ok((b1, r)),
-                        Expr::LitExpr(cpdplit!(Bool(true))) => Ok((b2, n_e2)),
-                        _ if !b1 =>  match n_e2 {
-                            r2 @ Expr::ReturnExpr(_) | r2 @ Expr::LitExpr(cpdplit!(Bool(false))) => Ok((b2, r2)),
-                            Expr::LitExpr(cpdplit!(Bool(true))) => Ok((b1, n_e1)),
-                            _ => Ok((b1 || b2, Expr::InfixExpr(Infix::And, Box::new(n_e1), Box::new(n_e2)))),
-                        },
-                        _ => Err(Error::new("peval, && infix")),
-                    }
-                },
-                // short circuit for ||
-                Expr::InfixExpr(Infix::Or, e1, e2) => {
-                    let (b1, n_e1) =  e1.peval(state.clone(), env.clone(), simplification_only).await?;
-                    let (b2, n_e2) = e2.peval(state, env, simplification_only).await?;
-
-                    match n_e1 {
-                        r @ Expr::ReturnExpr(_) | r @ Expr::LitExpr(cpdplit!(Bool(true))) => Ok((b1, r)),
-                        Expr::LitExpr(cpdplit!(Bool(false))) => Ok((b2, n_e2)),
-                        _ if !b1 => match n_e2 {
-                            Expr::LitExpr(cpdplit!(Bool(false))) => Ok((b1, n_e1)),
-                            r2 @ Expr::ReturnExpr(_) | r2 @ Expr::LitExpr(cpdplit!(Bool(true))) => Ok((b2, r2)),
-                            _ => Ok((b1 || b2, Expr::InfixExpr(Infix::Or, Box::new(n_e1), Box::new(n_e2)))),
-                        },
-                        _ => Err(Error::new("peval, infix")),
-                }
-                },
                 Expr::InfixExpr(op, e1, e2) => {
                     let r1 = e1.peval(state.clone(), env.clone(), simplification_only).await?;
                     let r2 = e2.peval(state, env, simplification_only).await?;
+                    println!("infix {:?} \n\t{:?} \n\t {:?}", op, r1, r2);
                     match (r1, r2) {
-                        ((false, x), (_, y)) | ((_,x), (false, y)) => Ok(
-                            (false, Expr::InfixExpr(op, Box::new(x), Box::new(y)))
+                        ((b1 @ false, x), (b2 , y)) | ((b1, x), (b2 @ false, y)) => Ok(
+                            simplify(op, b1, x, b2, y)?
                         ),
                         ((true, x), (true, y)) => {
                             match (x, y) {
@@ -180,13 +244,22 @@ impl TSExprPEval for CPExpr {
                 }
                 Expr::Let(vs, e1, e2) =>{
                     let mut flag = true;
+                    let body = e2.clone().at_depth(vs.len()).unwrap();
+                    println!("e2 {}", body);
                     for u in 0..vs.len(){
-                        flag = flag && e2.is_free(u);
+                        flag = flag && body.is_free(u);
                         if !flag { break };
                     }
 
                     if flag { //e2 is independant of the let-bindings
-                        e2.peval(state, env, simplification_only).await
+                        //Getting ride of the closures
+                        println!("let elim");
+                        let mut e2a = *e2;
+                        for u in 0..vs.len() {
+                            e2a = e2a.apply(&Expr::LitExpr(Literal::unit()))?;
+                        }
+
+                        e2a.peval(state, env, simplification_only).await
                     } else {
                         match e1.peval(state.clone(), env.clone(), simplification_only).await? {
                             (flag, r @ Expr::ReturnExpr(_)) => Ok((flag, r)),
@@ -369,19 +442,27 @@ impl TSExprPEval for CPExpr {
                         _ => Err(Error::new("peval, if-expression")),
                     },
                     (false, cond1) => {                                                        
-                        let (_, consequence1) = consequence.peval(state.clone(), env.clone(), simplification_only).await?;
-                        let alternative = match alternative {
+                        let (bc, consequence1) = consequence.peval(state.clone(), env.clone(), simplification_only).await?;
+                        match alternative {
                             Some(alt) =>{
                                 let (_, tmp) = alt.peval(state.clone(), env.clone(), simplification_only).await?;
-                                Some(Box::new(tmp))
+                                //Syntaxic if elimination
+                                if tmp == consequence1 {
+                                    return Ok((bc, consequence1))
+                                } else {
+                                    Ok((false, Expr::IfExpr {
+                                        cond: Box::new(cond1),
+                                        consequence: Box::new(consequence1),
+                                        alternative: Some(Box::new(tmp)),
+                                    } ))
+                                }                           
                             },
-                            None => None
-                        };
-                        Ok((false, Expr::IfExpr {
-                            cond: Box::new(cond1),
-                            consequence: Box::new(consequence1),
-                            alternative,
-                        } ))
+                            None => Ok((false, Expr::IfExpr {
+                                cond: Box::new(cond1),
+                                consequence: Box::new(consequence1),
+                                alternative: None,
+                            } ))
+                        }
                     } 
                 },
                 Expr::IfSomeMatchExpr {
@@ -411,20 +492,31 @@ impl TSExprPEval for CPExpr {
 
                         let (_, c_body_1) = c_body.peval(state.clone(), env.clone(), simplification_only).await?;
 
-                        let alternative = match alternative {
+                        match alternative {
                             Some(alt) =>{
-                                let (_, tmp) = alt.peval(state.clone(), env.clone(), simplification_only).await?;
-                                Some(Box::new(tmp))
+                                let (b0, tmp) = alt.peval(state.clone(), env.clone(), simplification_only).await?;
+                                let consequence1 = Expr::Closure(c_var, Box::new(c_body_1.clone()));
+                                println!("coucou");
+                                //Syntaxic IfSomeMatch elimination
+                                if c_body_1.is_free(0) && consequence1.clone().apply(&Expr::LitExpr(Literal::unit()))? == tmp {//Dummy apply                                     
+                                    Ok((b0, tmp))
+                                } else {
+                                    Ok((false, Expr::IfSomeMatchExpr {
+                                        expr: Box::new(expr1),
+                                        consequence: Box::new(consequence1),
+                                        alternative: Some(Box::new(tmp)),
+                                    }))
+                                }
                             },
-                            None => None
-                        };
-
-                        let consequence1 = Expr::Closure(c_var, Box::new(c_body_1));
-                        Ok((false, Expr::IfSomeMatchExpr {
-                            expr: Box::new(expr1),
-                            consequence: Box::new(consequence1),
-                            alternative,
-                        }))
+                            None => {
+                                let consequence1 = Expr::Closure(c_var, Box::new(c_body_1));
+                                Ok((false, Expr::IfSomeMatchExpr {
+                                    expr: Box::new(expr1),
+                                    consequence: Box::new(consequence1),
+                                    alternative: None,
+                                }))
+                            }
+                        }                            
                     }
                     (_, r) => Err(Error::from(format!("peval, if-let-expression: {:#?}", r))),
                 },
@@ -549,7 +641,7 @@ impl TSExprPEval for CPExpr {
                                 Err(Error::from(format!("peval, call: {}: {:?}", function, args)))
                             }
                         },
-                        None if !flag  || simplification_only => {
+                        None if !flag || simplification_only => {
                             if let Some(mut r) = env.get(&function) {
                                 //user defined function
                                 //partial evaluation + inlining
@@ -658,9 +750,7 @@ fn compile_helper(
     n_pol.fn_policies.set_args(function.to_string(), sig.args().unwrap().len() as u8);
 
     //Deadcode elimination
-    println!("{:?}\n", n_pol);
     n_pol.program = n_pol.program.deadcode_elim(&vec![function.to_string()][..])?;
-    println!("{:?}\n", n_pol);
     Ok(n_pol)
 }
 async fn compile_egress_ingress(
@@ -673,7 +763,6 @@ async fn compile_egress_ingress(
     let mut new_gpol = policies::GlobalPolicies::default();
     for (proto, pol)  in (&global_pol).policies() {
         let env = CPEnv::new(&pol.program);        
-        println!("{:?}", pol.program);
         match pol.program.code.get(function.to_string()) {
             None =>  {
                 log::warn!(

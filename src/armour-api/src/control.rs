@@ -38,6 +38,20 @@ pub struct OnboardServiceRequest {
     pub tmp_dpid: Option<DPID>
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SpecializationRequest {
+    pub service: Label,
+    pub proxy: Label,
+    pub host: Label,
+    pub policy: GlobalPolicies,
+    pub cpid: CPID
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SpecializationResponse {
+    pub policy: DPPolicies
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct OnboardServiceResponse {
     pub service_id: Label,

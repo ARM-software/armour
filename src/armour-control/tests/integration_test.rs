@@ -470,7 +470,7 @@ mod tests_control {
         })
     }
 
-
+    //FIXME De Bruijn indices not tested
     //TODO write some helper fct to test only expr simplification
 
     async fn simplify_expr(s_expr: &str) -> (bool, CPExpr) {
@@ -481,67 +481,59 @@ mod tests_control {
 		let policy = policies.policy(policies::Protocol::HTTP).unwrap();
 		let env : CPEnv = Env::new(&policy.program);
 
-		let args = vec![
-			Literal::http_request(Box::new(HttpRequest::new(
-				"method",
-				"HTTP_20",
-				"path",
-				"query", 
-				Vec::new(),
-				literals::Connection::from((&literals::CPID::default(), &literals::CPID::default(), 1)),
-			))),
-			//Literal::data(Vec::new()) 
-		];	
-		let expr : CPExpr = expressions::Expr::call(
-			"allow_rest_request", 
-			args.into_iter().map(|x| Expr::LitExpr(x)).collect()
-		);
-        return expr.pevaluate(Arc::new(mock_state().await.unwrap()), env, true).await.unwrap(); 
+        let expr : CPExpr = env.get("allow_rest_request").unwrap().at_depth(4).unwrap();
+        //println!("{:?}", expr);
+        return expr.pevaluate(Arc::new(mock_state().await.unwrap()), env, false).await.unwrap(); 
     }
 
+    //Dead code elimination
     #[actix_rt::test]
     async fn let_elimination() {
-        let (flag, res) = simplify_expr("let a = 1; true").await; 
-        //assert!(flag); //FIXME flag should be true ?
-        assert_eq!( format!("{}", res), "true"); //FIXME De Bruijn indices not tested
+        let (_, res) = simplify_expr("let a = 1; true").await; 
+        assert_eq!( format!("{}", res), "true");
 
     }
+
+    //Sparse conditional constant propagation
     #[actix_rt::test]
     async fn if_elimination_1() {
-        let (flag, res) = simplify_expr(
-			"if 1 == 2 {
-                false   
-            } else {
-                true
-            } 
-			"
+        let (_, res) = simplify_expr(
+			"if 1 == 2 { false } else { true }"
         ).await; 
-        //assert!(flag); //FIXME flag should be true ?
-        assert_eq!( format!("{}", res), "true"); //FIXME De Bruijn indices not tested
+        assert_eq!( format!("{}", res), "true");
     }
     #[actix_rt::test]
     async fn if_elimination_2() {
-        let (flag, res) = simplify_expr(
-			"if 2 == 2 {
-                false   
-            } else {
-                true
-            } 
-			"
+        let (_, res) = simplify_expr(
+			"if 2 == 2 { false } else { true }"
         ).await; 
-        //assert!(flag); //FIXME flag should be true ?
-        assert_eq!( format!("{}", res), "false"); //FIXME De Bruijn indices not tested
+        assert_eq!( format!("{}", res), "false");
     }
     #[actix_rt::test]
-    async fn if_no_elimination() {//FIXME do not pass yet we have a \payload. ... why ? regression 
-        let (flag, res) = simplify_expr(
+    async fn if_simple_syntaxic_elimination() {
+        let (_, res) = simplify_expr(
+			"if req.path() == \"test\" { req.version() == \"\" } else { req.version() == \"\" }"
+        ).await; 
+        assert_eq!( format!("{}", res), "req.version() == \"\"");
+    }
+
+    #[actix_rt::test]
+    async fn if_syntaxic_elimination() {
+        let (_, res) = simplify_expr(
+			"if req.path() == \"test\" { let y = req; req.version() == \"\" } else { req.version() == \"\" }"
+        ).await; 
+        assert_eq!( format!("{}", res), "req.version() == \"\"");
+    }
+
+    #[actix_rt::test]
+    async fn if_no_elimination() { 
+        let (_, res) = simplify_expr(
 			"if req.path() == \"\" { false } else { true }"
         ).await; 
-        //assert!(flag); //FIXME flag should be true ?
         assert_eq!( 
             format!("{}", res), 
 			"if req.path() == \"\" { false } else { true }"
-        ); //FIXME De Bruijn indices not tested
+        );
     }
     #[actix_rt::test]
     async fn ifsomematch_elimination_1() {
@@ -554,7 +546,7 @@ mod tests_control {
 
     #[actix_rt::test]
     async fn ifsomematch_elimination_2() {//TODO pass yet, regression
-        let (flag, res) = simplify_expr(
+        let (_, res) = simplify_expr(
 			"if let Some(x) = Some(1) {
                 false 
             } else {
@@ -562,7 +554,106 @@ mod tests_control {
             } 
 			"
         ).await; 
-        //assert!(flag); //FIXME flag should be true ?
-        assert_eq!( format!("{}", res), "false"); //FIXME De Bruijn indices not tested
+        assert_eq!( format!("{}", res), "false");
+    }
+    #[actix_rt::test]
+    async fn ifsomematch_simple_syntaxic_elimination() {
+        let (_, res) = simplify_expr(
+			"if let Some(x) = to.port() {
+                req.version() == \"\" 
+            } else {
+                req.version() == \"\"
+            } 
+			"
+        ).await; 
+        assert_eq!( format!("{}", res), "req.version() == \"\"");
+    }
+    #[actix_rt::test]
+    async fn ifsomematch_syntaxic_elimination() {
+        let (_, res) = simplify_expr(
+			"if let Some(x) = to.port() {
+                let y = req; req.version() == \"\" 
+            } else {
+                req.version() == \"\"
+            } 
+			"
+        ).await; 
+        assert_eq!( format!("{}", res), "req.version() == \"\"");
+    }
+
+    //Constant folding and constant propagation
+    #[actix_rt::test]
+    async fn constant_folding_propagation() {
+        let (_, res) = simplify_expr(
+            "let x = 14;
+            let y = 7 - x / 2;
+            if let Some(port) = to.port() {
+                port == y * (28 / x + 2)
+            } else {
+                true
+            } 
+			"
+        ).await; 
+        assert_eq!( 
+            format!("{}", res), 
+            "if let Some(port) = to.port() { port == 0 } else { true }"
+        );
+    }
+
+    //Boolean simplification
+    #[actix_rt::test]
+    async fn boolean_multiply_simpl() {
+        let (_, res) = simplify_expr(
+            "req.version() == \"\" && false && req.path() == \"\""
+        ).await; 
+        assert_eq!( 
+            format!("{}", res), 
+            "false"
+        );
+    }
+
+    #[actix_rt::test]
+    async fn boolean_multiply_simpl2() {
+        let (_, res) = simplify_expr(
+            "req.version() == \"\" && true && req.path() == \"\""
+        ).await; 
+        assert_eq!( 
+            format!("{}", res), 
+            "req.version() == \"\" && req.path() == \"\""
+        );
+    }
+
+    #[actix_rt::test]
+    async fn boolean_plus_simpl() {
+        let (_, res) = simplify_expr(
+            "req.version() == \"\" || true || req.path() == \"\""
+        ).await; 
+        assert_eq!( 
+            format!("{}", res), 
+            "true"
+        );
+    }
+
+    //Arithemtic simplification
+    #[actix_rt::test]
+    async fn int_multiply_simpl() {
+        let (_, res) = simplify_expr(
+            "if let Some(port) = to.port() { port == 0 * port  } else { true }"
+        ).await; 
+        assert_eq!( 
+            format!("{}", res), 
+            "if let Some(port) = to.port() { port == 0 } else { true }"
+        );
+    }
+
+    #[actix_rt::test]
+    async fn int_plus_eq_simpl() {
+        let (_, res) = simplify_expr(
+            "if let Some(port) = to.port() { port == 0 + port  } else { true }"
+        ).await; 
+        assert_eq!( 
+            format!("{}", res), 
+            "true"
+        );
     }
 }

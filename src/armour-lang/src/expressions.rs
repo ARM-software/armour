@@ -396,7 +396,7 @@ where
     pub fn is_free(&self, u: usize) -> bool {
         match self {
             Expr::Var(_) => true,
-            Expr::BVar(_, u1) => u1 == &u,
+            Expr::BVar(_, u1) => u1 != &u,
             Expr::LitExpr(_) => true,
             Expr::Closure(_, e) => e.is_free(u+1),
             Expr::ReturnExpr(e) | Expr::PrefixExpr(_, e) => e.is_free(u),  
