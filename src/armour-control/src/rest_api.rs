@@ -483,8 +483,8 @@ pub mod policy {
                 let mut local_pol : Option<DPPolicies> = None;
                 let arc_state = Arc::new(state.clone()); 
                 for function in vec![
-                    policies::ALLOW_REST_RESPONSE,
-                    policies::ON_TCP_DISCONNECT,
+                    policies::ALLOW_REST_REQUEST,
+                    policies::ALLOW_TCP_CONNECTION,
                 ]{ 
                     let tmp_egress_pol = compile_egress(
                         arc_state.clone(), 
@@ -501,8 +501,7 @@ pub mod policy {
                 }
 
                 for function in vec![
-                    policies::ALLOW_REST_REQUEST,
-                    policies::ALLOW_TCP_CONNECTION,
+                    policies::ALLOW_REST_RESPONSE,
                     policies::ON_TCP_DISCONNECT,
                 ]{ 
                     let tmp_ingress_pol = compile_ingress(
@@ -716,8 +715,8 @@ pub mod policy {
         let mut pol = DPPolicies::default();
 
         for function in vec![
-            policies::ALLOW_REST_RESPONSE,
-            policies::ON_TCP_DISCONNECT,
+            policies::ALLOW_REST_REQUEST,
+            policies::ALLOW_TCP_CONNECTION,
         ]{ 
             let tmp_egress_pol = compile_egress(
                 arc_state.clone(), 
@@ -730,8 +729,7 @@ pub mod policy {
         }
 
         for function in vec![
-            policies::ALLOW_REST_REQUEST,
-            policies::ALLOW_TCP_CONNECTION,
+            policies::ALLOW_REST_RESPONSE,
             policies::ON_TCP_DISCONNECT,
         ]{ 
             let tmp_ingress_pol = compile_ingress(
