@@ -50,7 +50,7 @@ fn onboarding_policy(obd: OnboardingData) -> OnboardingResult {
 }
 
 fn get_policy(id: ID) -> (Policy, Policy) {
-    let ing = compile_ingress("allow_rest_request", id); // These are Armour primitives
-    let egr = allow_egress();
+    let egr = compile_egress(Primitive::allow_rest_request(), id); // These are Armour primitives
+    let ing = allow_ingress();
     (ing, egr)
 }

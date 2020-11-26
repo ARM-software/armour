@@ -812,6 +812,20 @@ impl<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> VecSet<FlatTyp, Flat
         )
     }
 }
+
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub struct Primitive {
+    name: String,
+}
+impl Primitive {
+    pub fn new(name: &str) -> Self {
+        Primitive{ name:name.to_string() }
+    }
+
+    pub fn function(&self) -> &String{
+        &self.name
+    }
+}
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct Credentials {
     value: String,
@@ -1341,7 +1355,7 @@ pub enum CPFlatLiteral {
     OnboardingData(Box<OnboardingData>),
     OnboardingResult(Box<OnboardingResult>),
     Policy(Box<Policy>),
-
+    Primitive(Box<Primitive>),
 }
 
 impl From<CPFlatLiteral> for DPFlatLiteral {
@@ -1359,6 +1373,9 @@ impl From<CPFlatLiteral> for DPFlatLiteral {
             ),
             CPFlatLiteral::Policy(_) => panic!(
                 "Policy can not be converted to a DPFlatLiteral"
+            ),
+            CPFlatLiteral::Primitive(_) => panic!(
+                "Primitive can not be converted to a DPFlatLiteral"
             ),
         }
     }
@@ -1404,6 +1421,7 @@ impl CPFlatLiteral {
             CPFlatLiteral::OnboardingData(_) => CPTyp::onboarding_data(),
             CPFlatLiteral::OnboardingResult(_) => CPTyp::onboarding_result(),
             CPFlatLiteral::Policy(_) => CPTyp::policy(),
+            CPFlatLiteral::Primitive(_) => CPTyp::primitive(),
             dpft => CPTyp::FlatTyp(CPFlatTyp::DPFlatTyp(
                 DPFlatLiteral::from(dpft.clone()).typ()
             )),
@@ -1418,6 +1436,7 @@ impl fmt::Display for CPFlatLiteral {
             CPFlatLiteral::DPFlatLiteral(dpfl) => DPFlatLiteral::fmt(dpfl, f),
             CPFlatLiteral::OnboardingData(d) => write!(f, "{:?}", d),
             CPFlatLiteral::OnboardingResult(r) => write!(f, "{:?}", r),
+            CPFlatLiteral::Primitive(r) => write!(f, "{:?}", r),
             CPFlatLiteral::Policy(p) => write!(f, "{:?}", p),
         }
     }
@@ -1555,6 +1574,7 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
             CPFlatLiteral::OnboardingData(_) => CPFlatTyp::OnboardingData,
             CPFlatLiteral::OnboardingResult(_) => CPFlatTyp::OnboardingData,
             CPFlatLiteral::Policy(_) => CPFlatTyp::Policy,
+            CPFlatLiteral::Primitive(_) => CPFlatTyp::Primitive,
         }
     }
     
@@ -1702,6 +1722,22 @@ impl From<&Policy> for CPLiteral {
         Literal::FlatLiteral(CPFlatLiteral::Policy(Box::new(pol.clone())))
     }
 }
+
+impl From<Primitive> for CPLiteral {
+    fn from(c: Primitive) -> Self {
+        Literal::FlatLiteral(
+            CPFlatLiteral::Primitive(Box::new(c))
+        )
+    }
+}
+impl From<&Primitive> for CPLiteral {
+    fn from(c: &Primitive) -> Self {
+        Literal::FlatLiteral(
+            CPFlatLiteral::Primitive(Box::new(c.clone()))
+        )
+    }
+}
+
 impl<FlatTyp, FlatLiteral> From<HttpRequest<FlatTyp, FlatLiteral>> for Literal<FlatTyp, FlatLiteral> 
 where
     FlatTyp: TFlatTyp, 

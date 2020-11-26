@@ -207,6 +207,21 @@ impl TSLitInterpret for CPLiteral {
                     })
                 )))
             },
+            "Primitive::allow_rest_request" => {
+                Some(literals::Literal::FlatLiteral(CPFlatLiteral::Primitive(
+                    Box::new(literals::Primitive::new("allow_rest_request"))
+                )))
+            },
+            "Primitive::allow_rest_response" => {
+                Some(literals::Literal::FlatLiteral(CPFlatLiteral::Primitive(
+                    Box::new(literals::Primitive::new("allow_rest_response"))
+                )))
+            },
+            "Primitive::allow_tcp_connection" => {
+                Some(literals::Literal::FlatLiteral(CPFlatLiteral::Primitive(
+                    Box::new(literals::Primitive::new("allow_tcp_connection"))
+                )))
+            },
             "deny_egress" => {
                 Some(literals::Literal::FlatLiteral(CPFlatLiteral::Policy(
                     Box::new(literals::Policy{
@@ -219,6 +234,11 @@ impl TSLitInterpret for CPLiteral {
                     Box::new(literals::Policy{
                         pol: Box::new(DPPolicies::deny_ingress())
                     })
+                )))
+            },
+            "Primitive::on_tcp_disconnect" => {
+                Some(literals::Literal::FlatLiteral(CPFlatLiteral::Primitive(
+                    Box::new(literals::Primitive::new("on_tcp_disconnect"))
                 )))
             },
             _ => Self::eval_call0(f),
@@ -252,11 +272,11 @@ impl TSLitInterpret for CPLiteral {
     }
     async fn seval_call2(&self, state: Arc<State>, f: &str, other: &Self) -> Result<Option<CPLiteral>, self::Error> {
         match (f, self, other) {
-            ("compile_ingress", cpdplit!(Str(function)), cpdplit!(ID(id))) => {
-                Ok(Some(helper_compile_ingress(state, function, &id.clone().into()).await?))
+            ("compile_ingress", cplit!(Primitive(p)), cpdplit!(ID(id))) => {
+                Ok(Some(helper_compile_ingress(state, &p.function(), &id.clone().into()).await?))
             },
-            ("compile_egress", cpdplit!(Str(function)), cpdplit!(ID(id))) =>  {
-                Ok(Some(helper_compile_egress(state, function, &id.clone().into()).await?))
+            ("compile_egress", cplit!(Primitive(p)), cpdplit!(ID(id))) =>  {
+                Ok(Some(helper_compile_egress(state, &p.function(), &id.clone().into()).await?))
             },
             ("verify_credentials", cplit!(OnboardingData(obd)), cpdplit!(Label(label))) => {
                 Ok(Some(CPLiteral::bool(true)))//TODO

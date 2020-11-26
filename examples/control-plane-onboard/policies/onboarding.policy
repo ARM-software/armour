@@ -16,7 +16,7 @@ fn onboarding_policy(obd: OnboardingData) -> OnboardingResult {
         
         let id = fold x in obd.proposed_labels() { acc.add_label(x) } id;
 
-        let pol = (compile_egress("allow_rest_request", id), compile_ingress("allow_rest_response", id));
+        let pol = (compile_egress(Primitive::allow_rest_request(), id), compile_ingress(Primitive::allow_rest_response(), id));
 
         if ControlPlane::onboard(id) {
             OnboardingResult::Ok(id, pol.0, pol.1)            

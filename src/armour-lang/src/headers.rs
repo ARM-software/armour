@@ -463,16 +463,20 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
             //Onboarding policy
             "allow_egress" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Policy)),
             "allow_ingress" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Policy)),
+            "Primitive::allow_rest_request" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Primitive)),
+            "Primitive::allow_rest_response" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Primitive)),
+            "Primitive::allow_tcp_connection" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Primitive)),
             "compile_egress" => sig(
-                vec![CPTyp::str(), CPTyp::id()], 
+                vec![CPTyp::primitive(), CPTyp::id()], 
                 CPTyp::FlatTyp(CPFlatTyp::Policy)
             ),
             "compile_ingress" => sig(
-                vec![CPTyp::str(), CPTyp::id()], 
+                vec![CPTyp::primitive(), CPTyp::id()], 
                 CPTyp::FlatTyp(CPFlatTyp::Policy)
             ),
             "deny_egress" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Policy)),
             "deny_ingress" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Policy)),
+            "Primitive::on_tcp_disconnect" => sig(vec![], CPTyp::FlatTyp(CPFlatTyp::Primitive)),
             "ControlPlane::onboard" => sig(vec![CPTyp::id()], CPTyp::bool()),
             "ControlPlane::onboarded" => sig(
                 vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], 

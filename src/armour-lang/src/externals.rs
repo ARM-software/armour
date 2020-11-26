@@ -186,6 +186,7 @@ impl TExternals<types::CPFlatTyp, literals::CPFlatLiteral> for literals::CPFlatL
             cplit!(OnboardingData(data)) => Externals::build_value(v, &CPLiteral::from(&**data)),
             cplit!(OnboardingResult(res)) => Externals::build_value(v, &CPLiteral::from(&**res)),
             cplit!(Policy(pol)) => Externals::build_value(v, &CPLiteral::from(&**pol)),
+            cplit!(Primitive(p)) => Externals::build_value(v, &CPLiteral::from(&**p)),
             CPLiteral::Tuple(ts) => {
                 let mut tuple = v.init_tuple(ts.len() as u32);
                 for (i, t) in ts.iter().enumerate() {

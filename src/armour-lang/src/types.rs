@@ -368,6 +368,9 @@ impl CPTyp {
     pub fn policy() -> Self {
         Self::FlatTyp(CPFlatTyp::Policy)
     }
+    pub fn primitive() -> Self {
+        Self::FlatTyp(CPFlatTyp::Primitive)
+    }
 }
 
 impl<FlatTyp:TFlatTyp> Prefix<FlatTyp> {
@@ -516,6 +519,7 @@ pub enum CPFlatTyp {
     OnboardingData,
     OnboardingResult,
     Policy,
+    Primitive,
 }
 pub type CPTyp = Typ<CPFlatTyp>;
 pub type CPSignature = Signature<CPFlatTyp>;
@@ -553,6 +557,9 @@ impl From<CPFlatTyp> for FlatTyp {
             ),
             CPFlatTyp::Policy => panic!(
                 "Policy type can not be converted to DPFlatTyp".to_string()
+            ),
+            CPFlatTyp::Primitive => panic!(
+                "Primitive type can not be converted to DPFlatTyp".to_string()
             ),
         }
     }
@@ -594,6 +601,7 @@ impl fmt::Display for CPFlatTyp {
             CPFlatTyp::OnboardingData => write!(f, "OnboardingData"),
             CPFlatTyp::OnboardingResult => write!(f, "OnboardingResult"),
             CPFlatTyp::Policy => write!(f, "Policy"),
+            CPFlatTyp::Primitive => write!(f, "Primitive"),
         }
     }
 }
@@ -623,6 +631,7 @@ impl TFlatTyp for CPFlatTyp {
             "OnboardingData" => Ok(Self::OnboardingData),
             "OnboardingResult" => Ok(Self::OnboardingResult),
             "Policy" => Ok(Self::Policy),
+            "Primitive" => Ok(Self::Primitive),
             s => match FlatTyp::try_from_str(s)  {
                 Ok(t) => Ok(Self::DPFlatTyp(t)),
                 Err(e) =>  Err(Error::from(e))
