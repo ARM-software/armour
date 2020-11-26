@@ -158,6 +158,7 @@ pub mod service {
                 Box::new(literals::OnboardingData::new(
                     request.host.clone(),
                     request.service.clone(),
+                    literals::Credentials::new(request.credentials.clone()),
                     match request.tmp_dpid { Some(ref x) => x.port(), _ => None},
                     match request.tmp_dpid { Some(ref x) => x.labels.clone(), _=> Labels::default()},
                     match request.tmp_dpid { Some(ref x) => x.ips.clone(), _=> BTreeSet::default()},

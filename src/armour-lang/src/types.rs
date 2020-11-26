@@ -356,6 +356,9 @@ impl<FlatTyp:TFlatTyp> TTyp<FlatTyp> for Typ<FlatTyp> {
 }
 
 impl CPTyp {
+    pub fn credentials() -> Self {
+        Self::FlatTyp(CPFlatTyp::Credentials)
+    }
     pub fn onboarding_data() -> Self {
         Self::FlatTyp(CPFlatTyp::OnboardingData)
     }
@@ -508,10 +511,11 @@ pub type DPSignature = Signature<FlatTyp>;
 
 #[derive(Clone,  Debug,  PartialEq, Serialize, Deserialize)]
 pub enum CPFlatTyp {
-   DPFlatTyp(FlatTyp),
-   OnboardingData,
-   OnboardingResult,
-   Policy,
+    Credentials,
+    DPFlatTyp(FlatTyp),
+    OnboardingData,
+    OnboardingResult,
+    Policy,
 }
 pub type CPTyp = Typ<CPFlatTyp>;
 pub type CPSignature = Signature<CPFlatTyp>;
@@ -537,6 +541,9 @@ impl From<Typ<FlatTyp>> for CPTyp {
 impl From<CPFlatTyp> for FlatTyp {
     fn from(ty: CPFlatTyp) -> FlatTyp {
         match ty {
+            CPFlatTyp::Credentials => panic!(
+                "Credentials type can not be converted to DPFlatTyp".to_string()
+            ),
             CPFlatTyp::DPFlatTyp(dty) => dty,
             CPFlatTyp::OnboardingData => panic!(
                 "OnboardingData type can not be converted to DPFlatTyp".to_string()
@@ -582,6 +589,7 @@ impl From<CPSignature> for DPSignature {
 impl fmt::Display for CPFlatTyp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            CPFlatTyp::Credentials => write!(f, "Credentials"),
             CPFlatTyp::DPFlatTyp(t) => FlatTyp::fmt(t, f),
             CPFlatTyp::OnboardingData => write!(f, "OnboardingData"),
             CPFlatTyp::OnboardingResult => write!(f, "OnboardingResult"),
@@ -611,6 +619,7 @@ impl TFlatTyp for CPFlatTyp {
 
     fn try_from_str(s: &str) -> Result<Self, self::CPError > {
         match s {
+            "Credentials" => Ok(Self::Credentials),
             "OnboardingData" => Ok(Self::OnboardingData),
             "OnboardingResult" => Ok(Self::OnboardingResult),
             "Policy" => Ok(Self::Policy),

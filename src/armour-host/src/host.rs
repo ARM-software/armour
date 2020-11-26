@@ -158,6 +158,7 @@ impl Handler<Disconnect> for ArmourDataHost {
                                     }
                                 },
                                 host: self.label.clone(),
+                                credentials: "".to_string(),//TODO
                                 tmp_dpid: meta.tmp_dpid
                             };
                             let url = self.url.clone();
@@ -238,6 +239,7 @@ impl Handler<CPOnboardProxy> for ArmourDataHost {
                     let onboard = OnboardServiceRequest {
                         service: label.clone(),
                         host: self.label.clone(),
+                        credentials: "".to_string(),//TODO
                         tmp_dpid: Some(tmp_dpid.clone())
                     };
                     let url = self.url.clone();

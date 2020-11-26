@@ -20,7 +20,8 @@ pub fn global_policy_label() -> Label {
 }
 
 
-type Credentials = String;
+type HostCredentials = String;
+type ServiceCredentials = String;
 // map from domains to labels
 pub type LabelMap = std::collections::BTreeMap<String, Labels>;
 
@@ -28,14 +29,15 @@ pub type LabelMap = std::collections::BTreeMap<String, Labels>;
 pub struct OnboardHostRequest {
     pub host: url::Url,
     pub label: Label,
-    pub credentials: Credentials, // FIXME change types as needed
+    pub credentials: HostCredentials, // FIXME change types as needed
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct OnboardServiceRequest {
     pub service: Label,
     pub host: Label,
-    pub tmp_dpid: Option<DPID>
+    pub tmp_dpid: Option<DPID>,
+    pub credentials: ServiceCredentials,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -482,6 +482,10 @@ impl TBuiltin<CPFlatTyp> for CPFlatTyp {
                 vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData)], 
                 CPTyp::id()
             ),
+            "ControlPlane::verify_credentials" => sig(
+                vec![CPTyp::FlatTyp(CPFlatTyp::OnboardingData), CPTyp::label()],//TODO add a second arg 
+                CPTyp::bool()
+            ),
             "Label::new" => sig(vec![CPTyp::str()], CPTyp::label()),
             "Label::login_time" => sig(vec![CPTyp::i64()], CPTyp::label()),
             "OnboardingData::proposed_labels" => sig(

@@ -258,6 +258,9 @@ impl TSLitInterpret for CPLiteral {
             ("compile_egress", cpdplit!(Str(function)), cpdplit!(ID(id))) =>  {
                 Ok(Some(helper_compile_egress(state, function, &id.clone().into()).await?))
             },
+            ("verify_credentials", cplit!(OnboardingData(obd)), cpdplit!(Label(label))) => {
+                Ok(Some(CPLiteral::bool(true)))//TODO
+            },
             _ => Ok(self.eval_call2(f, other)),
         }
     }

@@ -182,6 +182,7 @@ impl TExternals<types::CPFlatTyp, literals::CPFlatLiteral> for literals::CPFlatL
         match lit {
             Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(dpfl)) =>
                 literals::DPFlatLiteral::build_value(v, &Literal::FlatLiteral(dpfl.clone())),
+            cplit!(Credentials(cred)) => Externals::build_value(v, &CPLiteral::from(&**cred)),
             cplit!(OnboardingData(data)) => Externals::build_value(v, &CPLiteral::from(&**data)),
             cplit!(OnboardingResult(res)) => Externals::build_value(v, &CPLiteral::from(&**res)),
             cplit!(Policy(pol)) => Externals::build_value(v, &CPLiteral::from(&**pol)),

@@ -1,0 +1,56 @@
+
+// MyPolicyConstants is a file containing a number of policy specific functions and labels
+// MyPolicyConstants.armour
+// Label SecureService
+// Label UntrustedService
+// Label LoginTime : long
+// Label Token : ControlPlane::Token
+// Label Client
+// Label Server
+
+// const SecureCredentials : "path to secure credentials"
+
+fn onboarding_policy(obd: OnboardingData) -> OnboardingResult {
+    if obd.has_proposed_label('SecureServices') {
+        if ControlPlane::verify_credentials(obd,
+                                            'MyPolicyConstants::SecureCredentials') {
+            if let Some(id) = ControlPlane::onboarded(obd) {
+                OnboardingResult::ErrID("Endpoint already onboarded", id)
+            } else {
+                let id = ControlPlane::newID(obd);
+                let id = id.add_label('MyPolicy::SecureService');
+                let id = id.add_label(Label::login_time(System::getCurrentTime()));
+                if ControlPlane::onboard(id) {
+                    let pol = get_policy(id);
+                    OnboardingResult::Ok(id, pol.0, pol.1)            
+                } else {
+                    OnboardingResult::ErrID("Onboard failure", id)
+                }
+            }
+        }
+        else {
+            OnboardingResult::ErrStr("Failed to authenticate")
+        }
+    } else {
+        if let Some(id) = ControlPlane::onboarded(obd) {
+            OnboardingResult::ErrID("Endpoint already onboarded", id)
+        } else {
+            let id = ControlPlane::newID(obd);
+            let id = id.add_label('MyPolicy::UntrustedService');
+            let id = id.add_label(Label::login_time(System::getCurrentTime()));
+
+            if ControlPlane::onboard(id) {
+                let pol = get_policy(id);
+                OnboardingResult::Ok(id, pol.0, pol.1)            
+            } else {
+                OnboardingResult::ErrID("Onboard failure", id)
+            }
+        }
+    }
+}
+
+fn get_policy(id: ID) -> (Policy, Policy) {
+    let ing = compile_ingress("allow_rest_request", id); // These are Armour primitives
+    let egr = allow_egress();
+    (ing, egr)
+}

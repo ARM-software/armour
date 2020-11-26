@@ -812,7 +812,15 @@ impl<FlatTyp: TFlatTyp, FlatLiteral: TFlatLiteral<FlatTyp>> VecSet<FlatTyp, Flat
         )
     }
 }
-
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub struct Credentials {
+    value: String,
+}
+impl Credentials {
+    pub fn new(value: String) -> Self {
+        Credentials{ value }
+    }
+}
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct OnboardingData {
     //host description                
@@ -820,6 +828,8 @@ pub struct OnboardingData {
 
     //service description
     service: labels::Label,                  
+    credentials: Credentials,
+
     port: Option<u16>,
     //exported labels by the proxy, i.e, from the armour-compose file
     proposed_labels: labels::Labels,
@@ -834,6 +844,7 @@ impl OnboardingData {
     pub fn new(
         host: labels::Label,
         service: labels::Label,
+        credentials: Credentials,
         port: Option<u16>,
         proposed_labels: labels::Labels,
         ips: BTreeSet<std::net::IpAddr>
@@ -841,6 +852,7 @@ impl OnboardingData {
         OnboardingData {
             host,
             service,
+            credentials,
             port,
             proposed_labels,
             ips
@@ -851,6 +863,9 @@ impl OnboardingData {
     }
     pub fn host(&self) -> labels::Label {
         self.host.clone()
+    }
+    pub fn credentials(&self) -> Credentials {
+        self.credentials.clone()
     }
     pub fn port(&self) -> Option<u16> {
         self.port.clone()
@@ -1321,6 +1336,7 @@ where
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum CPFlatLiteral {
+    Credentials(Box<Credentials>),
     DPFlatLiteral(DPFlatLiteral),
     OnboardingData(Box<OnboardingData>),
     OnboardingResult(Box<OnboardingResult>),
@@ -1331,6 +1347,9 @@ pub enum CPFlatLiteral {
 impl From<CPFlatLiteral> for DPFlatLiteral {
     fn from(cl: CPFlatLiteral) -> Self {
         match cl {
+            CPFlatLiteral::Credentials(_) => panic!(
+                "Credentials can not be converted to a DPFlatLiteral"
+            ),
             CPFlatLiteral::DPFlatLiteral(l) => l,
             CPFlatLiteral::OnboardingData(_) => panic!(
                 "OnboardingData can not be converted to a DPFlatLiteral"
@@ -1381,6 +1400,7 @@ impl From<CPLiteral> for DPLiteral {
 impl CPFlatLiteral {
     pub fn typ(&self) -> CPTyp {
         match self {
+            CPFlatLiteral::Credentials(_) => CPTyp::credentials(),
             CPFlatLiteral::OnboardingData(_) => CPTyp::onboarding_data(),
             CPFlatLiteral::OnboardingResult(_) => CPTyp::onboarding_result(),
             CPFlatLiteral::Policy(_) => CPTyp::policy(),
@@ -1394,6 +1414,7 @@ impl CPFlatLiteral {
 impl fmt::Display for CPFlatLiteral {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            CPFlatLiteral::Credentials(d) => write!(f, "{:?}", d),
             CPFlatLiteral::DPFlatLiteral(dpfl) => DPFlatLiteral::fmt(dpfl, f),
             CPFlatLiteral::OnboardingData(d) => write!(f, "{:?}", d),
             CPFlatLiteral::OnboardingResult(r) => write!(f, "{:?}", r),
@@ -1529,6 +1550,7 @@ impl TFlatLiteral<CPFlatTyp> for CPFlatLiteral {
 
     fn typ(&self) -> CPFlatTyp {
         match self {
+            CPFlatLiteral::Credentials(_) => CPFlatTyp::Credentials,
             CPFlatLiteral::DPFlatLiteral(dpfl) => CPFlatTyp::from(dpfl.typ()),
             CPFlatLiteral::OnboardingData(_) => CPFlatTyp::OnboardingData,
             CPFlatLiteral::OnboardingResult(_) => CPFlatTyp::OnboardingData,
@@ -1628,6 +1650,20 @@ where
     }
 }
 
+impl From<Credentials> for CPLiteral {
+    fn from(c: Credentials) -> Self {
+        Literal::FlatLiteral(
+            CPFlatLiteral::Credentials(Box::new(c))
+        )
+    }
+}
+impl From<&Credentials> for CPLiteral {
+    fn from(c: &Credentials) -> Self {
+        Literal::FlatLiteral(
+            CPFlatLiteral::Credentials(Box::new(c.clone()))
+        )
+    }
+}
 impl From<OnboardingData> for CPLiteral {
     fn from(data: OnboardingData) -> Self {
         Literal::FlatLiteral(
