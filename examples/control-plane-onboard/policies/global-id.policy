@@ -1,4 +1,4 @@
-fn allow_rest_request(to: ID, from: ID, req: HttpRequest, payload: data) -> bool { 
+fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool { 
     to.server_ok() && from.has_label('allowed')
 }
 
