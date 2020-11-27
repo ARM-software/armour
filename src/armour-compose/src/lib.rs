@@ -151,14 +151,30 @@ impl Compose {
         //FIXME, temporary fix to be able to spawn multiple proxies 
         //with their own services in one docker compose file
         let mut info = Vec::new();
-        for proxy in self.proxies.drain(..).into_iter() {
+
+        //pairing services with proxies
+        for (k, proxy) in self.proxies.drain(..).into_iter().enumerate() {
+            let paired_iter = services.clone().into_iter().filter(
+                |(_,val)| val.armour_proxies.iter().any(|l| *l == proxy.label)
+            );
+            let paired_services = if k == 0 {
+                //takes all services without armour_proxies attached 
+                //add them to the first proxy of the list
+                let unattached_services = services.clone().into_iter().filter(
+                    |(_,val)| val.armour_proxies.is_empty());
+                paired_iter.chain(unattached_services).collect()
+            } else {
+                paired_iter.collect()
+            };
+
             info.push(OnboardInfo{
                 proxies: vec![proxy.clone()],
-                services: services.clone().into_iter().filter(
-                    |(_,val)| val.armour_proxies.iter().any(|l| *l == proxy.label)
-                ).collect()
+                services: paired_services
             })
         }
+
+
+
         Ok(info)
     }
     pub fn validate() -> bool {

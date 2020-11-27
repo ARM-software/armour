@@ -4,7 +4,7 @@ use armour_serde::{
 };
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
-use std::collections::BTreeMap as Map;
+use std::collections::{BTreeMap as Map, BTreeSet};
 use std::fmt;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
@@ -262,7 +262,11 @@ impl std::str::FromStr for Build {
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Armour {
+    #[serde(default)]
+    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
     pub labels: armour_lang::labels::Labels,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
     pub proxies: armour_lang::labels::Labels,
 }
 
