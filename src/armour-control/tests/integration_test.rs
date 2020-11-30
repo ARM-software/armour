@@ -346,7 +346,7 @@ mod tests_control {
         Ok(())
     }
     
-    async fn aux_test_onboard(global_file: &str, onboard_file: &str, service: &str, host: &str) -> Result<(),  actix_web::Error> {
+    async fn aux_test_onboard(global_file: &str, onboard_file: &str, service: &str, host: &str) -> Result<DPPolicies,  actix_web::Error> {
         let state = mock_state().await.unwrap();
         state.db_con.database("armour").drop(None).await.unwrap();
         register_policy(&state, get_policies_path(global_file).to_str().unwrap()).await.unwrap();
@@ -365,29 +365,23 @@ mod tests_control {
         };
 
         Ok(match service::helper_on_board(&state, request).await? {
-            Ok((service_id, ingress_req, egress_req)) =>{
-                let fn_ingress = ingress_req.policy.policy(Protocol::HTTP).unwrap().fn_policies.0.get("allow_rest_request");
-                let fn_egress = egress_req.policy.policy(Protocol::HTTP).unwrap().fn_policies.0.get("allow_rest_response");
-                let merged_policy = ingress_req.policy.merge(&egress_req.policy);
-                let fn_egress_m = merged_policy.policy(Protocol::HTTP).unwrap().fn_policies.0.get("allow_rest_response");
-                let fn_ingress_m = merged_policy.policy(Protocol::HTTP).unwrap().fn_policies.0.get("allow_rest_request");
-                //assert_eq!(fn_egress, Some(&FnPolicy::Args(2)));
-                //assert_eq!(fn_ingress, Some(&FnPolicy::Args(2)));
-                //assert_eq!(fn_egress_m, Some(&FnPolicy::Args(2)));
-                //assert_eq!(fn_ingress_m, Some(&FnPolicy::Args(2)));
-                //println!("Updating policy for label {}\n{}", ingress_req.label, ingress_req.policy)
+            Ok((_, ingress_req, egress_req)) =>{
+                ingress_req.policy.merge(&egress_req.policy)
             },
             Err(res) => panic!(res)
         })
     }
     #[actix_rt::test]
     async fn test_onboard1() -> Result<(),  actix_web::Error> {
-        aux_test_onboard("global1.policy", "onboard1.policy", "Service21", "Host42").await
+        let _ = aux_test_onboard("global1.policy", "onboard1.policy", "Service21", "Host42").await?;
+        Ok(())
     }
 
     #[actix_rt::test]
     async fn test_onboard2() -> Result<(),  actix_web::Error> {
-        aux_test_onboard("global2.policy", "onboard2.policy", "server", "host42").await
+        let _ = aux_test_onboard("global2.policy", "onboard2.policy", "server", "host42").await?;
+        Ok(())
+
     }
     
     #[actix_rt::test]
