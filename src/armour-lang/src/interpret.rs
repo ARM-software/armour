@@ -978,7 +978,7 @@ where
                     Expr::LitExpr(Literal::List(lits)) => {
                         let mut res = Vec::new();
                         let mut acc_opt = match acc_opt {
-                            Some(e) => Some(Self::eval(*e, state.clone(), env.clone()).await?),
+                            Some((_,e)) => Some(Self::eval(*e, state.clone(), env.clone()).await?),
                             _=> None
                         };
                         for l in lits.iter() {

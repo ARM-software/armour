@@ -174,7 +174,7 @@ where
                     .append("}");
 
                 match acc_opt {
-                    Some(acc) =>tmp.append(RcDoc::space().append(acc.to_doc()).nest(4)) ,
+                    Some((_, acc)) =>tmp.append(RcDoc::space().append(acc.to_doc()).nest(4)) ,
                     None =>tmp 
                 }.group()
             },

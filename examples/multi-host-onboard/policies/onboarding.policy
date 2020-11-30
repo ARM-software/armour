@@ -6,7 +6,7 @@ fn onboarding_policy(obd: OnboardingData) -> OnboardingResult {
     } else {
         let id = ControlPlane::newID(obd);
         let id = id.add_label(Label::login_time(System::getCurrentTime()));
-        let id = fold x in obd.proposed_labels() { acc.add_label(x) } id;
+        let id = fold x in obd.proposed_labels() { acc.add_label(x) } where acc=id;
 
         let pol = (compile_egress(Primitive::allow_rest_request(), id), compile_ingress(Primitive::allow_rest_response(), id));
 

@@ -262,7 +262,7 @@ async fn main() -> Result<(), Error> {
                 labels.into_iter().collect(),
             )
         };
-        println!("Specialization request {:?}", specialize_payload);
+        //println!("Specialization request {:?}", specialize_payload);
 
         match client
             .post(url("policy/specialize"))

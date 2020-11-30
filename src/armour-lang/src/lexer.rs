@@ -81,6 +81,7 @@ pub enum Token {
     Matches,
     As,
     External,
+    Where,
     // punctuation
     Comma,
     Colon,
@@ -411,6 +412,7 @@ fn parse_reserved(t: Span) -> LocToken {
         "fold" => LocToken::new(t, Token::Fold),
         "if" => LocToken::new(t, Token::If),
         "in" => LocToken::new(t, Token::In),
+        "where" => LocToken::new(t, Token::Where),
         "let" => LocToken::new(t, Token::Let),
         "map" => LocToken::new(t, Token::Map),
         "matches" => LocToken::new(t, Token::Matches),

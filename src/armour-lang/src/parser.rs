@@ -273,7 +273,7 @@ pub enum Expr<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
         idents: Vec<LocIdent>,
         expr: Box<LocExpr<FlatTyp, FlatLiteral>>,
         body: BlockStmt<FlatTyp, FlatLiteral>,
-        accumulator: Option<Box<LocExpr<FlatTyp, FlatLiteral>>>
+        accumulator: Option<(LocIdent, Box<LocExpr<FlatTyp, FlatLiteral>>)>
     },
     IfExpr {
         cond: Box<LocExpr<FlatTyp, FlatLiteral>>,
@@ -1091,8 +1091,38 @@ pub trait TParser<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
         complete!(call_mm!(Self::parse_list_expr)) |
         complete!(call_mm!(Self::parse_if_expr)) |
         complete!(call_mm!(Self::parse_iter_expr)) |
+        complete!(call_mm!(Self::parse_iter_acc_expr)) |
         complete!(call_mm!(Self::parse_all_any_expr))
     ));
+
+    named!(parse_iter_acc_expr<Tokens, LocExpr<FlatTyp, FlatLiteral>>,
+        do_parse!(
+            t: alt!(
+                tag_token!(Token::Fold)
+            ) >>
+            idents: parse_idents >>
+            tag_token!(Token::In) >>
+            expr: call_mm!(Self::parse_expr) >>
+            body: call_mm!(Self::parse_block_stmt) >>
+            tag_token!(Token::Where) >>
+            acc_ident: parse_ident!() >>
+            tag_token!(Token::Assign) >>
+            acc_expr: call_mm!(Self::parse_expr) >>   
+            (LocExpr(
+                t.loc(),
+                Expr::IterExpr {
+                    op: match t.tok0() {
+                        Token::Fold => Iter::Fold,
+                        _ => unreachable!(),
+                    },
+                    idents,
+                    expr: Box::new(expr),
+                    body,
+                    accumulator: Some((acc_ident, Box::new(acc_expr)))
+                }
+            ))
+        )
+    );
 
     named!(parse_iter_expr<Tokens, LocExpr<FlatTyp, FlatLiteral>>,
         do_parse!(
@@ -1102,14 +1132,12 @@ pub trait TParser<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
                 tag_token!(Token::Filter) |
                 tag_token!(Token::FilterMap) |
                 tag_token!(Token::ForEach) |
-                tag_token!(Token::Fold) |
                 tag_token!(Token::Map)
             ) >>
             idents: parse_idents >>
             tag_token!(Token::In) >>
             expr: call_mm!(Self::parse_expr) >>
             body: call_mm!(Self::parse_block_stmt) >>
-            accumulator: opt!(call_mm!(Self::parse_expr)) >>
             (LocExpr(
                 t.loc(),
                 Expr::IterExpr {
@@ -1119,14 +1147,13 @@ pub trait TParser<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
                         Token::Filter => Iter::Filter,
                         Token::FilterMap => Iter::FilterMap,
                         Token::ForEach => Iter::ForEach,
-                        Token::Fold => Iter::Fold,
                         Token::Map => Iter::Map,
                         _ => unreachable!(),
                     },
                     idents,
                     expr: Box::new(expr),
                     body,
-                    accumulator: accumulator.map(|x| Box::new(x))
+                    accumulator: None 
                 }
             ))
         )

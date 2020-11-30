@@ -207,7 +207,7 @@ pub enum Expr<FlatTyp:TFlatTyp, FlatLiteral:TFlatLiteral<FlatTyp>> {
         Vec<String>, 
         Box<Expr<FlatTyp, FlatLiteral>>,
         Box<Expr<FlatTyp, FlatLiteral>>, 
-        Option<Box<Expr<FlatTyp, FlatLiteral>>>
+        Option<(String, Box<Expr<FlatTyp, FlatLiteral>>)>
     ),
     Closure(parser::Ident, Box<Expr<FlatTyp, FlatLiteral>>),
     IfExpr {
@@ -315,7 +315,7 @@ impl From<CPExpr> for DPExpr {
             CPExpr::InfixExpr(inf, e1, e2) => DPExpr::InfixExpr(DPInfix::from(inf), Box::new(DPExpr::from(*e1)), Box::new(DPExpr::from(*e2))),
             CPExpr::BlockExpr(b, es) => DPExpr::BlockExpr(b, es.into_iter().map(|e| DPExpr::from(e)).collect()),
             CPExpr::Let(vs, e1, e2) => DPExpr::Let(vs, Box::new(DPExpr::from(*e1)), Box::new(DPExpr::from(*e2))),
-            CPExpr::Iter(it, vs, e1, e2, acc) => DPExpr::Iter(it, vs, Box::new(DPExpr::from(*e1)), Box::new(DPExpr::from(*e2)), acc.map(|x| Box::new(DPExpr::from(*x)))),
+            CPExpr::Iter(it, vs, e1, e2, acc) => DPExpr::Iter(it, vs, Box::new(DPExpr::from(*e1)), Box::new(DPExpr::from(*e2)), acc.map(|(x_name,x)| (x_name, Box::new(DPExpr::from(*x))))),
             CPExpr::Closure(ident, e) => DPExpr::Closure(ident, Box::new(DPExpr::from(*e))),
             CPExpr::IfExpr {
                 cond,
@@ -401,7 +401,7 @@ where
             Expr::Closure(_, e) => e.is_free(u+1),
             Expr::ReturnExpr(e) | Expr::PrefixExpr(_, e) => e.is_free(u),  
             Expr::InfixExpr(_, e1, e2) | Expr::Let(_, e1, e2) => e1.is_free(u) && e2.is_free(u), 
-            Expr::Iter(_, _, e1, e2, acc_opt) => e1.is_free(u) && e2.is_free(u) && match acc_opt {Some(acc)=> acc.is_free(u), None => true}, 
+            Expr::Iter(_, _, e1, e2, acc_opt) => e1.is_free(u) && e2.is_free(u) && match acc_opt {Some((_,acc))=> acc.is_free(u), None => true}, 
             Expr::BlockExpr(_, es) => es.iter().fold(true, |acc, x| acc && x.is_free(u)),
             Expr::IfExpr {
                 cond,
@@ -485,15 +485,15 @@ where
             )
         }
     }
-    fn iter_expr(self, op: &parser::Iter, v: Vec<&str>, e: Self, acc: Option<Self>) -> Self {
+    fn iter_expr(self, op: &parser::Iter, v: Vec<&str>, e: Self, acc: Option<(String, Self)>) -> Self {
         let mut c = self;
 
         for s in v.iter().rev() {
             c = c.closure_expr(s)
         }
 
-        if acc.is_some() {
-            c = c.closure_expr("acc");
+        if let Some((acc_name, _)) = acc.clone() {
+            c = c.closure_expr(&acc_name);
         }
 
         Self::Iter(
@@ -501,7 +501,7 @@ where
             v.iter().map(|s| (*s).to_string()).collect(),
             Box::new(e),
             Box::new(c),
-            match acc { None => None, Some(x) => Some(Box::new(x)) }
+            match acc { None => None, Some((acc_name, x)) => Some((acc_name, Box::new(x))) }
         )
     }
     fn shift(self, i: usize, d: usize) -> Self {
@@ -525,7 +525,7 @@ where
                         Box::new(e1.shift(i, d)), 
                         Box::new(e2.shift(i, d)),
                         match acc_opt {
-                            Some(acc) => Some(Box::new(acc.shift(i,d))),
+                            Some((acc_name, acc)) => Some((acc_name, Box::new(acc.shift(i,d)))),
                             None => None
                         } 
                     )
@@ -623,7 +623,7 @@ where
                 Self::Iter(op, l, 
                     Box::new(e1.subst(i, u, downgrade)), 
                     Box::new(e2.subst(i, u, downgrade)),
-                    acc_opt.map(|acc| Box::new(acc.subst(i, u, downgrade)))
+                    acc_opt.map(|(acc_name, acc)| (acc_name, Box::new(acc.subst(i, u, downgrade))))
                 )
             }
             Self::Closure(v, e) => Self::Closure(v, Box::new(e.subst(i + 1, u, downgrade))),
@@ -713,7 +713,7 @@ where
                 Self::Iter(op, l, 
                     Box::new(e1.abs(i, v)), 
                     Box::new(e2.abs(i, v)),
-                    acc_opt.map(|acc| Box::new(acc.abs(i, v)))
+                    acc_opt.map(|(acc_name, acc)| (acc_name, Box::new(acc.abs(i, v))))
                 )
             }
             Self::Closure(v2, e) => Self::Closure(v2, Box::new(e.abs(i + 1, v))),
@@ -1144,9 +1144,9 @@ where
                 
                 //Adding a acc var inside the body block
                 let iter_vars = &match accumulator { 
-                    Some(acc) if *op == parser::Iter::Fold => {
+                    Some((acc_name,acc)) if *op == parser::Iter::Fold => {
                         let (_, _, acc_typ) = Self::from_loc_expr(acc, headers, ret, ctxt)?.split();
-                        iter_vars.add_var("acc", &acc_typ.clone())
+                        iter_vars.add_var(acc_name.id(), &acc_typ.clone())
                     }
                     _ => iter_vars.clone(),
                 };
@@ -1190,7 +1190,7 @@ where
                             vec![calls1, calls2],
                         ))
                     },
-                    Some(acc) if *op == parser::Iter::Fold => {
+                    Some((acc_name, acc)) if *op == parser::Iter::Fold => {
                         let (acc, acc_calls, acc_typ) = Self::from_loc_expr(acc, headers, ret, ctxt)?.split();
                         Typ::type_check(
                             "fold-expression",
@@ -1198,7 +1198,7 @@ where
                             vec![(None, acc_typ.clone())],
                         )?;
                         Ok(ExprAndMeta::new(
-                            expr2.iter_expr(op, vs, expr1, Some(acc)),
+                            expr2.iter_expr(op, vs, expr1, Some((acc_name.id().to_string(), acc))),
                             acc_typ,
                             vec![calls1, calls2, acc_calls],
                         ))

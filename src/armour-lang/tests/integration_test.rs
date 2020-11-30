@@ -3,7 +3,7 @@ use armour_lang::expressions::{self, *};
 use armour_lang::interpret::*;
 use armour_lang::labels::{*};
 use armour_lang::literals::{self, *};
-use armour_lang::policies;
+use armour_lang::policies::{self, *};
 use armour_lang::types::{*};
 
 use std::collections::{BTreeSet};
@@ -145,6 +145,19 @@ async fn log_pol1<FlatTyp:TFlatTyp+'static, FlatLiteral:TFlatLiteral<FlatTyp>+'s
     Ok(res)
 }
 
+//FIXME De Bruijn indices not tested
+//TODO write some helper fct to test only expr simplification
+
+async fn eval_expr(expr: &str) -> DPExpr {
+    let buf = &format!("fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {{ {} }}", expr)[..];
+    let policies: DPPolicies = policies::DPPolicies::from_buf(
+        buf	
+    ).unwrap();
+    let policy = policies.policy(policies::Protocol::HTTP).unwrap();
+    let env : DPEnv = Env::new(&policy.program);
+    let expr : DPExpr = env.get("allow_rest_request").unwrap().at_depth(4).unwrap();
+    return DPExpr::evaluate(expr, Arc::new(()), env).await.unwrap(); 
+}
 mod tests_dplang {
     use super::*;
 
@@ -160,6 +173,17 @@ mod tests_dplang {
         assert_eq!(id_pol1::<FlatTyp, FlatLiteral>().await?, Expr::LitExpr(Literal::bool(false)));
         Ok(())
     }
+
+    #[actix_rt::test]
+    async fn test_fold() -> () {
+        let res = eval_expr("
+        let l = [1, 2];
+        let r = fold x in l { acc+x } where acc=0;
+        r == 3
+        ").await;
+        assert_eq!( format!("{}", res), "true");
+    }
+
 }
 
 mod tests_cplang {

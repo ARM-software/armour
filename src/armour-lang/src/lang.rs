@@ -311,7 +311,7 @@ where
                 Self::aux_deadcode_elim(module, e1, own_idx)?;
                 Self::aux_deadcode_elim(module, e2, own_idx)?;
                 match acc_opt {
-                    Some(acc) => Self::aux_deadcode_elim(module, acc, own_idx),
+                    Some((_, acc)) => Self::aux_deadcode_elim(module, acc, own_idx),
                     _ => Ok(())
                 }
             },

@@ -45,10 +45,6 @@ macro_rules! ring_simplification (
             b2: bool,
             n_e2: CPExpr
         | -> Result<(bool, bool, CPExpr), self::Error> {
-            println!("op {:?}", op);
-            println!("infix1 {} {:?}", b1, n_e1);
-            println!("infix2 {} {:?}", b2, n_e2);
-            println!();
             if op == Infix::$plus1 || op == Infix::$plus2 {
                 match n_e1 {
                     r @ Expr::ReturnExpr(_) => Ok((true, b1, r)),
@@ -169,7 +165,6 @@ impl TSExprPEval for CPExpr {
                 Expr::InfixExpr(op, e1, e2) => {
                     let r1 = e1.peval(state.clone(), env.clone(), simplification_only).await?;
                     let r2 = e2.peval(state, env, simplification_only).await?;
-                    println!("infix {:?} \n\t{:?} \n\t {:?}", op, r1, r2);
                     match (r1, r2) {
                         ((b1 @ false, x), (b2 , y)) | ((b1, x), (b2 @ false, y)) => Ok(
                             simplify(op, b1, x, b2, y)?
@@ -245,7 +240,6 @@ impl TSExprPEval for CPExpr {
                 Expr::Let(vs, e1, e2) =>{
                     let mut flag = true;
                     let body = e2.clone().at_depth(vs.len()).unwrap();
-                    println!("e2 {}", body);
                     for u in 0..vs.len(){
                         flag = flag && body.is_free(u);
                         if !flag { break };
@@ -253,7 +247,6 @@ impl TSExprPEval for CPExpr {
 
                     if flag { //e2 is independant of the let-bindings
                         //Getting ride of the closures
-                        println!("let elim");
                         let mut e2a = *e2;
                         for u in 0..vs.len() {
                             e2a = e2a.apply(&Expr::LitExpr(Literal::unit()))?;
@@ -301,7 +294,7 @@ impl TSExprPEval for CPExpr {
                     (false, e1) => {
                         let (_, e2) = e2.peval(state.clone(), env.clone(), simplification_only).await?;
                         let acc_opt = match acc_opt{
-                            Some(acc) => Some(Box::new(acc.peval(state.clone(), env.clone(), simplification_only).await?.1)),
+                            Some((acc_name, acc)) => Some((acc_name, Box::new(acc.peval(state.clone(), env.clone(), simplification_only).await?.1))),
                             None => None
                         }; 
 
@@ -309,8 +302,9 @@ impl TSExprPEval for CPExpr {
                     }
                     (true, Expr::LitExpr(Literal::List(lits))) => {
                         let mut res = Vec::new();
+                        let acc_name_opt = acc_opt.clone().map(|x| x.0); 
                         let mut acc_opt = match acc_opt {
-                            Some(e) =>{
+                            Some((acc_name,e)) =>{
                                 match e.peval(state.clone(), env.clone(), simplification_only).await? {
                                     (true, acc) => Some((true, acc)), 
                                     (false, acc) => 
@@ -322,7 +316,7 @@ impl TSExprPEval for CPExpr {
                                                 vs, 
                                                 Box::new(Expr::LitExpr(Literal::List(lits))), 
                                                 e2, 
-                                                Some(Box::new(acc))
+                                                Some((acc_name, Box::new(acc)))
                                             )
                                         )
                                     )
@@ -419,7 +413,7 @@ impl TSExprPEval for CPExpr {
                                     vs, 
                                     Box::new(Expr::LitExpr(Literal::List(lits))), 
                                     e2, 
-                                    acc_opt.map(|x| Box::new(x.1))
+                                    acc_opt.map(|x| (acc_name_opt.unwrap(), Box::new(x.1)))
                                 )
                             )),
                             _ => unreachable!("Could not happen in classical logic")
@@ -496,7 +490,6 @@ impl TSExprPEval for CPExpr {
                             Some(alt) =>{
                                 let (b0, tmp) = alt.peval(state.clone(), env.clone(), simplification_only).await?;
                                 let consequence1 = Expr::Closure(c_var, Box::new(c_body_1.clone()));
-                                println!("coucou");
                                 //Syntaxic IfSomeMatch elimination
                                 if c_body_1.is_free(0) && consequence1.clone().apply(&Expr::LitExpr(Literal::unit()))? == tmp {//Dummy apply                                     
                                     Ok((b0, tmp))

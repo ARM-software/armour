@@ -418,14 +418,14 @@ mod tests_control {
                     Expr::LitExpr(DPLiteral::http_request(Box::new(req))),
                     Expr::LitExpr(DPLiteral::data(Vec::new())),
                 ];
-                println!("{:?}", ingress_req.policy.policy(policies::Protocol::HTTP).unwrap());
+                //println!("{:?}", ingress_req.policy.policy(policies::Protocol::HTTP).unwrap());
                 let env : DPEnv = Env::new(&ingress_req.policy.policy(policies::Protocol::HTTP).unwrap().program);
                 let result = Expr::evaluate(
                     expressions::Expr::call("allow_rest_request", args),
                     Arc::new(()),
                     env.clone()
                 ).await;
-                println!{"{:#?}", result};
+                //println!{"{:#?}", result};
             },
             Err(res) => panic!(res)
         })
