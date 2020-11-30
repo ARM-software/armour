@@ -1,9 +1,9 @@
 //! Library of Armour helper functions.
-
 use lazy_static::lazy_static;
 use std::collections::HashSet;
 use std::io;
 use std::net::IpAddr;
+
 
 lazy_static! {
     /// Set of IP addresses associated with local interface.
@@ -124,8 +124,8 @@ pub fn ssl_builder<P: AsRef<std::path::Path>>(
     Ok(ssl_builder)
 }
 
-pub type Client = awc::Client; 
-pub type ClientRes = Result<awc::Client, Box<dyn std::error::Error + Send + Sync>>;
+pub type Client = actix_web::client::Client; 
+pub type ClientRes = Result<actix_web::client::Client, Box<dyn std::error::Error + Send + Sync>>;
 
 pub fn client<P: AsRef<std::path::Path>>(
     ca: P,

@@ -8,7 +8,8 @@ pub mod service {
 	use armour_api::proxy::{HttpConfig, LabelOp, PolicyRequest};
 	use armour_lang::labels::{Labels};
 	use std::collections::{HashMap};
-
+	
+	#[derive(Debug)]
 	struct MailboxError;
 
 	impl std::fmt::Display for MailboxError {
@@ -28,8 +29,11 @@ pub mod service {
 		}
 	}
 
-	async fn launch_proxy(host: &super::Host, proxy: &Proxy) -> Result<(), actix_web::Error> {
+	async fn launch_proxy(host: &super::Host, proxy: &Proxy) -> Result<(), MailboxError> {
 		// start a proxy (without forcing/duplication)
+		host.send(Launch::new(
+			proxy.label.clone(),
+			false,
 			if proxy.debug {
 				log::Level::Debug
 			} else {
@@ -59,7 +63,7 @@ pub mod service {
 		host: &super::Host,
 		instance: InstanceSelector,
 		ip_labels: &[(std::net::Ipv4Addr, Labels)],
-	) -> Result<(), actix_web::Error> {
+	) -> Result<(), MailboxError> {
 		let mut ip_labels_h : HashMap<std::net::IpAddr, Labels>= HashMap::new();
 
 		for (ip, labels) in ip_labels {
