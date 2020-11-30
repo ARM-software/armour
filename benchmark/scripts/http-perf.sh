@@ -48,7 +48,7 @@ function http {
   echo Measuring HTTP latency for $1 ...
   echo HTTP performance >> $2
   if [[ "$1" =~ ^(baseline|armour)$ ]]; then
-    srv=srv-nginx:80
+    srv=srv-hyper:80
     if [ $1 = "armour" ]; then
       cmd=armour-data
     fi

@@ -1,35 +1,28 @@
 external logger @ "log_sock" {
+// external logger @ "localhost:8081" {
     fn log(_) -> ()
-    fn rest(i64, str, str, str, ID, ID) -> ()
-    fn client_payload(i64, i64) -> ()
+    fn rest(i64, str, str, str, ID, ID, i64) -> ()
     fn server_payload(i64, i64) -> ()
 }
     
-fn allow_rest_request(req: HttpRequest) -> bool {
-    let c = req.connection();
-    let (from, to) = c.from_to();
+// REST request allow/deny
+fn allow_rest_request(req: HttpRequest, payload: data) -> bool {
     let date = if let Some(date) = req.unique_header("date") {
         str::from_utf8(date)
-     } else {
+    } else {
         "-"
-     };
-    logger::rest(c.number(), date, req.method(), req.path(), from, to);
+    };
+    let c = req.connection();
+    let (from, to) = c.from_to();
+    logger::rest(c.number(), date, req.method(), req.path(), from, to, payload.len());
     if "srv-hyper" in to.hosts() {
-        "client-1" in from.hosts() || to.port() == Some(80)
+        ("client-1" in from.hosts() || to.port() == Some(80))
+        && payload.len() < 3000
      } else {false}
 }
-
-fn allow_client_payload(payload: Payload) -> bool {
-    logger::client_payload(payload.connection().number(), payload.data().len());
-    payload.data().len() < 3000
-}
-
-fn allow_server_payload(payload: Payload) -> bool {
-    logger::server_payload(payload.connection().number(), payload.data().len());
-    payload.data().len() < 3000
-}
-
-fn allow_rest_response(res: HttpResponse) -> bool {
-    logger::log(res.header("date"));
+    
+// REST response allow/deny
+fn allow_rest_response(res: HttpResponse, payload: data) -> bool {
+    logger::server_payload(res.connection().number(), payload.len());
     res.status() == 200
 }

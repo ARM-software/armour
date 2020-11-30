@@ -1,19 +1,12 @@
-fn allow_rest_request(req: HttpRequest) -> bool {
+fn allow_rest_request(req: HttpRequest, payload: data) -> bool {
     let c = req.connection();
     let (from, to) = c.from_to(); 
     if "srv-hyper" in to.hosts() {
-        "client-1" in from.hosts() || to.port() == Some(80)
+        ("client-1" in from.hosts() || to.port() == Some(80))
+        && payload.len() < 3000
      } else {false}
 }
 
-fn allow_client_payload(payload: Payload) -> bool {
-    payload.data().len() < 3000
-}
-
-fn allow_server_payload(payload: Payload) -> bool {
-    payload.data().len() < 3000
-}
-
-fn allow_rest_response(res: HttpResponse) -> bool {
-    res.status() == 200
+fn allow_rest_response(res: HttpResponse, payload: data) -> bool {
+    res.status() == 200 && payload.len() < 3000
 }

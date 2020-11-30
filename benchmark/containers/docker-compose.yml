@@ -11,7 +11,7 @@ services:
     image: client-python
     command: ./hyper-server
     networks:
-      srv-net-6:
+      srv-net-1:
         ipv4_address: 172.19.0.2
 
   client-1:

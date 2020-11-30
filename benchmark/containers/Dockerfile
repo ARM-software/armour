@@ -16,5 +16,5 @@ RUN git clone https://github.com/wg/wrk.git wrk \
 
 EXPOSE 8080
 WORKDIR /
-COPY arm-service .
+COPY hyper-server .
 CMD ["tail", "-f", "/dev/null"]
