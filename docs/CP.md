@@ -1,4 +1,13 @@
-### Control flow
+## Control flow
+
+### Ctl
+    * armour-ctl drop-global
+    * armour-ctl drop-onboarding
+    * armour-ctl query-onboarding
+    * armour-ctl query-global
+    * armour-ctl update-global -p policies/global-id.policy
+    * armour-ctl update-onboarding -p policies/onboarding.policy
+
 List of ctl added (p.15) + Flow p.17
 
 ### Global ID assignement
