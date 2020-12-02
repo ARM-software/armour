@@ -200,6 +200,7 @@ where
         let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
         let mut buf = String::new();
         reader.read_to_string(&mut buf)?;
+        //TODO clean the buf to remove special char
         PreProgram::from_buf(&buf)
     }
 }
