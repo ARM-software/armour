@@ -1,0 +1,165 @@
+version: "3.0"
+
+proxies:
+  - label: armour1
+    port: 6001
+    debug: true
+  - label: armour2
+    port: 6002
+    debug: true
+  - label: armour3
+    port: 6003
+    debug: true
+  - label: armour4
+    port: 6004
+    debug: true
+  - label: armour5
+    port: 6005
+    debug: true
+  - label: armour6
+    port: 6006
+    debug: true
+
+services:
+
+  database:
+    image: mongo:3.6
+    hostname: database
+    armour:
+      proxies:
+      - armour1
+      labels:
+      - database
+      - Credentials::allowed
+    networks:
+      db-net:
+        ipv4_address: 172.19.0.2
+
+  queue:
+    image: redis:3.2
+    hostname: queue
+    armour:
+      proxies:
+      - armour2
+      labels:
+      - queue
+      - Credentials::allowed
+    networks:
+      queue-net:
+        ipv4_address: 172.20.0.2
+  
+  worker:
+    build: src/worker
+    hostname: worker
+    armour:
+      proxies:
+      - armour3
+      labels:
+      - worker
+      - Credentials::allowed
+    networks:
+      worker-net:
+        ipv4_address: 172.21.0.2
+    depends_on:
+      - database
+      - queue
+  
+  reports:
+    build: src/reports
+    hostname: reports
+    armour:
+      proxies:
+      - armour4
+      labels:
+      - reports
+      - Credentials::allowed
+    networks:
+      reports-net:
+        ipv4_address: 172.22.0.2
+    depends_on:
+      - database
+  
+  votes:
+    build: src/votes
+    hostname: votes
+    armour:
+      proxies:
+      - armour5
+      labels:
+      - votes
+      - Credentials::allowed
+    networks:
+      votes-net:
+        ipv4_address: 172.23.0.2
+    depends_on:
+      - queue
+
+  vote:
+    build: src/vote
+    hostname: vote
+    armour:
+      proxies:
+      - armour6
+      labels:
+      - vote
+      - Credentials::allowed
+    networks:
+      vote-net:
+        ipv4_address: 172.24.0.2
+    ports:
+      - "3000:3000"
+    depends_on:
+      - votes
+      - reports
+
+
+networks:
+  db-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: db-net
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.19.0.0/28
+  queue-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: queue-net
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/28
+  worker-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: worker-net
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.21.0.0/28
+  reports-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: reports-net
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.22.0.0/28
+  votes-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: votes-net
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.23.0.0/28
+  vote-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: vote-net
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.24.0.0/28 
+                       
