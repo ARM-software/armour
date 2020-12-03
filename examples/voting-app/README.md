@@ -1,2 +1,8 @@
 # Voting App
 
+- Vote Client - (voter) the command-line application used to cast votes.
+- Clerk: the command-line application used to query voting results.
+- booth API - (booth) the service that provides a REST API for casting votes. The voter application is the client that uses this API. When a vote is posted to the API, the service pushes it to a queue for subsequent, asynchronous processing. When a request is made for vote results, the service submits a query to a database where votes are ultimately stored by a worker processing the queue.
+- Worker - a background service that watches a queue for votes and stores them in a database. The worker represents a typical service component designed to scale as needed to handle various asynchronous processing tasks, typically pulled from a queue, so that the main service doesn't get bogged down handling requests.
+- Queue - the message queue service that allows the vote api service to post votes without slowing down to do any special processing or waiting for a database to save votes. The queue is an in-memory data store (using Redis) that enhances performance by not requiring the vote service to wait on the database since database operations that involve disk I/O are much slower; consequently, the vote service is ready to continue to accept new API requests faster. Redis (and similar tools) are typical components of many real-world applications that require message queue, publish-subscribe, key-value storage, or caching support.
+- Database - the database service (using MongoDB) for structured data storage and query support. One or more types of database are typical service components of most real world applications.

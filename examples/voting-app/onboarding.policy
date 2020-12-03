@@ -1,0 +1,60 @@
+//if service has credentials its trusted
+fn verify_credentials(obd: OnboardingData) -> bool {
+    obd.has_proposed_labels("Credentials::**")
+}
+
+fn onboarding_policy(obd: OnboardingData) -> OnboardingResult {
+    // check if endpoint already onboarded
+    if let Some(id) = ControlPlane::onboarded(obd) {
+        OnboardingResult::ErrID("Endpoint already onboarded", id)
+    } else {
+         // service with credentials = trusted
+        if verify_credentials(obd) {
+            let id = ControlPlane::newID(obd);
+            let id = id.add_label('Integrity::Trusted');
+            let id = id.add_label('CP::id12'); //add a CP label
+            let id = id.add_label(Label::login_time(System::getCurrentTime()));
+            if obd.has_proposed_label('Confidentiality::Private') {
+                let id = id.add_label('Confidentiality::Private');
+                let id = fold x in obd.proposed_labels() { acc.add_label(x) } where acc=id;
+                if ControlPlane::onboard(id) {
+                    let pol = get_policy(id);
+                    OnboardingResult::Ok(id, pol.0, pol.1)            
+                } else {
+                    OnboardingResult::ErrID("Onboard failure", id)
+                }
+            } else if obd.has_proposed_label('Confidentiality::Public') {
+                let id = id.add_label('Confidentiality::Public');
+                let id = fold x in obd.proposed_labels() { acc.add_label(x) } where acc=id;
+                if ControlPlane::onboard(id) {
+                    let pol = get_policy(id);
+                    OnboardingResult::Ok(id, pol.0, pol.1)            
+                } else {
+                    OnboardingResult::ErrID("Onboard failure", id)
+                }
+            } else {
+                OnboardingResult::ErrStr("")
+            }
+        } else {
+            // untrusted services
+            let id = ControlPlane::newID(obd);
+            let id = id.add_label('Confidentiality::Public');
+            let id = id.add_label('Integrity::Untrusted');
+            let id = id.add_label('CP-id12');
+            let id = id.add_label(Label::login_time(System::getCurrentTime()));
+            let id = fold x in obd.proposed_labels() { acc.add_label(x) } where acc=id;
+            if ControlPlane::onboard(id) {
+                let pol = get_policy(id);
+                OnboardingResult::Ok(id, pol.0, pol.1)            
+            } else {
+                OnboardingResult::ErrID("Onboard failure", id)
+            }
+        }
+    }
+}
+
+fn get_policy(id: ID) -> (Policy, Policy) {
+    let egress = compile_egress(Primitive::allow_rest_request(), id); // These are Armour primitives
+    let ingress = compile_ingress(Primitive::allow_rest_response(), id);
+    (egress, ingress)
+}

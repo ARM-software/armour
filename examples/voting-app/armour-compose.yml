@@ -19,6 +19,12 @@ proxies:
   - label: armour6
     port: 6006
     debug: true
+  - label: armour7
+    port: 6007
+    debug: true
+  - label: armour8
+    port: 6008
+    debug: true
 
 services:
 
@@ -31,6 +37,8 @@ services:
       labels:
       - database
       - Credentials::allowed
+      - Confidentiality::Private
+      - Integrity::Trusted
     networks:
       db-net:
         ipv4_address: 172.19.0.2
@@ -44,6 +52,7 @@ services:
       labels:
       - queue
       - Credentials::allowed
+      - Confidentiality::Private
     networks:
       queue-net:
         ipv4_address: 172.20.0.2
@@ -57,6 +66,7 @@ services:
       labels:
       - worker
       - Credentials::allowed
+      - Confidentiality::Private
     networks:
       worker-net:
         ipv4_address: 172.21.0.2
@@ -73,6 +83,7 @@ services:
       labels:
       - reports
       - Credentials::allowed
+      - Confidentiality::Private
     networks:
       reports-net:
         ipv4_address: 172.22.0.2
@@ -88,6 +99,7 @@ services:
       labels:
       - votes
       - Credentials::allowed
+      - Confidentiality::Private
     networks:
       votes-net:
         ipv4_address: 172.23.0.2
@@ -103,6 +115,7 @@ services:
       labels:
       - vote
       - Credentials::allowed
+      - Confidentiality::Private
     networks:
       vote-net:
         ipv4_address: 172.24.0.2
@@ -110,8 +123,42 @@ services:
       - "3000:3000"
     depends_on:
       - votes
+
+  clerk:
+    build: src/clerk
+    hostname: clerk
+    armour:
+      proxies:
+      - armour7
+      labels:
+      - clerk
+      - Credentials::allowed
+      - Confidentiality::Private
+    networks:
+      clerk-net:
+        ipv4_address: 172.25.0.2
+    ports:
+      - "3000:3000"
+    depends_on:
+      - database
       - reports
 
+  bad-booth:
+    build: src/bad-booth
+    hostname: bad-booth
+    armour:
+      proxies:
+      - armour8
+      labels:
+      - bad-booth
+      - Confidentiality::Public
+    networks:
+      bbooth-net:
+        ipv4_address: 172.26.0.2
+    ports:
+      - "3000:3000"
+    depends_on:
+      - votes
 
 networks:
   db-net:
@@ -162,4 +209,19 @@ networks:
     ipam:
       config:
         - subnet: 172.24.0.0/28 
-                       
+  clerk-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: clerk-net
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.25.0.0/28 
+   bbooth-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: bbooth-net
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.26.0.0/28                       

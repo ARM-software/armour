@@ -1,16 +1,19 @@
-FROM node:9 as build
+FROM python:latest
+RUN apt update \
+  && apt install -y --no-install-recommends  net-tools  curl \
+  && rm -rf /var/lib/apt/lists/* \
+  && pip3 install Flask requests
+# Set the application directory
+WORKDIR /app
+# Install our requirements.txt
+#ADD requirements.txt /app/requirements.txt
+#RUN pip install -r requirements.txt
 
-RUN mkdir -p /usr/src/app
-WORKDIR /usr/src/app
+# Copy our code from the current folder to /app inside the container
+COPY . /app
 
-COPY package.json /usr/src/app/
-RUN yarn
-COPY . /usr/src/app
-
-FROM mhart/alpine-node:base-9
-ARG NODE_ENV
-ENV NODE_ENV ${NODE_ENV:-development}
-WORKDIR /usr/src/app
-COPY --from=build /usr/src/app .
+# Make port 80 available for links and/or publish
 EXPOSE 3000
-ENTRYPOINT [ "node", "app.js" ]
+WORKDIR /app
+# Define our command to be run when launching the container
+#CMD ["gunicorn", "app:app", "-b", "0.0.0.0:3000", "--log-file", "-", "--access-logfile", "-", "--workers", "4", "--keep-alive", "0"]

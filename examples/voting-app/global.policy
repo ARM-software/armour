@@ -1,0 +1,95 @@
+external logger @ "log_sock" {
+    fn log(_) -> ()
+}
+  
+fn allow_rest_resquest(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {
+    //only services managed by armour are allowed to interact with each other
+    if from.has_label('CP::*'){
+        //only services onboarded with the same control-plane can  interact with each other 
+        if from.has_label('CP::id12'){
+            logger::log(req);
+
+            flow_integrity(from, to) && flow_confidentiality(req, from, to)
+            && topology(from, to)
+            && voting_time(req: HttpRequest)
+            && voter_ok(from)
+        }
+    }  
+}
+fn allow_rest_response(from: ID, to: ID, req: HttpResponse, payload: data) -> bool {
+    true
+}
+
+fn voter_ok(id: ID) -> bool {
+    "voter" in id.hosts() && id.port() == 3000 
+}
+
+fn voting_time(req: HttpResponse) -> bool {
+    let date = if let Some(date) = req.unique_header("date") {
+        //allow votes ina  specific time frame and date
+        true
+     } else {
+        false
+     };
+}
+fn topology(from: ID, to: ID) -> bool {
+    if from.has_label('voter') { 
+        Ingress::has_label('booth')
+    } else if from.has_label('booth') { 
+        Ingress::has_label('voting_sys')
+    } else if from.has_label('voting_sys') { 
+        Ingress::has_label('queue')
+    } else if from.has_label('queue') { 
+        Ingress::has_label('worker')
+    } else if from.has_label('worker') { 
+        Ingress::has_label('database')
+    } else if from.has_label('results') { 
+        Ingress::has_label('database');
+    } else if from.has_label('clerk') { 
+        Egress::add_label('results')
+    }
+}
+//integrity, can't store in a trusted container
+fn flow_integrity(from: ID, to: ID) -> bool {
+    if from.has_label('Integrity::Untrusted') {
+        Ingress::has_label('Integrity::Untrusted')
+    }
+}
+//confidentiality: can't read from private, can't store secret in public
+fn flow_confidentiality(req: HttpRequest, from: ID, to: ID) -> bool {
+    if from.has_label('Confidentiality::Public') {
+        Ingress::has_label('Confidentiality::Public')
+    }
+}
+//propagate the proposed labels in armour-compose to DP
+fn propagate(from: ID, to: ID) -> bool {
+    if from.has_label('Integrity::Trusted') {
+        Egress::add_label('Integrity::Trusted')
+    } else if from.has_label('Integrity::Untrusted') {
+        Egress::add_label('Integrity::Untrusted')
+    } else if from.has_label('Confidentiality::Private') {
+        Egress::add_label('Confidentiality::Private')
+    } else if from.has_label('Confidentiality::Public') {
+        Egress::add_label('Confidentiality::Public')
+    }
+
+    if from.has_label('voter') { 
+        Egress::add_label('voter')
+    } else if from.has_label('booth') { 
+        Egress::add_label('booth')
+    } else if from.has_label('voting_sys') { 
+        Egress::add_label('voting_sys')
+    } else if from.has_label('queue') { 
+        Egress::add_label('queue')
+    } else if from.has_label('worker') { 
+        Egress::add_label('worker')
+    } else if from.has_label('database') { 
+        Egress::add_label('database')
+    } else if from.has_label('results') { 
+        Egress::add_label('results')
+    } else if from.has_label('clerk') { 
+        Egress::add_label('clerk')
+    } else if from.has_label('bad_booth') { 
+        Egress::add_label('bad_booth')
+    }
+}
