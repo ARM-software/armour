@@ -4,23 +4,23 @@
 2. Set up the onboarding policy (by default on_boarding is disabled)
 3. Services can now be onbarded
 4. Onboard the *µ1* service with armour-launch
-    1. Write the armour-compose file. **Warning** until urther modification of the proxy code, only one policy per proxy can be set (one service per proxy is a good architecture)
-    2. armour-launch up -- service information + proxy information --> host
-    3. host will start the proxy, onboard it localy, trigger the onboarding with the CP
+    1. Write the armour-compose file. **Warning** until further modification of the proxy code, only one policy per proxy can be set (therefore one service per proxy is a good architecture)
+    2. ``armour-launch ... up`` -- service information + proxy information --> host
+    3. Host will start the proxy, onboard it localy, trigger the onboarding with the CP
     4. Host -- OnboardingServiceRequest (service information, proxy label, host label) --> CP
-    5. The handling of the request will done in three steps
-        1. First, the control plane will evaluate the onboarding policy on the request
+    5. The handling of the request will be done in three steps
+        1. The control plane will evaluate the onboarding policy on the request
         2. If the onboarding is allowed, the services collections, in DB, will be updated and a specialized version of the policy will be computed for µ1 and stored.
         3. Then the Control Plane sends back a response with µ1 globalID
-    7. If the onboarding failed, send back an error. **The onboarding stops**
-    9. Otherwise, the Proxy will request, the policy for the *µ1* and update its local state (see the previous Warning).
+    6. If the onboarding failed, send back an error. **The onboarding stops**
+    7. Otherwise, the Proxy will request the policy for the *µ1* and will update its local state (see the previous Warning).
 5. Update the global-policy
     1. Update the DB
-    2. If the optionnnal *selector* argument is provided then this change should translated to local policy update for µservices designed by the *selector*
+    2. If the optionnnal *selector* argument is provided then this change should translated to local policy updates for the µservices designed by the *selector*
         1. Compute the list of the targeted services
-        2. For each of them specialize the global policy and send the new loca policy to them
+        2. For each of them, specialize the global policy and send the new local policy to it
         3. **Warning** there is no mechanism to ensure atomicity (or a weaker level of consistency) of the update.
-6. Update the onboarding-policy -> it only change the onboarding_policy in the DB and affect subsequent onboarding.
+6. Update the onboarding-policy -> it only changes the onboarding_policy in the DB and affects subsequent onboarding.
 
 ### Ctl
     * armour-ctl drop-global
@@ -32,27 +32,27 @@
 
 ### Global ID assignement
 GlobalID of a service is computed by concatenated the Host label, the Proxy label and the Server label.
-A GlobalID is unique among all the onboarded services and service that try to onboard (assumtion server label at the proxy level).
+A GlobalID is unique among all the onboarded services and services that try to on-board.
 
 GlobalID management during onboarding_policy evaluation:
     - obd -- ControlPlane::onboarded --> Option<GlobalID>
     - obd -- ControlPlane::newID --> GlobalID 
-    - GlobalID -- ControlPlane::newID --> bool, store GlobalID on DB of 
+    - GlobalID -- ControlPlane::newID --> bool, store GlobalID on DB
 
 GlobalID flow
-1. Host -- OnboardingServiceRequest --> CP, generate obd
+1. Host -- OnboardingServiceRequest --> CP, generates obd
 2. obd -- evaluating onboarding_policy --> GlobalID + local_policy 
-3. CP add to policies collection (in DB): ``GlobalID -> local_policy``
-4. CP add to services collection (in DB): ``GlobalID + service information``
+3. CP adds to policies collection (in DB): ``GlobalID -> local_policy``
+4. CP adds to services collection (in DB): ``GlobalID + service information``
 5. CP -- OnboardingServiceResponse (GlobalID) --> Host -- ... --> Proxy 
 
-Request for local policy is done by using the GlobalID and not the service name:
+Management of local policies is done by using the GlobalID and not the service name:
 * ``armour-ctl query -s globalid``
 * ``armour-ctl drop -s globalid``
 * ``armour-ctl update -s globalid``
 
 ##### N.B
-By using the services collection, the control plane is aware of what policy is deployed where. However, since consistency is not tackled by the implementation, there can be glitch between what is declared in the DB and what is actually run on the proxy due to the propagation latency.
+By using the services and the policies collection, the control plane is aware of what policy is deployed where. However, since consistency is not tackled by the implementation, there can be glitch between what is declared in the DB and what is actually run on the proxy due to the propagation latency.
 
 
 ## CP Language
@@ -123,8 +123,8 @@ Primitive::allow_tcp_connection     | `() -> Primitive`
 getCurrentTime      | `() -> i64`
 
 ### onboarding policy evaluation
-The evaluation of the onboarding may involve 
 
+The evaluation of the onboarding may involve state (DB) access and update when using the ``ControlPlane::*`` primitives.
 
 ### global policy specialization
 
