@@ -476,6 +476,9 @@ impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
             ("Label::captures", dpflatlit!(Label(i)), dpflatlit!(Label(j))) => {
                 Some(i.match_with(j).into())
             }
+            ("Label::concat", dpflatlit!(Label(i)), dpflatlit!(Label(j))) => {
+                Some(Literal::label(Label::concat(i, j)))
+            }
             ("Label::is_match", dpflatlit!(Label(i)), dpflatlit!(Label(j))) => {
                 Some(i.matches_with(j).into())
             }

@@ -184,6 +184,14 @@ mod tests_dplang {
         assert_eq!( format!("{}", res), "true");
     }
 
+    #[actix_rt::test]
+    async fn test_label() -> () {
+        let res = eval_expr("
+        Label::concat('Test', 'test') == 'Test::test' 
+        ").await;
+        assert_eq!( format!("{}", res), "true");
+    }
+
 }
 
 mod tests_cplang {

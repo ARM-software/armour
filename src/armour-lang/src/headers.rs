@@ -421,6 +421,10 @@ impl<FlatTyp:TFlatTyp> TBuiltin<FlatTyp> for Typ<FlatTyp> {
                 vec![Typ::label(), Typ::label()],
                 Typ::List(Box::new(Typ::Tuple(vec![Typ::str(), Typ::str()]))).option(),
             ),
+            "Label::concat" => sig(
+                vec![Typ::label(), Typ::label()],
+                Typ::label(),
+            ),
             "Label::parts" => sig(
                 vec![Typ::label()], 
                 Typ::List(Box::new(Typ::str())).option()
