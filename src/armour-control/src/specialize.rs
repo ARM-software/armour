@@ -248,7 +248,7 @@ impl TSExprPEval for CPExpr {
                     if flag { //e2 is independant of the let-bindings
                         //Getting ride of the closures
                         let mut e2a = *e2;
-                        for u in 0..vs.len() {
+                        for _ in 0..vs.len() {
                             e2a = e2a.apply(&Expr::LitExpr(Literal::unit()))?;
                         }
 

@@ -447,6 +447,8 @@ impl TInterpret<types::FlatTyp, DPFlatLiteral> for DPFlatLiteral {
             ("HttpResponse::set_to", dpflatlit!(HttpResponse(res)), dpflatlit!(ID(f))) => {
                 Some(res.set_to(f).into())
             }
+            ("ID::find_label", dpflatlit!(ID(id)), dpflatlit!(Label(l))) => 
+                Some(id.find_label(l).map(|x| x.clone()).into()),
             ("ID::has_label", dpflatlit!(ID(id)), dpflatlit!(Label(l))) => 
                 Some(id.has_label(l).into()),
             ("ID::add_label", dpflatlit!(ID(id)), dpflatlit!(Label(l))) => {

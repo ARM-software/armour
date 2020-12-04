@@ -413,6 +413,7 @@ impl<FlatTyp:TFlatTyp> TBuiltin<FlatTyp> for Typ<FlatTyp> {
                 vec![Typ::ip_addr()],
                 Typ::Tuple(vec![Typ::i64(), Typ::i64(), Typ::i64(), Typ::i64()]),
             ),
+            "ID::find_label" => sig(vec![Typ::id(), Typ::label()], Typ::label().option()),
             "ID::labels" => sig(vec![Typ::id()], Typ::List(Box::new(Typ::label()))),
             "ID::hosts" => sig(vec![Typ::id()], Typ::List(Box::new(Typ::str()))),
             "ID::ips" => sig(vec![Typ::id()], Typ::List(Box::new(Typ::ip_addr()))),
@@ -435,11 +436,13 @@ impl<FlatTyp:TFlatTyp> TBuiltin<FlatTyp> for Typ<FlatTyp> {
     fn internal_service(f: &str) -> Option<Signature<FlatTyp>> {
         let sig = |args, ty| Some(Signature::new(args, ty));
         match f {
-            "Ingress::id" => sig(vec![], Typ::label().option()),
-            "Ingress::data" => sig(vec![], Typ::List(Box::new(Typ::data()))),
+            "Egress::find_label" => sig(vec![Typ::label()], Typ::label().option()),
             "Egress::id" => sig(vec![], Typ::label().option()),
             "Egress::data" => sig(vec![], Typ::List(Box::new(Typ::data()))),
             "Egress::pop" => sig(vec![], Typ::data().option()),
+            "Ingress::id" => sig(vec![], Typ::label().option()),
+            "Ingress::data" => sig(vec![], Typ::List(Box::new(Typ::data()))),
+            "Ingress::find_label" => sig(vec![Typ::label()], Typ::label().option()),
             f => FlatTyp::internal_service(f)
         }
     }

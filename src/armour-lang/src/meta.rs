@@ -46,6 +46,9 @@ impl Meta {
     fn has_label(&self, label: &Label) -> bool {
         self.labels.iter().any(|x| label.matches_with(x))
     }
+    fn find_label(&self, label: &Label) -> Option<&Label> {
+        self.labels.iter().find(|x| label.matches_with(x))
+    }
     fn remove_label(&mut self, label: &Label) {
         for l in self.labels.clone().iter() {
             if label.matches_with(l) {
@@ -141,6 +144,7 @@ where
                 Ok(().into())
             }
             ("has_label", [Literal::FlatLiteral(fl)]) if fl.is_label() => Ok(meta.has_label(fl.get_label()).into()),
+            ("find_label", [Literal::FlatLiteral(fl)]) if fl.is_label() => Ok(meta.find_label(fl.get_label()).map(|x| x.clone()).into()),
             ("wipe", []) => {
                 meta.wipe();
                 Ok(().into())

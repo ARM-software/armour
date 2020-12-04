@@ -178,7 +178,7 @@ impl TExternals<types::FlatTyp, literals::DPFlatLiteral> for literals::DPFlatLit
 
 impl TExternals<types::CPFlatTyp, literals::CPFlatLiteral> for literals::CPFlatLiteral {
     /// Build a Cap'n Proto literal from an Armour literal
-    fn build_value(mut v: external::value::Builder<'_>, lit: &CPLiteral) {
+    fn build_value(v: external::value::Builder<'_>, lit: &CPLiteral) {
         match lit {
             Literal::FlatLiteral(CPFlatLiteral::DPFlatLiteral(dpfl)) =>
                 literals::DPFlatLiteral::build_value(v, &Literal::FlatLiteral(dpfl.clone())),

@@ -696,11 +696,10 @@ pub mod policy {
     }
     #[post("/specialize")]
     pub async fn specialize(
-        client: web::Data<client::Client>,
         state: State,
         request: Json<control::SpecializationRequest>,
     ) -> Result<HttpResponse, actix_web::Error> {
-        let mut request = request.into_inner();
+        let request = request.into_inner();
 
         log::info!(r#"Specializing policy"#);
 

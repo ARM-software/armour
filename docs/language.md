@@ -372,6 +372,7 @@ function               | type
 | id                   | `() -> Option<Label>`                  |
 | set_id               | `() -> ()`                             |
 | add_label            | `Label -> ()`                          |
+| find_label            | `Label -> Label`                        |
 | has_label            | `Label -> bool`                        |
 | remove_label         | `Label -> ()`                          |
 | data                 | `() -> List<data>`                     |
@@ -459,6 +460,7 @@ function               | type
 | add_label            | `(ID, Label) -> ID`                    |
 | add_host             | `(ID, str) -> ID`                      |
 | add_ip               | `(ID, IpAddr) -> ID`                   |
+| find_label           | `(ID, Label) -> Label`                  |
 | has_label            | `(ID, Label) -> bool`                  |
 | has_host             | `(ID, str) -> bool`                    |
 | has_ip               | `(ID, IpAddr) -> bool`                 |
@@ -470,6 +472,7 @@ function               | type
 function               | type
 ---------------------- | ----------------------------------------
 | id                   | `() -> Option<Label>`                  |
+| find_label           | `Label -> Label`                        |
 | has_label            | `Label -> bool`                        |
 | data                 | `() -> List<data>`                     |
 
