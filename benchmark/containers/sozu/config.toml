@@ -1,0 +1,39 @@
+saved_state = "./state.json"
+
+log_level = "info"
+log_target = "stdout"
+
+command_socket = "/var/run/sozu/socket"
+command_buffer_size = 16384
+max_command_buffer_size = 163840
+
+worker_count = 2
+worker_automatic_restart = true
+handle_process_affinity = false
+
+max_connections = 500
+max_buffers = 500
+buffer_size = 16384
+activate_listeners= true
+
+[applications]
+[applications.http-app]
+protocol = "http"
+frontends = [
+    { address = "0.0.0.0:80", hostname = "localho.st", path_begin = "/" }
+]
+
+backends = [
+    { address = "172.19.0.2:80" }
+]
+
+[applications.tcp-app]
+protocol = "tcp"
+frontends = [
+    { address = "0.0.0.0:8080" }
+]
+
+backends = [
+    { address = "172.19.0.2:80" }
+]
+

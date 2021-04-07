@@ -1,0 +1,17 @@
+external logger @ "log_sock" {
+    fn rest(i64, str, str, str, ID, ID) -> ()
+}
+    
+fn allow_rest_request(req: HttpRequest) -> bool {
+    let c = req.connection();
+    let (from, to) = c.from_to();
+    let date = if let Some(date) = req.unique_header("date") {
+        str::from_utf8(date)
+     } else {
+        "-"
+     };
+    logger::rest(c.number(), date, req.method(), req.path(), from, to);
+    if "srv-hyper" in to.hosts() {
+        "client-1" in from.hosts() || to.port() == Some(80)
+     } else {false}
+}

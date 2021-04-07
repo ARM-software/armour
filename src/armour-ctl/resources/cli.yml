@@ -1,0 +1,189 @@
+name: armour-ctl
+version: "1.0"
+about: Armour control command line tool
+args:
+  - CONTROLPLANEURL:
+      help: control plane URL
+      short: c
+      long: control
+      takes_value: true
+      value_name: URL
+  - CA:
+      help: Certificate Authority certificate for HTTPS
+      required: false
+      long: ca
+      value_name: PEM file
+      takes_value: true
+  - CERTIFICATE_PASSWORD:
+      help: Password for certificate
+      required: false
+      long: pass
+      takes_value: true
+  - CERTIFICATE:
+      help: Certificate for HTTPS
+      required: false
+      long: cert
+      value_name: pkcs12 file
+      takes_value: true
+subcommands:
+  - list:
+      about: List hosts, services or policies
+      args:
+        - ENTITY:
+            index: 1
+            required: true
+            possible_values: 
+                - hosts
+                - services
+                - policies
+  - update:
+      about: Update a policy
+      args:
+        - POLICYFILE:
+            short: p
+            long: policy
+            required: true
+            takes_value: true
+            value_name: "policy filename"
+            help: Input policy file
+        - SERVICE:
+            short: s
+            long: service
+            required: true
+            takes_value: true
+            value_name: "service label"
+            help: Service label
+        - LABELS:
+            short: l
+            long: label
+            required: false
+            takes_value: true
+            multiple: true
+            number_of_values: 2
+            value_names:
+                - "url"
+                - "label"
+            help: Policy labels
+  - update-global:
+      about: Update the global policy
+      args:
+        - POLICYFILE:
+            short: p
+            long: policy
+            required: true
+            takes_value: true
+            value_name: "policy filename"
+            help: Input policy file
+        - SELECTOR:
+            long: selector    
+            required: false
+            takes_value: true 
+            value_name: "selector label"
+            help: Label used to select onboarded services that need to be updated when the global policy changes 
+        - LABELS:
+            short: l
+            long: label
+            required: false
+            takes_value: true
+            multiple: true
+            number_of_values: 2
+            value_names:
+                - "url"
+                - "label"
+            help: Policy labels
+  - update-onboarding:
+      about: Update the onboarding policy
+      args:
+        - POLICYFILE:
+            short: p
+            long: policy
+            required: true
+            takes_value: true
+            value_name: "policy filename"
+            help: Input policy file
+        - LABELS:
+            short: l
+            long: label
+            required: false
+            takes_value: true
+            multiple: true
+            number_of_values: 2
+            value_names:
+                - "url"
+                - "label"
+            help: Policy labels
+  - specialize:
+      about: Specialize a global policy using the provided information 
+      args:
+        - POLICYFILE:
+            short: p
+            long: policy
+            required: true
+            takes_value: true
+            value_name: "policy filename"
+            help: Input policy file
+        - LABELS:
+            short: l
+            long: label
+            required: false
+            takes_value: true
+            multiple: true
+            value_names: "label"
+            help: Policy labels
+        - HOST:
+            long: host
+            required: true 
+            takes_value: true
+            value_names: "host label"
+            help: Host label 
+        - PROXY:
+            long: proxy 
+            required: true 
+            takes_value: true
+            value_names: "proxy label"
+            help: Proxy label    
+        - SERVICE:
+            long: service 
+            required: true 
+            takes_value: true
+            value_names: "service label"
+            help: Service label    
+  - query:
+      about: Query a policy
+      args:
+        - GLOBAL:
+            long: global    
+            required: false
+            takes_value: false
+            help: Global policy flag
+        - ONBOARDING:
+            long: onboarding    
+            required: false
+            takes_value: false
+            help: Onboarding policy flag
+        - SERVICE:
+            short: s
+            long: service
+            required: true
+            takes_value: true
+            help: Service label
+  - query-global:
+      about: Query the global policy
+  - query-onboarding:
+      about: Query the onboarding policy
+  - drop-all:
+      about: Remove all policies
+  - drop:
+      about: Remove a policy
+      args:
+        - SERVICE:
+            short: s
+            long: service
+            required: true
+            takes_value: true
+            help: Service label
+  - drop-global:
+      about: Remove the global policy
+  - drop-onboarding:
+      about: Remove the onboarding policy
+

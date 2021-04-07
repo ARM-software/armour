@@ -1,0 +1,21 @@
+[package]
+name = "armour-launch"
+version = "0.1.0"
+authors = ["Anthony Fox <anthony.fox@arm.com>"]
+edition = "2018"
+
+[dependencies]
+armour-api = { path = "../armour-api" }
+armour-compose = { path = "../armour-compose" }
+armour-lang = { path = "../armour-lang" }
+armour-utils = { path = "../armour-utils" }
+docker-api = { path = "../docker-api" }
+
+actix-rt = "1.1"
+awc = "2.0"
+bytes = "0.5"
+clap = "2.33"
+env_logger = "0.7"
+futures = "0.3"
+serde_yaml = "0.8"
+url = "2.1"

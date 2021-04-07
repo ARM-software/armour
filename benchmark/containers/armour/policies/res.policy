@@ -1,0 +1,3 @@
+fn allow_rest_response(res: HttpResponse) -> bool {
+    res.status() == 200
+}

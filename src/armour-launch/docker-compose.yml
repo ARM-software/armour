@@ -1,0 +1,55 @@
+---
+version: "3.0"
+services:
+  srv-nginx:
+    container_name: srv-nginx
+    hostname: srv-nginx
+    image: nginx
+    extra_hosts:
+      - "srv-nginx2:172.18.1.2"
+    networks:
+      arm-srv-nginx:
+        ipv4_address: 172.18.0.2
+  srv-nginx2:
+    container_name: srv-nginx2
+    hostname: srv-nginx2
+    image: nginx
+    extra_hosts:
+      - "srv-nginx:172.18.0.2"
+    networks:
+      arm-srv-nginx2:
+        ipv4_address: 172.18.1.2
+  srv-nginx3:
+    container_name: srv-nginx3
+    image: nginx
+    extra_hosts:
+      - "srv-nginx:172.18.0.2"
+      - "srv-nginx2:172.18.1.2"
+    networks:
+      arm-srv-nginx3:
+        ipv4_address: 172.18.2.2
+networks:
+  arm-srv-nginx:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: arm-srv-nginx
+    ipam:
+      config:
+        - subnet: 172.18.0.0/24
+    internal: true
+  arm-srv-nginx2:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: arm-srv-nginx2
+    ipam:
+      config:
+        - subnet: 172.18.1.0/24
+    internal: true
+  arm-srv-nginx3:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: arm-srv-nginx3
+    ipam:
+      config:
+        - subnet: 172.18.2.0/24
+    internal: true

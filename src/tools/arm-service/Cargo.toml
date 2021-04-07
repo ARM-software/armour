@@ -1,0 +1,18 @@
+[package]
+name = "arm-service"
+version = "0.2.0"
+authors = ["Anthony Fox <anthony.fox@arm.com>"]
+edition = "2018"
+
+[dependencies]
+actix-http = "1.0"
+actix-rt = "1.1"
+actix-web = "2.0"
+bytes = "0.5"
+clap = "2.33"
+futures = "0.3"
+get_if_addrs = "0.5"
+hostname = "0.3"
+log = "0.4"
+pretty_env_logger = "0.4"
+tokio = "0.2"

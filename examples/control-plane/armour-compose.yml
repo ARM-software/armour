@@ -1,0 +1,69 @@
+version: "3.0"
+
+proxies:
+  - label: armour
+    debug: true
+
+services:
+  server:
+    container_name: server
+    hostname: server
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: python server.py
+    volumes:
+      - ../server/:/app
+    expose:
+      - "8080"
+    networks:
+      srv-net:
+        ipv4_address: 172.18.0.2
+
+  client-1:
+    container_name: client-1
+    hostname: client-1
+    image: python
+    tty: true
+    armour:
+      labels:
+      - allowed
+    networks:
+      cl-net-1:
+        ipv4_address: 172.19.0.2
+
+  client-2:
+    container_name: client-2
+    hostname: client-2
+    image: python
+    tty: true
+    networks:
+      cl-net-2:
+        ipv4_address: 172.20.0.2
+
+networks:
+  cl-net-1:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: cl-net-1
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.19.0.0/28
+
+  cl-net-2:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: cl-net-2
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/28
+
+  srv-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: srv-net
+    ipam:
+      config:
+        - subnet: 172.18.0.0/28

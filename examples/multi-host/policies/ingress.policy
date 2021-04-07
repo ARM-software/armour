@@ -1,0 +1,10 @@
+// REST request allow/deny
+fn allow_rest_request() -> bool {
+  Ingress::has_label('egress-ok')
+}
+
+// REST response allow/deny
+fn allow_rest_response() -> bool {
+  Egress::add_label('ingress-ok');
+  true
+}

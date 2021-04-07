@@ -1,0 +1,11 @@
+version: "3.0"
+
+services:
+  client:
+    container_name: client
+    hostname: client
+    image: python
+    tty: true
+    armour:
+      labels:
+        - client

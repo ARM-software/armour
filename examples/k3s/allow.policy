@@ -1,0 +1,8 @@
+fn allow_rest_request() -> bool {
+    true
+}
+  
+// REST response allow/deny
+fn allow_rest_response() -> bool {
+    true
+}

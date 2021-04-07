@@ -1,0 +1,44 @@
+version: "3.0"
+
+proxies:
+  - label: hello::egress
+    port: 6000
+    timeout: 5
+    debug: true
+  - label: hello::ingress
+    port: 6001
+    ingress: srv-nginx:80
+  - label: no-service
+    debug: true
+
+services:
+  srv-nginx:
+    container_name: srv-nginx
+    hostname: srv-nginx
+    armour:
+      labels: 
+        - trusted
+    image: nginx
+    extra_hosts:
+      - "client-1:172.21.0.2"
+    networks:
+      srv-net-1:
+        ipv4_address: 172.19.0.2
+  srv-nginx2:
+    hostname: srv-nginx2
+    armour:
+      labels: 
+        - not-trusted
+    image: nginx
+  srv-nginx3:
+    armour:
+      labels: 
+        - not-trusted
+    image: nginx
+
+networks:
+  srv-net-1:
+    driver_opts:
+      com.docker.network.bridge.name: armour-srv-nginx
+    internal: true
+    driver: bridge

@@ -1,0 +1,34 @@
+version: "3.0"
+services:
+  srv-nginx:
+    container_name: srv-nginx
+    hostname: srv-nginx
+    armour:
+      labels: 
+        - hello
+    image: nginx
+    extra_hosts:
+      - "client-1:172.21.0.2"
+    networks:
+      srv-net-1:
+        ipv4_address: 172.19.0.2
+  
+  srv2:
+    container_name: srv2
+    hostname: srv2
+    armour:
+      labels: 
+        - hello
+    image: nginx
+    extra_hosts:
+      - "client-1:172.21.0.2"
+    networks:
+      srv-net-1:
+        ipv4_address: 172.19.0.2
+
+networks:
+  srv-net-1:
+    driver_opts:
+      com.docker.network.bridge.name: armour-srv-nginx
+    internal: true
+    driver: bridge

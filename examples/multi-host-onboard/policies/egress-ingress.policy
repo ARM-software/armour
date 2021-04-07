@@ -1,0 +1,28 @@
+// REST request allow/deny
+fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {
+	if from.has_label('client') {
+		Egress::add_label('egress-ok');
+		true
+	} else {
+		if from.has_label('server') {
+			Ingress::has_label('egress-ok')
+		} else {
+			false
+		}
+	}
+}
+
+// REST response allow/deny
+fn allow_rest_response(from: ID, to: ID, req: HttpResponse, payload: data) -> bool {
+	if to.has_label('client') {
+		Ingress::has_label('ingress-ok')
+	} else {
+		if to.has_label('server') {
+			Egress::add_label('ingress-ok');
+			true
+		} else {
+			false
+		}
+
+	}
+}

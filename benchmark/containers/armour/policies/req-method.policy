@@ -1,0 +1,3 @@
+fn allow_rest_request(req: HttpRequest) -> bool {
+  return req.method() == "GET"
+}

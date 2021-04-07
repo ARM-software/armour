@@ -1,0 +1,34 @@
+[package]
+name = "armour-host"
+version = "0.3.0"
+authors = ["Anthony Fox <anthony.fox@arm.com>"]
+edition = "2018"
+
+[dependencies]
+armour-api = { path = "../armour-api" }
+armour-lang = { path = "../armour-lang" }
+armour-serde = { path = "../armour-serde" }
+armour-utils = { path = "../armour-utils" }
+
+actix = "0.10"
+actix-connect = "2.0"
+actix-rt = "1.1"
+actix-web = { version="3.0", features=["openssl"] }
+argon2rs = "0.2"
+base64 = "0.12"
+bytes = "0.5"
+clap = "2.33"
+futures = "0.3"
+http = "0.2"
+lazy_static = "1.4"
+log = "0.4"
+openssl = { version = "0.10", features = ["vendored"] }
+pretty_env_logger = "0.4"
+regex = "1.3"
+rpassword = "5.0"
+rustyline = "6.3"
+serde = "1.0"
+serde_json = "1.0"
+tokio = { version = "0.2", features = ["uds", "tcp"] }
+tokio-util = { version = "0.3", features = ["codec"] }
+url = "2.1"

@@ -1,0 +1,73 @@
+version: "3.0"
+services:
+  srv-hyper:
+    container_name: srv-hyper
+    hostname: srv-hyper
+    extra_hosts:
+      - "client-1:172.21.0.2"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: client-python
+    command: ./hyper-server
+    networks:
+      srv-net-1:
+        ipv4_address: 172.19.0.2
+
+  client-1:
+    container_name: client-1
+    hostname: client-1
+    extra_hosts:
+      - "localho.st:private-ip"
+      - "srv-hyper:172.19.0.2"
+      - "client-2:172.22.0.2"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: client-python
+    networks:
+      cl-net-1:
+        ipv4_address: 172.21.0.2
+
+  client-2:
+    container_name: client-2
+    hostname: client-2
+    extra_hosts:
+      - "localho.st:private-ip"
+      - "srv-hyper:172.19.0.2"
+      - "client-1:172.21.0.2"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: client-python
+    networks:
+      cl-net-2:
+        ipv4_address: 172.22.0.2
+
+networks:
+  srv-net-1:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: srv-net-1
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.19.0.0/28
+
+  cl-net-1:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: cl-net-1
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.21.0.0/28
+
+  cl-net-2:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: cl-net-2
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.22.0.0/28

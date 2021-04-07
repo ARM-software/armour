@@ -1,0 +1,3 @@
+fn onboarding_policy(od: OnboardingData) -> OnboardingResult {
+    OnboardingResult::Err("Onboarding is disabled. Please update the onboarding policy first.")
+}

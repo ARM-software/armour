@@ -1,0 +1,27 @@
+
+fn allow_rest_request(from: ID, to: ID, req: HttpRequest, payload: data) -> bool {
+    match_to_from(from, to, req) &&
+    server_ok(to) &&
+    req.method() == "GET" &&
+        if req.path() == "/private" { // Only SecureServices can call methods in /private
+            from.has_label('MyPolicy::SecureService') && payload.len() == 0
+        }
+        else {
+            payload.len() == 0
+        }
+}
+
+fn server_ok(id: ID) -> bool {
+    "server" in id.hosts() &&
+        if let Some(port) = id.port() {
+            port == 80
+        } else {
+            // default is port 80
+            true
+        }
+}
+
+fn match_to_from(from: ID, to: ID, req: HttpRequest) -> bool {
+    let (rfrom, rto) = req.from_to();
+    true //TODO
+}

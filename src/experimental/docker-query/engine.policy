@@ -1,0 +1,11 @@
+external test @ "localhost:9000" {
+
+  fn info(ID, str, str) -> List<(str)>
+
+}
+
+fn try(from: ID, attr: str) -> bool {
+  //let d = test::digest("alpine");
+  let t = test::info(from, "container", attr);
+  true
+}

@@ -1,0 +1,29 @@
+[package]
+name = "armour-control"
+version = "0.1.0"
+authors = ["Anthony Fox <anthony.fox@arm.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+armour-api = { path = "../armour-api" }
+armour-lang = { path = "../armour-lang" }
+armour-utils = { path = "../armour-utils" }
+actix = "0.9"
+actix-rt = "1.1"
+actix-web = {version = "3.0", features = ["openssl"]}
+async-trait = "0.1.41"
+bson = "1.1"
+bytes = "0.5"
+clap = {version = "2.33", features = ["yaml"]}
+env_logger = "0.7"
+futures = "0.3"
+json = "0.12"
+log = "0.4"
+mongodb = "1.1"
+openssl = "0.10"
+serde = "1.0"
+serde_json = "1.0"
+tokio = "0.2"
+url = "2.1"

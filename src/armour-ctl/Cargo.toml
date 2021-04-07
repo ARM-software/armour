@@ -1,0 +1,23 @@
+[package]
+name = "armour-ctl"
+version = "0.1.0"
+authors = ["guspet02 <gpetri@irif.fr>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+armour-lang = {path = "../armour-lang"}
+armour-api = {path = "../armour-api"}
+armour-utils = {path = "../armour-utils"}
+
+actix-rt = "1.1"
+bytes = "0.5"
+clap = { version = "2.33", features = ["yaml"] }
+env_logger = "0.7"
+futures = "0.3"
+json = "*"
+log = "0.4"
+openssl = "0.10"
+serde_json = "1.0"
+url = { version = "2.1", features = ["serde"] }

@@ -1,0 +1,22 @@
+[workspace]
+
+members = [
+    "armour-api",
+    "armour-certs",
+    "armour-compose",
+    "armour-control",
+    "armour-ctl",
+    "armour-host",
+    "armour-lang",
+    "armour-launch",
+    "armour-proxy",
+    "armour-serde",
+    "armour-utils",
+    "docker-api",
+    "tools/logger",
+    "tools/arm-service"
+]
+
+[profile.release]
+opt-level = 's'
+lto = true

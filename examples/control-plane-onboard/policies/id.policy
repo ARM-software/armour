@@ -1,0 +1,14 @@
+fn allow_rest_request(req: HttpRequest) -> bool { 
+  let (from, to) = req.from_to(); 
+  to.server_ok() && from.has_label('allowed')
+}
+
+fn server_ok(id: ID) -> bool {
+  "server" in id.hosts() &&
+  if let Some(port) = id.port() {
+    port == 80
+  } else {
+    // default is port 80
+    true
+  } 
+}

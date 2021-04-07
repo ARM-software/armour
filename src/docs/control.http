@@ -1,0 +1,55 @@
+### -*- restclient -*-
+###
+POST https://localhost:8088/host/on-board
+Content-Type: application/json
+
+{
+        "host": "https://localhost",
+        "label": "armour::host-1",
+        "credentials": "no-creds"
+}
+
+###
+POST https://localhost:8088/service/on-board
+Content-Type: application/json
+
+{
+  "service": "armour::service-1",
+  "host": "armour::host-1"
+}
+
+###
+POST https://localhost:8088/policy/update
+Content-Type: application/json
+
+{
+  "label":"no-service",
+  "policy":{
+    "HTTP": "H4sIAAAAAAAE/12JQQ4AEAwEhR/wQHFwE0WJ79s9atOZZrfOTDCZ0VMgAm5pTW5eVTc0Dy7bRIHvq0O6VrTuAQFfiT9pAAAA",
+    "TCP": "H4sIAAAAAAAE/12JUQoAIAxCo04QdL+I1UcQW1DQ9Zv1N/EJqjMKpqN6hJIUuIwhJ2+amYS50e7C2CNCEX5n7Yv+r5u70UHOrWkAAAA="
+  },
+  "labels":{
+    "a": ["b::c"],
+    "d": ["e::f::g"]
+  }
+}
+
+###
+GET https://localhost:8088/policy/query
+Content-Type: application/json
+
+{
+  "label":"no-service"
+}
+
+
+###
+DELETE https://localhost:8088/policy/drop
+Content-Type: application/json
+
+{
+  "label":"no-service"
+}
+
+###
+DELETE https://localhost:8088/policy/drop-all
